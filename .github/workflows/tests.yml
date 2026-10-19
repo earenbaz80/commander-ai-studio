@@ -18,7 +18,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      # --ignore-scripts evita descargar el binario de Electron en CI (no hace falta para los tests).
+      # --ignore-scripts: no hace falta Electron ni sus binaries para lint/typecheck/test.
       - run: npm ci --ignore-scripts
 
       - name: Lint (ESLint)
@@ -27,14 +27,8 @@ jobs:
       - name: Tipos (tsc --noEmit)
         run: npm run typecheck
 
-      - name: Tests unitarios (Node)
-        run: npm run test:unit
-
-      - name: Reglas de Firestore (estático)
-        run: npm run test:rules
-
-      - name: Tests de UI (Vitest)
-        run: npm run test:ui
+      - name: Tests (Vitest)
+        run: npm run test
 
   build:
     name: Build
@@ -48,7 +42,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      - run: npm ci --ignore-scripts
 
       - name: Build (Vite)
         run: npm run build
@@ -75,15 +69,10 @@ jobs:
       - run: npm ci --ignore-scripts
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium firefox webkit
 
       - name: Build (Vite)
         run: npm run build
-
-      - name: Start dev server
-        run: npm run preview &
-        env:
-          PORT: 4173
 
       - name: Run Playwright tests
         run: npx playwright test
