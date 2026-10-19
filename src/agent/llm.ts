@@ -1,7 +1,7 @@
 import { getCachedApiKey } from '../lib/apiKeys';
 import type { ChatMessage } from '../types/studio';
 import { AGENT_FUNCTION_DECLARATIONS } from './fnTools';
-import { toolDialectForModel, toOpenAITools } from './providers';
+import { toolDialectForModel, toOpenAITools, toAnthropicTools } from './providers';
 import { resolveEndpoint } from '../lib/aiProviders';
 
 export interface LLMToolCall {
@@ -166,7 +166,10 @@ export async function callAgentLLMTools(
   // `dialect !== 'gemini'` solo llega aquí para custom/ (openrouter/ y ollama/
   // también son openai pero se resuelven igual), así que resolveEndpoint es
   // equivalente al fallback anterior.
-  const route = dialect === 'gemini' ? '/api/gemini/generate' : resolveEndpoint(model);
+  const route =
+    dialect === 'gemini' ? '/api/gemini/generate' :
+    dialect === 'anthropic' ? '/api/anthropic/generate' :
+    resolveEndpoint(model);
 
   const payload: Record<string, unknown> = {
     contents: user,
@@ -183,6 +186,8 @@ export async function callAgentLLMTools(
 
   if (dialect === 'gemini') {
     payload.tools = [{ functionDeclarations: AGENT_FUNCTION_DECLARATIONS }];
+  } else if (dialect === 'anthropic') {
+    payload.tools = toAnthropicTools();
   } else {
     payload.tools = toOpenAITools();
   }
@@ -198,6 +203,21 @@ export async function callAgentLLMTools(
   if (dialect === 'gemini') {
     const calls = (data.functionCalls || []).map((fc: any) => ({ name: fc.name, args: fc.args || {} }));
     return { thought: data.text || '', calls };
+  }
+
+  if (dialect === 'anthropic') {
+    const calls = (data.toolCalls || []).map((tc: any) => ({ name: tc.name, args: tc.args || {} }));
+    // Fallback: parse tool_use blocks directly from Anthropic's content array
+    // if the handler did not normalize them.
+    if (calls.length === 0 && Array.isArray(data.content)) {
+      for (const block of data.content) {
+        if (block?.type === 'tool_use' && block.name) {
+          calls.push({ name: block.name, args: block.input || {} });
+        }
+      }
+    }
+    const text = data.text || (Array.isArray(data.content) ? data.content.filter((b: any) => b?.type === 'text').map((b: any) => b.text).join('') : '');
+    return { thought: text, calls };
   }
 
   // OpenAI-compatible: el servidor normaliza toolCalls → [{ id, name, args }].

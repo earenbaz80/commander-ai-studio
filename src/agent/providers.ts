@@ -8,7 +8,7 @@ import { AGENT_FUNCTION_DECLARATIONS } from './fnTools';
  *  - 'openai'   → Chat Completions / Ollama / OpenAI-compat: { tools: [{ type: 'function', function }] } con JSON Schema en minúsculas.
  *  - 'json-text'→ Sin tool-calling nativo: el agente le pide JSON en texto plano y lo parsea.
  */
-export type ToolDialect = 'gemini' | 'openai' | 'json-text';
+export type ToolDialect = 'gemini' | 'openai' | 'anthropic' | 'json-text';
 
 /** Detecta el dialecto de tool-calling según el id del modelo (ya prefijado). */
 export function toolDialectForModel(model?: string): ToolDialect {
@@ -17,6 +17,8 @@ export function toolDialectForModel(model?: string): ToolDialect {
   if (/^openrouter\//.test(model)) return 'openai';
   if (/^custom\//.test(model)) return 'openai';
   if (/^pollinations\//.test(model)) return 'json-text';
+  // Claude (Anthropic) — tool-calling nativo con su propio formato.
+  if (/^claude/i.test(model) || model.includes('claude')) return 'anthropic';
   // Los ids de HuggingFace contienen '/' y se ejecutan en local/API sin tool-calling nativo.
   if (model.includes('/')) return 'json-text';
   return 'gemini'; // ids planos de Gemini
@@ -72,6 +74,29 @@ export function toOpenAITools(decls: GeminiDeclaration[] = AGENT_FUNCTION_DECLAR
         ),
         required: d.parameters?.required || [],
       },
+    },
+  }));
+}
+
+/**
+ * Convierte declaraciones de función estilo Gemini al formato `tools` de
+ * Anthropic (tool-use): { name, description, input_schema }.
+ */
+export function toAnthropicTools(decls: GeminiDeclaration[] = AGENT_FUNCTION_DECLARATIONS) {
+  return decls.map((d) => ({
+    name: d.name,
+    description: d.description,
+    input_schema: {
+      type: 'object',
+      properties: Object.fromEntries(
+        Object.entries(d.parameters?.properties || {}).map(([key, p]) => [
+          key,
+          p
+            ? { type: toLowerCaseJsonType(p.type), ...(p.description ? { description: p.description } : {}) }
+            : { type: 'string' },
+        ])
+      ),
+      required: d.parameters?.required || [],
     },
   }));
 }
