@@ -16,6 +16,7 @@
  */
 import { AGENT_FUNCTION_DECLARATIONS } from '../agent/fnTools';
 import { toOpenAITools, toolDialectForModel } from '../agent/providers';
+import { resolveEndpoint, resolveStreamEndpoint } from '../lib/aiProviders';
 
 export type CliAgentEvent =
   | { type: 'status'; text: string }
@@ -95,22 +96,12 @@ export async function runTool(
 
 /** Ruta de generación del servidor según el dialecto del modelo. */
 function generateRoute(model: string): string {
-  if (model.startsWith('openrouter/')) return '/api/openrouter/generate';
-  if (model.startsWith('ollama/')) return '/api/ollama/generate';
-  if (model.startsWith('custom/')) return '/api/custom/generate';
-  return '/api/gemini/generate';
+  return resolveEndpoint(model);
 }
 
 /** Ruta SSE de streaming, o `null` si el modelo no la soporta. */
 function streamRoute(model: string): string | null {
-  if (
-    model.startsWith('openrouter/') ||
-    model.startsWith('ollama/') ||
-    model.startsWith('custom/')
-  ) {
-    return null;
-  }
-  return '/api/gemini/stream';
+  return resolveStreamEndpoint(model);
 }
 
 /** Cuerpo común de la petición al LLM (compartido por streaming y no-streaming). */

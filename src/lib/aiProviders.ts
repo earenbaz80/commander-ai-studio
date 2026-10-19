@@ -127,32 +127,23 @@ export function detectProvider(
   // Google models
   if (modelId.startsWith('gemini') || modelId.startsWith('antigravity')) return 'google';
 
-  // HuggingFace models (contain '/' or match known HF models)
+  // Prefijos explícitos PRIMERO. Cualquier id con '/' cae en HuggingFace, así que
+  // los prefijos con barra (ollama/, openrouter/, custom/, local/…) tienen que
+  // resolverse antes o nunca se alcanzan.
+  if (modelId.startsWith('ollama/')) return 'ollama';
+  if (modelId.startsWith('openrouter/')) return 'openrouter';
+  if (modelId.startsWith('pollinations/')) return 'pollinations';
+  if (modelId.startsWith('custom/')) return 'custom';
+  if (modelId.startsWith('local/')) return 'local';
+
+  // HuggingFace: id con barra del tipo org/repo, o coincidencia con el catálogo.
   const isHfModel =
     modelId.includes('/') ||
     HUGGINGFACE_MODELS.some((m) => m.id === modelId) ||
     downloadedModels.some((m) => m.hfRepoId === modelId || m.id === modelId);
   if (isHfModel) return 'huggingface';
 
-  // Ollama models
-  if (modelId.startsWith('ollama/')) return 'ollama';
-
-  // OpenRouter models
-  if (modelId.startsWith('openrouter/')) return 'openrouter';
-
-  // Pollinations models
-  if (modelId.startsWith('pollinations/')) return 'pollinations';
-
-  // Custom models
-  if (modelId.startsWith('custom/')) return 'custom';
-
-  // Local GGUF models
-  if (modelId.startsWith('local/')) return 'local';
-
-  // xAI models
-  if (modelId.startsWith('custom/')) return 'custom';
-
-  // xAI models
+  // xAI Grok
   if (modelId.startsWith('grok')) return 'xai';
 
   // Default to Google
@@ -416,6 +407,44 @@ export function buildProviderPayload(
       };
     }
   }
+}
+
+/**
+ * Resuelve el endpoint HTTP para un id de modelo.
+ *
+ * Fuente única de verdad para el ruteo. Antes cada consumidor repetía su propia
+ * cadena de ternarios, con defaults inconsistentes: llm.ts mandaba a
+ * `/api/custom/generate` para todo lo que no fuera gemini/openrouter/ollama
+ * (incluidos claude y hf), mientras inlineAi.ts y cli/agentClient.ts caían a
+ * `/api/gemini/generate`. Consecuencia: agregar un provider obligaba a tocar
+ * 7 lugares y uno quedaba roto en silencio.
+ *
+ * @param modelId     Id del modelo (con o sin prefijo de provider).
+ * @param streaming   Pedir el endpoint de streaming cuando el provider lo soporte.
+ * @param fallback    Provider a usar si el id no matchea ninguno. Default 'google'.
+ */
+export function resolveEndpoint(
+  modelId: string,
+  opts: { streaming?: boolean; fallback?: ProviderType } = {}
+): string {
+  const { streaming = false, fallback = 'google' } = opts;
+  const provider = detectProvider(modelId, fallback, []);
+  const config = PROVIDER_CONFIGS[provider];
+  // Sólo google y anthropic exponen stream; el resto usa su endpoint normal.
+  if (streaming && config.streamEndpoint) return config.streamEndpoint;
+  return config.defaultEndpoint;
+}
+
+/**
+ * Endpoint SSE de streaming, o `null` si el provider no lo expone.
+ *
+ * Distinto de `resolveEndpoint(..., { streaming: true })`, que degrada al
+ * endpoint normal. Algunos consumidores necesitan distinguir "no hay stream"
+ * de "el stream es otro endpoint" para no abrir una conexión inútil.
+ */
+export function resolveStreamEndpoint(modelId: string): string | null {
+  const provider = detectProvider(modelId, 'google', []);
+  return PROVIDER_CONFIGS[provider].streamEndpoint ?? null;
 }
 
 /**
