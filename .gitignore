@@ -1,6 +1,9 @@
 # Dependencias
 node_modules/
 
+# bun.lock es un artefacto del template (stale, no usar)
+bun.lock
+
 # Secretos — NUNCA commitear
 .env
 .env.local

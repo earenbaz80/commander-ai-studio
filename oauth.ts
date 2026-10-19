@@ -89,7 +89,7 @@ function setSessionCookie(res: Response, sessionToken: string): void {
  * Inicia el flujo OAuth redirigiendo al proveedor.
  */
 export function handleOAuthLogin(req: Request, res: Response) {
-  const provider = req.params.provider;
+  const provider = req.params.provider as string;
   const config = OAUTH_PROVIDERS[provider];
 
   if (!config || !config.clientId) {
@@ -124,7 +124,7 @@ export function handleOAuthLogin(req: Request, res: Response) {
  * Callback de OAuth - intercambia código por token y crea sesión.
  */
 export async function handleOAuthCallback(req: Request, res: Response) {
-  const provider = req.params.provider;
+  const provider = req.params.provider as string;
   const config = OAUTH_PROVIDERS[provider];
 
   if (!config) {

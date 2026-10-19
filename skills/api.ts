@@ -25,7 +25,7 @@ router.get('/', async (_req: Request, res: Response) => {
 /** GET /api/skills/:id - Obtiene un skill por ID */
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const skill = await findSkillById(req.params.id);
+    const skill = await findSkillById(req.params.id as string);
     if (!skill) return res.status(404).json({ success: false, error: 'Skill no encontrado' });
     return res.json({ success: true, skill });
   } catch (e: any) {
@@ -36,7 +36,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 /** GET /api/skills/tag/:tag - Filtra por tag */
 router.get('/tag/:tag', async (req: Request, res: Response) => {
   try {
-    const skills = await findSkillsByTag(req.params.tag);
+    const skills = await findSkillsByTag(req.params.tag as string);
     return res.json({ success: true, skills });
   } catch (e: any) {
     return res.status(500).json({ success: false, error: e.message });
@@ -45,7 +45,7 @@ router.get('/tag/:tag', async (req: Request, res: Response) => {
 
 /** GET /api/skills/type/:type - Filtra por tipo */
 router.get('/type/:type', async (req: Request, res: Response) => {
-  const type = req.params.type;
+  const type = req.params.type as string;
   if (!['command', 'agent', 'template'].includes(type)) {
     return res.status(400).json({ success: false, error: 'Tipo inválido' });
   }
@@ -60,7 +60,7 @@ router.get('/type/:type', async (req: Request, res: Response) => {
 /** POST /api/skills/:id/execute - Ejecuta un command skill (simplificado) */
 router.post('/:id/execute', async (req: Request, res: Response) => {
   try {
-    const skill = await findSkillById(req.params.id);
+    const skill = await findSkillById(req.params.id as string);
     if (!skill) return res.status(404).json({ success: false, error: 'Skill no encontrado' });
     if (skill.type !== 'command') {
       return res.status(400).json({ success: false, error: 'Solo commands son ejecutables directamente' });

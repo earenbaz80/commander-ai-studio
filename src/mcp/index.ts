@@ -240,18 +240,19 @@ mcpRouter.get('/health', async (_req, res) => {
     const { spawnSync } = await import('child_process');
 
     const results = Object.entries(servers).map(([name, cfg]) => {
+      const c = cfg as { command: string; args?: string[] };
       try {
-        const r = spawnSync(cfg.command, cfg.args || [], { timeout: 3000 });
+        const r = spawnSync(c.command, c.args || [], { timeout: 3000 });
         return {
           name,
-          command: cfg.command,
+          command: c.command,
           status: r.status === 0 ? 'healthy' : 'unreachable',
           output: r.stdout ? r.stdout.toString().slice(0, 200) : null,
         };
       } catch (err) {
         return {
           name,
-          command: cfg.command,
+          command: c.command,
           status: 'unknown' as const,
           error: err instanceof Error ? err.message : String(err),
         };
