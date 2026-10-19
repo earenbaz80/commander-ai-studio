@@ -5,6 +5,7 @@ import { formatErrorMessage } from './utils/errorFormatter';
 import { useAppExecutors } from './hooks/useAppExecutors';
 import { useAppHandlers } from './hooks/useAppHandlers';
 import { useHistoryHandlers } from './hooks/useHistoryHandlers';
+import { useTabProjectHandlers } from './hooks/useTabProjectHandlers';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
@@ -77,12 +78,9 @@ import { TabBar } from './components/TabBar';
 import { useTabs } from './hooks/useTabs';
 import {
   listAgentRoots,
-  addAgentRoot,
-  removeAgentRoot,
-  createProject,
   type AgentRoot,
 } from './lib/agentProjects';
-import { buildAuditPrompt, projectName } from './data/auditPrompts';
+import { buildAuditPrompt } from './data/auditPrompts';
 import { useIdentity } from './hooks/useIdentity';
 import { OnboardingModal } from './components/OnboardingModal';
 import { setActiveProjectRoot } from './agent/activeProject';
@@ -388,61 +386,14 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab?.messages.length]);
 
-  const handleTabProject = async (p: string) => {
-    if (!p) {
-      tabs.setProject('');
-      setProjectToast({ kind: 'ok', text: 'Proyecto quitado' });
-      return;
-    }
-    if (isolateSessions) {
-      try {
-        const { forkSessionWorkspace } = await import('./lib/sessionWorkspace');
-        const forked = await forkSessionWorkspace(p);
-        tabs.setProject(forked.path, undefined, forked.id);
-        setProjectToast({ kind: 'ok', text: `Sesión aislada: ${projectName(p)}` });
-        return;
-      } catch (e: any) {
-        setProjectToast({ kind: 'err', text: e?.message || 'No se pudo aislar la sesión' });
-        return;
-      }
-    }
-    tabs.setProject(p);
-    setProjectToast({ kind: 'ok', text: `Proyecto: ${projectName(p)}` });
-  };
-
-  const handleAddDirectory = async () => {
-    const raw = window.prompt('Ruta absoluta del directorio a añadir como proyecto:');
-    if (!raw || !raw.trim()) return;
-    try {
-      setAgentRoots(await addAgentRoot(raw.trim()));
-      setProjectToast({ kind: 'ok', text: `Proyecto añadido: ${projectName(raw.trim())}` });
-    } catch (e: any) {
-      setProjectToast({ kind: 'err', text: e.message || 'No se pudo añadir' });
-    }
-  };
-
-  const handleCreateProject = async () => {
-    const raw = window.prompt('Nombre del nuevo proyecto:');
-    if (!raw || !raw.trim()) return;
-    try {
-      const created = await createProject(raw.trim());
-      setAgentRoots(await listAgentRoots());
-      await handleTabProject(created.path);
-      setProjectToast({ kind: 'ok', text: `Proyecto creado: ${created.name}` });
-    } catch (e: any) {
-      setProjectToast({ kind: 'err', text: e.message || 'No se pudo crear' });
-    }
-  };
-
-  const handleRemoveProject = async (p: string) => {
-    try {
-      setAgentRoots(await removeAgentRoot(p));
-      if (activeTab?.projectPath === p) tabs.setProject('');
-      setProjectToast({ kind: 'ok', text: 'Proyecto quitado de la lista' });
-    } catch (e: any) {
-      setProjectToast({ kind: 'err', text: e.message || 'No se pudo quitar' });
-    }
-  };
+  const { handleTabProject, handleAddDirectory, handleCreateProject, handleRemoveProject } = useTabProjectHandlers({
+    tabs,
+    setProjectToast,
+    isolateSessions,
+    agentRoots,
+    setAgentRoots,
+    activeTab,
+  });
 
   useEffect(() => {
     if (!projectToast) return;
@@ -1627,7 +1578,6 @@ export default function App() {
     </div>
   );
 }
-
 
 
 
