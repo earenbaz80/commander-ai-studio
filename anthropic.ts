@@ -11,6 +11,7 @@ export async function handleAnthropicGenerate(req: Request, res: Response) {
       temperature = 0.7,
       maxTokens = 2048,
       anthropicApiKey,
+      tools,
     } = req.body;
 
     const cookieKey = (req as any).apiKeys?.ANTHROPIC_API_KEY || '';
@@ -52,6 +53,11 @@ export async function handleAnthropicGenerate(req: Request, res: Response) {
       anthropicPayload.system = systemInstruction;
     }
 
+    // Tool-use: reenvía tools en formato Anthropic si el caller las envía.
+    if (Array.isArray(tools) && tools.length > 0) {
+      anthropicPayload.tools = tools;
+    }
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -69,7 +75,11 @@ export async function handleAnthropicGenerate(req: Request, res: Response) {
 
     const data: any = await response.json();
     const latencyMs = Date.now() - startTime;
-    const textOutput = data.content?.map((c: any) => c.text || '').join('') || '';
+    const contentBlocks: any[] = Array.isArray(data.content) ? data.content : [];
+    const textOutput = contentBlocks.map((c: any) => c.text || '').join('') || '';
+    const toolCalls = contentBlocks
+      .filter((c: any) => c?.type === 'tool_use' && c.name)
+      .map((c: any) => ({ id: c.id, name: c.name, args: c.input || {} }));
 
     const promptTokens = data.usage?.input_tokens || Math.ceil(JSON.stringify(formattedMessages).length / 4);
     const responseTokens = data.usage?.output_tokens || Math.ceil(textOutput.length / 4);
@@ -77,6 +87,7 @@ export async function handleAnthropicGenerate(req: Request, res: Response) {
     return res.json({
       success: true,
       text: textOutput,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       metrics: {
         promptTokens,
         responseTokens,
@@ -114,6 +125,7 @@ export async function handleAnthropicStream(req: Request, res: Response) {
       temperature = 0.7,
       maxTokens = 2048,
       anthropicApiKey,
+      tools,
     } = req.body;
 
     const apiKey = anthropicApiKey || process.env.ANTHROPIC_API_KEY;
@@ -152,6 +164,11 @@ export async function handleAnthropicStream(req: Request, res: Response) {
 
     if (systemInstruction) {
       anthropicPayload.system = systemInstruction;
+    }
+
+    // Tool-use: reenvía tools en formato Anthropic si el caller las envía.
+    if (Array.isArray(tools) && tools.length > 0) {
+      anthropicPayload.tools = tools;
     }
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
