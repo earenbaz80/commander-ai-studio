@@ -58,10 +58,10 @@ export const ToolsConfigSchema = z.object({
   }).optional(),
   mcp: z.object({
     enabled: z.boolean().default(false),
-    servers: z.record(z.object({
+    servers: z.record(z.string(), z.object({
       command: z.string(),
       args: z.array(z.string()).default([]),
-      env: z.record(z.string()).optional(),
+      env: z.record(z.string(), z.string()).optional(),
       // Autenticación opcional para servidores MCP remotos.
       auth: z.object({
         type: z.enum(['oauth2', 'bearer']).default('oauth2'),
@@ -80,7 +80,7 @@ export const ToolsConfigSchema = z.object({
 
 export const UIConfigSchema = z.object({
   theme: z.enum(['norton', 'matrix', 'amber', 'dos']).default('norton'),
-  language: z.enum(['es', 'en']).default('es'),
+  language: z.enum(['es', 'en', 'de']).default('es'),
   showTooltips: z.boolean().default(true),
   lowResourceMode: z.boolean().default(false),
   powerSaverMode: z.boolean().default(false),

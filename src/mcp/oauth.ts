@@ -65,7 +65,7 @@ function getCallbackBase(): string {
 
 /** Recupera la config de auth de un servidor MCP desde commander.json. */
 export function getMcpAuthConfig(serverName: string): McpAuthConfig | null {
-  const auth = getToolsConfig().mcp?.servers?.[serverName]?.auth;
+  const auth = (getToolsConfig().mcp?.servers?.[serverName] as { auth?: any } | undefined)?.auth;
   return auth ?? null;
 }
 
