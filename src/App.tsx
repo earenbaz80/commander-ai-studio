@@ -4,6 +4,7 @@ import { resolveChatRoute } from './lib/aiRouting';
 import { formatErrorMessage } from './utils/errorFormatter';
 import { useAppExecutors } from './hooks/useAppExecutors';
 import { useAppHandlers } from './hooks/useAppHandlers';
+import { useHistoryHandlers } from './hooks/useHistoryHandlers';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
@@ -466,148 +467,25 @@ export default function App() {
   };
 
   // Handle Selecting and Restoring Session from History (dentro de la pestaña activa)
-  const handleSelectHistoryItem = (item: HistorySession) => {
-    // Las entradas antiguas no tienen tabId: se leen como de la primera pestaña.
-    const owner = item.tabId || firstTabIdRef.current;
-    if (owner !== activeTabId) return;
-
-    currentSessionId.current = item.id;
-    tabs.updateTab({ sessionId: item.id });
-    const displayTitle = item.promptTitle || item.title || 'Proyecto Restaurado';
-    setPromptTitle(displayTitle);
-
-    // 1. Restore messages
-    if (item.messages && Array.isArray(item.messages) && item.messages.length > 0) {
-      setMessages([...item.messages]);
-    } else {
-      // Robust fallback for legacy entries or empty message lists
-      const queryText = item.title || displayTitle;
-      setMessages([
-        {
-          id: `${item.id}-usr`,
-          role: 'user',
-          content: queryText,
-          timestamp: item.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        },
-        {
-          id: `${item.id}-ai`,
-          role: 'model',
-          content: `✓ Sesión "${displayTitle}" restaurada desde el historial.\n\nPuedes continuar la conversación o solicitar nuevas aplicaciones interactivas.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          modelUsed: item.selectedModel || selectedModel,
-        }
-      ]);
-    }
-
-    // 2. Restore parameters
-    if (item.parameters) {
-      setParameters({ ...item.parameters });
-    }
-
-    // 3. Restore selected model
-    if (item.selectedModel) {
-      setSelectedModel(item.selectedModel);
-    }
-
-    // 4. Set mode
-    setMode(item.mode || 'chat');
-
-    // 5. Sound & notification confirmation
-    playRetroSuccessSound();
-    sendBrowserNotification(
-      lang === 'es' ? '📂 Sesión Restaurada' : lang === 'de' ? '📂 Sitzung wiederhergestellt' : '📂 Session Restored',
-      lang === 'es' 
-        ? `Se ha restaurado "${displayTitle}" en el espacio de trabajo.`
-        : lang === 'de'
-          ? `"${displayTitle}" wurde im Arbeitsbereich wiederhergestellt.`
-          : `"${displayTitle}" restored to workspace.`
-    );
-  };
-
-  // Handle Restoring and Running Session in Live Viewer
-  const handleRunHistoryItem = (item: HistorySession) => {
-    // 1. First restore everything into state
-    handleSelectHistoryItem(item);
-
-    // 2. Extract code snippets
-    let snippets: ChatCodeSnippet[] = [];
-    if (item.messages && Array.isArray(item.messages) && item.messages.length > 0) {
-      snippets = extractSnippetsFromMessages(item.messages);
-    } else if (item.codeSnippet) {
-      snippets = [
-        {
-          id: `${item.id}-snippet`,
-          title: item.promptTitle || item.title || 'App Ejecutable',
-          language: item.codeLanguage || 'html',
-          code: item.codeSnippet,
-        }
-      ];
-    }
-
-    // If no explicit code was found in the session messages, check if it's the default placeholder
-    if (snippets.length === 0 || (snippets.length === 1 && snippets[0].id === 'default-app')) {
-      const displayTitle = item.promptTitle || item.title || 'Sesión Historial';
-      snippets = [
-        {
-          id: `${item.id}-interactive-runner`,
-          title: displayTitle,
-          language: 'html',
-          code: `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <title>${displayTitle}</title>
-  <style>
-    body { background: #000080; color: #ffff55; font-family: monospace; padding: 24px; text-align: center; }
-    .box { border: 2px solid #00ffff; background: #0000aa; padding: 24px; max-width: 550px; margin: 40px auto; box-shadow: 4px 4px 0px #000033; }
-    h2 { color: #00ffff; margin-top: 0; }
-    p { color: #ffffff; line-height: 1.6; font-size: 13px; }
-    .badge { background: #000055; border: 1px solid #00ffff; color: #00ffff; padding: 4px 10px; display: inline-block; margin-bottom: 15px; font-size: 11px; }
-    button { background: #ffff55; color: #000; border: 2px solid #fff; padding: 8px 20px; font-weight: bold; cursor: pointer; margin-top: 15px; font-family: monospace; font-size: 12px; }
-    button:hover { background: #00ffff; }
-  </style>
-</head>
-<body>
-  <div class="box">
-    <div class="badge">COMMANDER LIVE VIEWER • SESIÓN RESTAURADA</div>
-    <h2>⚡ ${displayTitle}</h2>
-    <p>Esta conversación fue cargada con éxito en el chat. Para ejecutar aplicaciones completas (HTML, CSS, JS o React), puedes pedirle a la IA que cree una app o juego en el chat.</p>
-    <button onclick="alert('✓ ¡Sesión activa en Commander AI Studio!')">PROBAR INTERACCIÓN</button>
-  </div>
-</body>
-</html>`
-        }
-      ];
-    }
-
-    setLiveViewerSnippets(snippets);
-    setActiveSnippetIndex(snippets.length > 0 ? snippets.length - 1 : 0);
-    setIsLiveViewerOpen(true);
-  };
-
-  // Handle Deleting Single Session
-  // Borra una entrada concreta (solo puede tocar las de su propia pestaña).
-  const handleDeleteHistoryItem = (id: string) => {
-    setHistory((prev) => {
-      const target = prev.find((h) => h.id === id);
-      if (!target) return prev;
-      // Las entradas antiguas (sin tabId) pertenecen a la primera pestaña.
-      const owner = target.tabId || firstTabIdRef.current;
-      if (owner !== activeTabId) return prev;
-      return prev.filter((item) => item.id !== id);
-    });
-  };
-
-  /** Limpia el historial de la pestaña activa (no toca las demás). */
-  const handleClearHistory = () => {
-    const tabId = activeTabId;
-    setHistory((prev) => prev.filter((item) => {
-      const owner = item.tabId || firstTabIdRef.current;
-      return owner !== tabId;
-    }));
-    tabs.updateTab({ messages: [], sessionId: `sess-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}` });
-  };
-
+  const { handleSelectHistoryItem, handleRunHistoryItem, handleDeleteHistoryItem, handleClearHistory } = useHistoryHandlers({
+    activeTabId,
+    firstTabIdRef,
+    currentSessionId,
+    tabs,
+    setPromptTitle,
+    setMessages,
+    setParameters,
+    setSelectedModel,
+    setMode,
+    setLiveViewerSnippets,
+    setActiveSnippetIndex,
+    setIsLiveViewerOpen,
+    setHistory,
+    lang,
+    selectedModel,
+    playRetroSuccessSound,
+    sendBrowserNotification,
+  });
   /** Historial visible en el sidebar: solo el de la pestaña activa. */
   const tabHistory = React.useMemo(() => {
     const owner = firstTabIdRef.current;
@@ -1749,7 +1627,6 @@ export default function App() {
     </div>
   );
 }
-
 
 
 
