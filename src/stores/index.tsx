@@ -42,10 +42,8 @@ export type { AuthState } from './authStore';
 // Re-export aiProviders
 export {
   detectProvider,
-  buildProviderPayload,
-  getEndpointWithHost,
-  modelSupportsTools,
-  getDefaultModelForProvider,
+  resolveEndpoint,
+  resolveStreamEndpoint,
   PROVIDER_CONFIGS,
 } from '../lib/aiProviders';
-export type { ProviderPayload, ProviderConfig } from '../lib/aiProviders';
+export type { ProviderConfig } from '../lib/aiProviders';
