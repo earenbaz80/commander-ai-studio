@@ -1,5 +1,6 @@
 import { getCachedApiKey, migrateLegacyKeys, loadAllApiKeysIntoCache } from './lib/apiKeys';
 import { deText } from './i18n/de';
+import { resolveChatRoute } from './lib/aiRouting';
 import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { FloatingAssistant, type FloatingAssistantHandle } from './components/FloatingAssistant';
@@ -850,28 +851,19 @@ export default function App() {
     let currentBotMsgId: string | null = null;
 
     try {
-      const isAnthropic = selectedProvider === 'anthropic' || activeModel.startsWith('claude');
-      const isFreeProvider =
-        selectedProvider === 'ollama' || selectedProvider === 'openrouter' || selectedProvider === 'pollinations' ||
-        activeModel.startsWith('ollama/') || activeModel.startsWith('openrouter/') || activeModel.startsWith('pollinations/');
-      const isCustom = selectedProvider === 'custom' || activeModel.startsWith('custom/');
-      const isLocal = selectedProvider === 'local' || activeModel.startsWith('local/');
-      const isHf = !isFreeProvider && !isLocal && (
-        selectedProvider === 'huggingface' ||
-        activeModel.includes('/') ||
-        HUGGINGFACE_MODELS.some((m) => m.id === activeModel) ||
-        downloadedModels.some((m) => m.hfRepoId === activeModel || m.id === activeModel));
-      const freeEndpoint = isCustom
-        ? '/api/custom/generate'
-        : activeModel.startsWith('openrouter/') || selectedProvider === 'openrouter'
-        ? '/api/openrouter/generate'
-        : activeModel.startsWith('pollinations/') || selectedProvider === 'pollinations'
-        ? '/api/pollinations/generate'
-        : isLocal
-        ? '/api/local-models/generate'
-        : '/api/ollama/generate';
-      const streamEndpoint = isAnthropic ? '/api/anthropic/stream' : '/api/gemini/stream';
-      const endpoint = isAnthropic ? '/api/anthropic/generate' : isHf ? '/api/hf/generate' : (isFreeProvider || isCustom || isLocal) ? freeEndpoint : '/api/gemini/generate';
+      const {
+        endpoint,
+        streamEndpoint,
+        isAnthropic,
+        isFreeProvider,
+        isCustom,
+        isLocal,
+        isHf,
+      } = resolveChatRoute({
+        modelId: activeModel,
+        provider: selectedProvider,
+        downloadedModels,
+      });
       const anthropicApiKey = parameters.anthropicApiKey || getCachedApiKey('ANTHROPIC_API_KEY') || undefined;
       const geminiApiKey = getCachedApiKey('GEMINI_API_KEY') || undefined;
 
@@ -1290,24 +1282,17 @@ export default function App() {
   const handleExecuteFreeform = async (promptText: string) => {
     setIsGenerating(true);
     try {
-      const isAnthropic = selectedProvider === 'anthropic' || selectedModel.startsWith('claude');
-      const isFreeProvider =
-        selectedProvider === 'ollama' || selectedProvider === 'openrouter' || selectedProvider === 'pollinations' ||
-        selectedModel.startsWith('ollama/') || selectedModel.startsWith('openrouter/') || selectedModel.startsWith('pollinations/');
-      const isHf = !isFreeProvider && (
-        selectedProvider === 'huggingface' ||
-        selectedModel.includes('/') ||
-        HUGGINGFACE_MODELS.some((m) => m.id === selectedModel) ||
-        downloadedModels.some((m) => m.hfRepoId === selectedModel || m.id === selectedModel));
-      const isCustom = selectedProvider === 'custom' || selectedModel.startsWith('custom/');
-      const freeEndpoint = isCustom
-        ? '/api/custom/generate'
-        : selectedModel.startsWith('openrouter/') || selectedProvider === 'openrouter'
-        ? '/api/openrouter/generate'
-        : selectedModel.startsWith('pollinations/') || selectedProvider === 'pollinations'
-        ? '/api/pollinations/generate'
-        : '/api/ollama/generate';
-      const endpoint = isAnthropic ? '/api/anthropic/generate' : isHf ? '/api/hf/generate' : (isFreeProvider || isCustom) ? freeEndpoint : '/api/gemini/generate';
+      const {
+        endpoint,
+        isAnthropic,
+        isFreeProvider,
+        isCustom,
+        isHf,
+      } = resolveChatRoute({
+        modelId: selectedModel,
+        provider: selectedProvider,
+        downloadedModels,
+      });
       const anthropicApiKey = parameters.anthropicApiKey || getCachedApiKey('ANTHROPIC_API_KEY') || undefined;
       const geminiApiKey = getCachedApiKey('GEMINI_API_KEY') || undefined;
 
@@ -1394,24 +1379,17 @@ export default function App() {
   const handleExecuteStructured = async (examples: StructuredExample[], testInput: string) => {
     setIsGenerating(true);
     try {
-      const isAnthropic = selectedProvider === 'anthropic' || selectedModel.startsWith('claude');
-      const isFreeProvider =
-        selectedProvider === 'ollama' || selectedProvider === 'openrouter' || selectedProvider === 'pollinations' ||
-        selectedModel.startsWith('ollama/') || selectedModel.startsWith('openrouter/') || selectedModel.startsWith('pollinations/');
-      const isHf = !isFreeProvider && (
-        selectedProvider === 'huggingface' ||
-        selectedModel.includes('/') ||
-        HUGGINGFACE_MODELS.some((m) => m.id === selectedModel) ||
-        downloadedModels.some((m) => m.hfRepoId === selectedModel || m.id === selectedModel));
-      const isCustom = selectedProvider === 'custom' || selectedModel.startsWith('custom/');
-      const freeEndpoint = isCustom
-        ? '/api/custom/generate'
-        : selectedModel.startsWith('openrouter/') || selectedProvider === 'openrouter'
-        ? '/api/openrouter/generate'
-        : selectedModel.startsWith('pollinations/') || selectedProvider === 'pollinations'
-        ? '/api/pollinations/generate'
-        : '/api/ollama/generate';
-      const endpoint = isAnthropic ? '/api/anthropic/generate' : isHf ? '/api/hf/generate' : (isFreeProvider || isCustom) ? freeEndpoint : '/api/gemini/generate';
+      const {
+        endpoint,
+        isAnthropic,
+        isFreeProvider,
+        isCustom,
+        isHf,
+      } = resolveChatRoute({
+        modelId: selectedModel,
+        provider: selectedProvider,
+        downloadedModels,
+      });
       const anthropicApiKey = parameters.anthropicApiKey || getCachedApiKey('ANTHROPIC_API_KEY') || undefined;
       const geminiApiKey = getCachedApiKey('GEMINI_API_KEY') || undefined;
 
