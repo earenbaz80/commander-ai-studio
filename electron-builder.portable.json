@@ -1,0 +1,15 @@
+{
+  "appId": "com.commander.ai.studio",
+  "productName": "Commander AI Studio",
+  "directories": { "output": "release" },
+  "files": ["dist/**/*", "electron/**/*", "public/**/*", "!**/node_modules/*", "!**/.git/*"],
+  "extraResources": [
+    { "from": "electron/server.cjs", "to": "server.cjs" },
+    { "from": "electron/server.mjs", "to": "server.mjs" }
+  ],
+  "win": {
+    "target": [{ "target": "portable", "arch": ["x64"] }],
+    "icon": "build/icon.ico",
+    "signAndEditExecutable": false
+  }
+}

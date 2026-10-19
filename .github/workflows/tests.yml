@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    name: Lint, Typecheck & Test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # --ignore-scripts evita descargar el binario de Electron en CI (no hace falta para los tests).
+      - run: npm ci --ignore-scripts
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Tipos (tsc --noEmit)
+        run: npm run typecheck
+
+      - name: Tests unitarios (Node)
+        run: npm run test:unit
+
+      - name: Reglas de Firestore (estático)
+        run: npm run test:rules
+
+      - name: Tests de UI (Vitest)
+        run: npm run test:ui
+
+  build:
+    name: Build
+    needs: lint-and-test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build (Vite)
+        run: npm run build
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  e2e:
+    name: E2E Tests (Playwright)
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build (Vite)
+        run: npm run build
+
+      - name: Start dev server
+        run: npm run preview &
+        env:
+          PORT: 4173
+
+      - name: Run Playwright tests
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

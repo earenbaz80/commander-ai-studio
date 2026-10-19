@@ -1,0 +1,28 @@
+{
+  "version": "2.5.0",
+  "synced": "2026-10-09",
+  "models": [
+    { "id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash", "provider": "google", "contextWindow": "1M tokens", "supportsThinking": true, "supportsImage": true, "supportsAudio": true },
+    { "id": "gemini-3.5-flash", "name": "Gemini 3.5 Flash", "provider": "google", "contextWindow": "1M tokens", "supportsImage": true, "supportsAudio": true },
+    { "id": "gemini-3.1-pro-preview", "name": "Gemini 3.1 Pro Preview", "provider": "google", "contextWindow": "2M tokens", "supportsThinking": true, "supportsImage": true, "supportsAudio": true },
+    { "id": "antigravity-preview-09-2026", "name": "Google Antigravity Agent (Sandbox 2026)", "provider": "google", "contextWindow": "1M tokens", "isAgent": true },
+    { "id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "provider": "google", "contextWindow": "1M tokens", "supportsImage": true, "supportsAudio": true },
+    { "id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro", "provider": "google", "contextWindow": "2M tokens", "supportsImage": true, "supportsAudio": true },
+    { "id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash", "provider": "google", "contextWindow": "1M tokens", "supportsImage": true, "supportsAudio": true },
+    { "id": "gemini-2.0-flash-lite", "name": "Gemini 2.0 Flash Lite", "provider": "google", "contextWindow": "1M tokens" },
+    { "id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", "name": "DeepSeek-R1 Distill 1.5B", "provider": "huggingface", "contextWindow": "32K tokens", "supportsThinking": true },
+    { "id": "meta-llama/Llama-3.2-3B-Instruct", "name": "Llama 3.2 3B Instruct", "provider": "huggingface", "contextWindow": "128K tokens" },
+    { "id": "Qwen/Qwen2.5-Coder-1.5B-Instruct", "name": "Qwen2.5 Coder 1.5B", "provider": "huggingface", "contextWindow": "32K tokens" },
+    { "id": "ollama/llama3.2", "name": "Llama 3.2 (Ollama local, gratis)", "provider": "ollama", "contextWindow": "128K tokens" },
+    { "id": "ollama/qwen2.5-coder", "name": "Qwen 2.5 Coder (Ollama local, gratis)", "provider": "ollama", "contextWindow": "32K tokens" },
+    { "id": "ollama/deepseek-r1", "name": "DeepSeek R1 (Ollama local, gratis)", "provider": "ollama", "contextWindow": "128K tokens", "supportsThinking": true },
+    { "id": "ollama/mistral", "name": "Mistral (Ollama local, gratis)", "provider": "ollama", "contextWindow": "32K tokens" },
+    { "id": "openrouter/deepseek/deepseek-chat-v3-0324:free", "name": "DeepSeek V3 (OpenRouter gratis)", "provider": "openrouter", "contextWindow": "64K tokens" },
+    { "id": "openrouter/qwen/qwen-2.5-coder-32b-instruct:free", "name": "Qwen Coder 32B (OpenRouter gratis)", "provider": "openrouter", "contextWindow": "32K tokens" },
+    { "id": "pollinations/openai", "name": "Pollinations (gratis, sin key)", "provider": "pollinations", "contextWindow": "16K tokens" },
+    { "id": "custom/big-pickle", "name": "Big Pickle (OpenCode Zen, gratis)", "provider": "custom", "contextWindow": "200K tokens", "supportsThinking": true },
+    { "id": "custom/muse-spark-1.3-contributor-free", "name": "Muse Spark 1.3 Free (OpenCode Zen, gratis)", "provider": "custom", "contextWindow": "1M tokens" },
+    { "id": "custom/nemotron-3-ultra-free", "name": "Nemotron 3 Ultra Free (OpenCode Zen, gratis)", "provider": "custom", "contextWindow": "1M tokens", "supportsThinking": true },
+    { "id": "custom/custom", "name": "Custom (endpoint propio)", "provider": "custom", "contextWindow": "Variable" }
+  ]
+}

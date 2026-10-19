@@ -1,0 +1,74 @@
+{
+  "entities": {
+    "TelemetryLog": {
+      "title": "TelemetryLog",
+      "description": "Stores telemetry data for AI model interactions.",
+      "type": "object",
+      "properties": {
+        "modelUsed": { "type": "string" },
+        "latencyMs": { "type": "number" },
+        "tokensUsed": { "type": "number" },
+        "error": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" }
+      },
+      "required": ["modelUsed", "timestamp"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile records.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "ComposerProject": {
+      "title": "ComposerProject",
+      "description": "Multi-file projects created in Commander Composer.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "content": { "type": "string" }
+            },
+            "required": ["name", "content"]
+          }
+        },
+        "selectedModel": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorEmail": { "type": "string" },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "files", "authorId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/telemetry_logs/{logId}": {
+      "schema": "TelemetryLog",
+      "description": "Logs of all AI interactions."
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile data."
+    },
+    "/composer_projects/{projectId}": {
+      "schema": "ComposerProject",
+      "description": "Saved multi-file workspace projects."
+    }
+  }
+}

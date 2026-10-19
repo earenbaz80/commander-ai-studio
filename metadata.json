@@ -1,0 +1,6 @@
+{
+  "name": "Commander AI Studio",
+  "description": "Entorno profesional de ingeniería de prompts con modelos Commander AI 3.8/3.1, ejecutor local de modelos de Hugging Face (WebGPU/WASM), refinado de parámetros, Function Calling y exportador de software nativo para Windows (.exe) y Android (.apk).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

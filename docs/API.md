@@ -1,0 +1,257 @@
+# Commander AI Studio — API Reference
+
+Base URL: `/api` (Express server embebido en Electron, puerto 3280)
+
+---
+
+## 📡 Endpoints de IA
+
+### `POST /api/gemini/generate`
+Genera respuesta con Google Gemini (sin streaming).
+
+**Body:**
+```json
+{
+  "apiKey": "string",
+  "contents": [{"text": "string"}],
+  "systemInstruction": "string",
+  "model": "gemini-2.0-flash",
+  "temperature": 0.7,
+  "topP": 0.95,
+  "topK": 40,
+  "maxTokens": 2048,
+  "thinkingLevel": "LOW",
+  "responseMimeType": "application/json",
+  "responseSchema": "string",
+  "tools": [{"googleSearch": {}}]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "text": "string",
+  "metrics": {"latencyMs": 123, "totalTokens": 456},
+  "groundingSources": [],
+  "webSearchQueries": [],
+  "functionCalls": []
+}
+```
+
+### `POST /api/gemini/stream`
+Streaming SSE en tiempo real para Gemini.
+
+**Body:** Igual que `/api/gemini/generate`
+
+**Response:** SSE stream
+```
+data: {"type":"chunk","text":"..."}
+data: {"type":"done","fullText":"...","groundingSources":[],"metrics":{}}
+data: {"type":"error","error":"..."}
+```
+
+### `POST /api/gemini/interactions/create`
+Agente Antigravity (Gemini Interactions API).
+
+**Body:**
+```json
+{
+  "agent": "antigravity-preview-09-2026",
+  "input": "string",
+  "environment": "remote",
+  "previous_interaction_id": "string",
+  "tools": [{"type":"google_search"}],
+  "apiKey": "string"
+}
+```
+
+---
+
+### `POST /api/anthropic/generate`
+Genera respuesta con Anthropic Claude (sin streaming).
+
+**Body:**
+```json
+{
+  "prompt": "string",
+  "messages": [{"role":"user","content":"string"}],
+  "model": "claude-3-5-sonnet-20241022",
+  "anthropicApiKey": "string",
+  "systemInstruction": "string",
+  "temperature": 0.7,
+  "maxTokens": 2048
+}
+```
+
+### `POST /api/anthropic/stream`
+Streaming SSE para Claude.
+
+---
+
+### `POST /api/hf/generate`
+Ejecución local Hugging Face (Transformers.js / WebGPU).
+
+**Body:**
+```json
+{
+  "prompt": "string",
+  "model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+  "hfApiToken": "string",
+  "systemInstruction": "string",
+  "temperature": 0.7,
+  "maxTokens": 2048,
+  "geminiApiKey": "string"
+}
+```
+
+---
+
+### `POST /api/ollama/generate`
+Ollama local.
+
+**Query:** `?host=http://localhost:11434`
+
+**Body:**
+```json
+{
+  "prompt": "string",
+  "model": "llama3.2",
+  "systemInstruction": "string",
+  "temperature": 0.7,
+  "maxTokens": 2048,
+  "ollamaHost": "http://localhost:11434"
+}
+```
+
+### `POST /api/openrouter/generate`
+OpenRouter (modelos gratuitos).
+
+**Body:**
+```json
+{
+  "prompt": "string",
+  "model": "deepseek/deepseek-chat-v3-0324:free",
+  "systemInstruction": "string",
+  "temperature": 0.7,
+  "maxTokens": 2048,
+  "openrouterApiKey": "string"
+}
+```
+
+### `POST /api/pollinations/generate`
+Pollinations (gratis, sin key).
+
+**Body:**
+```json
+{
+  "prompt": "string",
+  "model": "openai",
+  "systemInstruction": "string",
+  "temperature": 0.7,
+  "maxTokens": 2048
+}
+```
+
+### `POST /api/custom/generate`
+Endpoint OpenAI-compatible personalizado.
+
+**Body:**
+```json
+{
+  "prompt": "string",
+  "model": "string",
+  "systemInstruction": "string",
+  "temperature": 0.7,
+  "maxTokens": 2048,
+  "baseURL": "http://localhost:1234/v1",
+  "apiKey": "string"
+}
+```
+
+---
+
+## 🤖 Endpoints del Agente
+
+### `POST /api/agent/run-tool`
+Ejecuta una tool del agente en el servidor.
+
+**Body:**
+```json
+{
+  "toolId": "fs.read",
+  "input": {"path": "README.md"}
+}
+```
+
+**Tools disponibles:**
+- `fs.read` — Leer archivo (no requiere aprobación)
+- `fs.write` — Crear/reescribir archivo (requiere aprobación)
+- `fs.edit` — Editar archivo (requiere aprobación)
+- `fs.glob` — Buscar archivos por patrón
+- `fs.grep` — Buscar texto en archivos
+- `shell.run` — Ejecutar comando shell (requiere aprobación según allowlist/denylist)
+- `read_diagnostics` — Leer diagnósticos de TypeScript
+- `task` — Lanzar sub-tarea
+- `git.status` / `git.diff` / `git.log` / `git.commit` — Operaciones git
+- `web.fetch` — Obtener contenido web
+- `web.search` — Buscar en la web
+- `code.run` — Ejecutar código
+- `mcp.call` / `mcp.list` — Model Context Protocol
+
+**Response:**
+```json
+{
+  "ok": true,
+  "data": {}
+}
+```
+
+---
+
+## 📁 Endpoints de Proyectos
+
+### `GET /api/agent/roots`
+Lista directorios permitidos (allowlist del servidor).
+
+**Response:**
+```json
+[
+  {"path": "/home/user/projects", "name": "projects"}
+]
+```
+
+### `POST /api/agent/roots/add`
+Añade directorio a la allowlist.
+
+**Body:** `{"path": "/absolute/path"}`
+
+### `POST /api/agent/roots/remove`
+Quita directorio de la allowlist.
+
+**Body:** `{"path": "/absolute/path"}`
+
+### `POST /api/agent/roots/create`
+Crea un nuevo proyecto.
+
+**Body:** `{"name": "mi-proyecto"}`
+
+---
+
+## 🔐 Seguridad
+
+- **CORS**: Solo permite solicitudes desde el origen de la app
+- **Path Traversal**: Todas las rutas de fs.* se validan contra la allowlist de proyectos
+- **shell.run**: Allowlist de comandos seguros + denylist de peligrosos (fail-safe)
+- **API Keys**: Se envían por HTTPS al servidor embebido, nunca expuestas al público
+- **Electron**: `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`
+
+---
+
+## 🧪 Tests
+
+```bash
+npm run test        # Vitest (unitarios + UI)
+npm run test:watch  # Modo watch
+npx playwright test # E2E
+```
