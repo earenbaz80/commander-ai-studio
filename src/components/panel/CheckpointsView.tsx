@@ -35,6 +35,7 @@ export function CheckpointsView({ projectPath, lang = 'es' }: CheckpointsViewPro
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
+  const es = lang === 'es';
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);

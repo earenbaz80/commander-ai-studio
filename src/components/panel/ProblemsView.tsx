@@ -1,9 +1,9 @@
-import type { Language } from '../../i18n/translations';
+﻿import type { Language } from '../../i18n/translations';
 /**
- * ProblemsView — panel agregado de diagnósticos del language server.
+ * ProblemsView â€” panel agregado de diagnÃ³sticos del language server.
  *
  * Muestra todos los archivos con problemas (errores/avisos/info) y permite
- * saltar a la línea exacta. Al hacer click se emite `commander:open-location`,
+ * saltar a la lÃ­nea exacta. Al hacer click se emite `commander:open-location`,
  * que el Workbench traduce en "abre el archivo y posiciona el cursor".
  */
 import React, { useMemo } from 'react';
@@ -41,6 +41,7 @@ function severityOf(severity: number) {
 
 export const ProblemsView: React.FC<ProblemsViewProps> = ({ projectPath, lang = 'es' }) => {
   
+  const es = lang === 'es';
   const groups = useLspProblems();
   const counts = useLspProblemCounts();
 
@@ -59,9 +60,9 @@ export const ProblemsView: React.FC<ProblemsViewProps> = ({ projectPath, lang = 
   const header = useMemo(
     () => (
       <div className="flex items-center gap-2 px-2 py-1.5 bg-[#000080] border-b border-[#00ffff]/40 shrink-0 text-[10px]">
-        <span className="text-[#ff5555] font-bold">{counts.error} ✕</span>
-        <span className="text-[#ffff55] font-bold">{counts.warning} ⚠</span>
-        <span className="text-[#00ffff] font-bold">{counts.info} ℹ</span>
+        <span className="text-[#ff5555] font-bold">{counts.error} âœ•</span>
+        <span className="text-[#ffff55] font-bold">{counts.warning} âš </span>
+        <span className="text-[#00ffff] font-bold">{counts.info} â„¹</span>
         <span className="ml-auto text-[#00ffff]/50">{counts.total} {es ? 'total' : lang === 'de' ? 'gesamt' : 'total'}</span>
       </div>
     ),
