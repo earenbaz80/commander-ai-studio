@@ -1,4 +1,5 @@
 import { getCachedApiKey } from '../lib/apiKeys';
+import { resolveChatRoute } from '../lib/aiRouting';
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Mic, MicOff, Volume2, VolumeX, Sparkles, Radio, RefreshCw, Check } from 'lucide-react';
 import { ParameterConfig } from '../types/studio';
@@ -194,9 +195,10 @@ export const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
     setIsProcessing(true);
     try {
       const apiKey = getCachedApiKey('GEMINI_API_KEY') || undefined;
-      const isAnthropic = selectedModel.startsWith('claude-');
+      const route = resolveChatRoute({ modelId: selectedModel });
+      const isAnthropic = route.isAnthropic;
       const anthropicApiKey = getCachedApiKey('ANTHROPIC_API_KEY') || undefined;
-      const endpoint = isAnthropic ? '/api/anthropic/generate' : '/api/gemini/generate';
+      const endpoint = route.endpoint;
       const promptInstruction = `${parameters.systemInstruction}\n${lang === 'es' ? 'Responde de forma hablada, directa y concisa sin formato markdown complejo.' : lang === 'de' ? 'Antworte gesprochen, direkt und knapp, ohne komplexes Markdown.' : 'Respond in a spoken, direct and concise manner without complex markdown.'}`;
       
       const body = isAnthropic
