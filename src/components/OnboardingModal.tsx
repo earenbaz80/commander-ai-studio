@@ -37,9 +37,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
   if (!isOpen) return null;
 
-   
-
-  
+  const es = lang === 'es';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

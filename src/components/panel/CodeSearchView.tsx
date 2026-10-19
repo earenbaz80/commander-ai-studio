@@ -23,6 +23,7 @@ export function CodeSearchView({ projectPath, lang = 'es' }: CodeSearchViewProps
   const [semantic, setSemantic] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const es = lang === 'es';
   const run = useCallback(
     async (q: string) => {
       if (!q.trim()) {

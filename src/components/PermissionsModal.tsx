@@ -40,6 +40,7 @@ export const PermissionsModal: React.FC<Props> = ({ lang, onClose, onSaved }) =>
   const [error, setError] = useState('');
   
 
+  const es = lang === 'es';
   const root = getActiveProjectRoot() || undefined;
 
   useEffect(() => {

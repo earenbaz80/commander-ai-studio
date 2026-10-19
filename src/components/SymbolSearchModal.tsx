@@ -61,7 +61,7 @@ export const SymbolSearchModal: React.FC<SymbolSearchModalProps> = ({
   projectPath,
   lang = 'es',
 }) => {
-  
+  const es = lang === 'es';
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<LSPWorkspaceSymbol[]>([]);
   const [active, setActive] = useState(0);

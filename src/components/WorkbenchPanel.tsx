@@ -144,6 +144,7 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
   selectedModel,
   parameters,
 }) => {
+  const es = lang === 'es';
   const [active, setActive] = useState<WorkbenchTab>('files');
   const [previewTab, setPreviewTab] = useState<'preview' | 'console' | 'network'>('preview');
   // Modo de la terminal: 'pty' (shell persistente real vía WebSocket) o
