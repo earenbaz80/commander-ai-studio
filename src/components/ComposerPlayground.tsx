@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { ParameterConfig } from '../types/studio';
 import { ALL_MODELS } from '../data/models';
+import { resolveChatRoute } from '../lib/aiRouting';
 import { computeLineDiff } from '../utils/diffUtils';
 import { MentionAutocomplete } from './MentionAutocomplete';
 import { ComposerTemplateModal } from './ComposerTemplateModal';
@@ -344,9 +345,10 @@ export const ComposerPlayground: React.FC<ComposerPlaygroundProps> = ({
     setStatusMessage(lang === 'es' ? 'Analizando contexto del proyecto y planificando cambios...' : lang === 'de' ? 'Projektdateien werden analysiert und Diffs geplant...' : 'Analyzing project files and planning diffs...');
 
     try {
-      const isAnthropic = activeModelObj.provider === 'anthropic';
-      const isHf = activeModelObj.provider === 'huggingface';
-      const endpoint = isAnthropic ? '/api/anthropic/generate' : isHf ? '/api/hf/generate' : '/api/gemini/generate';
+      const route = resolveChatRoute({ modelId: selectedModel, provider: activeModelObj.provider });
+      const isAnthropic = route.isAnthropic;
+      const isHf = route.isHf;
+      const endpoint = route.endpoint;
       const anthropicApiKey = parameters.anthropicApiKey || getCachedApiKey('ANTHROPIC_API_KEY') || undefined;
 
       // Prepare project context

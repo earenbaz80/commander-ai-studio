@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Play, Clock, Zap, Columns, Layers } from 'lucide-react';
 import { ParameterConfig } from '../types/studio';
 import { ALL_MODELS } from '../data/models';
+import { resolveChatRoute } from '../lib/aiRouting';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { Language } from '../i18n/translations';
 
@@ -36,9 +37,10 @@ export const ComparePlayground: React.FC<ComparePlaygroundProps> = ({
       const start = Date.now();
       try {
         const modelObj = ALL_MODELS.find(m => m.id === model);
-        const isAnthropic = modelObj?.provider === 'anthropic' || model.includes('claude');
-        const isHf = modelObj?.provider === 'huggingface';
-        const endpoint = isAnthropic ? '/api/anthropic/generate' : isHf ? '/api/hf/generate' : '/api/gemini/generate';
+        const route = resolveChatRoute({ modelId: model, provider: modelObj?.provider });
+        const isAnthropic = route.isAnthropic;
+        const isHf = route.isHf;
+        const endpoint = route.endpoint;
         const anthropicApiKey = parameters.anthropicApiKey || getCachedApiKey('ANTHROPIC_API_KEY') || undefined;
 
         const payload = isAnthropic
