@@ -3,6 +3,7 @@ import { getCachedApiKey, migrateLegacyKeys, loadAllApiKeysIntoCache } from './l
 import { resolveChatRoute } from './lib/aiRouting';
 import { formatErrorMessage } from './utils/errorFormatter';
 import { useAppExecutors } from './hooks/useAppExecutors';
+import { useAppHandlers } from './hooks/useAppHandlers';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
@@ -101,15 +102,13 @@ import { resolveMentionsForPrompt } from './utils/mentionResolver';
 import { RetroBiosBoot } from './components/RetroBiosBoot';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { sendBrowserNotification, playRetroSuccessSound } from './utils/browserNotifications';
-import { auth, GalleryProject, savePromptVersion, db } from './lib/firebase';
+import { auth, savePromptVersion, db } from './lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 
 import { 
   StudioMode, 
   ChatMessage, 
-  ProviderType,
-  PromptTemplate,
   DownloadedLocalModel,
   PromptVersion,
   HistorySession,
@@ -1195,45 +1194,15 @@ export default function App() {
     prevModeRef.current = mode;
   }, [mode]);
 
-  // Execution Handler for Hugging Face Dedicated Tab
-  // Select Template from Library
-  const handleSelectTemplate = (template: PromptTemplate) => {
-    setParameters((p) => ({
-      ...p,
-      systemInstruction: template.systemInstruction,
-    }));
-    setPromptTitle(template.title);
-    if (template.recommendedModel) {
-      setSelectedModel(template.recommendedModel);
-      setSelectedProvider(HUGGINGFACE_MODELS.some((m) => m.id === template.recommendedModel) ? 'huggingface' : 'google');
-    }
-    setMode('chat');
-  };
-
-  // Select Project from Cloud Gallery
-  const handleSelectGalleryProject = (project: GalleryProject) => {
-    setPromptTitle(project.title);
-    setSelectedModel(project.selectedModel);
-    setSelectedProvider(project.provider as ProviderType || 'google');
-    setParameters((prev) => ({
-      ...prev,
-      systemInstruction: project.systemInstruction,
-      temperature: project.temperature,
-      topP: project.topP,
-      topK: project.topK,
-    }));
-    if (project.defaultPrompt) {
-      setMessages([
-        {
-          id: Date.now().toString(),
-          role: 'user',
-          content: project.defaultPrompt,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        }
-      ]);
-    }
-    setMode('chat');
-  };
+  // Select Template from Library / Select Project from Cloud Gallery
+  const { handleSelectTemplate, handleSelectGalleryProject } = useAppHandlers({
+    setParameters,
+    setPromptTitle,
+    setSelectedModel,
+    setSelectedProvider,
+    setMode,
+    setMessages,
+  });
 
   if (isBooting) {
     return (
@@ -1780,7 +1749,6 @@ export default function App() {
     </div>
   );
 }
-
 
 
 
