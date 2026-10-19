@@ -1,0 +1,79 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isProjectAuthor(projectId) {
+      return isSignedIn() && get(/databases/$(database)/documents/projects/$(projectId)).data.authorId == request.auth.uid;
+    }
+
+    function isProjectPublic(projectId) {
+      return get(/databases/$(database)/documents/projects/$(projectId)).data.isPublic == true;
+    }
+
+    // Test connection doc (connectivity ping: read allowed, writes denied to prevent data injection)
+    match /test/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Telemetry Logs
+    match /telemetry_logs/{logId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Users — solo self
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Gallery Projects (likesCount solo ±1 y con subdoc validado en cliente)
+    match /projects/{projectId} {
+      allow read: if resource.data.isPublic == true || (isSignedIn() && resource.data.authorId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        (resource.data.authorId == request.auth.uid && request.resource.data.authorId == resource.data.authorId) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount'])
+         && request.resource.data.likesCount >= 0
+         && (request.resource.data.likesCount == resource.data.likesCount + 1 || request.resource.data.likesCount == resource.data.likesCount - 1))
+      );
+      allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+
+      // Project Prompt Versions
+      // Hardened: only the parent project owner can create/update/delete versions; public projects allow public read
+      match /versions/{versionId} {
+        allow read: if isProjectPublic(projectId) || isProjectAuthor(projectId);
+        allow create: if isProjectAuthor(projectId) &&
+                         request.resource.data.projectId == projectId;
+        allow update: if isProjectAuthor(projectId) &&
+                         request.resource.data.projectId == resource.data.projectId &&
+                         (!('id' in request.resource.data) || request.resource.data.id == resource.data.id);
+        allow delete: if isProjectAuthor(projectId);
+      }
+
+      // Likes subcollection — lectura solo owner o público del proyecto
+      match /likes/{userId} {
+        allow read: if isProjectPublic(projectId) || isProjectAuthor(projectId);
+        allow write: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
+    // Composer Multi-File Projects
+    match /composer_projects/{projectId} {
+      allow read: if resource.data.isPublic == true || (isSignedIn() && resource.data.authorId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        (resource.data.authorId == request.auth.uid && request.resource.data.authorId == resource.data.authorId) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount'])
+         && request.resource.data.likesCount >= 0
+         && (request.resource.data.likesCount == resource.data.likesCount + 1 || request.resource.data.likesCount == resource.data.likesCount - 1))
+      );
+      allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+    }
+  }
+}

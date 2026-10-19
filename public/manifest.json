@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "Commander AI Studio",
+  "short_name": "CommanderAI",
+  "description": "Enterprise Multimodal Prompt Engineering Suite with offline UI caching and native exporters.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#000080",
+  "background_color": "#000080",
+  "categories": ["developer", "utilities", "productivity"],
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

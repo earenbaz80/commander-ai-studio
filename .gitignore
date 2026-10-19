@@ -1,0 +1,64 @@
+# Dependencias
+node_modules/
+
+# Secretos — NUNCA commitear
+.env
+.env.local
+.env.*.local
+
+# Build
+dist/
+release/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Tauri (retirado del repo) y artefactos nativos
+src-tauri/
+target/
+
+# Tests temporales
+tests/tmp/
+
+# Registro local de proyectos del agente (permisos por máquina)
+.agent-roots.json
+
+# Artefactos de empaquetado (¡11 GB!)
+release-packager/
+staging/
+
+# Reportes de tests E2E
+playwright-report/
+test-results/
+
+# Modelos locales descargados (pesan GB, se re-descargan)
+local_models/
+
+# Estado interno de Commander
+.commander/
+runtime/
+
+# Logs y salidas de build
+build.log
+build_output.txt
+test-output.txt
+vitest-output.txt
+
+# Servidores empaquetados (los genera `npm run build:server`, ~3.4 MB cada uno)
+electron/server.cjs
+electron/server.mjs
+
+# Archivos de notas sueltas en la raíz
+agentmode.txt
+block.txt
+block2.txt
+
+# build/ NO se ignora: contiene los íconos que usa electron-builder

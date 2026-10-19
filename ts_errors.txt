@@ -1,0 +1,160 @@
+src/components/AgentMode.tsx(423,45): error TS2345: Argument of type '"collab"' is not assignable to parameter of type 'SetStateAction<"plan" | "conflict" | "mcp" | "metrics" | "plugins" | "sessions" | "timeline" | "subagents">'.
+src/components/AgentMode.tsx(425,17): error TS2367: This comparison appears to be unintentional because the types '"plan" | "conflict" | "mcp" | "metrics" | "plugins" | "sessions" | "timeline" | "subagents"' and '"collab"' have no overlap.
+src/components/AgentMode.tsx(430,16): error TS2304: Cannot find name 'Link'.
+src/components/AgentMode.tsx(435,45): error TS2345: Argument of type '"presence"' is not assignable to parameter of type 'SetStateAction<"plan" | "conflict" | "mcp" | "metrics" | "plugins" | "sessions" | "timeline" | "subagents">'.
+src/components/AgentMode.tsx(437,17): error TS2367: This comparison appears to be unintentional because the types '"plan" | "conflict" | "mcp" | "metrics" | "plugins" | "sessions" | "timeline" | "subagents"' and '"presence"' have no overlap.
+src/components/AgentMode.tsx(442,16): error TS2304: Cannot find name 'User'.
+src/components/AgentMode.tsx(722,14): error TS2367: This comparison appears to be unintentional because the types '"plan" | "conflict" | "mcp" | "metrics" | "plugins" | "sessions" | "timeline" | "subagents"' and '"collab"' have no overlap.
+src/components/AgentMode.tsx(723,16): error TS2304: Cannot find name 'CollaborativeEditor'.
+src/components/AgentMode.tsx(735,14): error TS2367: This comparison appears to be unintentional because the types '"plan" | "conflict" | "mcp" | "metrics" | "plugins" | "sessions" | "timeline" | "subagents"' and '"presence"' have no overlap.
+src/components/AgentMode.tsx(736,16): error TS2304: Cannot find name 'PresenceIndicator'.
+src/components/AgentMode.tsx(737,31): error TS2304: Cannot find name 'firebaseSyncRef'.
+src/components/AgentMode.tsx(742,31): error TS7006: Parameter 'peer' implicitly has an 'any' type.
+src/components/CollaborativeEditor.tsx(7,34): error TS6133: 'TextOperation' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(7,55): error TS2307: Cannot find module '../../hooks/useCollaborativeEditor' or its corresponding type declarations.
+src/components/CollaborativeEditor.tsx(8,26): error TS2307: Cannot find module '../../agent/useAgent' or its corresponding type declarations.
+src/components/CollaborativeEditor.tsx(9,28): error TS2307: Cannot find module '../../stores/uiStore' or its corresponding type declarations.
+src/components/CollaborativeEditor.tsx(24,11): error TS6196: 'PeerCursor' is declared but never used.
+src/components/CollaborativeEditor.tsx(32,11): error TS6196: 'PeerSelection' is declared but never used.
+src/components/CollaborativeEditor.tsx(43,3): error TS6133: 'language' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(46,3): error TS6133: 'onOperation' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(52,9): error TS6133: 'agent' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(53,9): error TS6133: 'setIsWorkbenchOpen' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(55,10): error TS6133: 'content' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(55,19): error TS6133: 'setContent' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(56,10): error TS2451: Cannot redeclare block-scoped variable 'peers'.
+src/components/CollaborativeEditor.tsx(56,17): error TS6133: 'setPeers' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(57,10): error TS2451: Cannot redeclare block-scoped variable 'isConnected'.
+src/components/CollaborativeEditor.tsx(57,23): error TS6133: 'setIsConnected' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(58,10): error TS2451: Cannot redeclare block-scoped variable 'localCursor'.
+src/components/CollaborativeEditor.tsx(59,10): error TS2451: Cannot redeclare block-scoped variable 'localSelection'.
+src/components/CollaborativeEditor.tsx(59,10): error TS6133: 'localSelection' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(61,28): error TS6133: 'setRemoteSelections' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(63,10): error TS6133: 'revision' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(63,20): error TS6133: 'setRevision' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(65,9): error TS6133: 'pendingOpsRef' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(66,9): error TS6133: 'revisionRef' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(70,5): error TS2451: Cannot redeclare block-scoped variable 'peers'.
+src/components/CollaborativeEditor.tsx(71,5): error TS2451: Cannot redeclare block-scoped variable 'isConnected'.
+src/components/CollaborativeEditor.tsx(72,5): error TS2451: Cannot redeclare block-scoped variable 'localCursor'.
+src/components/CollaborativeEditor.tsx(73,5): error TS2451: Cannot redeclare block-scoped variable 'localSelection'.
+src/components/CollaborativeEditor.tsx(74,5): error TS6133: 'setCursor' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(75,5): error TS6133: 'setSelection' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(76,5): error TS6133: 'insertText' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(77,5): error TS6133: 'deleteText' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(78,5): error TS6133: 'sendOperation' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(79,5): error TS6133: 'applyRemoteOperation' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(80,12): error TS6133: 'collabPeers' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(87,19): error TS2448: Block-scoped variable 'handleRemoteEdit' used before its declaration.
+src/components/CollaborativeEditor.tsx(87,19): error TS2454: Variable 'handleRemoteEdit' is used before being assigned.
+src/components/CollaborativeEditor.tsx(88,21): error TS2448: Block-scoped variable 'handleRemoteCursor' used before its declaration.
+src/components/CollaborativeEditor.tsx(88,21): error TS2454: Variable 'handleRemoteCursor' is used before being assigned.
+src/components/CollaborativeEditor.tsx(89,24): error TS2448: Block-scoped variable 'handleRemoteSelection' used before its declaration.
+src/components/CollaborativeEditor.tsx(89,24): error TS2454: Variable 'handleRemoteSelection' is used before being assigned.
+src/components/CollaborativeEditor.tsx(90,18): error TS7006: Parameter 'peer' implicitly has an 'any' type.
+src/components/CollaborativeEditor.tsx(91,19): error TS7006: Parameter 'peerId' implicitly has an 'any' type.
+src/components/CollaborativeEditor.tsx(109,22): error TS2345: Argument of type '(prev: Record<string, { x: number; y: number; name: string; color: string; }>) => { [x: string]: { x: number; y: number; name: string; color: string; } | { x: number; y: number; }; }' is not assignable to parameter of type 'SetStateAction<Record<string, { x: number; y: number; name: string; color: string; }>>'.
+  Type '(prev: Record<string, { x: number; y: number; name: string; color: string; }>) => { [x: string]: { x: number; y: number; name: string; color: string; } | { x: number; y: number; }; }' is not assignable to type '(prevState: Record<string, { x: number; y: number; name: string; color: string; }>) => Record<string, { x: number; y: number; name: string; color: string; }>'.
+    Type '{ [x: string]: { x: number; y: number; name: string; color: string; } | { x: number; y: number; }; }' is not assignable to type 'Record<string, { x: number; y: number; name: string; color: string; }>'.
+      'string' index signatures are incompatible.
+        Type '{ x: number; y: number; name: string; color: string; } | { x: number; y: number; }' is not assignable to type '{ x: number; y: number; name: string; color: string; }'.
+          Type '{ x: number; y: number; }' is missing the following properties from type '{ x: number; y: number; name: string; color: string; }': name, color
+src/components/CollaborativeEditor.tsx(116,46): error TS6133: 'peerId' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(116,62): error TS6133: 'selection' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(121,9): error TS6133: 'sendTextOperation' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(121,42): error TS6133: 'operation' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(167,9): error TS6133: 'getPeerColor' is declared but its value is never read.
+src/components/CollaborativeEditor.tsx(282,11): error TS17001: JSX elements cannot have multiple attributes with the same name.
+src/components/CollaborativeEditor.tsx(287,75): error TS6133: 'selection' is declared but its value is never read.
+src/components/FloatingAssistant.tsx(211,9): error TS6133: 'limitSuggestions' is declared but its value is never read.
+src/components/FloatingAssistant.tsx(914,8): error TS2448: Block-scoped variable 'intervalMs' used before its declaration.
+src/components/FloatingAssistant.tsx(914,8): error TS2454: Variable 'intervalMs' is used before being assigned.
+src/components/FloatingAssistant.tsx(914,8): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(callback: () => void, delay?: number | undefined): Timeout', gave the following error.
+    Argument of type 'Timeout' is not assignable to parameter of type 'number'.
+  Overload 2 of 3, '(callback: (_: void) => void, delay?: number | undefined): Timeout', gave the following error.
+    Argument of type 'Timeout' is not assignable to parameter of type 'number'.
+  Overload 3 of 3, '(handler: TimerHandler, timeout?: number | undefined, ...arguments: any[]): number', gave the following error.
+    Argument of type 'Timeout' is not assignable to parameter of type 'number'.
+src/components/PresenceIndicator.tsx(6,1): error TS6192: All imports in import declaration are unused.
+src/components/PresenceIndicator.tsx(6,51): error TS2307: Cannot find module '../../services/firebase/FirebaseSyncService' or its corresponding type declarations.
+src/components/PresenceIndicator.tsx(17,11): error TS6196: 'PeerPresence' is declared but never used.
+src/components/PresenceIndicator.tsx(32,3): error TS6133: 'currentUserId' is declared but its value is never read.
+src/components/PresenceIndicator.tsx(35,3): error TS6133: 'showCursors' is declared but its value is never read.
+src/components/PresenceIndicator.tsx(39,10): error TS6133: 'currentUserPeer' is declared but its value is never read.
+src/components/PresenceIndicator.tsx(39,27): error TS6133: 'setCurrentUserPeer' is declared but its value is never read.
+src/components/PresenceIndicator.tsx(49,11): error TS6133: 'getCurrentUser' is declared but its value is never read.
+src/components/Sidebar.tsx(2,167): error TS6133: 'Settings' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(7,10): error TS6133: 'WebRTCService' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(7,35): error TS6133: 'SignalMessage' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(7,56): error TS2307: Cannot find module '../webrtc/WebRTCService' or its corresponding type declarations.
+src/hooks/useCollaborativeEditor.ts(8,1): error TS6192: All imports in import declaration are unused.
+src/hooks/useCollaborativeEditor.ts(8,70): error TS2307: Cannot find module '../firebase/FirebaseSyncService' or its corresponding type declarations.
+src/hooks/useCollaborativeEditor.ts(10,11): error TS6196: 'CursorPosition' is declared but never used.
+src/hooks/useCollaborativeEditor.ts(15,11): error TS6196: 'TextSelection' is declared but never used.
+src/hooks/useCollaborativeEditor.ts(41,11): error TS2395: Individual declarations in merged declaration 'TextOperation' must be all exported or all local.
+src/hooks/useCollaborativeEditor.ts(53,14): error TS2323: Cannot redeclare exported variable 'useCollaborativeEditor'.
+src/hooks/useCollaborativeEditor.ts(55,5): error TS6133: 'documentId' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(58,5): error TS6133: 'signalingUrl' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(59,5): error TS6133: 'firebaseSync' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(61,5): error TS6133: 'onCursorChange' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(62,5): error TS6133: 'onSelectionChange' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(63,5): error TS6133: 'onPeerJoin' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(64,5): error TS6133: 'onPeerLeave' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(81,9): error TS6133: 'sentOperationsRef' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(87,25): error TS1308: 'await' expressions are only allowed within async functions and at the top levels of modules.
+src/hooks/useCollaborativeEditor.ts(87,38): error TS2307: Cannot find module '../webrtc/WebRTCService' or its corresponding type declarations.
+src/hooks/useCollaborativeEditor.ts(96,32): error TS7006: Parameter 'peer' implicitly has an 'any' type.
+src/hooks/useCollaborativeEditor.ts(101,33): error TS7006: Parameter 'peerId' implicitly has an 'any' type.
+src/hooks/useCollaborativeEditor.ts(102,16): error TS2345: Argument of type '(prev: CollaborativeEditorState) => { peers: PeerInfo[]; }' is not assignable to parameter of type 'SetStateAction<CollaborativeEditorState>'.
+  Type '(prev: CollaborativeEditorState) => { peers: PeerInfo[]; }' is not assignable to type '(prevState: CollaborativeEditorState) => CollaborativeEditorState'.
+    Type '{ peers: PeerInfo[]; }' is missing the following properties from type 'CollaborativeEditorState': localCursor, localSelection, isConnected, pendingEdits
+src/hooks/useCollaborativeEditor.ts(108,34): error TS7006: Parameter 'peer' implicitly has an 'any' type.
+src/hooks/useCollaborativeEditor.ts(109,16): error TS2345: Argument of type '(prev: CollaborativeEditorState) => { peers: any[]; }' is not assignable to parameter of type 'SetStateAction<CollaborativeEditorState>'.
+  Type '(prev: CollaborativeEditorState) => { peers: any[]; }' is not assignable to type '(prevState: CollaborativeEditorState) => CollaborativeEditorState'.
+    Type '{ peers: any[]; }' is missing the following properties from type 'CollaborativeEditorState': localCursor, localSelection, isConnected, pendingEdits
+src/hooks/useCollaborativeEditor.ts(124,45): error TS7006: Parameter 'peerId' implicitly has an 'any' type.
+src/hooks/useCollaborativeEditor.ts(124,53): error TS7006: Parameter 'state' implicitly has an 'any' type.
+src/hooks/useCollaborativeEditor.ts(147,9): error TS6133: 'updateCursor' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(154,9): error TS6133: 'updateSelection' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(162,11): error TS6133: 'revision' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(182,9): error TS2451: Cannot redeclare block-scoped variable 'applyRemoteOperation'.
+src/hooks/useCollaborativeEditor.ts(184,9): error TS6133: 'transformedOp' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(213,9): error TS2451: Cannot redeclare block-scoped variable 'applyRemoteOperation'.
+src/hooks/useCollaborativeEditor.ts(277,9): error TS6133: 'getState' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(281,11): error TS2741: Property 'userColor' is missing in type '{ type: "insert"; position: number; text: string; userId: string; userName: string; timestamp: number; revision: number; }' but required in type 'TextOperation'.
+src/hooks/useCollaborativeEditor.ts(290,21): error TS2783: 'type' is specified more than once, so this usage will be overwritten.
+src/hooks/useCollaborativeEditor.ts(290,37): error TS2783: 'position' is specified more than once, so this usage will be overwritten.
+src/hooks/useCollaborativeEditor.ts(294,11): error TS2741: Property 'userColor' is missing in type '{ type: "delete"; position: number; length: number; userId: string; userName: string; timestamp: number; revision: number; }' but required in type 'TextOperation'.
+src/hooks/useCollaborativeEditor.ts(303,21): error TS2783: 'type' is specified more than once, so this usage will be overwritten.
+src/hooks/useCollaborativeEditor.ts(303,37): error TS2783: 'position' is specified more than once, so this usage will be overwritten.
+src/hooks/useCollaborativeEditor.ts(307,11): error TS2741: Property 'userColor' is missing in type '{ type: "retain"; position: number; length: number; userId: string; userName: string; timestamp: number; revision: number; }' but required in type 'TextOperation'.
+src/hooks/useCollaborativeEditor.ts(316,21): error TS2783: 'type' is specified more than once, so this usage will be overwritten.
+src/hooks/useCollaborativeEditor.ts(316,37): error TS2783: 'position' is specified more than once, so this usage will be overwritten.
+src/hooks/useCollaborativeEditor.ts(346,5): error TS1117: An object literal cannot have multiple properties with the same name.
+src/hooks/useCollaborativeEditor.ts(360,10): error TS6133: 'transformOperation' is declared but its value is never read.
+src/hooks/useCollaborativeEditor.ts(377,18): error TS2395: Individual declarations in merged declaration 'TextOperation' must be all exported or all local.
+src/hooks/useCollaborativeEditor.ts(390,10): error TS2323: Cannot redeclare exported variable 'useCollaborativeEditor'.
+src/hooks/useCollaborativeEditor.ts(390,10): error TS2484: Export declaration conflicts with exported declaration of 'useCollaborativeEditor'.
+src/services/firebase/FirebaseSyncService.ts(20,3): error TS6133: 'where' is declared but its value is never read.
+src/services/firebase/FirebaseSyncService.ts(27,3): error TS6133: 'DocumentReference' is declared but its value is never read.
+src/services/firebase/FirebaseSyncService.ts(28,3): error TS6133: 'CollectionReference' is declared but its value is never read.
+src/services/firebase/FirebaseSyncService.ts(29,3): error TS6133: 'DocumentData' is declared but its value is never read.
+src/services/firebase/FirebaseSyncService.ts(87,11): error TS6133: 'config' is declared but its value is never read.
+src/services/firebase/FirebaseSyncService.ts(90,11): error TS6133: 'pendingWrites' is declared but its value is never read.
+src/services/firebase/FirebaseSyncService.ts(94,11): error TS2300: Duplicate identifier 'deviceId'.
+src/services/firebase/FirebaseSyncService.ts(151,10): error TS2551: Property 'flushPendingWrites' does not exist on type 'FirebaseSyncService'. Did you mean 'pendingWrites'?
+src/services/firebase/FirebaseSyncService.ts(163,11): error TS6133: 'userId' is declared but its value is never read.
+src/services/firebase/FirebaseSyncService.ts(247,11): error TS6133: 'userId' is declared but its value is never read.
+src/services/firebase/FirebaseSyncService.ts(374,11): error TS2300: Duplicate identifier 'syncQueue'.
+src/services/signaling/SignalingServer.ts(9,30): error TS2307: Cannot find module 'uuid' or its corresponding type declarations.
+src/services/signaling/SignalingServer.ts(21,11): error TS6196: 'SignalMessage' is declared but never used.
+src/services/signaling/SignalingServer.ts(35,7): error TS6133: 'HEARTBEAT_INTERVAL' is declared but its value is never read.
+src/services/signaling/SignalingServer.ts(42,15): error TS6133: 'port' is declared but its value is never read.
+src/services/signaling/SignalingServer.ts(42,15): error TS2322: Type 'string | 3001' is not assignable to type 'number'.
+  Type 'string' is not assignable to type 'number'.
+src/services/signaling/SignalingServer.ts(112,14): error TS6133: 'id' is declared but its value is never read.
+src/services/webrtc/WebRTCService.ts(343,60): error TS2353: Object literal may only specify known properties, and 'edit' does not exist in type 'PeerInfo'.
+src/services/webrtc/WebRTCService.ts(378,36): error TS6133: 'peerId' is declared but its value is never read.
+src/stores/uiStore.tsx(218,63): error TS2345: Argument of type 'boolean | { idleTimeMs?: number | undefined; maxSuggestions?: number | undefined; includeModeSpecific?: boolean | undefined; includeProjectSpecific?: boolean | undefined; includeTaskSpecific?: boolean | undefined; }' is not assignable to parameter of type 'boolean'.
+  Type '{ idleTimeMs?: number | undefined; maxSuggestions?: number | undefined; includeModeSpecific?: boolean | undefined; includeProjectSpecific?: boolean | undefined; includeTaskSpecific?: boolean | undefined; }' is not assignable to type 'boolean'.

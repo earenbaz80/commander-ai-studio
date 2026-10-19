@@ -1,0 +1,33 @@
+npm notice run commander-ai-studio@2.5.0 postinstall
+npm notice run electron-builder install-app-deps
+  • electron-builder  version=25.1.8
+  • loaded configuration  file=package.json ("build" field)
+  • executing @electron/rebuild  electronVersion=33.4.11 arch=x64 buildFromSource=false appDir=./
+  • installing native dependencies  arch=x64
+  • completed installing native dependencies
+npm notice run commander-ai-studio@2.5.0 prepare
+npm notice run husky install
+husky - install command is DEPRECATED
+.git can't be found
+up to date, audited 880 packages in 37s
+
+165 packages are looking for funding
+  run `npm fund` for details
+
+29 vulnerabilities (5 moderate, 17 high, 7 critical)
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+npm warn install-scripts 8 packages had install scripts blocked because they are not covered by allowScripts:
+npm warn install-scripts   @firebase/util@1.15.3 (postinstall: node ./postinstall.js)
+npm warn install-scripts   @google/genai@2.28.0 (preinstall: echo 'preinstall: no-op')
+npm warn install-scripts   electron@33.4.11 (postinstall: node install.js)
+npm warn install-scripts   esbuild@0.25.12 (postinstall: node install.js)
+npm warn install-scripts   protobufjs@7.6.6 (postinstall: node scripts/postinstall)
+npm warn install-scripts   esbuild@0.28.2 (postinstall: node install.js)
+npm warn install-scripts   esbuild@0.28.2 (postinstall: node install.js)
+npm warn install-scripts   esbuild@0.28.2 (postinstall: node install.js)
+npm warn install-scripts
+npm warn install-scripts Run `npm install-scripts ls` to review, or `npm install-scripts approve <pkg>` to allow.

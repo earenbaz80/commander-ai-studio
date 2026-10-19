@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "providers": {},
+  "tools": {
+    "mcp": {
+      "enabled": true,
+      "servers": {
+        "myserver": {
+          "command": "python",
+          "args": [
+            "-m",
+            "myserver"
+          ]
+        },
+        "rea": {
+          "command": "rea",
+          "args": ["--mcp"]
+        }
+      }
+    }
+  },
+  "ui": {
+    "theme": "matrix",
+    "language": "es",
+    "showTooltips": true,
+    "lowResourceMode": false,
+    "powerSaverMode": false,
+    "fontScale": "normal",
+    "compactMode": false,
+    "sidebarWidth": 280,
+    "rightPanelWidth": 380
+  },
+  "shortcuts": {
+    "palette": "Ctrl+K",
+    "inspector": "Ctrl+,",
+    "sidebar": "Ctrl+B",
+    "newPrompt": "Ctrl+Alt+N",
+    "workbench": "Ctrl+Alt+B",
+    "saveVersion": "Ctrl+S",
+    "compiler": "Ctrl+Alt+C",
+    "newTab": "Ctrl+T",
+    "closeTab": "Ctrl+W",
+    "generalAudit": "Ctrl+Shift+G",
+    "shortcutsHelp": "Ctrl+/",
+    "voice": "Ctrl+Alt+V"
+  },
+  "agent": {
+    "maxSteps": 50,
+    "maxTurns": 10,
+    "approvalMode": "manual",
+    "planMode": false,
+    "autoCompact": true,
+    "contextWindow": 128000
+  },
+  "server": {
+    "port": 3280,
+    "host": "127.0.0.1",
+    "corsOrigins": [],
+    "enableAuth": false
+  },
+  "projects": {
+    "allowList": [],
+    "autoAddCwd": true
+  },
+  "telemetry": {
+    "enabled": false
+  },
+  "experimental": {
+    "streamingParser": false,
+    "wasmSandbox": false,
+    "multiAgent": false
+  }
+}

@@ -1,0 +1,2 @@
+npm notice run commander-ai-studio@2.5.0 npx
+npm notice run tsc --noEmit
