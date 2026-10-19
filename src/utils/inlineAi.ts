@@ -7,6 +7,8 @@
  * devuelve `{ ok:false, error }` legible para que la UI lo muestre tal cual.
  */
 
+import { resolveEndpoint } from '../lib/aiProviders';
+
 /** Clave donde la app guarda el modelo activo (la escribe App.tsx). */
 export const SELECTED_MODEL_KEY = 'ai_studio_selected_model';
 /** Fallback si no hay modelo elegido: gratuito y sin API key. */
@@ -76,13 +78,9 @@ export function getActiveModel(): string {
   }
 }
 
-/** Ruta del servidor para un modelo — mismo enrutado que `callAgentLLM`. */
+/** Ruta del servidor para un modelo. Delega en la fuente única de verdad. */
 export function routeForModel(model: string): string {
-  if (model.startsWith('custom/')) return '/api/custom/generate';
-  if (model.startsWith('openrouter/')) return '/api/openrouter/generate';
-  if (model.startsWith('pollinations/')) return '/api/pollinations/generate';
-  if (model.startsWith('ollama/')) return '/api/ollama/generate';
-  return '/api/gemini/generate';
+  return resolveEndpoint(model);
 }
 
 /** Acorta un prefijo largo conservando el FINAL (lo más cercano al cursor). */

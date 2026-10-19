@@ -2,6 +2,7 @@ import { getCachedApiKey } from '../lib/apiKeys';
 import type { ChatMessage } from '../types/studio';
 import { AGENT_FUNCTION_DECLARATIONS } from './fnTools';
 import { toolDialectForModel, toOpenAITools } from './providers';
+import { resolveEndpoint } from '../lib/aiProviders';
 
 export interface LLMToolCall {
   id: string;
@@ -36,7 +37,6 @@ export async function callAgentLLM(
     model?: string;
   } = {}
 ): Promise<LLMResponse> {
-  const apiBase = opts.apiBase || '/api/gemini/generate';
   const model = opts.model || 'gemini-2.5-flash';
 
   const system = `Eres un agente autónomo pragmático para ingeniería de código.
@@ -85,11 +85,7 @@ TOOLS:
 ${ctx.toolSchema}`;
 
   try {
-    const route = model.startsWith('custom/') ? '/api/custom/generate'
-      : model.startsWith('openrouter/') ? '/api/openrouter/generate'
-      : model.startsWith('pollinations/') ? '/api/pollinations/generate'
-      : model.startsWith('ollama/') ? '/api/ollama/generate'
-      : apiBase;
+    const route = opts.apiBase || resolveEndpoint(model);
     const res = await fetch(route, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -167,11 +163,10 @@ export async function callAgentLLMTools(
     return { thought: '', calls: [] };
   }
 
-  const route =
-    dialect === 'gemini' ? '/api/gemini/generate'
-    : model.startsWith('openrouter/') ? '/api/openrouter/generate'
-    : model.startsWith('ollama/') ? '/api/ollama/generate'
-    : '/api/custom/generate';
+  // `dialect !== 'gemini'` solo llega aquí para custom/ (openrouter/ y ollama/
+  // también son openai pero se resuelven igual), así que resolveEndpoint es
+  // equivalente al fallback anterior.
+  const route = dialect === 'gemini' ? '/api/gemini/generate' : resolveEndpoint(model);
 
   const payload: Record<string, unknown> = {
     contents: user,
