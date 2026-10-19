@@ -1,20 +1,14 @@
-import { getCachedApiKey } from '../lib/apiKeys';
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Send,
   Copy,
   Bot,
   Paperclip,
   X,
   Edit3,
-  RefreshCw,
   Check,
   Zap,
   User,
   Link,
-  Cpu,
-  Settings,
-  HelpCircle
 } from 'lucide-react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { PermissionsModal } from './PermissionsModal';
@@ -24,19 +18,11 @@ import { AgentStepViewer } from './AgentStepViewer';
 import { ChatLiveAppViewerModal, ChatCodeSnippet } from './ChatLiveAppViewerModal';
 import { MentionItem, filterMentions } from '../data/contextMentions';
 import { searchFiles } from '../utils/codeSearchApi';
-import { ChatMessage, ParameterConfig, StudioMode, AIModel, RunMode } from '../types/studio';
-import {
-  GEMINI_MODELS,
-  ANTHROPIC_MODELS,
-  HUGGINGFACE_MODELS,
-  XAI_MODELS,
-  OLLAMA_MODELS,
-  OPENROUTER_FREE_MODELS,
-  POLLINATIONS_MODELS,
-  CUSTOM_MODELS,
-  ALL_MODELS,
-} from '../data/models';
+import { ChatMessage, ParameterConfig, StudioMode, RunMode } from '../types/studio';
 import { Language } from '../i18n/translations';
+import { ComposerToolbar, type FontScale } from './chat/ComposerToolbar';
+import { MentionHelpModal } from './chat/MentionHelpModal';
+import { findModel } from './chat/modelGroups';
 
 interface ChatPlaygroundProps {
   messages: ChatMessage[];
@@ -96,8 +82,9 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [fontScale, setFontScale] = useState<'normal' | 'lg' | 'xl'>('normal');
+  const [fontScale, setFontScale] = useState<FontScale>('normal');
+  const cycleFontScale = () =>
+    setFontScale((prev) => (prev === 'normal' ? 'lg' : prev === 'lg' ? 'xl' : 'normal'));
 
   // Modo de ejecución: Build / Plan / Sólo lectura (persistente)
   const [runMode, setRunMode] = useState<RunMode>(() => {
@@ -144,18 +131,8 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
     }
   };
 
-  // Modelos agrupados por proveedor para el selector inferior
-  const MODEL_GROUPS: Array<{ label: string; models: AIModel[] }> = [
-    { label: 'Google Gemini', models: GEMINI_MODELS },
-    { label: 'Anthropic Claude', models: ANTHROPIC_MODELS },
-    { label: 'xAI Grok', models: XAI_MODELS },
-    { label: 'HuggingFace (Local)', models: HUGGINGFACE_MODELS },
-    { label: 'Ollama (Local)', models: OLLAMA_MODELS },
-    { label: 'OpenRouter', models: OPENROUTER_FREE_MODELS },
-    { label: 'Pollinations', models: POLLINATIONS_MODELS },
-    { label: 'Personalizado', models: CUSTOM_MODELS },
-  ];
-  const currentModel = ALL_MODELS.find((m) => m.id === selectedModel);
+  // Modelo activo en el catálogo (puede ser undefined si fue descargado de HF).
+  const currentModel = findModel(selectedModel);
 
   const getMentionToken = (value: string, caret: number): { start: number; query: string } | null => {
     const before = value.slice(0, caret);
@@ -273,10 +250,8 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
     }
   };
 
-  const handleAttachmentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setAttachments((prev) => [...prev, ...Array.from(e.target.files!)]);
-    }
+  const handleAttachmentChangeFiles = (files: FileList) => {
+    setAttachments((prev) => [...prev, ...Array.from(files)]);
   };
 
   const removeAttachment = (index: number) => {
@@ -492,228 +467,27 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
           )}
         </div>
 
-        {/* Barra inferior: adjuntar, modelo, Build/Plan y acciones a la derecha */}
-        <div className="mt-2 flex items-center gap-2 text-[10px] font-mono">
-          {/* Icono de ayuda para menciones @ */}
-          <button
-            type="button"
-            onClick={() => setHelpOpen(true)}
-            title={lang === 'es'
-              ? 'Ayuda: @nono = abre Nono · @archivo = archivos · @ayuda = info'
-              : lang === 'de' ? 'Hilfe: @nono = öffnet Nono · @archivo = Dateien · @ayuda = Info' : 'Help: @nono = opens Nono · @archivo = files · @ayuda = info'
-            }
-            aria-label={lang === 'es' ? 'Ayuda de menciones' : lang === 'de' ? 'Erwähnungshilfe' : 'Mention help'}
-            className="shrink-0 p-1.5 bg-[#000080] border border-cyan-400/40 rounded hover:bg-[#0000cc] transition-colors cursor-help"
-          >
-            <HelpCircle className="w-3.5 h-3.5 text-cyan-400" />
-          </button>
-
-          {/* Botón adjuntar: antes de la elección de modelo */}
-          <label
-            className="cursor-pointer shrink-0 p-1.5 bg-[#0000aa] border border-cyan-400/40 rounded hover:bg-[#0000cc] transition-colors"
-            title={lang === 'es' ? 'Adjuntar archivos' : lang === 'de' ? 'Dateien anhängen' : 'Attach files'}
-            aria-label={lang === 'es' ? 'Adjuntar archivos' : lang === 'de' ? 'Dateien anhängen' : 'Attach files'}
-          >
-            <Paperclip className="w-3.5 h-3.5 text-cyan-400" />
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              onChange={handleAttachmentChange}
-              className="hidden"
-              accept="image/*,.pdf,.txt,.md,.json,.js,.ts,.tsx,.jsx,.html,.css"
-            />
-          </label>
-
-          {/* Selector de modelo: el que se usará para responder */}
-          <select
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            aria-label={lang === 'es' ? 'Modelo que se usará para responder' : lang === 'de' ? 'Modell für die Antwort' : 'Model used to answer'}
-            title={
-              lang === 'es'
-                ? `Modelo en uso${currentModel?.description ? `: ${currentModel.description}` : ''}`
-                : lang === 'de'
-                  ? `Verwendetes Modell${currentModel?.description ? `: ${currentModel.description}` : ''}`
-                  : `Model in use${currentModel?.description ? `: ${currentModel.description}` : ''}`
-            }
-            className="min-w-0 flex-1 max-w-[260px] bg-[#000080] border border-cyan-400/40 text-[#00ffff] text-[10px] font-mono px-1.5 py-1 rounded outline-none focus:border-cyan-400 cursor-pointer truncate"
-          >
-            {/* Modelo no listado (p. ej. descargado de HuggingFace) */}
-            {!currentModel && <option value={selectedModel}>{selectedModel}</option>}
-            {MODEL_GROUPS.map((group) => (
-              <optgroup key={group.label} label={group.label}>
-                {group.models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                    {m.badge ? ` · ${m.badge}` : ''}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-
-          {/* Quick Local LLM indicator / switcher */}
-          {(() => {
-            const isLocal = selectedModel.startsWith('ollama/') || selectedModel.startsWith('openai/');
-            const ollamaHost = getCachedApiKey('OLLAMA_HOST') || 'http://localhost:11434';
-            const customBase = getCachedApiKey('CUSTOM_BASE_URL') || 'http://localhost:1234/v1';
-            const hasLocalConfig = getCachedApiKey('OLLAMA_HOST') || getCachedApiKey('CUSTOM_BASE_URL');
-            return hasLocalConfig ? (
-              <button
-                onClick={() => onOpenLocalLlmConfig?.()}
-                title={lang === 'es'
-                  ? isLocal
-                    ? `Usando LLM local · ${selectedModel} · Clic para configurar`
-                    : `LLM local configurado (${ollamaHost || customBase}) · Clic para activar`
-                  : lang === 'de'
-                    ? isLocal
-                      ? `Lokales LLM in Verwendung · ${selectedModel} · Klicken zum Konfigurieren`
-                      : `Lokales LLM konfiguriert (${ollamaHost || customBase}) · Klicken zum Aktivieren`
-                    : isLocal
-                      ? `Using local LLM · ${selectedModel} · Click to configure`
-                      : `Local LLM configured (${ollamaHost || customBase}) · Click to activate`
-                }
-                aria-label={lang === 'es' ? 'Configurar LLM local' : lang === 'de' ? 'Lokales LLM konfigurieren' : 'Configure local LLM'}
-                className={`flex items-center gap-1 rounded border px-2 py-1 text-[10px] font-bold shrink-0 transition-colors ${
-                  isLocal
-                    ? 'border-[#00aa00] bg-[#002200] text-[#00ff00]'
-                    : 'border-[#00aaaa]/40 bg-[#0000aa] text-[#00ffff] hover:bg-[#0000cc]'
-                }`}
-              >
-                <Cpu className="w-3.5 h-3.5" />
-                {lang === 'es' ? 'Local' : lang === 'de' ? 'Lokal' : 'Local'}
-              </button>
-            ) : null;
-          })()}
-
-          {/* Run Mode (Build / Plan / Read-only) as collapsible select menu */}
-          <select
-            value={runMode}
-            onChange={(e) => changeRunMode(e.target.value as RunMode)}
-            title={lang === 'es'
-              ? `Modo: ${runMode === 'build' ? 'Build (ejecuta)' : runMode === 'plan' ? 'Plan (solo analiza)' : 'Solo lectura'} · Menú para cambiar`
-              : lang === 'de'
-                ? `Modus: ${runMode === 'build' ? 'Build (führt aus)' : runMode === 'plan' ? 'Plan (analysiert nur)' : 'Nur Lesen'} · Menü zum Ändern`
-                : `Mode: ${runMode === 'build' ? 'Build (acts)' : runMode === 'plan' ? 'Plan (analyzes only)' : 'Read-only'} · Menu to change`}
-            aria-label={lang === 'es' ? 'Modo del agente' : lang === 'de' ? 'Agentenmodus' : 'Agent mode'}
-            className={`flex items-center gap-1 rounded border px-2 py-1 text-[10px] font-bold shrink-0 transition-colors cursor-pointer ${
-              runMode === 'build'
-                ? 'border-[#00aa00] bg-[#002200] text-[#00ff00]'
-                : runMode === 'plan'
-                  ? 'border-[#ffff55] bg-[#222200] text-[#ffff55]'
-                  : 'border-[#aa0000] bg-[#220000] text-[#ff5555]'
-            }`}
-          >
-            <option value="build">{lang === 'es' ? 'Build (ejecuta)' : lang === 'de' ? 'Build (handelt)' : 'Build (acts)'}</option>
-            <option value="plan">{lang === 'es' ? 'Plan (solo analiza)' : lang === 'de' ? 'Plan (nur Analyse)' : 'Plan (analyzes only)'}</option>
-            <option value="readonly">{lang === 'es' ? 'Solo lectura' : lang === 'de' ? 'Nur lesen' : 'Read-only'}</option>
-          </select>
-
-          <button
-            onClick={() => setPermsOpen(true)}
-            title={lang === 'es' ? 'Configuración avanzada (tools, globs)' : lang === 'de' ? 'Erweiterte Einstellungen (Tools, Globs)' : 'Advanced settings (tools, globs)'}
-            aria-label={lang === 'es' ? 'Configuración avanzada' : lang === 'de' ? 'Erweiterte Einstellungen' : 'Advanced settings'}
-            className="flex items-center gap-1 rounded border border-cyan-400/40 px-2 py-1 text-[10px] font-bold text-[#00ffff] hover:bg-[#0000aa] shrink-0"
-          >
-            <Settings className="w-3 h-3" />
-            {lang === 'es' ? 'Avanzado' : lang === 'de' ? 'Erweitert' : 'Advanced'}
-          </button>
-
-          <div className="flex items-center gap-2 ml-auto shrink-0">
-            <button
-              onClick={() => setFontScale(fontScale === 'normal' ? 'lg' : fontScale === 'lg' ? 'xl' : 'normal')}
-              title={lang === 'es' ? 'Tamaño del texto' : lang === 'de' ? 'Textgröße' : 'Text size'}
-              className="text-gray-400 hover:text-cyan-400"
-            >
-              A{fontScale === 'lg' ? '+' : fontScale === 'xl' ? '++' : ''}
-            </button>
-            <button
-              onClick={onClearChat}
-              title={lang === 'es' ? 'Limpiar conversación' : lang === 'de' ? 'Unterhaltung leeren' : 'Clear conversation'}
-              aria-label={lang === 'es' ? 'Limpiar conversación' : lang === 'de' ? 'Unterhaltung leeren' : 'Clear conversation'}
-              className="text-gray-400 hover:text-red-400"
-            >
-              Limpiar
-            </button>
-            {/* Botón de enviar: a la derecha del botón Limpiar */}
-            <button
-              onClick={handleSend}
-              disabled={isGenerating || (!inputText.trim() && attachments.length === 0)}
-              aria-label={lang === 'es' ? 'Enviar mensaje' : lang === 'de' ? 'Nachricht senden' : 'Send message'}
-              title={lang === 'es' ? 'Enviar mensaje' : lang === 'de' ? 'Nachricht senden' : 'Send message'}
-              className="p-1.5 bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded transition-colors"
-            >
-              {isGenerating ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Send className="w-3.5 h-3.5" />
-              )}
-            </button>
-          </div>
-        </div>
+        <ComposerToolbar
+          lang={lang}
+          selectedModel={selectedModel}
+          onSelectModel={setSelectedModel}
+          currentModel={currentModel}
+          runMode={runMode}
+          onChangeRunMode={changeRunMode}
+          fontScale={fontScale}
+          onCycleFontScale={cycleFontScale}
+          isGenerating={isGenerating}
+          canSend={Boolean(inputText.trim()) || attachments.length > 0}
+          onSend={handleSend}
+          onClearChat={onClearChat}
+          onAttach={handleAttachmentChangeFiles}
+          onOpenLocalLlmConfig={onOpenLocalLlmConfig}
+          onOpenAdvanced={() => setPermsOpen(true)}
+          onOpenMentionHelp={() => setHelpOpen(true)}
+        />
       </div>
 
-      {/* Modal de ayuda de menciones - estilo Norton */}
-      {helpOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-          onClick={() => setHelpOpen(false)}
-        >
-          <div
-            className="w-full max-w-md border-2 border-[#00ffff] bg-[#000080] shadow-[0_0_30px_rgba(0,255,255,0.4)]"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="flex items-center justify-between border-b border-[#00ffff]/40 px-4 py-2">
-              <div className="flex items-center gap-2 text-[#ffff55] text-sm font-bold">
-                <HelpCircle className="w-4 h-4" />
-                {lang === 'es' ? 'Ayuda de menciones' : lang === 'de' ? 'Erwähnungshilfe' : 'Mention help'}
-              </div>
-              <button
-                onClick={() => setHelpOpen(false)}
-                className="text-[#00ffff] hover:text-white"
-                aria-label="Cerrar"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3 px-4 py-4 text-xs">
-              <div className="space-y-2">
-                <div className="flex items-start gap-2">
-                  <code className="shrink-0 bg-[#000045] border border-[#00ffff]/40 px-2 py-1 font-mono text-[10px] text-[#00ffff]">@nono</code>
-                  <span className="text-[10px] text-[#00ffff]/80">{lang === 'es' ? 'Abre el asistente Nono con un prompt pre-rellenado' : lang === 'de' ? 'Öffnet den Assistenten Nono mit vorausgefülltem Prompt' : 'Opens Nono assistant with prefilled prompt'}</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <code className="shrink-0 bg-[#000045] border border-[#00ffff]/40 px-2 py-1 font-mono text-[10px] text-[#00ffff]">@archivo</code>
-                  <span className="text-[10px] text-[#00ffff]/80">{lang === 'es' ? 'Sugiere archivos del proyecto' : lang === 'de' ? 'Schlägt Projektdateien vor' : 'Suggests project files'}</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <code className="shrink-0 bg-[#000045] border border-[#00ffff]/40 px-2 py-1 font-mono text-[10px] text-[#00ffff]">@ayuda</code>
-                  <span className="text-[10px] text-[#00ffff]/80">{lang === 'es' ? 'Muestra información rápida' : lang === 'de' ? 'Zeigt Kurzinfos' : 'Shows quick info'}</span>
-                </div>
-              </div>
-              <p className="text-[10px] text-[#00ffff]/50 pt-2 border-t border-[#00ffff]/20">
-                {lang === 'es'
-                  ? 'Escribe @ seguido de una palabra en el chat para ver sugerencias.'
-                  : lang === 'de' ? 'Gib @ gefolgt von einem Wort im Chat ein, um Vorschläge zu sehen.' : 'Type @ followed by a word in the chat to see suggestions.'}
-              </p>
-            </div>
-
-            <div className="flex justify-end border-t border-[#00ffff]/40 px-4 py-2">
-              <button
-                onClick={() => setHelpOpen(false)}
-                className="border border-[#ffff55] bg-[#ffff55] px-3 py-1 font-bold text-black text-xs"
-              >
-                {lang === 'es' ? 'Cerrar' : lang === 'de' ? 'Schließen' : 'Close'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {helpOpen && <MentionHelpModal lang={lang} onClose={() => setHelpOpen(false)} />}
       {/* Live Viewer Modal */}
       {isLiveViewerOpen && (
         <ChatLiveAppViewerModal
