@@ -5,6 +5,7 @@ import { formatErrorMessage } from './utils/errorFormatter';
 import { useAppExecutors } from './hooks/useAppExecutors';
 import { useAppHandlers } from './hooks/useAppHandlers';
 import { useHistoryHandlers } from './hooks/useHistoryHandlers';
+import { useCommandPaletteShortcut } from './hooks/useCommandPaletteShortcut';
 import { useTabProjectHandlers } from './hooks/useTabProjectHandlers';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import React, { useState, useEffect, useRef } from 'react';
@@ -217,16 +218,8 @@ export default function App() {
     return () => window.removeEventListener('nono:open-with-prompt', handler as EventListener);
   }, []);
   // Atajo global de la paleta de comandos: Ctrl/Cmd+K
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
-        e.preventDefault();
-        setIsPaletteOpen((v) => !v);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  // Atajo global de la paleta de comandos: Ctrl/Cmd+K
+  useCommandPaletteShortcut(setIsPaletteOpen);
   const handleOpenLiveViewer = (snippets?: ChatCodeSnippet[], index: number = 0) => {
     if (snippets && snippets.length > 0) {
       setLiveViewerSnippets(snippets);
@@ -1578,7 +1571,6 @@ export default function App() {
     </div>
   );
 }
-
 
 
 
