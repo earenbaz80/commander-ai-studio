@@ -4,6 +4,7 @@ import { resolveChatRoute } from './lib/aiRouting';
 import { formatErrorMessage } from './utils/errorFormatter';
 import { useAppExecutors } from './hooks/useAppExecutors';
 import { useAppHandlers } from './hooks/useAppHandlers';
+import { useAppPrompts } from './hooks/useAppPrompts';
 import { useHistoryHandlers } from './hooks/useHistoryHandlers';
 import { useCommandPaletteShortcut } from './hooks/useCommandPaletteShortcut';
 import { useTabProjectHandlers } from './hooks/useTabProjectHandlers';
@@ -81,7 +82,7 @@ import {
   listAgentRoots,
   type AgentRoot,
 } from './lib/agentProjects';
-import { buildAuditPrompt } from './data/auditPrompts';
+
 import { useIdentity } from './hooks/useIdentity';
 import { OnboardingModal } from './components/OnboardingModal';
 import { setActiveProjectRoot } from './agent/activeProject';
@@ -395,20 +396,7 @@ export default function App() {
   }, [projectToast]);
 
   /** Audición General: lanza el agente en modo chat sobre el proyecto activo. */
-  const handleGeneralAudit = () => {
-    if (!activeTab?.projectPath) {
-      setProjectToast({ kind: 'err', text: lang === 'es' ? 'Selecciona un proyecto primero' : lang === 'de' ? 'Wähle zuerst ein Projekt aus' : 'Select a project first' });
-      return;
-    }
-    setIsAuditing(true);
-    const prompt = buildAuditPrompt(activeTab.projectPath, lang as "es" | "en");
-    tabs.updateTab({ mode: 'agent' });
-    setMode('agent');
-    // La respuesta del agente aparecerá en esta misma pestaña.
-    setTimeout(() => {
-      handleSendMessage(prompt, []).finally(() => setIsAuditing(false));
-    }, 60);
-  };
+
 
   // Handle Selecting and Restoring Session from History (dentro de la pestaña activa)
   const { handleSelectHistoryItem, handleRunHistoryItem, handleDeleteHistoryItem, handleClearHistory } = useHistoryHandlers({
@@ -454,15 +442,6 @@ export default function App() {
   };
 
   // Handle New Prompt Reset
-  const handleNewPrompt = () => {
-    // Con multi-pestaña, "Nuevo Prompt" abre una pestaña nueva en vez de
-    // vaciar la conversación actual (que se perdería al cambiar de pestaña).
-    const sessionId = `sess-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    currentSessionId.current = sessionId;
-    setPromptTitle('Nuevo Proyecto Prompt');
-    tabs.newTab({ mode: 'chat', projectPath: activeTab?.projectPath || '', sessionId, promptTitle: 'Nuevo Proyecto Prompt' });
-    setNonoStatus({ type: 'new_prompt' });
-  };
 
   // Add or Update Full Session in History (siempre dentro de la pestaña activa)
   const addToHistory = (title: string, currentMode: StudioMode, updatedMsgs?: ChatMessage[]) => {
@@ -517,22 +496,6 @@ export default function App() {
   };
 
   // Keyboard Shortcuts Global Event Listener — extraído a useKeyboardShortcuts.
-  useKeyboardShortcuts({
-    lang,
-    promptTitle,
-    parameters,
-    tabs,
-    setIsShortcutsModalOpen,
-    setIsInspectorOpen,
-    setIsSidebarOpen,
-    setIsWorkbenchOpen,
-    setIsCompilerModalOpen,
-    setIsSymbolSearchOpen,
-    handleNewPrompt,
-    handleSaveVersion,
-    handleGeneralAudit,
-    sendBrowserNotification,
-  });
 
   // Execution handlers extracted to a custom hook (App.tsx refactor).
   const { handleExecuteFreeform, handleExecuteStructured, handleExecuteHfTab } = useAppExecutors({
@@ -997,6 +960,38 @@ export default function App() {
     }
   };
 
+  // handleGeneralAudit and handleNewPrompt
+  const { handleGeneralAudit, handleNewPrompt } = useAppPrompts({
+    activeTab,
+    setProjectToast,
+    lang,
+    tabs,
+    setMode,
+    handleSendMessage,
+    setIsAuditing,
+    currentSessionId,
+    setPromptTitle,
+    setNonoStatus,
+  });
+
+
+  // Keyboard Shortcuts Global Event Listener — extraído a useKeyboardShortcuts.
+  useKeyboardShortcuts({
+    lang,
+    promptTitle,
+    parameters,
+    tabs,
+    setIsShortcutsModalOpen,
+    setIsInspectorOpen,
+    setIsSidebarOpen,
+    setIsWorkbenchOpen,
+    setIsCompilerModalOpen,
+    setIsSymbolSearchOpen,
+    handleNewPrompt,
+    handleSaveVersion,
+    handleGeneralAudit,
+    sendBrowserNotification,
+  });
   // Nono reacciona al estado de generación (thinking → feliz; errores aparte).
   useEffect(() => {
     if (isGenerating) {
@@ -1571,11 +1566,6 @@ export default function App() {
     </div>
   );
 }
-
-
-
-
-
 
 
 
