@@ -40,7 +40,7 @@ export const PermissionsModal: React.FC<Props> = ({ lang, onClose, onSaved }) =>
   const [error, setError] = useState('');
   
 
-  const es = lang === 'es';
+  
   const root = getActiveProjectRoot() || undefined;
 
   useEffect(() => {
@@ -104,7 +104,7 @@ export const PermissionsModal: React.FC<Props> = ({ lang, onClose, onSaved }) =>
         <div className="flex items-center justify-between border-b border-[#00ffff]/40 px-4 py-2">
           <div className="flex items-center gap-2 text-[#ffff55] text-sm font-bold">
             <Settings className="w-4 h-4" />
-            {es ? 'Configuración avanzada' : lang === 'de' ? 'Erweiterte Einstellungen' : 'Advanced settings'}
+            {lang === 'es' ? 'Configuración avanzada' : lang === 'de' ? 'Erweiterte Einstellungen' : 'Advanced settings'}
           </div>
           <button onClick={onClose} className="text-[#00ffff] hover:text-white" aria-label={lang === 'de' ? 'Schließen' : lang === 'es' ? 'Cerrar' : 'Close'}>
             <X className="w-4 h-4" />
@@ -113,12 +113,12 @@ export const PermissionsModal: React.FC<Props> = ({ lang, onClose, onSaved }) =>
 
         <div className="space-y-4 px-4 py-4 text-xs">
           {loading ? (
-            <p className="text-[#00ffff]/70">{es ? 'Cargando…' : lang === 'de' ? 'Wird geladen…' : 'Loading…'}</p>
+            <p className="text-[#00ffff]/70">{lang === 'es' ? 'Cargando…' : lang === 'de' ? 'Wird geladen…' : 'Loading…'}</p>
           ) : (
             <>
               <div>
                 <label className="mb-1 block text-[#00ffff] font-bold">
-                  {es ? 'Tools permitidas (lista blanca, separadas por comas)' : lang === 'de' ? 'Erlaubte Tools (Positivliste, durch Kommas getrennt)' : 'Allowed tools (whitelist, comma-separated)'}
+                  {lang === 'es' ? 'Tools permitidas (lista blanca, separadas por comas)' : lang === 'de' ? 'Erlaubte Tools (Positivliste, durch Kommas getrennt)' : 'Allowed tools (whitelist, comma-separated)'}
                 </label>
                 <textarea
                   value={allowedTools}
@@ -131,7 +131,7 @@ export const PermissionsModal: React.FC<Props> = ({ lang, onClose, onSaved }) =>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block text-[#00ffff] font-bold">
-                    {es ? 'Globs de lectura' : lang === 'de' ? 'Lese-Globs' : 'Read globs'}
+                    {lang === 'es' ? 'Globs de lectura' : lang === 'de' ? 'Lese-Globs' : 'Read globs'}
                   </label>
                   <textarea
                     value={readGlobs}
@@ -143,7 +143,7 @@ export const PermissionsModal: React.FC<Props> = ({ lang, onClose, onSaved }) =>
                 </div>
                 <div>
                   <label className="mb-1 block text-[#00ffff] font-bold">
-                    {es ? 'Globs de escritura' : lang === 'de' ? 'Schreib-Globs' : 'Write globs'}
+                    {lang === 'es' ? 'Globs de escritura' : lang === 'de' ? 'Schreib-Globs' : 'Write globs'}
                   </label>
                   <textarea
                     value={writeGlobs}
@@ -165,7 +165,7 @@ export const PermissionsModal: React.FC<Props> = ({ lang, onClose, onSaved }) =>
             onClick={onClose}
             className="border border-[#00ffff]/40 bg-[#000045] px-3 py-1 text-[#00ffff] hover:bg-[#0000aa]"
           >
-            {es ? 'Cancelar' : lang === 'de' ? 'Abbrechen' : 'Cancel'}
+            {lang === 'es' ? 'Cancelar' : lang === 'de' ? 'Abbrechen' : 'Cancel'}
           </button>
           <button
             onClick={save}
@@ -173,7 +173,7 @@ export const PermissionsModal: React.FC<Props> = ({ lang, onClose, onSaved }) =>
             className="flex items-center gap-1 border border-[#ffff55] bg-[#ffff55] px-3 py-1 font-bold text-black disabled:opacity-50"
           >
             <Save className="w-3 h-3" />
-            {saving ? (es ? 'Guardando…' : lang === 'de' ? 'Wird gespeichert…' : 'Saving…') : (es ? 'Guardar' : lang === 'de' ? 'Speichern' : 'Save')}
+            {saving ? (lang === 'es' ? 'Guardando…' : lang === 'de' ? 'Wird gespeichert…' : 'Saving…') : (lang === 'es' ? 'Guardar' : lang === 'de' ? 'Speichern' : 'Save')}
           </button>
         </div>
       </div>

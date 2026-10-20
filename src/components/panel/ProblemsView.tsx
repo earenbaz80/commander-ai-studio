@@ -41,7 +41,7 @@ function severityOf(severity: number) {
 
 export const ProblemsView: React.FC<ProblemsViewProps> = ({ projectPath, lang = 'es' }) => {
   
-  const es = lang === 'es';
+  
   const groups = useLspProblems();
   const counts = useLspProblemCounts();
 
@@ -63,10 +63,10 @@ export const ProblemsView: React.FC<ProblemsViewProps> = ({ projectPath, lang = 
         <span className="text-[#ff5555] font-bold">{counts.error} âœ•</span>
         <span className="text-[#ffff55] font-bold">{counts.warning} âš </span>
         <span className="text-[#00ffff] font-bold">{counts.info} â„¹</span>
-        <span className="ml-auto text-[#00ffff]/50">{counts.total} {es ? 'total' : lang === 'de' ? 'gesamt' : 'total'}</span>
+        <span className="ml-auto text-[#00ffff]/50">{counts.total} {lang === 'es' ? 'total' : lang === 'de' ? 'gesamt' : 'total'}</span>
       </div>
     ),
-    [counts, es]
+    [counts, lang === 'es']
   );
 
   return (
@@ -76,7 +76,7 @@ export const ProblemsView: React.FC<ProblemsViewProps> = ({ projectPath, lang = 
         {groups.length === 0 ? (
           <div className="flex items-center gap-2 px-3 py-4 text-[#88ff88]">
             <CheckCircle2 className="w-4 h-4" />
-            {es ? 'Sin problemas' : lang === 'de' ? 'Keine Probleme' : 'No problems'}
+            {lang === 'es' ? 'Sin problemas' : lang === 'de' ? 'Keine Probleme' : 'No problems'}
           </div>
         ) : (
           groups.map((group) => (

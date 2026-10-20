@@ -23,7 +23,7 @@ export function CodeSearchView({ projectPath, lang = 'es' }: CodeSearchViewProps
   const [semantic, setSemantic] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const es = lang === 'es';
+  
   const run = useCallback(
     async (q: string) => {
       if (!q.trim()) {
@@ -59,14 +59,14 @@ export function CodeSearchView({ projectPath, lang = 'es' }: CodeSearchViewProps
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          aria-label={es ? 'Buscar en el código' : lang === 'de' ? 'Code durchsuchen' : 'Search code'}
-          placeholder={es ? 'Buscar en el código…' : lang === 'de' ? 'Code durchsuchen…' : 'Search code…'}
+          aria-label={lang === 'es' ? 'Buscar en el código' : lang === 'de' ? 'Code durchsuchen' : 'Search code'}
+          placeholder={lang === 'es' ? 'Buscar en el código…' : lang === 'de' ? 'Code durchsuchen…' : 'Search code…'}
           className="flex-1 min-w-0 bg-[#000022] border border-[#004466] text-[#00ffff] px-2 py-1 outline-none focus:border-[#00ffff]"
         />
         {semantic && (
           <span
             className="shrink-0 text-[9px] font-bold text-black bg-[#00ff66] px-1.5 py-0.5 border border-[#00ff66] rounded-sm"
-            title={es ? 'Búsqueda re-ordenada con embeddings (semántico)' : lang === 'de' ? 'Ergebnisse mit Embeddings neu sortiert (semantisch)' : 'Results re-ranked with embeddings (semantic)'}
+            title={lang === 'es' ? 'Búsqueda re-ordenada con embeddings (semántico)' : lang === 'de' ? 'Ergebnisse mit Embeddings neu sortiert (semantisch)' : 'Results re-ranked with embeddings (semantic)'}
           >
             SEMÁNTICO
           </span>
@@ -76,12 +76,11 @@ export function CodeSearchView({ projectPath, lang = 'es' }: CodeSearchViewProps
       {error && <div className="px-2 py-1 text-red-300 border-b border-[#004466] shrink-0">{error}</div>}
 
       <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2">
-        {loading && <div className="text-[#00ffff]">{es ? 'Buscando…' : lang === 'de' ? 'Suche läuft…' : 'Searching…'}</div>}
+        {loading && <div className="text-[#00ffff]">{lang === 'es' ? 'Buscando…' : lang === 'de' ? 'Suche läuft…' : 'Searching…'}</div>}
 
         {!loading && !query.trim() && (
           <div className="text-white/60 leading-relaxed">
-            {es
-              ? 'Escribe para buscar coincidencias en todo el proyecto.'
+            {lang === 'es' ? 'Escribe para buscar coincidencias en todo el proyecto.'
               : lang === 'de'
                 ? 'Tippe, um Übereinstimmungen im gesamten Projekt zu suchen.'
                 : 'Type to search matches across the whole project.'}
@@ -89,7 +88,7 @@ export function CodeSearchView({ projectPath, lang = 'es' }: CodeSearchViewProps
         )}
 
         {!loading && query.trim() && results.length === 0 && (
-          <div className="text-white/60">{es ? 'Sin coincidencias.' : lang === 'de' ? 'Keine Treffer.' : 'No matches.'}</div>
+          <div className="text-white/60">{lang === 'es' ? 'Sin coincidencias.' : lang === 'de' ? 'Keine Treffer.' : 'No matches.'}</div>
         )}
 
         {!loading &&
