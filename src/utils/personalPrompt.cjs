@@ -1,4 +1,4 @@
-const { writeFile, execute, runTests, initProject, auditProject } = require('./personalAgent');
+const { writeFile, execute, runTests, initProject, auditProject } = require('./personalAgent.cjs');
 
 async function handlePrompt(desire) {
   const lower = desire.toLowerCase().trim();
@@ -49,25 +49,25 @@ async function handlePrompt(desire) {
   
   // === PATTERN 6: "auditar proyecto" ===
 if (lower.includes('auditar') || lower.includes('auditor')) {
-    const { auditProject } = require('./personalAgent');
+    const { auditProject } = require('./personalAgent.cjs');
     return await auditProject();
 }
 
 // === PATTERN 7: "git status" / "estado git" ===
 if (lower.includes('git status') || lower.includes('estado del git') || lower.includes('estado del repositorio')) {
-    const { gitStatus } = require('./personalAgent');
+    const { gitStatus } = require('./personalAgent.cjs');
     return await gitStatus();
 }
 
 // === PATTERN 8: "git log" / "historial" / "commits" ===
 if (lower.includes('git log') || lower.includes('historial') || lower.includes('commits')) {
-    const { gitLog } = require('./personalAgent');
+    const { gitLog } = require('./personalAgent.cjs');
     return await gitLog();
 }
 
 // === PATTERN 9: "leer [archivo]" ===
 if (lower.startsWith('leer ') || lower.startsWith('mostrar ') || lower.startsWith('ver archivo')) {
-    const { readFile } = require('./personalAgent');
+    const { readFile } = require('./personalAgent.cjs');
     const match = desire.match(/(?:leer|mostrar|ver archivo) (.+)/i);
     if (match) return await readFile(match[1].trim());
     return { success: false, output: 'Formato: "leer ruta/archivo"' };
@@ -75,7 +75,7 @@ if (lower.startsWith('leer ') || lower.startsWith('mostrar ') || lower.startsWit
 
 // === PATTERN 10: "eliminar [archivo]" ===
 if (lower.startsWith('eliminar ') || lower.startsWith('borrar ')) {
-    const { deleteFile } = require('./personalAgent');
+    const { deleteFile } = require('./personalAgent.cjs');
     const match = desire.match(/(?:eliminar|borrar) (.+)/i);
     if (match) return await deleteFile(match[1].trim());
     return { success: false, output: 'Formato: "eliminar ruta/archivo"' };
@@ -83,7 +83,7 @@ if (lower.startsWith('eliminar ') || lower.startsWith('borrar ')) {
 
 // === PATTERN 11: "copiar [origen] a [destino]" ===
 if (lower.startsWith('copiar ')) {
-    const { copyFile } = require('./personalAgent');
+    const { copyFile } = require('./personalAgent.cjs');
     const match = desire.match(/copiar (.+) a (.+)/i);
     if (match) return await copyFile(match[1].trim(), match[2].trim());
     return { success: false, output: 'Formato: "copiar origen a destino"' };
@@ -91,7 +91,7 @@ if (lower.startsWith('copiar ')) {
 
 // === PATTERN 12: "contar líneas [archivo]" ===
 if (lower.includes('contar l') || lower.includes('líneas') || lower.includes('lineas')) {
-    const { countLines } = require('./personalAgent');
+    const { countLines } = require('./personalAgent.cjs');
     const match = desire.match(/(?:líneas|lineas) (?:de )?(.+)/i);
     if (match) return await countLines(match[1].trim());
     return { success: false, output: 'Formato: "contar líneas de archivo"' };
@@ -99,7 +99,7 @@ if (lower.includes('contar l') || lower.includes('líneas') || lower.includes('l
 
 // === PATTERN 13: "imports de [archivo]" ===
 if (lower.includes('imports') || lower.includes('importaciones')) {
-    const { getImports } = require('./personalAgent');
+    const { getImports } = require('./personalAgent.cjs');
     const match = desire.match(/(?:imports|importaciones) (?:de )?(.+)/i);
     if (match) return await getImports(match[1].trim());
     return { success: false, output: 'Formato: "imports de archivo"' };
@@ -107,7 +107,7 @@ if (lower.includes('imports') || lower.includes('importaciones')) {
 
 // === PATTERN 14: "qué framework" / "detectar framework" ===
 if (lower.includes('framework') || lower.includes('qué tecnología') || lower.includes('que tecnologia')) {
-    const { detectFramework } = require('./personalAgent');
+    const { detectFramework } = require('./personalAgent.cjs');
     return await detectFramework();
 }
 
