@@ -4,6 +4,7 @@ import { resolveChatRoute } from './lib/aiRouting';
 import { formatErrorMessage } from './utils/errorFormatter';
 import { useAppExecutors } from './hooks/useAppExecutors';
 import { useAppHandlers } from './hooks/useAppHandlers';
+import { useAppVersions } from './hooks/useAppVersions';
 import { useAppModels } from './hooks/useAppModels';
 import { useAppPrompts } from './hooks/useAppPrompts';
 import { useHistoryHandlers } from './hooks/useHistoryHandlers';
@@ -104,14 +105,13 @@ import { resolveMentionsForPrompt } from './utils/mentionResolver';
 import { RetroBiosBoot } from './components/RetroBiosBoot';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { sendBrowserNotification, playRetroSuccessSound } from './utils/browserNotifications';
-import { auth, savePromptVersion, db } from './lib/firebase';
+import { auth, db } from './lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 
 import { 
   StudioMode, 
-  ChatMessage, 
-  PromptVersion,
+  ChatMessage,
   HistorySession,
   RunMode
 } from './types/studio';
@@ -457,24 +457,13 @@ export default function App() {
     });
   };
 
-  const handleSaveVersion = async (title: string, note?: string) => {
-    try {
-      // Use promptTitle as base for ID, sanitize for firestore path
-      const projectId = promptTitle.toLowerCase().replace(/[^a-z0-9]/g, '-');
-      await savePromptVersion(projectId, parameters, title, note);
-      setNonoStatus({ type: 'success' });
-      alert('Versión guardada exitosamente.');
-    } catch (error) {
-      console.error(error);
-      alert('Error al guardar la versión.');
-    }
-  };
-
-  const handleLoadVersion = (version: PromptVersion) => {
-    setParameters(version.parameters);
-    setPromptTitle(version.title);
-    alert('Versión cargada exitosamente.');
-  };
+  const { handleSaveVersion, handleLoadVersion } = useAppVersions({
+    promptTitle,
+    parameters,
+    setParameters,
+    setPromptTitle,
+    setNonoStatus,
+  });
 
   // Keyboard Shortcuts Global Event Listener — extraído a useKeyboardShortcuts.
 
@@ -1547,7 +1536,6 @@ export default function App() {
     </div>
   );
 }
-
 
 
 
