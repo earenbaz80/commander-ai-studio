@@ -6,6 +6,7 @@ import { useAppExecutors } from './hooks/useAppExecutors';
 import { useAppHandlers } from './hooks/useAppHandlers';
 import { useAppVersions } from './hooks/useAppVersions';
 import { useAppTelemetry } from './hooks/useAppTelemetry';
+import { useAppAuth } from './hooks/useAppAuth';
 import { useAppModels } from './hooks/useAppModels';
 import { useAppPrompts } from './hooks/useAppPrompts';
 import { useHistoryHandlers } from './hooks/useHistoryHandlers';
@@ -86,7 +87,7 @@ import {
   type AgentRoot,
 } from './lib/agentProjects';
 
-import { useIdentity } from './hooks/useIdentity';
+
 import { OnboardingModal } from './components/OnboardingModal';
 import { setActiveProjectRoot } from './agent/activeProject';
 
@@ -107,8 +108,7 @@ import { RetroBiosBoot } from './components/RetroBiosBoot';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { sendBrowserNotification, playRetroSuccessSound } from './utils/browserNotifications';
 
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { auth } from './lib/firebase';
+
 
 import { 
   StudioMode, 
@@ -229,18 +229,7 @@ export default function App() {
     setIsLiveViewerOpen,
     setDownloadedModels,
   });
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
-  const identity = useIdentity();
-
-  /** Nombre a mostrar: cuenta registrada si la hay, si no el de invitado. */
-  const displayName = currentUser?.displayName || identity.guestName || '';
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-    });
-    return () => unsubscribe();
-  }, []);
+  const { currentUser, identity, displayName } = useAppAuth({});
 
 
   // Sincronización automática de selectedProvider según el modelo elegido
@@ -1521,7 +1510,6 @@ export default function App() {
     </div>
   );
 }
-
 
 
 
