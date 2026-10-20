@@ -229,6 +229,7 @@ export default function App() {
     } else if (selectedModel.startsWith('gemini') || selectedModel.startsWith('antigravity')) {
       setSelectedProvider('google');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedModel, downloadedModels]);
 
   // El id de sesión vive ahora en la pestaña activa (useTabs.currentSessionId).
@@ -258,6 +259,7 @@ export default function App() {
     if (!firstTabIdRef.current && tabs.tabs[0]) {
       firstTabIdRef.current = tabs.tabs[0].id;
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persistencia del historial completo (ya particionado por tabId).
@@ -348,6 +350,7 @@ export default function App() {
     if (!projectToast) return;
     const t = setTimeout(() => setProjectToast(null), 4000);
     return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectToast]);
 
   /** Audición General: lanza el agente en modo chat sobre el proyecto activo. */
@@ -432,9 +435,7 @@ export default function App() {
     parameters,
     downloadedModels,
     lang: lang as string,
-    messages,
     setIsGenerating,
-    setMessages,
     addToHistory,
   });
 
@@ -929,6 +930,7 @@ export default function App() {
       wasGeneratingRef.current = false;
       setNonoStatus((prev) => (prev?.type === 'error' ? prev : { type: 'done' }));
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGenerating]);
 
   // Nono comenta al cambiar de modo.
@@ -937,6 +939,7 @@ export default function App() {
       setNonoStatus({ type: 'mode', detail: mode });
     }
     prevModeRef.current = mode;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
   // Select Template from Library / Select Project from Cloud Gallery

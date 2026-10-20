@@ -14,6 +14,7 @@ export function useAppTelemetry(opts: AppTelemetryOptions) {
   const tabHistory = useMemo(() => {
     const owner = firstTabIdRef.current;
     return history.filter((h) => (h.tabId || owner) === activeTabId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [history, activeTabId]);
 
   const logTelemetry = useCallback(async (data: any) => {

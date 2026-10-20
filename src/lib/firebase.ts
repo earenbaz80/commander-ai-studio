@@ -320,7 +320,7 @@ export async function checkIsLiked(projectId: string, userId: string): Promise<b
     const likeRef = doc(db, 'projects', projectId, 'likes', userId);
     const snap = await getDoc(likeRef);
     return snap.exists();
-  } catch (error) {
+  } catch (_error) {
     return false;
   }
 }
@@ -424,4 +424,3 @@ export async function deleteComposerProject(projectId: string): Promise<void> {
     throw error;
   }
 }
-

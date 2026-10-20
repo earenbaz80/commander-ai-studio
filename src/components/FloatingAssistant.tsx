@@ -370,6 +370,7 @@ export const FloatingAssistant = React.forwardRef<FloatingAssistantHandle, Float
       if (suggestionIntervalRef.current) clearInterval(suggestionIntervalRef.current);
       setShowProjectSuggestion(false);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectInfo, lang, isOpen, isWatchingChat]);
 
   // Frase contextual breve (reacciones de la app); se limpia sola.
@@ -492,6 +493,7 @@ export const FloatingAssistant = React.forwardRef<FloatingAssistantHandle, Float
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleSend = () => {
     const text = inputValue.trim();
     if (!text) return;

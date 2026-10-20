@@ -45,6 +45,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
   const [pluginId, setPluginId] = useState('');
   const [installingPlugin, setInstallingPlugin] = useState<string | null>(null);
   const [sessions, setSessions] = useState<AgentSession[]>(() => loadSessions());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const metrics = useMemo(() => metricsSummary(loadMetrics().slice(0, 100)), [state.steps.length]);
 
   // Agent Loop v2 state

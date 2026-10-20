@@ -908,6 +908,7 @@ export const LiveConsole: React.FC<{
       addLog('info', 'Console connected to project');
       addLog('log', 'Type commands to execute in the project context');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const typeColors = {

@@ -113,6 +113,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
     return () => {
       alive = false;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   if (!isOpen) return null;

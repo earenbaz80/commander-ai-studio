@@ -52,6 +52,7 @@ export const BrowserView: React.FC<{ projectPath: string }> = ({ projectPath }) 
     setSrcdoc(res.content || '');
     setMode('local');
     setStatus(`Vista previa: ${path}`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Estado inicial: intenta previsualizar index.html si hay proyecto

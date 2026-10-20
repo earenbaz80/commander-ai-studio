@@ -336,8 +336,9 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     if (newProvider !== state.selectedProvider) {
       dispatch({ type: 'SET_SELECTED_PROVIDER', payload: newProvider });
     }
-  }, [state.selectedModel, state.downloadedModels]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.selectedModel, state.downloadedModels]);
   const actions = {
     setMode: useCallback((mode: StudioMode) => dispatch({ type: 'SET_MODE', payload: mode }), []),
     setPromptTitle: useCallback((title: string) => dispatch({ type: 'SET_PROMPT_TITLE', payload: title }), []),

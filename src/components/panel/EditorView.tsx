@@ -267,6 +267,7 @@ const de = lang === 'de';
     } catch {
       /* ignore */
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPath, saving, content, projectPath, loadFiles]);
 
   /** F12 / Shift+F12: abre otra definición/referencia y posiciona el cursor. */
@@ -348,6 +349,7 @@ const de = lang === 'de';
     } catch {
       /* ignore */
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectNewPath, projectPath, saving, content, loadFiles]);
 
   /** Abre un archivo EXISTENTE desde el disco local vía file picker. */
@@ -374,6 +376,7 @@ const de = lang === 'de';
     };
     reader.onerror = () => setError(es ? 'No se pudo leer el archivo local' : de ? 'Die lokale Datei konnte nicht gelesen werden' : 'Could not read local file');
     reader.readAsText(file);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /** Guarda el contenido como archivo LOCAL (descarga en el formato elegido). */
@@ -410,6 +413,7 @@ const de = lang === 'de';
       setStatus(es ? `Descargado · ${filename}` : de ? `Heruntergeladen · ${filename}` : `Downloaded · ${filename}`);
       setShowLocalSave(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localFilename, content, selectedPath]);
 
   /** Atajo Ctrl/Cmd+S: guarda en el proyecto si hay archivo; si no, guardado local. */

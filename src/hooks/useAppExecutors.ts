@@ -11,9 +11,7 @@ export interface AppExecutorContext {
   parameters: any;
   downloadedModels: any[];
   lang: string;
-  messages: ChatMessage[];
   setIsGenerating: (v: boolean) => void;
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   addToHistory: (title: string, mode: StudioMode, msgs?: ChatMessage[]) => void;
 }
 
@@ -24,9 +22,7 @@ export function useAppExecutors(ctx: AppExecutorContext) {
     parameters,
     downloadedModels,
     lang,
-    messages,
     setIsGenerating,
-    setMessages,
     addToHistory,
   } = ctx;
 
@@ -118,7 +114,7 @@ export function useAppExecutors(ctx: AppExecutorContext) {
     } finally {
       setIsGenerating(false);
     }
-  }, [selectedModel, selectedProvider, parameters, downloadedModels, lang, messages, setIsGenerating, setMessages, addToHistory]);
+  }, [selectedModel, selectedProvider, parameters, downloadedModels, lang, setIsGenerating, addToHistory]);
 
   const handleExecuteStructured = useCallback(async (examples: StructuredExample[], testInput: string) => {
     setIsGenerating(true);

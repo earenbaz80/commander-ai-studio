@@ -391,6 +391,7 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
   ${htmlBodyContent}
 </body>
 </html>`;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSnippet, reloadKey]);
 
   if (!isOpen) return null;

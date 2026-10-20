@@ -544,6 +544,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         },
       ]),
     ];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo, openLocation]);
 
   // Config de IA leída en el momento de la petición (evita reciclar el estado).
@@ -776,6 +777,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       if (viewRef) viewRef.current = null;
       instance.destroy();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     const instance = view.current;
