@@ -5,6 +5,7 @@ import { formatErrorMessage } from './utils/errorFormatter';
 import { useAppExecutors } from './hooks/useAppExecutors';
 import { useAppHandlers } from './hooks/useAppHandlers';
 import { useAppVersions } from './hooks/useAppVersions';
+import { useAppTelemetry } from './hooks/useAppTelemetry';
 import { useAppModels } from './hooks/useAppModels';
 import { useAppPrompts } from './hooks/useAppPrompts';
 import { useHistoryHandlers } from './hooks/useHistoryHandlers';
@@ -105,9 +106,9 @@ import { resolveMentionsForPrompt } from './utils/mentionResolver';
 import { RetroBiosBoot } from './components/RetroBiosBoot';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { sendBrowserNotification, playRetroSuccessSound } from './utils/browserNotifications';
-import { auth, db } from './lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { auth } from './lib/firebase';
 
 import { 
   StudioMode, 
@@ -400,27 +401,11 @@ export default function App() {
     sendBrowserNotification,
   });
   /** Historial visible en el sidebar: solo el de la pestaña activa. */
-  const tabHistory = React.useMemo(() => {
-    const owner = firstTabIdRef.current;
-    return history.filter((h) => (h.tabId || owner) === activeTabId);
-  }, [history, activeTabId]);
-
-  const logTelemetry = async (data: any) => {
-    if (!auth.currentUser) {
-      console.warn('Telemetry: No user authenticated');
-      return;
-    }
-    try {
-      await addDoc(collection(db, 'telemetry_logs'), {
-        ...data,
-        userId: auth.currentUser.uid,
-        timestamp: serverTimestamp()
-      });
-      console.log('Telemetry: Successfully logged');
-    } catch (e) {
-      console.error('Telemetry: Failed to log', e);
-    }
-  };
+  const { tabHistory, logTelemetry } = useAppTelemetry({
+    history,
+    activeTabId,
+    firstTabIdRef,
+  });
 
   // Handle New Prompt Reset
 
@@ -1536,7 +1521,6 @@ export default function App() {
     </div>
   );
 }
-
 
 
 
