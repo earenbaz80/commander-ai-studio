@@ -1,4 +1,4 @@
-import { getCachedApiKey, migrateLegacyKeys, loadAllApiKeysIntoCache } from './lib/apiKeys';
+import { getCachedApiKey } from './lib/apiKeys';
 
 import { resolveChatRoute } from './lib/aiRouting';
 import { formatErrorMessage } from './utils/errorFormatter';
@@ -6,6 +6,7 @@ import { useAppExecutors } from './hooks/useAppExecutors';
 import { useAppHandlers } from './hooks/useAppHandlers';
 import { useAppVersions } from './hooks/useAppVersions';
 import { useAppTelemetry } from './hooks/useAppTelemetry';
+import { useAppEffects } from './hooks/useAppEffects';
 import { useAppAuth } from './hooks/useAppAuth';
 import { useAppModels } from './hooks/useAppModels';
 import { useAppPrompts } from './hooks/useAppPrompts';
@@ -197,28 +198,11 @@ export default function App() {
   const [isolateSessions, setIsolateSessions] = useState(() => {
     try { return localStorage.getItem('commander_isolate_sessions') === 'true'; } catch { return false; }
   });
-  useEffect(() => {
-    try { localStorage.setItem('commander_show_nono', JSON.stringify(showNono)); } catch { /* ignore */ }
-  }, [showNono]);
-  useEffect(() => {
-    try { localStorage.setItem('commander_isolate_sessions', JSON.stringify(isolateSessions)); } catch { /* ignore */ }
-  }, [isolateSessions]);
-
-  useEffect(() => {
-    (async () => {
-      try { await migrateLegacyKeys(); } catch (e) { console.warn('migrateLegacyKeys failed', e); }
-      try { await loadAllApiKeysIntoCache(); } catch (e) { console.warn('loadAllApiKeysIntoCache failed', e); }
-    })();
-  }, []);
-
-  // Escucha evento personalizado desde ChatPlayground (@nono)
-  useEffect(() => {
-    const handler = (e: CustomEvent<{ prompt: string; send?: boolean }>) => {
-      nonoRef.current?.openWithPrompt(e.detail.prompt, e.detail.send);
-    };
-    window.addEventListener('nono:open-with-prompt', handler as EventListener);
-    return () => window.removeEventListener('nono:open-with-prompt', handler as EventListener);
-  }, []);
+  useAppEffects({
+    showNono,
+    isolateSessions,
+    nonoRef,
+  });
   // Atajo global de la paleta de comandos: Ctrl/Cmd+K
   // Atajo global de la paleta de comandos: Ctrl/Cmd+K
   useCommandPaletteShortcut(setIsPaletteOpen);
@@ -1510,6 +1494,5 @@ export default function App() {
     </div>
   );
 }
-
 
 
