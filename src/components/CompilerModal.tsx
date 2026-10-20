@@ -70,6 +70,7 @@ export const CompilerModal: React.FC<CompilerModalProps> = ({
         lang === 'es' ? `Listo. Presione [INICIAR COMPILACIÓN] para compilar el proyecto.` : lang === 'de' ? `Bereit. Drücke [KOMPILIERUNG STARTEN], um das Projekt zu kompilieren.` : `Ready. Press [START COMPILATION] to build the artifact.`
       ]);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, platform, architecture, lang]);
 
   if (!isOpen) return null;

@@ -66,7 +66,7 @@ export const ProblemsView: React.FC<ProblemsViewProps> = ({ projectPath, lang = 
         <span className="ml-auto text-[#00ffff]/50">{counts.total} {lang === 'es' ? 'total' : lang === 'de' ? 'gesamt' : 'total'}</span>
       </div>
     ),
-    [counts, lang === 'es']
+    [counts, lang]
   );
 
   return (

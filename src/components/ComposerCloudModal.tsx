@@ -72,6 +72,7 @@ export const ComposerCloudModal: React.FC<ComposerCloudModalProps> = ({
     if (isOpen) {
       loadProjects();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, currentUser]);
 
   if (!isOpen) return null;

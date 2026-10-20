@@ -116,6 +116,7 @@ export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
       clearTimeout(safetyTimer);
       window.removeEventListener('keydown', handleKeyDown);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onComplete]);
 
   return (

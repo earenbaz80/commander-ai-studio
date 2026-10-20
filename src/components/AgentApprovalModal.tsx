@@ -23,6 +23,7 @@ interface AgentApprovalModalProps {
 export function AgentApprovalModal({ approval, onResolve, lang = 'es' }: AgentApprovalModalProps) {
   const t = (es: string, en: string) => (lang === 'es' ? es : lang === 'de' ? deText(en) : en);
   const toolId = approval.toolId;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const input = ((approval.meta as any)?.input ?? {}) as Record<string, any>;
   const path = String(input.path ?? '');
   const isPatchTool = toolId === 'fs.write' || toolId === 'fs.edit';

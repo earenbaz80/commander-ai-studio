@@ -171,6 +171,7 @@ export const ComposerLiveSandbox: React.FC<ComposerLiveSandboxProps> = ({
   </script>
 </body>
 </html>`;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appFile, cssFile, reloadKey]);
 
   const handleRefresh = () => {
