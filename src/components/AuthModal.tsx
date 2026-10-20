@@ -67,7 +67,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, currentUs
     try {
       await signInWithGoogle();
       onClose();
-    } catch (err: any) {
+    } catch (_err: any) {
       setError('Error al iniciar sesión con Google.');
     } finally {
       setLoading(false);

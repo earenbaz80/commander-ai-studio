@@ -3,6 +3,7 @@
  * 
  * Manages: messages, mode, selectedModel, selectedProvider, parameters, promptTitle
  */
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
 import type { StudioMode, ProviderType, ParameterConfig, ChatMessage, DownloadedLocalModel, HistorySession } from '../types/studio';
 import { DEFAULT_MODEL, runDefaultModelMigration } from '../utils/defaultModel';

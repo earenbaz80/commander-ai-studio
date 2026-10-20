@@ -146,7 +146,7 @@ export const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
               setIsProcessing(false);
             }
           };
-        } catch (readErr) {
+        } catch (_readErr) {
           setIsProcessing(false);
         }
       };
@@ -168,7 +168,7 @@ export const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
 
   const stopVoice = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try { mediaRecorderRef.current.stop(); } catch (e) {}
+      try { mediaRecorderRef.current.stop(); } catch (_e) {}
     }
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());

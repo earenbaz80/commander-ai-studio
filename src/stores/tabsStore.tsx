@@ -4,6 +4,7 @@
  * Integrates with existing useTabs hook logic but as a global store
  * Manages: tabs array, active tab, project roots, tab-project associations
  */
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useReducer, useEffect, useCallback, useRef, ReactNode } from 'react';
 import type { ParameterConfig } from '../types/studio';
 import type { WorkspaceTab } from '../hooks/useTabs';

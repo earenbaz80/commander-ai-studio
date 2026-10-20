@@ -11,6 +11,7 @@
  *   • Edición inline `Cmd/Ctrl+K`: abre una barra, propone un diff y se aplica
  *     con `Cmd/Ctrl+Enter` o se rechaza con `Esc` (siempre deshacible con Cmd+Z).
  */
+/* eslint-disable react-refresh/only-export-components */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EditorState, Compartment, type Extension } from '@codemirror/state';
 import {

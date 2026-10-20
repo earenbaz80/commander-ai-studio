@@ -864,7 +864,7 @@ export default function App() {
               let data: any = null;
               try {
                 data = JSON.parse(trimmed.slice(6));
-              } catch (err) {
+              } catch (_err) {
                 // Ignore malformed chunk
                 continue;
               }
