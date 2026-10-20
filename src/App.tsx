@@ -4,6 +4,7 @@ import { resolveChatRoute } from './lib/aiRouting';
 import { formatErrorMessage } from './utils/errorFormatter';
 import { useAppExecutors } from './hooks/useAppExecutors';
 import { useAppHandlers } from './hooks/useAppHandlers';
+import { useAppModels } from './hooks/useAppModels';
 import { useAppPrompts } from './hooks/useAppPrompts';
 import { useHistoryHandlers } from './hooks/useHistoryHandlers';
 import { useCommandPaletteShortcut } from './hooks/useCommandPaletteShortcut';
@@ -86,7 +87,7 @@ import {
 import { useIdentity } from './hooks/useIdentity';
 import { OnboardingModal } from './components/OnboardingModal';
 import { setActiveProjectRoot } from './agent/activeProject';
-import type { ChatCodeSnippet } from './components/ChatLiveAppViewerModal';
+
 import { ChatLiveAppViewerModal } from './components/ChatLiveAppViewerModal';
 import { McpServerManager } from './components/McpServerManager';
 import { ExtensionsManager } from './components/ExtensionsManager';
@@ -98,7 +99,7 @@ const LazyFallback: React.FC<{ lang: Language }> = ({ lang }) => (
     {lang === 'es' ? 'CARGANDO…' : lang === 'de' ? 'LÄDT…' : 'LOADING…'}
   </div>
 );
-import { extractSnippetsFromMessages } from './utils/codeSnippetExtractor';
+
 import { resolveMentionsForPrompt } from './utils/mentionResolver';
 import { RetroBiosBoot } from './components/RetroBiosBoot';
 import { GlobalTooltip } from './components/GlobalTooltip';
@@ -110,7 +111,6 @@ import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { 
   StudioMode, 
   ChatMessage, 
-  DownloadedLocalModel,
   PromptVersion,
   HistorySession,
   RunMode
@@ -221,23 +221,14 @@ export default function App() {
   // Atajo global de la paleta de comandos: Ctrl/Cmd+K
   // Atajo global de la paleta de comandos: Ctrl/Cmd+K
   useCommandPaletteShortcut(setIsPaletteOpen);
-  const handleOpenLiveViewer = (snippets?: ChatCodeSnippet[], index: number = 0) => {
-    if (snippets && snippets.length > 0) {
-      setLiveViewerSnippets(snippets);
-      setActiveSnippetIndex(index);
-    } else {
-      const extracted = extractSnippetsFromMessages(messages);
-      setLiveViewerSnippets(extracted);
-      setActiveSnippetIndex(extracted.length > 0 ? extracted.length - 1 : 0);
-    }
-    setIsLiveViewerOpen(true);
-  };
-
-
-  // Firebase Auth user state
+  const { handleOpenLiveViewer, handleAddDownloadedModel, handleRemoveDownloadedModel } = useAppModels({
+    messages,
+    setLiveViewerSnippets,
+    setActiveSnippetIndex,
+    setIsLiveViewerOpen,
+    setDownloadedModels,
+  });
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
-  // Identidad de sesión: cuenta registrada o visitante. El modal aparece solo
-  // la primera vez (o al pulsar "cambiar usuario").
   const identity = useIdentity();
 
   /** Nombre a mostrar: cuenta registrada si la hay, si no el de invitado. */
@@ -250,16 +241,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  const handleAddDownloadedModel = (model: DownloadedLocalModel) => {
-    setDownloadedModels((prev) => {
-      if (prev.some((m) => m.hfRepoId === model.hfRepoId)) return prev;
-      return [model, ...prev];
-    });
-  };
-
-  const handleRemoveDownloadedModel = (modelId: string) => {
-    setDownloadedModels((prev) => prev.filter((m) => m.id !== modelId));
-  };
 
   // Sincronización automática de selectedProvider según el modelo elegido
   useEffect(() => {
@@ -1566,9 +1547,6 @@ export default function App() {
     </div>
   );
 }
-
-
-
 
 
 
