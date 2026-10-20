@@ -72,7 +72,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
         if (data.success) {
           setPlugins(data.plugins);
         }
-      } catch (e) {
+      } catch (_e) {
         console.error('Failed to load plugins');
       }
     };
@@ -89,7 +89,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
     try {
       const input = JSON.parse(toolInput || '{}');
       await onRunTool(toolId, input);
-    } catch (e) {
+    } catch (_e) {
       alert(lang === 'es' ? 'JSON inválido para tool input' : lang === 'de' ? 'Ungültiges JSON für die Tool-Eingabe' : 'Invalid JSON for tool input');
     }
   };

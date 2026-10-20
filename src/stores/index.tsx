@@ -1,6 +1,7 @@
 /**
  * Stores Index - Combined provider and exports
  */
+/* eslint-disable react-refresh/only-export-components */
 import { ReactNode } from 'react';
 import { ChatStoreProvider } from './chatStore';
 import { UIStoreProvider } from './uiStore';

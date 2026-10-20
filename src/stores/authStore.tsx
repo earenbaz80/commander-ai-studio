@@ -3,6 +3,7 @@
  * 
  * Manages: Firebase user, guest identity, auth modal, onboarding
  */
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';

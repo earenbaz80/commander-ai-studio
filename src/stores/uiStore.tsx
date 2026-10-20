@@ -3,6 +3,7 @@
  * 
  * Manages: modals, sidebars, theme, language, tooltips, workbench, shortcuts, etc.
  */
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
 import type { Language } from '../i18n/translations';
 import type { ChatCodeSnippet } from '../components/ChatLiveAppViewerModal';
