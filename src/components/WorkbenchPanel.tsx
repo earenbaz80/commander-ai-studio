@@ -144,8 +144,7 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
   selectedModel,
   parameters,
 }) => {
-  const es = lang === 'es';
-  const [active, setActive] = useState<WorkbenchTab>('files');
+    const [active, setActive] = useState<WorkbenchTab>('files');
   const [previewTab, setPreviewTab] = useState<'preview' | 'console' | 'network'>('preview');
   // Modo de la terminal: 'pty' (shell persistente real vía WebSocket) o
   // 'simple' (comando por comando vía shell.run, siempre disponible).
@@ -182,7 +181,7 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
   return (
     <aside
       className="w-[clamp(280px,34vw,560px)] shrink-0 h-full nc-panel border-l-2 border-[#00ffff] flex flex-col min-h-0 overflow-hidden z-20 font-mono"
-      aria-label={es ? 'Workbench' : lang === 'de' ? 'Workbench' : 'Workbench'}
+      aria-label={lang === 'es' ? 'Workbench' : lang === 'de' ? 'Workbench' : 'Workbench'}
     >
       {/* Menú de selección */}
       <div className="flex items-center gap-0.5 px-1 py-1 bg-[#00aaaa] border-b-2 border-[#000055] shrink-0">
@@ -190,7 +189,7 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
           <button
             key={tab.id}
             onClick={() => setActive(tab.id)}
-            title={es ? tab.tip : lang === 'de' ? tab.tipDe : tab.tipEn}
+            title={lang === 'es' ? tab.tip : lang === 'de' ? tab.tipDe : tab.tipEn}
             className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-bold rounded-sm border transition-colors ${
               active === tab.id
                 ? 'bg-[#000080] text-[#00ffff] border-[#00ffff]'
@@ -198,7 +197,7 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
             }`}
           >
             {tab.icon}
-            <span className="hidden sm:inline">{es ? tab.label : lang === 'de' ? tab.labelDe : tab.labelEn}</span>
+            <span className="hidden sm:inline">{lang === 'es' ? tab.label : lang === 'de' ? tab.labelDe : tab.labelEn}</span>
             {tab.id === 'problems' && problemCounts.total > 0 && (
               <span className="ml-0.5 px-1 rounded-sm bg-[#ff5555] text-black text-[9px] font-bold">
                 {problemCounts.total}
@@ -208,7 +207,7 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
         ))}
         <button
           onClick={onClose}
-          title={es ? 'Cerrar panel' : lang === 'de' ? 'Panel schließen' : 'Close panel'}
+          title={lang === 'es' ? 'Cerrar panel' : lang === 'de' ? 'Panel schließen' : 'Close panel'}
           className="ml-auto p-1 text-black hover:text-[#ff5555] rounded"
         >
           <X className="w-4 h-4" />
@@ -238,21 +237,21 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
               <button
                 onClick={() => setTerminalMode('pty')}
                 className={'px-1.5 py-0.5 text-[9px] font-bold border rounded ' + (terminalMode === 'pty' ? 'bg-[#00ffff] text-black border-[#00ffff]' : 'text-[#00ffff] border-[#004466] hover:border-[#00ffff]')}
-                title={es ? 'Shell persistente real (xterm.js + WebSocket)' : lang === 'de' ? 'Echte persistente Shell (xterm.js + WebSocket)' : 'Real persistent shell (xterm.js + WebSocket)'}
+                title={lang === 'es' ? 'Shell persistente real (xterm.js + WebSocket)' : lang === 'de' ? 'Echte persistente Shell (xterm.js + WebSocket)' : 'Real persistent shell (xterm.js + WebSocket)'}
               >
-                {es ? 'PTY' : 'PTY'}
+                {lang === 'es' ? 'PTY' : 'PTY'}
               </button>
               <button
                 onClick={() => setTerminalMode('simple')}
                 className={'px-1.5 py-0.5 text-[9px] font-bold border rounded ' + (terminalMode === 'simple' ? 'bg-[#00ffff] text-black border-[#00ffff]' : 'text-[#00ffff] border-[#004466] hover:border-[#00ffff]')}
-                title={es ? 'Comando por comando (siempre disponible)' : lang === 'de' ? 'Ein Befehl nach dem anderen (immer verfügbar)' : 'One command at a time (always available)'}
+                title={lang === 'es' ? 'Comando por comando (siempre disponible)' : lang === 'de' ? 'Ein Befehl nach dem anderen (immer verfügbar)' : 'One command at a time (always available)'}
               >
-                {es ? 'Simple' : lang === 'de' ? 'Einfach' : 'Simple'}
+                {lang === 'es' ? 'Simple' : lang === 'de' ? 'Einfach' : 'Simple'}
               </button>
             </div>
             <div className="flex-1 min-h-0 flex flex-col">
               {terminalMode === 'pty' ? (
-                <React.Suspense fallback={<div className="flex-1 flex items-center justify-center text-[#00ffff] text-[10px] font-mono">{es ? 'CARGANDO TERMINAL...' : lang === 'de' ? 'TERMINAL WIRD GELADEN...' : 'LOADING TERMINAL...'}</div>}>
+                <React.Suspense fallback={<div className="flex-1 flex items-center justify-center text-[#00ffff] text-[10px] font-mono">{lang === 'es' ? 'CARGANDO TERMINAL...' : lang === 'de' ? 'TERMINAL WIRD GELADEN...' : 'LOADING TERMINAL...'}</div>}>
                   <XTerminal projectPath={projectPath} lang={lang} />
                 </React.Suspense>
               ) : (

@@ -61,8 +61,7 @@ export const SymbolSearchModal: React.FC<SymbolSearchModalProps> = ({
   projectPath,
   lang = 'es',
 }) => {
-  const es = lang === 'es';
-  const [query, setQuery] = useState('');
+    const [query, setQuery] = useState('');
   const [items, setItems] = useState<LSPWorkspaceSymbol[]>([]);
   const [active, setActive] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -154,16 +153,16 @@ export const SymbolSearchModal: React.FC<SymbolSearchModalProps> = ({
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder={
-              es ? 'Ir a símbolo del workspace…' : lang === 'de' ? 'Zu Symbol im Workspace springen…' : 'Go to symbol in workspace…'
+              lang === 'es' ? 'Ir a símbolo del workspace…' : lang === 'de' ? 'Zu Symbol im Workspace springen…' : 'Go to symbol in workspace…'
             }
-            aria-label={es ? 'Buscar símbolo en el workspace' : lang === 'de' ? 'Workspace-Symbol suchen' : 'Search workspace symbol'}
+            aria-label={lang === 'es' ? 'Buscar símbolo en el workspace' : lang === 'de' ? 'Workspace-Symbol suchen' : 'Search workspace symbol'}
             className="flex-1 bg-transparent text-white placeholder-gray-400 outline-none text-sm font-mono"
           />
           {loading && <span className="text-[#ffff55] text-[10px] shrink-0">…</span>}
           <button
             type="button"
             onClick={onClose}
-            aria-label={es ? 'Cerrar búsqueda' : lang === 'de' ? 'Suche schließen' : 'Close search'}
+            aria-label={lang === 'es' ? 'Cerrar búsqueda' : lang === 'de' ? 'Suche schließen' : 'Close search'}
             className="text-gray-300 hover:text-white shrink-0"
           >
             <X className="w-4 h-4" />
@@ -175,13 +174,11 @@ export const SymbolSearchModal: React.FC<SymbolSearchModalProps> = ({
           {items.length === 0 && (
             <div className="px-3 py-4 text-center text-gray-400 text-xs font-mono">
               {loading
-                ? es
-                  ? 'Buscando…'
+                ? lang === 'es' ? 'Buscando…'
                   : lang === 'de'
                     ? 'Suche läuft…'
                     : 'Searching…'
-                : es
-                  ? 'Sin símbolos'
+                : lang === 'es' ? 'Sin símbolos'
                   : lang === 'de'
                     ? 'Keine Symbole'
                     : 'No symbols'}
@@ -223,8 +220,8 @@ export const SymbolSearchModal: React.FC<SymbolSearchModalProps> = ({
         {/* Pie */}
         <div className="flex items-center justify-between px-3 py-1.5 border-t-2 border-[#000055] bg-[#0000aa] text-[10px] font-mono text-gray-300">
           <span>
-            ↑↓ {es ? 'navegar' : lang === 'de' ? 'navigieren' : 'navigate'} · ↵ {es ? 'abrir' : lang === 'de' ? 'öffnen' : 'open'} · Esc{' '}
-            {es ? 'cerrar' : lang === 'de' ? 'schließen' : 'close'}
+            ↑↓ {lang === 'es' ? 'navegar' : lang === 'de' ? 'navigieren' : 'navigate'} · ↵ {lang === 'es' ? 'abrir' : lang === 'de' ? 'öffnen' : 'open'} · Esc{' '}
+            {lang === 'es' ? 'cerrar' : lang === 'de' ? 'schließen' : 'close'}
           </span>
           <span className="flex items-center gap-1 text-[#00ffff]">
             <CornerDownLeft className="w-3 h-3" /> Ctrl+P
