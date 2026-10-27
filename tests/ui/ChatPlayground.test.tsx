@@ -16,7 +16,7 @@ const baseProps = () => ({
   messages: [] as ChatMessage[],
   setMessages: vi.fn(),
   parameters: { ...DEFAULT_PARAMETERS },
-  selectedModel: 'gemini-2.5-flash',
+  selectedModel: 'gemini-3.5-flash',
   setSelectedModel: vi.fn(),
   isGenerating: false,
   onSendMessage: vi.fn(),
@@ -36,7 +36,7 @@ const modelMessage = (content = 'Respuesta del modelo'): ChatMessage => ({
   role: 'model',
   content,
   timestamp: '10:01',
-  modelUsed: 'gemini-2.5-flash',
+  modelUsed: 'gemini-3.5-flash',
 });
 
 const getTextarea = () => screen.getByPlaceholderText('Escribe tu mensaje...') as HTMLTextAreaElement;
@@ -133,7 +133,7 @@ describe('ChatPlayground', () => {
 
     test('muestra el modelo usado', () => {
       render(<ChatPlayground {...baseProps()} messages={[modelMessage()]} />);
-      expect(screen.getByText('gemini-2.5-flash')).toBeInTheDocument();
+      expect(screen.getByText('gemini-3.5-flash')).toBeInTheDocument();
     });
   });
 
@@ -232,7 +232,7 @@ describe('ChatPlayground', () => {
     test('muestra el modelo actual seleccionado', () => {
       render(<ChatPlayground {...baseProps()} />);
       const selector = screen.getByLabelText('Modelo que se usará para responder') as HTMLSelectElement;
-      expect(selector.value).toBe('gemini-2.5-flash');
+      expect(selector.value).toBe('gemini-3.5-flash');
     });
 
     test('el icono de ayuda va antes del botón de adjuntar', () => {
@@ -288,7 +288,7 @@ describe('ChatPlayground', () => {
 
     test('cada opción muestra el nombre del modelo (con su badge)', () => {
       render(<ChatPlayground {...baseProps()} />);
-      expect(screen.getByRole('option', { name: 'Gemini 2.5 Flash · Estable' })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Gemini 3.5 Flash · Flash 2026' })).toBeInTheDocument();
     });
   });
 
