@@ -30,6 +30,7 @@ export const AGENT_TOOLS = new Set([
   'task',
   'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list',
   'git.status', 'git.diff', 'git.log', 'git.commit',
+  'git.worktree', 'git.rebase', 'git.conflict',
 ]);
 
 /**

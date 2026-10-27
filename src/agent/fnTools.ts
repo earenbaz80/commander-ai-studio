@@ -72,6 +72,49 @@ export const AGENT_FUNCTION_DECLARATIONS = [
     parameters: { type: 'OBJECT', properties: { message: { type: 'STRING' } }, required: ['message'] },
   },
   {
+    name: 'git_worktree',
+    description: 'Gestionar worktrees del workspace. list es de solo lectura; add/remove piden aprobación y la ruta debe quedar dentro del proyecto.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', enum: ['list', 'add', 'remove'], description: 'Acción a ejecutar' },
+        path: { type: 'STRING', description: 'Ruta relativa al workspace (requerida para add/remove)' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'git_rebase',
+    description: 'Iniciar, continuar o abortar un rebase. Requiere aprobación.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', enum: ['start', 'continue', 'abort'], description: 'Acción a ejecutar' },
+        branch: { type: 'STRING', description: 'Rama a rebasar (sólo en start)' },
+        base: { type: 'STRING', description: 'Rama base del rebase (por defecto main)' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'git_conflict',
+    description: 'Conflictos de git. Sin argumentos devuelve el primer bloque con las dos versiones (ours/theirs) sin escribir nada; con all solo consulta el estado del merge (archivos, bloques, si están listos). Con resolve (ours|theirs) reescribe el/los archivo(s) aplicando esa versión; con stage marca con git add los que ya no tienen marcas para cerrar el merge; con commit completa la fusión con el commit de merge (solo con lo ya preparado); con abort deshace el merge en curso restaurando el árbol. Modificar requiere aprobación.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        output: { type: 'STRING', description: 'Salida de git merge/diff con marcas de conflicto (para inspeccionar un archivo)' },
+        path: { type: 'STRING', description: 'Ruta relativa del archivo en conflicto (si la salida no la indica)' },
+        all: { type: 'BOOLEAN', description: 'Trabajar sobre el merge en curso (sin resolve, stage, commit ni abort: solo consulta)' },
+        resolve: { type: 'STRING', enum: ['ours', 'theirs'], description: 'Aplicar esta versión y escribir el archivo' },
+        stage: { type: 'BOOLEAN', description: 'Con all: git add de los archivos que ya no tienen marcas de conflicto' },
+        commit: { type: 'BOOLEAN', description: 'Con all: completar el merge con git commit --no-edit (o -m si hay message)' },
+        message: { type: 'STRING', description: 'Mensaje del commit de merge (opcional; por defecto el de git)' },
+        abort: { type: 'BOOLEAN', description: 'Con all: git merge --abort para deshacer el merge en curso' },
+      },
+      // Sin campos obligatorios: `output` sobra con all, y resolve sobra al consultar.
+    },
+  },
+  {
     name: 'web_fetch',
     description: 'Descargar URL como texto.',
     parameters: { type: 'OBJECT', properties: { url: { type: 'STRING' } }, required: ['url'] },

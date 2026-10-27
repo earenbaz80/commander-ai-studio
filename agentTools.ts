@@ -21,6 +21,36 @@ const SKIP_DIRS = new Set([
 ]);
 
 /**
+ * Marcas de conflicto de git, una por bloque:
+ *   <<<<<<< ours
+ *   ||||||| base   (sólo con merge.conflictStyle=diff3)
+ *   =======
+ *   >>>>>>> theirs
+ * Grupos: 1 = ours, 2 = base (opcional), 3 = theirs.
+ */
+function conflictBlockPattern(): RegExp {
+  return /^<<<<<<< [^\n]*\r?\n([\s\S]*?)(?:^\|\|\|\|\|\|\| [^\n]*\r?\n([\s\S]*?))?^======= *\r?\n([\s\S]*?)^>>>>>>> [^\n]*\r?\n?/gm;
+}
+
+/**
+ * Ruta del archivo en conflicto según la salida de `git merge` / `git status`.
+ * Devuelve '' si la salida no la nombra (p. ej. marcas pegadas a mano).
+ */
+function detectConflictPath(output: string): string {
+  const patterns = [
+    /Merge conflict in (\S+)\s*$/m,
+    /^\s*both modified:\s+(\S+)\s*$/m,
+    /^CONFLICT \([^)]*\):\s+(\S+?)\s+(?:deleted|modified|renamed|added)\b/m,
+    /^CONFLICT \([^)]*\):.*?\bin (\S+)\s*$/m,
+  ];
+  for (const re of patterns) {
+    const m = output.match(re);
+    if (m) return m[1];
+  }
+  return '';
+}
+
+/**
  * Resuelve una ruta dentro de los proyectos permitidos.
  * Ya no estamos atados a process.cwd(): el agente puede trabajar en cualquier
  * root registrado, pero nunca fuera de ellos.
@@ -493,26 +523,28 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
   }
 
   if (toolId === 'git.status' || toolId === 'git.diff' || toolId === 'git.log' || toolId === 'git.commit') {
-    const { execSync } = await import('child_process');
+    const { execFileSync } = await import('child_process');
     const cwd = rootHint ? resolveProjectPath('.', rootHint).abs : AGENT_ROOT;
-    const run = (cmd: string) => execSync(cmd, { cwd, encoding: 'utf8', timeout: 15000, maxBuffer: 1024 * 1024 });
+    // execFile (sin shell): la ruta y el mensaje viajan como argv y no se
+    // reinterpretan, así que comillas, `;`, `&` o `$()` no encadenan comandos.
+    const run = (args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 15000, maxBuffer: 1024 * 1024 });
     try {
       if (toolId === 'git.status') {
-        return { ok: true, data: { output: String(run('git status --short --branch')).slice(0, 10000) } };
+        return { ok: true, data: { output: String(run(['status', '--short', '--branch'])).slice(0, 10000) } };
       }
       if (toolId === 'git.log') {
         const n = Math.min(Math.max(Number(input.limit) || 20, 1), 50);
-        return { ok: true, data: { output: String(run(`git log --oneline -${n}`)).slice(0, 10000) } };
+        return { ok: true, data: { output: String(run(['log', '--oneline', '-n', String(n)])).slice(0, 10000) } };
       }
       if (toolId === 'git.diff') {
-        const p = input.path ? String(input.path).slice(0, 500).replace(/"/g, '') : '';
-        const out = String(run(p ? `git diff -- "${p}"` : 'git diff --stat')).slice(0, 20000);
+        const p = input.path ? String(input.path).slice(0, 500) : '';
+        const out = String(run(p ? ['diff', '--', p] : ['diff', '--stat'])).slice(0, 20000);
         return { ok: true, data: { output: out } };
       }
       const message = sanitizeGitMessage(input.message);
       if (!message) return { ok: false, error: 'message requerido para commit' };
-      run('git add -A');
-      const out = String(run(`git commit -m "${message}"`)).slice(0, 5000);
+      run(['add', '-A']);
+      const out = String(run(['commit', '-m', message])).slice(0, 5000);
       return { ok: true, data: { output: out } };
     } catch (e: any) {
       return { ok: false, error: String(e.message || e).slice(0, 2000) };
@@ -520,37 +552,78 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
   }
 
   if (toolId === 'git.worktree' || toolId === 'git.rebase' || toolId === 'git.conflict') {
-    const { execSync } = await import('child_process');
+    const { execFileSync } = await import('child_process');
     const cwd = rootHint ? resolveProjectPath('.', rootHint).abs : AGENT_ROOT;
-    const run = (cmd: string) => execSync(cmd, { cwd, encoding: 'utf8', timeout: 15000, maxBuffer: 1024 * 1024 });
+    // execFile (sin shell): las rutas y ramas viajan como argv, así que un `;`
+    // o un `&` dentro del valor no puede encadenar comandos.
+    const run = (args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 15000, maxBuffer: 1024 * 1024 });
+    // Un valor que empieza por '-' se interpretaría como opción de git.
+    const arg = (value: unknown, what: string): string => {
+      const s = String(value || '').trim();
+      if (!s) throw new Error(`${what} requerido`);
+      if (s.startsWith('-')) throw new Error(`${what} inválido: no puede empezar por '-'`);
+      return s;
+    };
+    // Un worktree tiene que vivir dentro del root: `../x` o una ruta absoluta
+    // crearían directorios fuera del proyecto (mismo límite que fs.write).
+    const insideRoot = (value: unknown, what: string): { raw: string; abs: string } => {
+      const raw = arg(value, what);
+      const abs = path.resolve(cwd, raw);
+      const rel = path.relative(cwd, abs);
+      if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+        throw new Error(`${what} fuera del proyecto: ${raw}`);
+      }
+      // Un directorio intermedio con symlink podría apuntar fuera del root.
+      try {
+        const realParent = fs.realpathSync(path.dirname(abs));
+        const relParent = path.relative(fs.realpathSync(cwd), realParent);
+        if (relParent.startsWith('..') || path.isAbsolute(relParent)) {
+          throw new Error(`${what} fuera del proyecto (symlink): ${raw}`);
+        }
+      } catch (e: any) {
+        if (/fuera del proyecto/.test(String(e?.message))) throw e;
+        // El padre todavía no existe: git lo creará dentro del root.
+      }
+      return { raw, abs };
+    };
     try {
       if (toolId === 'git.worktree') {
         const action = String(input.action || '').trim().toLowerCase();
         if (action === 'list') {
-          const w = String(execSync('git worktree list --porcelain', { cwd, encoding: 'utf8', timeout: 15000, maxBuffer: 1024 * 1024 }));
-          const lines = w.split('\n').filter(l => l.trim());
-          const worktrees = lines.map(line => {
-            const parts = line.split(' ');
-            return { path: parts[0], branch: parts.slice(1).join(' ') || '(HEAD)' };
-          });
+          // La salida porcelain es un bloque por worktree, no una línea:
+          //   worktree <ruta> / HEAD <sha> / branch refs/heads/<rama>
+          const w = String(run(['worktree', 'list', '--porcelain']));
+          const worktrees = w.split(/\r?\n\r?\n/)
+            .map(b => b.trim())
+            .filter(Boolean)
+            .map(block => {
+              const lines = block.split(/\r?\n/);
+              const field = (key: string) => {
+                const line = lines.find(l => l.startsWith(`${key} `));
+                return line ? line.slice(key.length + 1).trim() : '';
+              };
+              const branch = field('branch');
+              return {
+                path: field('worktree'),
+                branch: branch ? branch.replace(/^refs\/heads\//, '') : '(detached)',
+                head: field('HEAD').slice(0, 7),
+              };
+            });
           return { ok: true, data: { worktrees } };
         }
         if (action === 'add') {
-          const newWt = String(input.path || '').trim();
-          if (!newWt) return { ok: false, error: 'path requerido para worktree add' };
-          // Verificar que la ruta no existe ya
-          if (fs.existsSync(path.join(cwd, newWt))) return { ok: false, error: 'Path already exists' };
-          run(`git worktree add "${newWt}"`);
-          return { ok: true, data: { path: newWt, created: true } };
+          const { raw, abs } = insideRoot(input.path, 'path');
+          if (fs.existsSync(abs)) return { ok: false, error: 'Path already exists' };
+          run(['worktree', 'add', raw]);
+          return { ok: true, data: { path: raw, created: true } };
         }
         if (action === 'remove') {
-          const wtPath = String(input.path || '').trim();
-          if (!wtPath) return { ok: false, error: 'path requerido para worktree remove' };
-          // No permitir remover el worktree activo
-          const currentWt = execSync('git rev-parse --abbrev-ref HEAD', { cwd, encoding: 'utf8', timeout: 5000, maxBuffer: 1024 });
-          if (wtPath.trim() === currentWt) return { ok: false, error: 'No se puede remover el worktree activo' };
-          run(`git worktree remove "${wtPath}"`);
-          return { ok: true, data: { path: wtPath, removed: true } };
+          const { raw, abs } = insideRoot(input.path, 'path');
+          // No permitir remover el worktree activo (antes se comparaba una ruta
+          // contra el nombre de la rama, así que nunca coincidía).
+          if (abs === fs.realpathSync(cwd)) return { ok: false, error: 'No se puede remover el worktree activo' };
+          run(['worktree', 'remove', raw]);
+          return { ok: true, data: { path: raw, removed: true } };
         }
         return { ok: false, error: `action desconocido: ${action}` };
       }
@@ -558,51 +631,245 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
       if (toolId === 'git.rebase') {
         const action = String(input.action || '').trim().toLowerCase();
         if (action === 'start') {
-          const branch = String(input.branch || '').trim();
-          if (!branch) return { ok: false, error: 'branch requerido para rebase start' };
+          const branch = arg(input.branch, 'branch');
           // Verificar que la branch existe localmente
           try {
-            execSync(`git show-ref --verify -- quiet refs/heads/${branch}`, { cwd, encoding: 'utf8', timeout: 5000, maxBuffer: 1024 });
+            run(['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]);
           } catch {
             return { ok: false, error: `Branch '${branch}' no existe localmente` };
           }
           // Hacer checkout a la branch base si no estamos en ella
-          if (execSync('git rev-parse --abbrev-ref HEAD', { cwd, encoding: 'utf8', timeout: 5000, maxBuffer: 1024 }) !== branch) {
-            run(`git checkout "${branch}"`);
+          if (String(run(['rev-parse', '--abbrev-ref', 'HEAD'])).trim() !== branch) {
+            run(['checkout', branch]);
           }
-          // Iniciar rebase interactivo sobre main (o la branch por defecto)
-          const base = String(input.base || 'main').trim();
-          run(`git rebase "${base}"`);
+          // Iniciar rebase sobre main (o la branch por defecto)
+          const base = arg(input.base || 'main', 'base');
+          run(['rebase', base]);
           return { ok: true, data: { started: true, branch, base } };
         }
         if (action === 'continue') {
-          run('git rebase --continue');
+          run(['rebase', '--continue']);
           return { ok: true, data: { continued: true } };
         }
         if (action === 'abort') {
-          run('git rebase --abort');
+          run(['rebase', '--abort']);
           return { ok: true, data: { aborted: true } };
         }
         return { ok: false, error: `action desconocido: ${action}` };
       }
 
       if (toolId === 'git.conflict') {
+        const side = String(input?.resolve || '').trim().toLowerCase();
+        if (side && side !== 'ours' && side !== 'theirs') {
+          return { ok: false, error: `resolve inválido: ${side} (ours|theirs)` };
+        }
+        const modo = perms.mode === 'plan' ? 'Plan' : 'Sólo lectura';
+
+        // `all`: resuelve de una vez todos los archivos no fusionados del merge
+        // en curso, sin necesidad de pegar la salida de `git merge`.
+        if (input?.all) {
+          const stage = !!input?.stage;
+          const commit = !!input?.commit;
+          const abort = !!input?.abort;
+          const unmerged = String(run(['diff', '--name-only', '--diff-filter=U', '-z']))
+            .split('\0')
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const mergeHead = String(run(['rev-parse', '--git-path', 'MERGE_HEAD'])).trim();
+          const inMerge = !!mergeHead && fs.existsSync(path.resolve(cwd, mergeHead));
+
+          // Sin `resolve`, `stage`, `commit` ni `abort` es una consulta: el panel
+          // la usa al abrirse para no obligar a pegar la salida de `git merge`.
+          if (!side && !stage && !commit && !abort) {
+            const files = unmerged.map((rel) => {
+              try {
+                const content = fs.readFileSync(path.resolve(cwd, rel), 'utf8');
+                const conflicts = (content.match(conflictBlockPattern()) || []).length;
+                return { path: rel, conflicts, ready: conflicts === 0 };
+              } catch {
+                return { path: rel, conflicts: -1, ready: false };
+              }
+            });
+            return { ok: true, data: { conflictId: uid('conflict'), inMerge, files, total: files.length } };
+          }
+
+          if (perms.mode !== 'build') {
+            return { ok: false, error: `Modo ${modo}: no se puede modificar el merge.`, status: 403 };
+          }
+
+          // `abort`: deshacer el merge en curso y dejar el árbol como estaba antes
+          // de intentarlo. Va antes que el resto porque también aplica sin archivos
+          // pendientes (un `git merge --no-commit` sin conflictos).
+          if (abort) {
+            if (!inMerge) return { ok: false, error: 'No hay merge en curso: MERGE_HEAD no existe' };
+            try {
+              run(['merge', '--abort']);
+            } catch (e: any) {
+              // git se niega si hay cambios locales que pisaría: no se fuerza.
+              return { ok: false, error: `No se pudo abortar el merge: ${String(e?.stderr || e?.message || e).trim().slice(0, 500)}` };
+            }
+            // `discarded` es la lista de archivos que estaban en conflicto y
+            // quedaron descartados; se nombra distinto de `files` porque no es
+            // el mismo tipo que la lista de resoluciones.
+            return { ok: true, data: { conflictId: uid('conflict'), aborted: true, discarded: unmerged } };
+          }
+
+          // `commit` sí tiene sentido sin archivos pendientes: es justo el estado
+          // que queda tras `stage`, con el índice listo y MERGE_HEAD vivo.
+          if (!unmerged.length && !commit) return { ok: false, error: 'No hay archivos en conflicto' };
+
+          const files: Array<{ path: string; resolved: number }> = [];
+          const skipped: Array<{ path: string; error: string }> = [];
+          if (side) {
+            for (const rel of unmerged) {
+              const pathErr = enforcePath(perms, rel, 'write');
+              if (pathErr) {
+                skipped.push({ path: rel, error: pathErr });
+                continue;
+              }
+              try {
+                const { abs } = insideRoot(rel, 'path');
+                const before = fs.readFileSync(abs, 'utf8');
+                let n = 0;
+                const after = before.replace(conflictBlockPattern(), (_all, ours, _base, theirs) => {
+                  n++;
+                  return side === 'ours' ? ours : theirs;
+                });
+                if (n === 0) {
+                  skipped.push({ path: rel, error: 'sin marcas de conflicto' });
+                  continue;
+                }
+                fs.writeFileSync(abs, after, 'utf8');
+                files.push({ path: rel, resolved: n });
+              } catch (e: any) {
+                skipped.push({ path: rel, error: String(e?.message || e).slice(0, 500) });
+              }
+            }
+          }
+
+          // `stage`: cerrar el merge con `git add`, pero sólo con archivos que ya
+          // no tengan marcas. Marcar como resuelto un archivo con marcas deja el
+          // conflicto dentro del commit.
+          const staged: string[] = [];
+          const unstaged: Array<{ path: string; error: string }> = [];
+          if (stage) {
+            for (const rel of unmerged) {
+              const pathErr = enforcePath(perms, rel, 'write');
+              if (pathErr) {
+                unstaged.push({ path: rel, error: pathErr });
+                continue;
+              }
+              try {
+                const { abs } = insideRoot(rel, 'path');
+                if (conflictBlockPattern().test(fs.readFileSync(abs, 'utf8'))) {
+                  unstaged.push({ path: rel, error: 'aún tiene marcas de conflicto' });
+                  continue;
+                }
+                staged.push(rel);
+              } catch (e: any) {
+                unstaged.push({ path: rel, error: String(e?.message || e).slice(0, 500) });
+              }
+            }
+            if (staged.length) run(['add', '--', ...staged]);
+          }
+
+          // `commit`: completar el merge con el commit de fusión. A diferencia de
+          // `git.commit` no hace `git add -A`: sólo entra lo que ya estaba
+          // preparado, para no arrastrar cambios ajenos al merge.
+          if (commit) {
+            if (!inMerge) return { ok: false, error: 'No hay merge en curso: MERGE_HEAD no existe' };
+            // Releer el índice tras un posible `stage`: la lista de arriba es previa.
+            const still = String(run(['diff', '--name-only', '--diff-filter=U', '-z']))
+              .split('\0')
+              .map((s) => s.trim())
+              .filter(Boolean);
+            if (still.length) {
+              return {
+                ok: false,
+                error: `Faltan ${still.length} archivo(s) por preparar: ${still.slice(0, 5).join(', ')}; usa stage para cerrarlos`,
+              };
+            }
+            const msg = input?.message ? sanitizeGitMessage(input.message) : '';
+            // Sin mensaje, `--no-edit` reutiliza el MERGE_MSG que preparó git.
+            const out = String(run(msg ? ['commit', '-m', msg] : ['commit', '--no-edit'])).slice(0, 2000);
+            const hash = String(run(['rev-parse', '--short', 'HEAD'])).trim();
+            return {
+              ok: true,
+              data: { conflictId: uid('conflict'), committed: true, hash, files, skipped, staged, unstaged, output: out },
+            };
+          }
+
+          // Nada resuelto ni preparado es un fallo, no un éxito vacío. El caso
+          // más común es reintentar tras resolver sin pedir `stage`.
+          if (!files.length && !staged.length) {
+            if (!stage && skipped.length && skipped.every((s) => s.error === 'sin marcas de conflicto')) {
+              return {
+                ok: false,
+                error: `${skipped.length} archivo(s) sin marcas de conflicto: ya están resueltos, falta \`git add\` para cerrar el merge`,
+              };
+            }
+            const detail = [...skipped, ...unstaged].map((s) => `${s.path}: ${s.error}`).join('; ');
+            return { ok: false, error: `No se pudo modificar el merge${detail ? `: ${detail}` : ''}`.slice(0, 2000) };
+          }
+          return {
+            ok: true,
+            data: { conflictId: uid('conflict'), side: side || undefined, files, skipped, staged, unstaged, count: files.length },
+          };
+        }
+
         const output = String(input?.output || '');
         if (!output) return { ok: false, error: 'Sin output de git diff/merge' };
-        // Buscar el primer bloque de conflicto: ^<<<<<<<, ^=======, ^>>>>>>>>
-        const re = /^<<<<<<< [^\n]+\n(.+?)\n======+\n(.+?)\n>>>>>>>/ms;
-        const m = output.match(re);
-        if (!m) return { ok: false, error: 'No hay bloque de conflicto detectable' };
-        const ours = m[1].trim();
-        const theirs = m[2].trim();
-        return {
-          ok: true,
-          data: {
-            conflictId: uid('conflict'),
-            ours,
-            theirs,
-          },
-        };
+
+        // Sin `resolve` sólo se inspecciona el primer bloque (no escribe nada).
+        if (!side) {
+          const re = /^<<<<<<< [^\n]+\n(.+?)\n======+\n(.+?)\n>>>>>>>/ms;
+          const m = output.match(re);
+          if (!m) return { ok: false, error: 'No hay bloque de conflicto detectable' };
+          return {
+            ok: true,
+            data: {
+              conflictId: uid('conflict'),
+              ours: m[1].trim(),
+              theirs: m[2].trim(),
+              path: detectConflictPath(output),
+            },
+          };
+        }
+
+        // La ruta sale del campo `path` o de la salida de merge. Un archivo
+        // pegado a mano no la lleva, así que ahí el campo es obligatorio.
+        const target = String(input?.path || '').trim() || detectConflictPath(output);
+        if (!target) {
+          return { ok: false, error: 'path requerido para resolver: la salida no indica el archivo' };
+        }
+        // Resolver escribe el archivo: respeta el mismo límite que fs.write
+        // (modo build + globs de `files.write`), no sólo el de la tool.
+        if (perms.mode !== 'build') {
+          return { ok: false, error: `Modo ${modo}: no se puede escribir ${target}.`, status: 403 };
+        }
+        const pathErr = enforcePath(perms, target, 'write');
+        if (pathErr) return { ok: false, error: pathErr, status: 403 };
+        const { abs } = insideRoot(target, 'path');
+        let stat: fs.Stats;
+        try {
+          stat = fs.statSync(abs);
+        } catch {
+          return { ok: false, error: `Archivo no encontrado: ${target}` };
+        }
+        if (!stat.isFile()) return { ok: false, error: `No es un archivo: ${target}` };
+
+        const before = fs.readFileSync(abs, 'utf8');
+        let resolved = 0;
+        const after = before.replace(conflictBlockPattern(), (_all, ours, _base, theirs) => {
+          resolved++;
+          return side === 'ours' ? ours : theirs;
+        });
+        if (resolved === 0) return { ok: false, error: `No hay marcas de conflicto en ${target}` };
+
+        fs.writeFileSync(abs, after, 'utf8');
+        // No se hace `git add`: dejar el archivo sin stagear es reversible con
+        // un checkout, mientras que marcarlo resuelto en el índice no lo es.
+        return { ok: true, data: { conflictId: uid('conflict'), path: target, side, resolved } };
       }
       return { ok: false, error: 'Tool no implementada en este bloque' };
     } catch (e: any) {

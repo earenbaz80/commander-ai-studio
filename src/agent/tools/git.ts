@@ -1,6 +1,5 @@
 import type { ToolDefinition } from '../types';
 import { withActiveRoot } from '../activeProject';
-import { uid } from '../id';
 
 async function callServer(toolId: string, input: any): Promise<any> {
   const res = await fetch('/api/agent/run-tool', {
@@ -52,7 +51,8 @@ export const gitWorktreeTool: ToolDefinition<any, any> = {
   id: 'git.worktree',
   description: 'Gestionar worktrees (list/add/remove) del workspace.',
   danger: false,
-  requiresApproval: () => false,
+  // list es de solo lectura; add/remove crean o borran directorios.
+  requiresApproval: (input: any) => String(input?.action || '').trim().toLowerCase() !== 'list',
   run: async (input) => {
     const action = String(input.action || '').trim().toLowerCase();
     if (!action) return { ok: false, error: 'action requerido (list/add/remove)' };
@@ -72,30 +72,61 @@ export const gitRebaseTool: ToolDefinition<any, any> = {
   },
 };
 
-/** Muestra inline de conflictos (primer bloque @@). Devuelve la línea
- * conflictiva y las dos opciones (theirs/ours) para que el agente las
- * evalúe y proponga una resolución. */
+/** Conflictos git. Sin `resolve` es sólo inspección: devuelve el primer
+ * bloque con las dos versiones (ours/theirs) y la ruta detectada. Con
+ * `resolve: 'ours' | 'theirs'` aplica esa versión a todos los bloques del
+ * archivo (`path`, o la ruta que indique la salida de merge) y lo deja sin
+ * stagear. `all` trabaja sobre todo el merge: sin `resolve`/`stage`/`commit`/
+ * `abort` consulta el estado, `stage` cierra con `git add`, `commit` completa
+ * la fusión y `abort` la deshace restaurando el árbol. Modificar requiere
+ * aprobación.
+ *
+ * Delega en el servidor: la versión anterior duplicaba el parseo aquí,
+ * descartaba `theirs` y además ignoraba `resolve` sin avisar. */
 export const gitConflictTool: ToolDefinition<any, any> = {
   id: 'git.conflict',
-  description: 'Mostrar primer bloque de conflicto git y opciones de resolución.',
-  danger: false,
-  requiresApproval: () => false,
+  description: 'Estado del merge, inspeccionar un conflicto (ours/theirs), resolver uno o todos (all), cerrarlo con git add (stage), completarlo con el commit de merge (commit) o abortarlo (abort).',
+  danger: true,
+  requiresApproval: (input: any) => {
+    const side = String(input?.resolve || '').trim().toLowerCase();
+    // Resolver escribe siempre; `stage`, `commit` y `abort` modifican índice,
+    // historial o árbol (sólo aplican con `all`).
+    return side === 'ours' || side === 'theirs'
+      || (!!input?.all && (!!input?.stage || !!input?.commit || !!input?.abort));
+  },
   run: async (input) => {
+    const side = String(input?.resolve || '').trim().toLowerCase();
+    if (input?.all) {
+      // Sin resolve, stage, commit ni abort es una consulta de estado: el panel
+      // la usa al abrirse.
+      return callServer('git.conflict', {
+        all: true,
+        ...(side ? { resolve: side } : {}),
+        ...(input?.stage ? { stage: true } : {}),
+        ...(input?.commit ? { commit: true } : {}),
+        ...(input?.abort ? { abort: true } : {}),
+        ...(input?.message ? { message: String(input.message) } : {}),
+      });
+    }
     const output = String(input?.output || '');
     if (!output) return { ok: false, error: 'Sin output de git diff/merge' };
-    // Buscar el primer bloque de conflicto: ^<<<<<<<, ^=======, ^>>>>>>>>
-    const re = /^<<<<<<< [^\n]+\n(.+?)\n======+\n(.+?)\n>>>>>>>/ms;
-    const m = output.match(re);
-    if (!m) return { ok: false, error: 'No hay bloque de conflicto detectable' };
-    const ours = m[1].trim(); // lo que tenemos local
-    // Elours = m[2].trim(); // lo entrante (opcional)
-    return {
-      ok: true,
-      data: {
-        conflictId: uid('conflict'),
-        ours,
-        // ours es el contenido local; el otro lado se extrae del output completo si es necesario
-      },
-    };
+    if (side === 'ours' || side === 'theirs') {
+      return callServer('git.conflict', { output, resolve: side, path: input?.path });
+    }
+    return callServer('git.conflict', { output });
   },
 };
+
+/**
+ * Estado del merge en curso (sólo lectura). Va directo al servidor en vez de
+ * pasar por el orquestador: consultar al abrir el panel no debe crear pasos
+ * en la línea de tiempo del agente ni pedir aprobación.
+ */
+export async function gitConflictState(): Promise<any> {
+  try {
+    return await callServer('git.conflict', { all: true });
+  } catch (e: any) {
+    // Sin servidor no hay estado: el panel simplemente no lo muestra.
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
