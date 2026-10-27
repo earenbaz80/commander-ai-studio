@@ -5,7 +5,15 @@ import { readDiagnosticsTool } from './tools/diagnostics';
 import { taskTool } from './tools/task';
 import { webFetchTool, webSearchTool, codeRunTool } from './tools/web';
 import { mcpCallToolDef, mcpListToolDef } from './tools/mcp';
-import { gitStatusTool, gitDiffTool, gitLogTool, gitCommitTool } from './tools/git';
+import {
+  gitStatusTool,
+  gitDiffTool,
+  gitLogTool,
+  gitCommitTool,
+  gitWorktreeTool,
+  gitRebaseTool,
+  gitConflictTool,
+} from './tools/git';
 
 export const TOOL_REGISTRY: Record<string, ToolDefinition<any, any>> = {
   [fsReadTool.id]: fsReadTool,
@@ -25,6 +33,9 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition<any, any>> = {
   [gitDiffTool.id]: gitDiffTool,
   [gitLogTool.id]: gitLogTool,
   [gitCommitTool.id]: gitCommitTool,
+  [gitWorktreeTool.id]: gitWorktreeTool,
+  [gitRebaseTool.id]: gitRebaseTool,
+  [gitConflictTool.id]: gitConflictTool,
 };
 
 export function getTool(id: string): ToolDefinition<any, any> | undefined {

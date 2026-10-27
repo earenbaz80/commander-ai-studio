@@ -16,6 +16,14 @@ import {
 
 const MUTATING_TOOLS = new Set(['fs.write', 'fs.edit', 'git.commit', 'git.checkout', 'git.merge']);
 
+/** git.conflict sólo modifica algo al resolver (resolve), cerrar el merge
+ * (stage), completarlo (commit) o deshacerlo (abort). Consultar no toca nada. */
+function isMutatingCall(toolId: string, input: unknown): boolean {
+  if (MUTATING_TOOLS.has(toolId)) return true;
+  const call = input as any;
+  return toolId === 'git.conflict' && !!(call?.resolve || call?.stage || call?.commit || call?.abort);
+}
+
 export class AgentOrchestrator {
   private state: AgentState;
   private opts: OrchestratorOptions;
@@ -107,7 +115,7 @@ export class AgentOrchestrator {
   }
 
   async runTool(toolId: string, input: unknown): Promise<any> {
-    if (MUTATING_TOOLS.has(toolId)) {
+    if (isMutatingCall(toolId, input)) {
       await this.ensureRunCheckpoint();
     }
     const tool = getTool(toolId);
