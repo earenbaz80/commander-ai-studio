@@ -3,6 +3,7 @@ import type { AgentOrchestrator } from './orchestrator';
 import type { AgentTask } from './types';
 import { callAgentLLM, callAgentLLMTools } from './llm';
 import { mapFunctionCall } from './fnTools';
+import { PLAN_TOOL, normalizePlan } from './plan';
 import { modelSupportsTools } from './providers';
 import { TOOL_REGISTRY } from './registry';
 import { loadMCPServers, mcpListTools, listRegistryServers, listRegistryServerTools } from './mcp';
@@ -218,12 +219,30 @@ export class AgentLoop {
       this.orchestrator.addThought('Razonamiento', native.thought.slice(0, 2000));
     }
 
-    const mapped = (native.calls || [])
+    // `update_plan` es una pseudo-tool: la consume el bucle y nunca llega al
+    // registro ni al backend. En la vía nativa el modelo no tiene campo `plan`,
+    // así que ésta es su única forma de mover el plan que ve la UI.
+    const calls = native.calls || [];
+    const planCalls = calls.filter((c) => c.name === PLAN_TOOL);
+    if (planCalls.length > 0) {
+      const next = planCalls.reduce(
+        (acc, c) => normalizePlan((c.args as any)?.items, acc),
+        this.orchestrator.getState().plan
+      );
+      this.orchestrator.setPlan(next);
+    }
+
+    const mapped = calls
       .map((c) => mapFunctionCall(c.name, c.args))
       .filter((m): m is { tool: string; input: unknown } => !!m && ALLOWED_TOOLS.includes(m.tool))
       .slice(0, 5);
 
     if (mapped.length === 0) {
+      // Un turno que sólo actualizó el plan no es la respuesta final.
+      if (planCalls.length > 0) {
+        this.pushTurn('model', native.thought || '(plan actualizado)');
+        return;
+      }
       // Sin calls = respuesta final
       this.pushTurn('model', native.thought || '(sin salida)');
       this.addThoughtCapped('Finalizado', native.thought || 'Objetivo completado.');

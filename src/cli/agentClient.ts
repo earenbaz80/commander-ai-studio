@@ -16,6 +16,7 @@
  */
 import { AGENT_FUNCTION_DECLARATIONS } from '../agent/fnTools';
 import { toOpenAITools, toolDialectForModel } from '../agent/providers';
+import { PLAN_TOOL } from '../agent/plan';
 import { resolveEndpoint, resolveStreamEndpoint } from '../lib/aiProviders';
 
 export type CliAgentEvent =
@@ -130,10 +131,13 @@ function buildPayload(
     temperature: 0.2,
     maxTokens: 2048,
   };
+  // El CLI no pinta el plan y su bucle manda los nombres tal cual al backend:
+  // no le ofrecemos `update_plan`, que aquí no existe como tool.
+  const declarations = AGENT_FUNCTION_DECLARATIONS.filter((d) => d.name !== PLAN_TOOL);
   payload.tools =
     dialect === 'gemini'
-      ? [{ functionDeclarations: AGENT_FUNCTION_DECLARATIONS }]
-      : toOpenAITools();
+      ? [{ functionDeclarations: declarations }]
+      : toOpenAITools(declarations);
   return payload;
 }
 
