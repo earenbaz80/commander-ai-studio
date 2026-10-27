@@ -67,6 +67,11 @@ export class AgentOrchestrator {
     return this.isExecutingPlan;
   }
 
+  /** Actualiza el directorio de trabajo del agente. */
+  setCwd(cwd: string): void {
+    this.ctx.cwd = cwd;
+  }
+
   restoreState(s: any) {
     this.state = { ...s, running: false, thinking: false, currentStepId: undefined };
     this.emit();
