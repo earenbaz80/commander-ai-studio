@@ -11,6 +11,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, Save, Settings } from 'lucide-react';
 import { getActiveProjectRoot } from '../agent/activeProject';
+import { AGENT_TOOLS } from '../../security';
 import { Language } from '../i18n/translations';
 
 export interface PermissionsData {
@@ -19,11 +20,16 @@ export interface PermissionsData {
   files: { read: string[]; write: string[] };
 }
 
-const ALL_TOOLS = [
-  'fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.grep', 'shell.run',
-  'read_diagnostics', 'git.status', 'git.diff', 'git.log', 'git.commit',
-  'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list',
-];
+/**
+ * Ids de todas las tools del agente: el borrador de la lista blanca cuando el
+ * proyecto no tiene ninguna (allowedTools = null).
+ *
+ * Se deriva de AGENT_TOOLS —la lista contra la que el servidor valida cada
+ * llamada— en lugar de repetirla aquí. La copia manual se había quedado sin
+ * `shell.job`, `browser`, `preview` ni las git avanzadas, de modo que guardar
+ * el modal con esa lista aparentemente completa las desactivaba en silencio.
+ */
+const ALL_TOOLS: string[] = [...AGENT_TOOLS];
 
 interface Props {
   lang: Language;
