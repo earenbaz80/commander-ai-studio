@@ -59,7 +59,9 @@ export function handleApiKeySet(req: Request, res: Response) {
 
 export function handleApiKeyGet(req: Request, res: Response) {
   try {
-    const key = String(req.query.key || '');
+    // La ruta es `GET /api/keys/:key` (param), pero el cliente puede mandarla
+    // también como `?key=`: aceptar ambas evita el 400 que dejaba la key vacía.
+    const key = String(req.params?.key ?? req.query?.key ?? '');
     if (!key || !VALID_KEYS.has(key)) {
       return res.status(400).json({ success: false, error: 'Key inválida' });
     }
