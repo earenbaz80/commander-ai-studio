@@ -138,13 +138,16 @@ describe('ChatPlayground', () => {
   });
 
   describe('limpiar chat', () => {
-    test('el botón Limpiar (sin icono) llama a onClearChat', () => {
+    test('limpiar desde Opciones llama a onClearChat y cierra el menú', () => {
       const props = baseProps();
       render(<ChatPlayground {...props} />);
-      fireEvent.click(screen.getByLabelText('Limpiar conversación'));
+      const options = screen.getByLabelText('Opciones de conversación');
+      expect(options.closest('details')).not.toHaveAttribute('open');
+      fireEvent.click(options);
+      fireEvent.click(screen.getByRole('button', { name: 'Limpiar conversación' }));
       expect(props.onClearChat).toHaveBeenCalledOnce();
-      // El botón muestra solo texto, sin emoji
-      expect(screen.getByText('Limpiar')).toBeInTheDocument();
+      expect(options.closest('details')).not.toHaveAttribute('open');
+      expect(options).toHaveFocus();
       expect(screen.queryByText(/🗑️/)).toBeNull();
     });
 
@@ -241,15 +244,16 @@ describe('ChatPlayground', () => {
       // El icono de ayuda es el primer hijo, seguido del adjuntar y luego el selector
       expect(bar.firstElementChild).toBe(help);
       expect(help.nextElementSibling).toBe(attach);
-      expect(attach.nextElementSibling).toBe(select);
+      expect(attach.compareDocumentPosition(select) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(attach.tagName).toBe('BUTTON');
     });
 
-    test('el botón enviar va a la derecha del botón Limpiar', () => {
+    test('enviar tiene etiqueta visible junto a Opciones', () => {
       render(<ChatPlayground {...baseProps()} />);
-      const limpiar = screen.getByLabelText('Limpiar conversación');
+      const options = screen.getByLabelText('Opciones de conversación').closest('details')!;
       const enviar = screen.getByLabelText('Enviar mensaje');
-      expect(limpiar.parentElement).toBe(enviar.parentElement);
-      expect(limpiar.nextElementSibling).toBe(enviar);
+      expect(options.nextElementSibling).toBe(enviar);
+      expect(enviar).toHaveTextContent('Enviar');
     });
 
     test('ya no se muestra el texto de atajos de teclado', () => {

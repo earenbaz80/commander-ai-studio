@@ -90,7 +90,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   const localConfigured = hasLocalServer();
 
   return (
-    <div className="mt-2 flex items-center gap-2 text-[10px] font-mono">
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-mono [&_button]:min-h-9 [&_button]:min-w-9 [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-[#ffff55]">
       {/* Icono de ayuda para menciones @ */}
       <button
         type="button"
@@ -106,12 +106,15 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
       </button>
 
       {/* Botón adjuntar: antes de la elección de modelo */}
-      <label
-        className="cursor-pointer shrink-0 p-1.5 bg-[#0000aa] border border-cyan-400/40 rounded hover:bg-[#0000cc] transition-colors"
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        className="cursor-pointer shrink-0 p-2 bg-[#0000aa] border border-cyan-400/40 rounded hover:bg-[#0000cc] transition-colors"
         title={lang === 'es' ? 'Adjuntar archivos' : lang === 'de' ? 'Dateien anhängen' : 'Attach files'}
         aria-label={lang === 'es' ? 'Adjuntar archivos' : lang === 'de' ? 'Dateien anhängen' : 'Attach files'}
       >
         <Paperclip className="w-3.5 h-3.5 text-cyan-400" />
+      </button>
         <input
           ref={fileInputRef}
           type="file"
@@ -120,7 +123,6 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           className="hidden"
           accept="image/*,.pdf,.txt,.md,.json,.js,.ts,.tsx,.jsx,.html,.css"
         />
-      </label>
 
       {/* Selector de modelo: el que se usará para responder */}
       <select
@@ -134,7 +136,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
               ? `Verwendetes Modell${currentModel?.description ? `: ${currentModel.description}` : ''}`
               : `Model in use${currentModel?.description ? `: ${currentModel.description}` : ''}`
         }
-        className="min-w-0 flex-1 max-w-[260px] bg-[#000080] border border-cyan-400/40 text-[#00ffff] text-[10px] font-mono px-1.5 py-1 rounded outline-none focus:border-cyan-400 cursor-pointer truncate"
+        className="order-first w-full min-w-0 min-h-10 sm:order-none sm:w-auto sm:min-w-[240px] sm:flex-1 bg-[#000080] border border-cyan-400/60 text-[#00ffff] text-sm font-mono px-2 py-2 rounded focus-visible:outline-2 focus-visible:outline-[#ffff55] cursor-pointer"
       >
         {/* Modelo no listado (p. ej. descargado de HuggingFace) */}
         {!currentModel && <option value={selectedModel}>{selectedModel}</option>}
@@ -167,7 +169,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                 : `Local LLM configured (${localServerLabel()}) · Click to activate`
           }
           aria-label={lang === 'es' ? 'Configurar LLM local' : lang === 'de' ? 'Lokales LLM konfigurieren' : 'Configure local LLM'}
-          className={`flex items-center gap-1 rounded border px-2 py-1 text-[10px] font-bold shrink-0 transition-colors ${
+          className={`flex items-center gap-1 rounded border px-2 py-2 text-xs font-bold shrink-0 transition-colors ${
             isLocal
               ? 'border-[#00aa00] bg-[#002200] text-[#00ff00]'
               : 'border-[#00aaaa]/40 bg-[#0000aa] text-[#00ffff] hover:bg-[#0000cc]'
@@ -188,7 +190,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           lang === 'es' ? 'Menú para cambiar' : lang === 'de' ? 'Menü zum Ändern' : 'Menu to change'
         }`}
         aria-label={lang === 'es' ? 'Modo del agente' : lang === 'de' ? 'Agentenmodus' : 'Agent mode'}
-        className={`flex items-center gap-1 rounded border px-2 py-1 text-[10px] font-bold shrink-0 transition-colors cursor-pointer ${
+        className={`min-h-9 max-w-full flex items-center gap-1 rounded border px-2 py-2 text-xs font-bold shrink-0 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-[#ffff55] ${
           runMode === 'build'
             ? 'border-[#00aa00] bg-[#002200] text-[#00ff00]'
             : runMode === 'plan'
@@ -205,7 +207,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
         onClick={onOpenAdvanced}
         title={lang === 'es' ? 'Configuración avanzada (tools, globs)' : lang === 'de' ? 'Erweiterte Einstellungen (Tools, Globs)' : 'Advanced settings (tools, globs)'}
         aria-label={lang === 'es' ? 'Configuración avanzada' : lang === 'de' ? 'Erweiterte Einstellungen' : 'Advanced settings'}
-        className="flex items-center gap-1 rounded border border-cyan-400/40 px-2 py-1 text-[10px] font-bold text-[#00ffff] hover:bg-[#0000aa] shrink-0"
+        className="flex items-center gap-1 rounded border border-cyan-400/40 px-2 py-2 text-xs font-bold text-[#00ffff] hover:bg-[#0000aa] shrink-0"
       >
         <Settings className="w-3 h-3" />
         {lang === 'es' ? 'Avanzado' : lang === 'de' ? 'Erweitert' : 'Advanced'}
@@ -215,31 +217,48 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
         <button
           onClick={onCycleFontScale}
           title={lang === 'es' ? 'Tamaño del texto' : lang === 'de' ? 'Textgröße' : 'Text size'}
-          className="text-gray-400 hover:text-cyan-400"
+          aria-label={lang === 'es' ? 'Tamaño del texto' : lang === 'de' ? 'Textgröße' : 'Text size'}
+          className="px-2 text-cyan-200 hover:text-white"
         >
           A{fontScale === 'lg' ? '+' : fontScale === 'xl' ? '++' : ''}
         </button>
-        <button
-          onClick={onClearChat}
-          title={lang === 'es' ? 'Limpiar conversación' : lang === 'de' ? 'Unterhaltung leeren' : 'Clear conversation'}
-          aria-label={lang === 'es' ? 'Limpiar conversación' : lang === 'de' ? 'Unterhaltung leeren' : 'Clear conversation'}
-          className="text-gray-400 hover:text-red-400"
-        >
-          {lang === 'es' ? 'Limpiar' : lang === 'de' ? 'Leeren' : 'Clear'}
-        </button>
-        {/* Botón de enviar: a la derecha del botón Limpiar */}
+        <details className="relative" onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.currentTarget.open = false;
+            e.currentTarget.querySelector('summary')?.focus();
+          }
+        }}>
+          <summary className="min-h-9 flex items-center px-2 border border-cyan-400/40 cursor-pointer text-[#00ffff] hover:bg-[#0000aa] focus-visible:outline-2 focus-visible:outline-[#ffff55]" aria-label={lang === 'es' ? 'Opciones de conversación' : lang === 'de' ? 'Unterhaltungsoptionen' : 'Conversation options'}>
+            {lang === 'es' ? 'Opciones' : lang === 'de' ? 'Optionen' : 'Options'}
+          </summary>
+          <div className="absolute bottom-full right-0 z-20 mb-2 w-56 max-w-[80vw] border border-[#00ffff] bg-[#000080] p-1 shadow-lg">
+            <button type="button" onClick={(e) => {
+              const menu = e.currentTarget.closest('details');
+              if (menu) {
+                menu.open = false;
+                menu.querySelector('summary')?.focus();
+              }
+              onClearChat();
+            }} className="w-full px-3 py-2 text-left text-red-300 hover:bg-[#0000aa]">
+              {lang === 'es' ? 'Limpiar conversación' : lang === 'de' ? 'Unterhaltung leeren' : 'Clear conversation'}
+            </button>
+          </div>
+        </details>
         <button
           onClick={onSend}
           disabled={isGenerating || !canSend}
           aria-label={lang === 'es' ? 'Enviar mensaje' : lang === 'de' ? 'Nachricht senden' : 'Send message'}
           title={lang === 'es' ? 'Enviar mensaje' : lang === 'de' ? 'Nachricht senden' : 'Send message'}
-          className="p-1.5 bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded transition-colors"
+          className="flex min-h-10 items-center gap-2 px-4 py-2 border-2 border-[#ffff55] bg-[#ffff55] text-[#000080] font-bold hover:bg-white hover:border-white disabled:bg-[#333355] disabled:border-[#666688] disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
         >
           {isGenerating ? (
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
           ) : (
             <Send className="w-3.5 h-3.5" />
           )}
+          {isGenerating
+            ? lang === 'es' ? 'Generando…' : lang === 'de' ? 'Generiert…' : 'Generating…'
+            : lang === 'es' ? 'Enviar' : lang === 'de' ? 'Senden' : 'Send'}
         </button>
       </div>
     </div>
