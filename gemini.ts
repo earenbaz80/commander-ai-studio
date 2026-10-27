@@ -1,26 +1,12 @@
 import type { Request, Response } from 'express';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { mapGeminiModel, isQuotaOrNotFoundError, executeLocalHfModel } from './localModels';
+import { GEMINI_FALLBACK_MODELS } from './src/config/geminiModels';
 
 /** Mensaje único para cuando falta la API key de Google. */
 export const GEMINI_KEY_REQUIRED =
   'GEMINI_API_KEY requerida. Añádela en Configuración → GOOGLE GEMINI (o en el archivo .env) para usar los modelos de Google.';
 
-/**
- * Cadena de respaldo de Gemini, verificada contra la API el 2026-10-27.
- *
- * Los ids anteriores (2.0-flash, 2.0-flash-lite, 1.5-flash-8b, 2.5-flash) ya
- * devuelven 404 «no longer available»: reintentarlos sólo alargaba la espera
- * hasta el error del motor local. El orden va del mismo nivel al más ligero y
- * deja el alias `-latest` al final, que es el que más tarda en quedar obsoleto.
- */
-export const GEMINI_FALLBACK_MODELS = [
-  'gemini-3.5-flash',
-  'gemini-3.5-flash-lite',
-  'gemini-3.1-flash-lite',
-  'gemini-3.6-flash',
-  'gemini-flash-lite-latest',
-];
 
 class MissingApiKeyError extends Error {
   code = 'MISSING_API_KEY';
@@ -366,10 +352,7 @@ export async function handleGeminiStream(req: Request, res: Response) {
 
     const fallbackStreamCandidates = Array.from(new Set([
       activeModel,
-      'gemini-2.0-flash',
-      'gemini-2.0-flash-lite',
-      'gemini-1.5-flash-8b',
-      'gemini-2.5-flash',
+      ...GEMINI_FALLBACK_MODELS,
     ]));
 
     let activeIterator: any = null;

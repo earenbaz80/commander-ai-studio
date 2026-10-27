@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { GEMINI_FALLBACK_MODELS } from './src/config/geminiModels';
 
 const getGenAIClient = (overrideApiKey?: string) => {
   const apiKey = overrideApiKey || process.env.GEMINI_API_KEY;
@@ -146,13 +147,8 @@ export async function executeLocalHfModel({
         personaInstruction += `\nInstrucciones adicionales del sistema: ${systemInstruction}`;
       }
 
-      const bridgeCandidates = [
-        'gemini-2.5-flash',
-        'gemini-2.0-flash',
-        'gemini-2.0-flash-lite',
-        'gemini-1.5-flash-8b',
-        'gemini-1.5-pro',
-      ];
+      // Misma cadena viva que generate/stream: una sola lista, sin copias.
+      const bridgeCandidates = [...GEMINI_FALLBACK_MODELS];
 
       let generatedText = '';
       for (const mTarget of bridgeCandidates) {
