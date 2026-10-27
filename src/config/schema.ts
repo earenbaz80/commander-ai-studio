@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { GEMINI_DEFAULT_MODEL } from './geminiModels';
 
 export const ProviderConfigSchema = z.object({
   google: z.object({
     apiKey: z.string().optional(),
-    defaultModel: z.string().default('gemini-2.0-flash'),
+    defaultModel: z.string().default(GEMINI_DEFAULT_MODEL),
   }).optional(),
   anthropic: z.object({
     apiKey: z.string().optional(),

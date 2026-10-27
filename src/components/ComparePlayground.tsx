@@ -6,6 +6,7 @@ import { ALL_MODELS } from '../data/models';
 import { resolveChatRoute } from '../lib/aiRouting';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { Language } from '../i18n/translations';
+import { GEMINI_DEFAULT_MODEL, GEMINI_PRO_MODEL } from '../config/geminiModels';
 
 interface ComparePlaygroundProps {
   parameters: ParameterConfig;
@@ -17,8 +18,8 @@ export const ComparePlayground: React.FC<ComparePlaygroundProps> = ({
   parameters,
   lang = 'es',
 }) => {
-  const [modelA, setModelA] = useState('gemini-2.5-flash');
-  const [modelB, setModelB] = useState('gemini-2.5-pro');
+  const [modelA, setModelA] = useState(GEMINI_DEFAULT_MODEL);
+  const [modelB, setModelB] = useState(GEMINI_PRO_MODEL);
   const [tempA, setTempA] = useState(0.2);
   const [tempB, setTempB] = useState(0.9);
   const [prompt, setPrompt] = useState('Escribe una función recursiva para revertir una lista enlazada en TypeScript y analiza su complejidad temporal O(N).');

@@ -23,6 +23,7 @@ import { TOOL_REGISTRY } from './src/agent/registry';
 import { loadMCPServers, mcpListTools } from './src/agent/mcp';
 import { executeAgentTool } from './agentTools';
 import { getServerBaseUrl } from './serverRuntime';
+import { GEMINI_DEFAULT_MODEL } from './src/config/geminiModels';
 
 // ── Eventos SSE ──
 
@@ -100,7 +101,7 @@ async function callLlmNative(
   cfg: SessionConfig,
   ctx: { goal: string; cwd: string; plan: AgentPlanItem[]; recentSteps: any[]; toolSchema: string; agentsMd: string; turns: { role: string; text: string }[]; systemExtra?: string }
 ): Promise<{ thought: string; calls: { name: string; args: any }[] }> {
-  const model = cfg.model || 'gemini-2.5-flash';
+  const model = cfg.model || GEMINI_DEFAULT_MODEL;
   const dialect = toolDialectForModel(model);
   const turns = ctx.turns || [];
   const user = `OBJETIVO: ${ctx.goal}\nCWD: ${ctx.cwd}\n\nPLAN ACTUAL:\n${JSON.stringify(ctx.plan, null, 2)}\n\nULTIMOS PASOS:\n${JSON.stringify(ctx.recentSteps.slice(-10), null, 2)}\n\nHISTORIAL:\n${turns.slice(-8).map((t) => `${t.role.toUpperCase()}: ${t.text.slice(0, 1200)}`).join('\n\n')}\n\nTOOLS:\n${ctx.toolSchema}${ctx.systemExtra ? `\n${ctx.systemExtra}` : ''}`;
@@ -148,7 +149,7 @@ async function callLlmJson(
   cfg: SessionConfig,
   ctx: { goal: string; cwd: string; plan: AgentPlanItem[]; recentSteps: any[]; toolSchema: string; agentsMd: string; history: { role: string; content: string }[] }
 ): Promise<{ thought?: string; plan?: { id: string; text: string; done: boolean }[]; toolCalls?: { id: string; tool: string; input: unknown }[]; answer?: string; finish?: boolean }> {
-  const model = cfg.model || 'gemini-2.5-flash';
+  const model = cfg.model || GEMINI_DEFAULT_MODEL;
   const system = `Eres un agente autónomo pragmático para ingeniería de código.
 
 REGLAS:
@@ -267,7 +268,7 @@ export class AgentSession {
   getSteps(): AgentStep[] { return this.steps; }
   getPlan(): AgentPlanItem[] { return this.plan; }
   getGoal(): string { return this.cfg.goal; }
-  getModel(): string { return this.cfg.model || 'gemini-2.5-flash'; }
+  getModel(): string { return this.cfg.model || GEMINI_DEFAULT_MODEL; }
   getConfig(): SessionConfig { return this.cfg; }
   setMode(mode: 'build' | 'plan' | 'readonly') { this.cfg.mode = mode; }
   setAllowedTools(tools: string[] | null) { this.cfg.allowedTools = tools; }

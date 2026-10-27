@@ -18,6 +18,7 @@ import { AGENT_FUNCTION_DECLARATIONS } from '../agent/fnTools';
 import { toOpenAITools, toolDialectForModel } from '../agent/providers';
 import { PLAN_TOOL } from '../agent/plan';
 import { resolveEndpoint, resolveStreamEndpoint } from '../lib/aiProviders';
+import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
 
 export type CliAgentEvent =
   | { type: 'status'; text: string }
@@ -36,7 +37,7 @@ export interface RunAgentOptions {
   task: string;
   /** Raíz del proyecto sobre la que operan las tools. */
   cwd: string;
-  /** Modelo ya prefijado (p. ej. `gemini-2.5-flash`, `ollama/llama3`). */
+  /** Modelo ya prefijado (p. ej. `ollama/llama3`, o un id plano de Gemini). */
   model?: string;
   /** Máximo de pasos del bucle. */
   maxSteps?: number;
@@ -111,7 +112,7 @@ function buildPayload(
   history: string[],
   dialect: ReturnType<typeof toolDialectForModel>
 ): Record<string, unknown> {
-  const model = opts.model || 'gemini-2.5-flash';
+  const model = opts.model || GEMINI_DEFAULT_MODEL;
   const user =
     `OBJETIVO: ${opts.task}\nCWD: ${opts.cwd}\n\n` +
     (history.length
@@ -156,7 +157,7 @@ async function streamModel(
   route: string,
   onChunk: (text: string) => void
 ): Promise<ModelTurn> {
-  const dialect = toolDialectForModel(opts.model || 'gemini-2.5-flash');
+  const dialect = toolDialectForModel(opts.model || GEMINI_DEFAULT_MODEL);
   const res = await fetch(`${normalizeServerUrl(opts.serverUrl)}${route}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
@@ -220,7 +221,7 @@ async function callModel(
   history: string[],
   onChunk?: (text: string) => void
 ): Promise<ModelTurn> {
-  const model = opts.model || 'gemini-2.5-flash';
+  const model = opts.model || GEMINI_DEFAULT_MODEL;
   const dialect = toolDialectForModel(model);
   if (dialect === 'json-text') {
     throw new Error(

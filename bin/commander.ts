@@ -7,6 +7,7 @@ import { loadConfig, writeConfig, getConfigPath, getProviderConfig } from '../sr
 import { CommanderConfigSchema } from '../src/config/schema.js';
 import { checkHealth, runAgent } from '../src/cli/agentClient.js';
 import { AgentRenderer, Tui } from '../src/cli/tui.js';
+import { GEMINI_DEFAULT_MODEL } from '../src/config/geminiModels.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_PATH = path.resolve(__dirname, '../package.json');
@@ -282,7 +283,7 @@ program
       process.exit(1);
     }
 
-    const model = String(opts.model || 'gemini-2.5-flash');
+    const model = String(opts.model || GEMINI_DEFAULT_MODEL);
     const maxSteps = Math.max(1, Number(opts.maxSteps) || 25);
     const stream = opts.stream !== false;
 

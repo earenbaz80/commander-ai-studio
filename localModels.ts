@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { GEMINI_FALLBACK_MODELS } from './src/config/geminiModels';
+import { GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODELS, GEMINI_PRO_MODEL } from './src/config/geminiModels';
 
 const getGenAIClient = (overrideApiKey?: string) => {
   const apiKey = overrideApiKey || process.env.GEMINI_API_KEY;
@@ -17,10 +17,10 @@ const getGenAIClient = (overrideApiKey?: string) => {
 };
 
 export function mapGeminiModel(modelName?: string): string {
-  if (!modelName) return 'gemini-3.8-flash';
+  if (!modelName) return GEMINI_DEFAULT_MODEL;
   const m = modelName.trim().toLowerCase();
-  if (m === 'gemini-flash') return 'gemini-3.8-flash';
-  if (m === 'gemini-pro') return 'gemini-3.1-pro-preview';
+  if (m === 'gemini-flash') return GEMINI_DEFAULT_MODEL;
+  if (m === 'gemini-pro') return GEMINI_PRO_MODEL;
   return modelName.trim();
 }
 

@@ -10,6 +10,7 @@
  */
 
 import { getServerBaseUrl } from './serverRuntime';
+import { GEMINI_MODEL_CHAIN } from './src/config/geminiModels';
 
 export interface ProviderConfig {
   id: string;
@@ -74,7 +75,7 @@ export const PROVIDERS: ProviderConfig[] = [
     baseUrl: '/api/gemini/generate',
     priority: 1,
     enabled: true,
-    models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
+    models: [...GEMINI_MODEL_CHAIN],
     supportsTools: true,
     supportsStreaming: true,
     maxTokens: 8192,

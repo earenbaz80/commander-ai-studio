@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { handleGeminiGenerate, handleGeminiStream, GEMINI_KEY_REQUIRED } from '../gemini.js';
-import { GEMINI_FALLBACK_MODELS } from '../src/config/geminiModels.js';
+import { GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODELS, GEMINI_MODEL_CHAIN, GEMINI_PRO_MODEL } from '../src/config/geminiModels.js';
 
 function mockReq(body: any) {
   return {
@@ -111,6 +113,66 @@ test('si ningún modelo responde y no hay motor local, el error es accionable', 
     if (prevKey === undefined) delete process.env.GEMINI_API_KEY;
     else process.env.GEMINI_API_KEY = prevKey;
   }
+});
+
+/** Id de modelo de Gemini escrito a mano, p. ej. gemini-3.5-flash. */
+const GEMINI_ID_LITERAL = /gemini-\d+(?:\.\d+)?(?:-[a-z0-9]+)+/;
+
+/**
+ * Dónde un id literal sí es legítimo:
+ *  - el módulo que los define,
+ *  - la migración de defaults antiguos (apunta a ids de los que se sale),
+ *  - los catálogos y plantillas de `src/data` (son listas para mostrar),
+ *  - `scripts` (harness de desarrollo) y los propios tests.
+ */
+const LITERAL_ID_ALLOWED = ['src/config/geminiModels.ts', 'src/utils/defaultModel.ts', 'src/data', 'scripts', 'tests'];
+// `release-packager` es una copia empaquetada y gitignored de la app: no cuenta.
+const SCAN_SKIP = ['node_modules', 'dist', '.git', 'release', 'release-packager', 'staging'];
+
+function sourceFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (SCAN_SKIP.includes(entry.name)) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...sourceFiles(full));
+    else if (/\.(ts|tsx)$/.test(entry.name)) out.push(full);
+  }
+  return out;
+}
+
+test('los defaults de Gemini salen del módulo compartido y la cadena no repite ids', () => {
+  for (const id of [GEMINI_DEFAULT_MODEL, GEMINI_PRO_MODEL]) {
+    assert.ok(id.startsWith('gemini-'), `id inesperado: ${id}`);
+    assert.ok(!RETIRED_GEMINI_MODELS.includes(id), `${id} ya no existe en la API`);
+  }
+  assert.equal(GEMINI_MODEL_CHAIN[0], GEMINI_DEFAULT_MODEL, 'el default va primero en la cadena');
+  assert.equal(
+    GEMINI_MODEL_CHAIN.length,
+    new Set(GEMINI_MODEL_CHAIN).size,
+    `la cadena no debe repetir ids: ${GEMINI_MODEL_CHAIN.join(', ')}`
+  );
+  for (const id of GEMINI_FALLBACK_MODELS) {
+    assert.ok(GEMINI_MODEL_CHAIN.includes(id), `${id} falta en la cadena del router`);
+  }
+});
+
+test('ningún id de Gemini escrito a mano fuera del módulo compartido', () => {
+  const offenders: string[] = [];
+  for (const file of sourceFiles('.')) {
+    const rel = relative('.', file).split('\\').join('/');
+    if (LITERAL_ID_ALLOWED.some((allowed) => rel === allowed || rel.startsWith(`${allowed}/`))) continue;
+    const lines = readFileSync(file, 'utf8').split(/\r?\n/);
+    lines.forEach((line, i) => {
+      const match = line.match(GEMINI_ID_LITERAL);
+      if (match) offenders.push(`${rel}:${i + 1} -> ${match[0]}`);
+    });
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    'usa GEMINI_DEFAULT_MODEL / GEMINI_PRO_MODEL / GEMINI_FALLBACK_MODELS en vez de ids sueltos:\n' +
+      offenders.join('\n')
+  );
 });
 
 test('gemini/stream sin API key emite un evento SSE de error claro y cierra', async () => {

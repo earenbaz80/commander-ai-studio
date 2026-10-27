@@ -24,7 +24,7 @@ const FREE_PROVIDERS = ['ollama', 'openrouter', 'pollinations'] as const;
 const FREE_MODEL_PREFIXES = ['ollama/', 'openrouter/', 'pollinations/'] as const;
 
 export interface RouteInput {
-  /** Id del modelo activo, p. ej. `gemini-2.5-flash`, `ollama/llama3`, `local/mistral`. */
+  /** Id del modelo activo, p. ej. `ollama/llama3`, `local/mistral`, o un id plano de Gemini. */
   modelId: string;
   /** Proveedor elegido explícitamente en la UI (gana sobre el prefijo del id). */
   provider?: string;

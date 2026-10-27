@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { CommanderConfigSchema, CommanderConfig, DEFAULT_CONFIG, type ProviderConfig, type ToolsConfig, type UIConfig, type AgentConfig, type ServerConfig } from './schema';
+import { GEMINI_DEFAULT_MODEL } from './geminiModels';
 
 /** Partial profundo: permite pasar solo las claves que se quieren cambiar. */
 type DeepPartial<T> = T extends (infer U)[]
@@ -62,7 +63,7 @@ function loadEnvOverrides(): Partial<CommanderConfig> {
   if (process.env.COMMANDER_HOST) overrides.server = { ...(overrides.server || {}), host: process.env.COMMANDER_HOST } as any;
   if (process.env.COMMANDER_THEME) overrides.ui = { ...(overrides.ui || {}), theme: process.env.COMMANDER_THEME as any } as any;
   if (process.env.COMMANDER_LANG) overrides.ui = { ...(overrides.ui || {}), language: process.env.COMMANDER_LANG as any } as any;
-  if (process.env.GEMINI_API_KEY) overrides.providers = { ...(overrides.providers || {}), google: { apiKey: process.env.GEMINI_API_KEY, defaultModel: 'gemini-2.0-flash' } } as any;
+  if (process.env.GEMINI_API_KEY) overrides.providers = { ...(overrides.providers || {}), google: { apiKey: process.env.GEMINI_API_KEY, defaultModel: GEMINI_DEFAULT_MODEL } } as any;
   if (process.env.ANTHROPIC_API_KEY) overrides.providers = { ...(overrides.providers || {}), anthropic: { apiKey: process.env.ANTHROPIC_API_KEY, defaultModel: 'claude-3-5-sonnet-20241022' } } as any;
   if (process.env.HF_API_TOKEN) overrides.providers = { ...(overrides.providers || {}), huggingface: { apiToken: process.env.HF_API_TOKEN, defaultModel: 'deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B', device: 'webgpu', quantization: 'q4' } } as any;
   if (process.env.OPENROUTER_API_KEY) overrides.providers = { ...(overrides.providers || {}), openrouter: { apiKey: process.env.OPENROUTER_API_KEY, defaultModel: 'deepseek/deepseek-chat-v3-0324:free' } } as any;

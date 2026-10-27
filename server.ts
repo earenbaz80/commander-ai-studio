@@ -18,6 +18,7 @@ import skillsRouter from './skills/api';
 import { forkSessionWorkspace, deleteSessionWorkspace, listSessions } from './sessionWorkspace';
 import { handleOAuthLogin, handleOAuthCallback, handleLogout, getCurrentUser } from './oauth';
 import { executeWithFallback, getProviderMetrics, checkAllProvidersHealth, resetCircuitBreaker, setProviderEnabled } from './fallbackRouter';
+import { GEMINI_DEFAULT_MODEL } from './src/config/geminiModels';
 
 dotenv.config();
 
@@ -276,7 +277,7 @@ app.post('/api/transcribe', async (req, res) => {
       : 'Transcribe exactamente lo que se dice en este audio. Devuelve ÚNICAMENTE el texto dictado en español. No agregues comillas, explicaciones ni notas.';
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: GEMINI_DEFAULT_MODEL,
       contents: [
         {
           role: 'user',
