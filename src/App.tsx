@@ -1068,6 +1068,7 @@ export default function App() {
         {/* Left Navigation Sidebar */}
         {isSidebarOpen && (
           <Sidebar
+            isSidebarOpen={isSidebarOpen}
             mode={mode}
             setMode={setMode}
             recentHistory={tabHistory}
