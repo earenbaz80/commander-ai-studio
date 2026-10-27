@@ -122,7 +122,7 @@ const initialState: UIState = {
   
   // Layout
   isWorkbenchOpen: false,
-  isSidebarOpen: true,
+  isSidebarOpen: false,
   
   // Theme & Appearance
   theme: 'norton',

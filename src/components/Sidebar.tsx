@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, Columns, Radio, Code2, Bot, ChevronDown, ChevronRight, Hammer, Server, X, Play } from 'lucide-react';
+import { MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, Columns, Radio, Code2, Bot, ChevronDown, ChevronRight, Hammer, Server, X, Play } from 'lucide-react';
 import { StudioMode, HistorySession, ParameterConfig } from '../types/studio';
 import { Language, TRANSLATIONS } from '../i18n/translations';
 import { SYSTEM_PRESETS } from '../data/systemPresets';
@@ -17,7 +17,7 @@ const NavGroup: React.FC<{
       onClick={onToggle}
       aria-expanded={open}
       aria-label={title}
-      className="flex items-center gap-1 text-[10px] font-bold text-[#ffff55] uppercase tracking-wider px-1 py-1 hover:text-white"
+      className="flex min-h-9 items-center gap-1 text-xs font-bold text-[#ffff55] uppercase tracking-wider px-1 py-2 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ffff55]"
     >
       {open ? (
         <ChevronDown className="w-3.5 h-3.5 shrink-0" />
@@ -66,59 +66,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
   parameters,
   setParameters,
   lang = 'es',
-  isSidebarOpen = true,
+  isSidebarOpen = false,
 }) => {
   const t = TRANSLATIONS[lang];
   const [searchTerm, setSearchTerm] = React.useState('');
-  const sidebarWidth = isSidebarOpen ? 'w-56 lg:w-64' : 'w-0';
 
   const filteredHistory = recentHistory.filter((item) =>
     item.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Secciones de navegación agrupadas y colapsables (persistidas).
-  const [collapsedGroups, setCollapsedGroups] = React.useState<Record<string, boolean>>(() => {
-    try {
-      const raw = localStorage.getItem('ai_studio_sidebar_groups');
-      return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
-    } catch {
-      return {};
-    }
+  // Group openness belongs only to this mount, never to saved preferences.
+  const [collapsedGroups, setCollapsedGroups] = React.useState<Record<string, boolean>>({
+    crear: true, agentes: true, modelos: true, instrucciones: true, sistema: true,
   });
   const toggleGroup = (id: string) => {
-    setCollapsedGroups((prev) => {
-      const next = { ...prev, [id]: !prev[id] };
-      try {
-        localStorage.setItem('ai_studio_sidebar_groups', JSON.stringify(next));
-      } catch {
-        /* almacenamiento no disponible */
-      }
-      return next;
-    });
+    setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }));
   };
   const isGroupOpen = (id: string) => !collapsedGroups[id];
   const groupTitles =
     lang === 'es'
-      ? { crear: 'Crear', agentes: 'Agentes', modelos: 'Modelos', instrucciones: 'Instrucciones', salida: 'Salida', sistema: 'Sistema' }
+      ? { crear: 'Crear', agentes: 'Agentes', modelos: 'Modelos', instrucciones: 'Instrucciones', sistema: 'Herramientas' }
       : lang === 'de'
-        ? { crear: 'Erstellen', agentes: 'Agenten', modelos: 'Modelle', instrucciones: 'Anweisungen', salida: 'Ausgabe', sistema: 'System' }
-        : { crear: 'Create', agentes: 'Agents', modelos: 'Models', instrucciones: 'Instructions', salida: 'Output', sistema: 'System' };
+        ? { crear: 'Erstellen', agentes: 'Agenten', modelos: 'Modelle', instrucciones: 'Anweisungen', sistema: 'Werkzeuge' }
+        : { crear: 'Create', agentes: 'Agents', modelos: 'Models', instrucciones: 'Instructions', sistema: 'Tools' };
 
   return (
     <aside 
-      className={`${sidebarWidth} lg:w-64 shrink-0 h-full nc-panel p-3 flex flex-col gap-3 border-r-2 border-[#00ffff] overflow-y-auto select-none min-h-0`}
+      className={isSidebarOpen ? 'w-56 lg:w-64 shrink-0 h-full nc-panel p-3 flex flex-col gap-3 border-r-2 border-[#00ffff] overflow-y-auto select-none min-h-0' : 'hidden'}
       aria-label={lang === 'es' ? 'Navegación principal' : lang === 'de' ? 'Hauptnavigation' : 'Main navigation'}
     >
-      <button 
-        onClick={onNewPrompt} 
-        className="nc-button w-full justify-center flex items-center gap-2 p-2 shrink-0 bg-[#ffff55] text-black font-bold hover:bg-white border border-black"
-        data-tooltip={lang === 'es' ? 'Crear Nuevo Prompt' : lang === 'de' ? 'Neuen Prompt erstellen' : 'Create New Prompt'}
-        data-tooltip-sub={lang === 'es' ? 'Reinicia la sesión actual con parámetros en blanco' : lang === 'de' ? 'Setzt die aktuelle Sitzung auf die Standardwerte zurück' : 'Resets current session to defaults'}
-      >
-        <Plus className="w-6 h-6 text-[#000080]" />
-        <span>{lang === 'es' ? 'Nuevo Prompt' : lang === 'de' ? 'Neuer Prompt' : 'New Prompt'}</span>
-      </button>
-
       <div className="flex flex-col gap-2.5 shrink-0">
         {/* ── CREAR: modos de creación/interacción ── */}
         <NavGroup
@@ -126,13 +102,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           open={isGroupOpen('crear')}
           onToggle={() => toggleGroup('crear')}
         >
-        <button 
-          onClick={() => setMode('chat')} 
-          className={`nc-button flex items-center gap-2.5 text-xs py-1.5 ${mode === 'chat' ? 'nc-active' : ''}`}
-          data-tooltip={lang === 'es' ? 'Modo Chat Conversacional' : lang === 'de' ? 'Chat-Modus' : 'Conversational Chat Mode'}
-          data-tooltip-sub={lang === 'es' ? 'Conversación multi-turno con Gemini 3.8 / Claude 3.7 y herramientas' : lang === 'de' ? 'Mehrstufiger Dialog mit Gemini / Claude' : 'Multi-turn dialog with Gemini / Claude'}
+        <button
+          onClick={onNewPrompt}
+          className="nc-button flex items-center gap-2.5 text-xs py-1.5"
+          data-tooltip={lang === 'es' ? 'Nuevo chat (nueva sesión)' : lang === 'de' ? 'Neuer Chat (neue Sitzung)' : 'New chat (new session)'}
+          data-tooltip-sub={lang === 'es' ? 'Crea siempre una nueva sesión con una conversación limpia' : lang === 'de' ? 'Erstellt immer eine neue Sitzung mit leerem Chat' : 'Always creates a new session with a clean chat'}
         >
-          <MessageSquare className="w-6 h-6" /> {t.modeChat}
+          <MessageSquare className="w-6 h-6" /> {lang === 'es' ? 'Nuevo chat' : lang === 'de' ? 'Neuer Chat' : 'New chat'}
         </button>
         <button 
           onClick={() => setMode('freeform')} 
@@ -166,29 +142,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <Columns className="w-6 h-6 text-[#ffff55]" /> {t.modeCompare}
         </button>
-        </NavGroup>
-
-        {/* ── AGENTES: ejecución autónoma / tiempo real ── */}
-        <NavGroup
-          title={groupTitles.agentes}
-          open={isGroupOpen('agentes')}
-          onToggle={() => toggleGroup('agentes')}
-        >
-        <button 
-          onClick={() => setMode('agent')} 
-          className={`nc-button flex items-center gap-2.5 text-xs py-1.5 ${mode === 'agent' ? 'nc-active' : ''}`}
-          data-tooltip={lang === 'es' ? '🤖 Modo Agente' : lang === 'de' ? '🤖 Agentenmodus' : '🤖 Agent Mode'}
-          data-tooltip-sub={lang === 'es' ? 'Agente autónomo con tools FS+shell' : lang === 'de' ? 'Autonomer Agent mit Dateisystem- und Shell-Tools' : 'Autonomous agent with FS+shell tools'}
-        >
-          <Bot className="w-6 h-6" /> {t.modeAgent}
-        </button>
         <button 
           onClick={() => setMode('live_voice')} 
           className={`nc-button flex items-center gap-2.5 text-xs py-1.5 ${mode === 'live_voice' ? 'nc-active' : ''}`}
           data-tooltip={lang === 'es' ? 'Voz en Vivo Bidireccional (Gemini Live)' : lang === 'de' ? 'Echtzeit-Sprache (Gemini Live)' : 'Realtime Voice (Gemini Live)'}
           data-tooltip-sub={lang === 'es' ? 'Streaming de audio con micrófono y síntesis de voz en tiempo real' : lang === 'de' ? 'Sprachinteraktion in Echtzeit mit geringer Latenz' : 'Low latency real-time voice interaction'}
         >
-          <Radio className="w-6 h-6 text-[#00ffff] animate-pulse" /> {t.modeVoice}
+          <Radio className="w-6 h-6 text-[#00ffff]" /> {t.modeVoice}
+        </button>
+        <button
+          onClick={onOpenGallery}
+          className="nc-button flex items-center gap-2.5 text-xs py-1.5"
+          data-tooltip={lang === 'es' ? 'Galería Pública de Proyectos' : lang === 'de' ? 'Öffentliche Projektgalerie' : 'Public Project Gallery'}
+        >
+          <Library className="w-6 h-6" /> {t.modeGallery}
+        </button>
+        </NavGroup>
+
+        <NavGroup title={groupTitles.agentes} open={isGroupOpen('agentes')} onToggle={() => toggleGroup('agentes')}>
+        <button
+          onClick={() => setMode('agent')}
+          className={`nc-button flex items-center gap-2.5 text-xs py-1.5 ${mode === 'agent' ? 'nc-active' : ''}`}
+          data-tooltip={lang === 'es' ? '🤖 Modo Agente' : lang === 'de' ? '🤖 Agentenmodus' : '🤖 Agent Mode'}
+          data-tooltip-sub={lang === 'es' ? 'Agente autónomo con tools FS+shell' : lang === 'de' ? 'Autonomer Agent mit Dateisystem- und Shell-Tools' : 'Autonomous agent with FS+shell tools'}
+        >
+          <Bot className="w-6 h-6" /> {t.modeAgent}
         </button>
         </NavGroup>
 
@@ -262,11 +240,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </NavGroup>
         )}
 
-        {/* ── SALIDA: empaquetado y exportación ── */}
         <NavGroup
-          title={groupTitles.salida}
-          open={isGroupOpen('salida')}
-          onToggle={() => toggleGroup('salida')}
+          title={groupTitles.sistema}
+          open={isGroupOpen('sistema')}
+          onToggle={() => toggleGroup('sistema')}
         >
         {onOpenCompile && (
           <button 
@@ -278,23 +255,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Hammer className="w-6 h-6 text-[#ffff55]" /> {lang === 'es' ? 'Compilar Proyecto' : lang === 'de' ? 'Projekt kompilieren' : 'Compile Project'}
           </button>
         )}
-        </NavGroup>
-
-        {/* ── SISTEMA: comunidad y diagnóstico ── */}
-        <NavGroup
-          title={groupTitles.sistema}
-          open={isGroupOpen('sistema')}
-          onToggle={() => toggleGroup('sistema')}
-        >
-
-        <button 
-          onClick={onOpenGallery} 
-          className="nc-button flex items-center gap-2.5 text-xs py-1.5"
-          data-tooltip={lang === 'es' ? 'Galería Pública de Proyectos' : lang === 'de' ? 'Öffentliche Projektgalerie' : 'Public Project Gallery'}
-          data-tooltip-sub={lang === 'es' ? 'Explora y clona proyectos compartidos por la comunidad' : lang === 'de' ? 'Community-Projekte durchsuchen und forken' : 'Browse and fork community projects'}
-        >
-          <Library className="w-6 h-6" /> {t.modeGallery}
-        </button>
         <button 
           onClick={() => setMode('telemetry')} 
           className={`nc-button flex items-center gap-2.5 text-xs py-1.5 ${mode === 'telemetry' ? 'nc-active' : ''}`}

@@ -1,6 +1,6 @@
 /**
  * Tests del Sidebar: agrupación de modos en secciones colapsables,
- * estado activo y persistencia de grupos plegados.
+ * estado activo y grupos plegados al montar.
  */
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -20,36 +20,41 @@ const baseProps = () => ({
 });
 
 const chatButton = (container: HTMLElement) =>
-  container.querySelector('[data-tooltip="Modo Chat Conversacional"]') as HTMLButtonElement;
+  container.querySelector('[data-tooltip="Nuevo chat (nueva sesión)"]') as HTMLButtonElement;
 
 describe('Sidebar (panel lateral agrupado)', () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
-  test('muestra las cinco secciones de navegación', () => {
+  test('muestra las secciones de navegación plegadas', () => {
     render(<Sidebar {...baseProps()} />);
-    for (const title of ['Crear', 'Agentes', 'Modelos', 'Salida', 'Sistema']) {
-      expect(screen.getByRole('button', { name: title })).toBeInTheDocument();
+    for (const title of ['Crear', 'Agentes', 'Modelos', 'Herramientas']) {
+      expect(screen.getByRole('button', { name: title })).toHaveAttribute('aria-expanded', 'false');
     }
   });
 
   test('los modos siguen accesibles dentro de su grupo', () => {
     const { container } = render(<Sidebar {...baseProps()} />);
+    for (const name of ['Crear', 'Agentes', 'Herramientas']) fireEvent.click(screen.getByRole('button', { name }));
     expect(chatButton(container)).toBeTruthy();
     expect(container.querySelector('[data-tooltip*="Modo Agente"]')).toBeTruthy();
     expect(container.querySelector('[data-tooltip*="Telemetría"]')).toBeTruthy();
   });
 
-  test('al pulsar un modo se llama a setMode', () => {
+  test('nuevo chat es una acción y no un selector de modo', () => {
     const props = baseProps();
     const { container } = render(<Sidebar {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
     fireEvent.click(chatButton(container));
-    expect(props.setMode).toHaveBeenCalledWith('chat');
+    expect(props.onNewPrompt).toHaveBeenCalledTimes(1);
+    expect(props.setMode).not.toHaveBeenCalled();
+    expect(chatButton(container)).not.toHaveClass('nc-active');
   });
 
   test('marca el modo activo con la clase nc-active', () => {
     const { container } = render(<Sidebar {...baseProps()} mode="composer" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
     const composer = container.querySelector('[data-tooltip="Commander Composer (Multi-Archivo & Diffs)"]') as HTMLElement;
     expect(composer.className).toContain('nc-active');
     expect(chatButton(container).className).not.toContain('nc-active');
@@ -58,6 +63,7 @@ describe('Sidebar (panel lateral agrupado)', () => {
   test('plegar un grupo oculta sus modos', () => {
     const { container } = render(<Sidebar {...baseProps()} />);
     const header = screen.getByRole('button', { name: 'Crear' });
+    fireEvent.click(header);
     expect(header).toHaveAttribute('aria-expanded', 'true');
 
     fireEvent.click(header);
@@ -65,45 +71,58 @@ describe('Sidebar (panel lateral agrupado)', () => {
     expect(chatButton(container)).toBeNull();
   });
 
-  test('persiste el estado plegado en localStorage', () => {
+  test('no persiste la apertura en localStorage', () => {
     render(<Sidebar {...baseProps()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
-    const saved = JSON.parse(localStorage.getItem('ai_studio_sidebar_groups') || '{}');
-    expect(saved.crear).toBe(true);
+    expect(screen.getByRole('button', { name: 'Crear' })).toHaveAttribute('aria-expanded', 'true');
+    expect(localStorage.getItem('ai_studio_sidebar_groups')).toBeNull();
   });
 
-  test('recupera los grupos plegados guardados', () => {
-    localStorage.setItem('ai_studio_sidebar_groups', JSON.stringify({ crear: true }));
-    const { container } = render(<Sidebar {...baseProps()} />);
+  test('ignora la apertura guardada y vuelve a plegar al montar', () => {
+    localStorage.setItem('ai_studio_sidebar_groups', JSON.stringify({ crear: false, agentes: false }));
+    const { container, unmount } = render(<Sidebar {...baseProps()} />);
     expect(screen.getByRole('button', { name: 'Crear' })).toHaveAttribute('aria-expanded', 'false');
     expect(chatButton(container)).toBeNull();
-    // Otro grupo sigue abierto
-    expect(container.querySelector('[data-tooltip*="Modo Agente"]')).toBeTruthy();
+    expect(container.querySelector('[data-tooltip*="Modo Agente"]')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
+    unmount();
+    render(<Sidebar {...baseProps()} />);
+    expect(screen.getByRole('button', { name: 'Crear' })).toHaveAttribute('aria-expanded', 'false');
   });
 
-  test('el botón Nuevo Prompt sigue disponible arriba', () => {
+  test('el botón Nuevo chat sigue disponible en Crear', () => {
     const props = baseProps();
     render(<Sidebar {...props} />);
-    fireEvent.click(screen.getByText('Nuevo Prompt'));
+    fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
+    fireEvent.click(screen.getByText('Nuevo chat'));
     expect(props.onNewPrompt).toHaveBeenCalledTimes(1);
   });
 
   test('las acciones movidas desde el menú (compilar y librería) llaman a sus manejadores', () => {
     const props = { ...baseProps(), onOpenCompile: vi.fn(), onOpenLibrary: vi.fn() };
     render(<Sidebar {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Herramientas' }));
     fireEvent.click(screen.getByText(/Compilar Proyecto/));
     expect(props.onOpenCompile).toHaveBeenCalledTimes(1);
   });
 
-  test('compilar vive en la sección Salida y la librería en Sistema', () => {
+  test('compilar vive en Herramientas; voz y galería en Crear', () => {
     const props = { ...baseProps(), onOpenCompile: vi.fn(), onOpenLibrary: vi.fn() };
     const { container } = render(<Sidebar {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Herramientas' }));
     expect(container.querySelector('[data-tooltip="Compilar / Exportar Proyecto"]')).toBeTruthy();
+    expect(container.querySelector('[data-tooltip="Galería Pública de Proyectos"]')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
+    fireEvent.click(container.querySelector('[data-tooltip="Galería Pública de Proyectos"]')!);
+    expect(props.onOpenGallery).toHaveBeenCalledTimes(1);
+    fireEvent.click(container.querySelector('[data-tooltip*="Voz en Vivo"]')!);
+    expect(props.setMode).toHaveBeenCalledWith('live_voice');
   });
 
   test('Configurar LLM Local (grupo Modelos) dispara su manejador', () => {
     const props = { ...baseProps(), onOpenLocalLlmConfig: vi.fn() };
     const { container } = render(<Sidebar {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Modelos' }));
     expect(container.querySelector('[data-tooltip="Configurar LLM Local"]')).toBeTruthy();
     fireEvent.click(screen.getByText('Configurar LLM Local'));
     expect(props.onOpenLocalLlmConfig).toHaveBeenCalledTimes(1);
@@ -118,6 +137,7 @@ describe('Sidebar (panel lateral agrupado)', () => {
     render(<Sidebar {...props} />);
 
     expect(screen.getByRole('button', { name: 'Instrucciones' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Instrucciones' }));
     const ta = screen.getByPlaceholderText(/Instrucción del sistema/) as HTMLTextAreaElement;
     expect(ta.value).toBe('rol actual');
 
@@ -138,5 +158,15 @@ describe('Sidebar (panel lateral agrupado)', () => {
   test('sin parámetros no se renderiza el grupo Instrucciones', () => {
     render(<Sidebar {...baseProps()} />);
     expect(screen.queryByRole('button', { name: 'Instrucciones' })).toBeNull();
+  });
+
+  test('cerrar oculta el panel completo sin ancho o padding de escritorio', () => {
+    const { container, rerender } = render(<Sidebar {...baseProps()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
+    rerender(<Sidebar {...baseProps()} isSidebarOpen={false} />);
+    expect(container.querySelector('aside')).toHaveClass('hidden');
+    expect(container.querySelector('aside')).not.toHaveClass('lg:w-64', 'p-3');
+    rerender(<Sidebar {...baseProps()} />);
+    expect(screen.getByRole('button', { name: 'Crear' })).toHaveAttribute('aria-expanded', 'true');
   });
 });
