@@ -5,6 +5,7 @@ export type ToolId =
   | 'fs.glob'
   | 'fs.grep'
   | 'shell.run'
+  | 'shell.job'
   | 'read_diagnostics'
   | 'task'
   | 'git.status'

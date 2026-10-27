@@ -1,9 +1,12 @@
 import type { ToolDefinition } from '../types';
 import { withActiveRoot } from '../activeProject';
+import { splitPipeline } from '../shellCommand';
 
 export interface ShellRunInput {
   command: string;
   timeoutMs?: number;
+  /** Arranca el comando en segundo plano: devuelve id, pid y log. */
+  background?: boolean;
 }
 
 export interface ShellRunOutput {
@@ -84,9 +87,14 @@ function commandRequiresApproval(command: string): boolean {
 
 export const shellRunTool: ToolDefinition<ShellRunInput, ShellRunOutput> = {
   id: 'shell.run',
-  description: 'Ejecutar comando shell en el servidor (con aprobación si es peligroso).',
+  description: 'Ejecutar comando shell en el servidor (admite pipes; con aprobación si es peligroso).',
   danger: true,
-  requiresApproval: (input) => commandRequiresApproval(input.command || ''),
+  // Un pipeline pide aprobación si cualquiera de sus etapas la pediría sola.
+  requiresApproval: (input) => {
+    const parsed = splitPipeline(input.command || '');
+    if (!parsed.ok) return true;
+    return parsed.segments.some((segment) => commandRequiresApproval(segment));
+  },
   run: async (input) => {
     const res = await fetch('/api/agent/run-tool', {
       method: 'POST',
@@ -105,5 +113,39 @@ export const shellRunTool: ToolDefinition<ShellRunInput, ShellRunOutput> = {
  * Utilidad para tests: verificar si un comando es seguro
  */
 export function isCommandSafe(command: string): boolean {
-  return !commandRequiresApproval(command);
+  const parsed = splitPipeline(command);
+  return parsed.ok && parsed.segments.every((segment) => !commandRequiresApproval(segment));
 }
+
+/**
+ * `shell.job`: consulta y para los trabajos que el agente dejó en segundo plano.
+ * El servidor solo acepta ids de su propio registro (y un pid que pertenezca a
+ * ese trabajo), así que aquí no hay forma de matar un proceso arbitrario.
+ */
+export interface ShellJobInput {
+  action: 'list' | 'logs' | 'stop';
+  id?: string;
+  /** Líneas de log a devolver en `logs` (1-500, por defecto 40). */
+  tail?: number;
+  /** Comprobación extra en `stop`: debe pertenecer al trabajo indicado. */
+  pid?: number;
+}
+
+export const shellJobTool: ToolDefinition<ShellJobInput, any> = {
+  id: 'shell.job',
+  description: 'Trabajos en segundo plano: listar, leer el log (tail) y parar por id.',
+  danger: true,
+  requiresApproval: (input) => input.action === 'stop',
+  run: async (input) => {
+    const res = await fetch('/api/agent/run-tool', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toolId: 'shell.job', input: withActiveRoot(input as any) }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return { ok: false, error: (err as any).error || `HTTP ${res.status}` };
+    }
+    return res.json();
+  },
+};

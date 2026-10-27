@@ -229,6 +229,63 @@ test('shell.run ejecuta comando permitido', async () => {
   assert.ok(res.body.data.stdout.includes('hola'));
 });
 
+test('shell.run admite pipes entre etapas permitidas', async () => {
+  // `grep` no está en Windows y `findstr` no está en POSIX: cada uno en su casa.
+  const command = process.platform === 'win32'
+    ? 'echo hola | findstr hola'
+    : 'echo hola | grep hola';
+
+  // Root temporal: el proyecto local puede tener `allowedTools` guardado.
+  const res = await executeAgentTool('shell.run', { command, root: gitRoot });
+
+  assert.equal(res.ok, true, String(res.error));
+  const data = res.data as any;
+  assert.equal(data.exitCode, 0);
+  assert.match(String(data.stdout), /hola/);
+});
+
+test('shell.run valida cada etapa del pipeline, no solo la primera', async () => {
+  const res = await executeAgentTool('shell.run', { command: 'echo x | sh' });
+
+  assert.equal(res.ok, false);
+  assert.equal(res.status, 403);
+  assert.match(String(res.error), /Comando no permitido/);
+});
+
+test('shell.run en segundo plano devuelve id y log consultable con shell.job', async () => {
+  const started = await executeAgentTool('shell.run', { command: 'npm --version', background: true, root: gitRoot });
+
+  assert.equal(started.ok, true, String(started.error));
+  const job = started.data as any;
+  assert.match(job.id, /^job-/);
+  assert.ok(job.pid > 0, 'debe devolver el pid');
+  assert.ok(job.logPath, 'debe devolver la ruta del log');
+
+  let logs: any = null;
+  for (let i = 0; i < 100; i++) {
+    const r = await executeAgentTool('shell.job', { action: 'logs', id: job.id, tail: 20, root: gitRoot });
+    assert.equal(r.ok, true, String(r.error));
+    logs = r.data;
+    if (logs.status !== 'running') break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  assert.notEqual(logs?.status, 'running', 'npm --version debe terminar solo');
+  assert.match(String(logs?.content), /\d+\.\d+/, 'el log debe tener la versión');
+
+  const list = await executeAgentTool('shell.job', { action: 'list', root: gitRoot });
+  assert.ok((list.data as any).jobs.some((j: any) => j.id === job.id));
+
+  // Un trabajo terminado no se puede parar: no debe fingir éxito.
+  const late = await executeAgentTool('shell.job', { action: 'stop', id: job.id, root: gitRoot });
+  assert.equal(late.ok, false);
+  assert.match(String(late.error), /ya terminó/);
+
+  const bad = await executeAgentTool('shell.job', { action: 'reiniciar', id: job.id, root: gitRoot });
+  assert.equal(bad.ok, false);
+  assert.match(String(bad.error), /action debe ser/);
+});
+
 test('shell.run bloquea comando peligroso', async () => {
   const req = mockReq({ toolId: 'shell.run', input: { command: 'sudo rm -rf /' } });
   const res = mockRes();

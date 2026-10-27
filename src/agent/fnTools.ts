@@ -46,8 +46,30 @@ export const AGENT_FUNCTION_DECLARATIONS = [
   },
   {
     name: 'shell_run',
-    description: 'Ejecutar comando shell allowlist (npm, node, git, tsc, vite...).',
-    parameters: { type: 'OBJECT', properties: { command: { type: 'STRING' } }, required: ['command'] },
+    description: 'Ejecutar comando allowlist (npm, node, git, tsc, vite...). Admite pipes `|` entre etapas permitidas. Con background:true lo lanza en segundo plano y devuelve id/pid/logPath.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        command: { type: 'STRING', description: 'Comando; las etapas se separan con |' },
+        timeoutMs: { type: 'NUMBER', description: 'Timeout en primer plano (máx 60000)' },
+        background: { type: 'BOOLEAN', description: 'Dejarlo corriendo y devolver id para shell_job' },
+      },
+      required: ['command'],
+    },
+  },
+  {
+    name: 'shell_job',
+    description: 'Trabajos en segundo plano: list, logs (tail de líneas) y stop por id. El pid de stop debe pertenecer al trabajo; no se puede matar un proceso ajeno.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', enum: ['list', 'logs', 'stop'], description: 'Acción a ejecutar' },
+        id: { type: 'STRING', description: 'Id del trabajo (requerido en logs/stop)' },
+        tail: { type: 'NUMBER', description: 'Líneas de log a devolver (1-500, por defecto 40)' },
+        pid: { type: 'NUMBER', description: 'Comprobación extra en stop: debe pertenecer al trabajo' },
+      },
+      required: ['action'],
+    },
   },
   {
     name: 'read_diagnostics',
@@ -158,7 +180,7 @@ export const AGENT_FUNCTION_DECLARATIONS = [
 
 const FN_TO_TOOL: Record<string, string> = {
   fs_read: 'fs.read', fs_write: 'fs.write', fs_edit: 'fs.edit',
-  fs_glob: 'fs.glob', fs_grep: 'fs.grep', shell_run: 'shell.run',
+  fs_glob: 'fs.glob', fs_grep: 'fs.grep', shell_run: 'shell.run', shell_job: 'shell.job',
   read_diagnostics: 'read_diagnostics',
   task: 'task',
   git_status: 'git.status', git_diff: 'git.diff', git_log: 'git.log', git_commit: 'git.commit', git_worktree: 'git.worktree', git_rebase: 'git.rebase', git_conflict: 'git.conflict',
