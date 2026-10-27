@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { handleGeminiGenerate, handleGeminiStream, GEMINI_KEY_REQUIRED, GEMINI_FALLBACK_MODELS } from '../gemini.js';
+import { handleGeminiGenerate, handleGeminiStream, GEMINI_KEY_REQUIRED } from '../gemini.js';
+import { GEMINI_FALLBACK_MODELS } from '../src/config/geminiModels.js';
 
 function mockReq(body: any) {
   return {
