@@ -93,7 +93,6 @@ import { OnboardingModal } from './components/OnboardingModal';
 import { setActiveProjectRoot } from './agent/activeProject';
 
 import { ChatLiveAppViewerModal } from './components/ChatLiveAppViewerModal';
-import { McpServerManager } from './components/McpServerManager';
 import { ExtensionsManager } from './components/ExtensionsManager';
 import type { Language } from './i18n/translations';
 
@@ -146,7 +145,6 @@ export default function App() {
   const setMessages = chat.setMessages;
   const setHistory = chat.setHistory;
   const setDownloadedModels = chat.setDownloadedModels;
-  const [isMcpManagerOpen, setIsMcpManagerOpen] = useState(false);
   const [isExtensionsOpen, setIsExtensionsOpen] = useState(false);
   const [isSymbolSearchOpen, setIsSymbolSearchOpen] = useState(false);
   const agent = useAgent('.', selectedModel);
@@ -889,8 +887,8 @@ export default function App() {
     }
   };
 
-  // handleGeneralAudit and handleNewPrompt
-  const { handleGeneralAudit, handleNewPrompt } = useAppPrompts({
+  // handleGeneralAudit and handleNewChat
+  const { handleGeneralAudit, handleNewChat } = useAppPrompts({
     activeTab,
     setProjectToast,
     lang,
@@ -916,7 +914,7 @@ export default function App() {
     setIsWorkbenchOpen,
     setIsCompilerModalOpen,
     setIsSymbolSearchOpen,
-    handleNewPrompt,
+    handleNewChat,
     handleSaveVersion,
     handleGeneralAudit,
     sendBrowserNotification,
@@ -966,14 +964,13 @@ export default function App() {
     lang,
     mode,
     setMode,
-    handleNewPrompt,
+    handleNewChat,
     setIsGalleryModalOpen,
     setIsLibraryModalOpen,
     setIsInspectorOpen,
     setIsSymbolSearchOpen,
     setIsPreferencesModalOpen,
     setIsLocalLlmModalOpen,
-    setIsMcpManagerOpen,
     setIsExtensionsOpen,
     setIsCompilerModalOpen,
     setIsHelpModalOpen,
@@ -1072,7 +1069,7 @@ export default function App() {
             onRunHistoryItem={handleRunHistoryItem}
             onDeleteHistoryItem={handleDeleteHistoryItem}
             onClearHistory={handleClearHistory}
-            onNewPrompt={handleNewPrompt}
+            onNewPrompt={handleNewChat}
             onOpenGallery={() => setIsGalleryModalOpen(true)}
             onOpenCompile={() => setIsCompilerModalOpen(true)}
             onOpenLocalLlmConfig={() => setIsLocalLlmModalOpen(true)}
@@ -1294,14 +1291,6 @@ export default function App() {
         </React.Suspense>
       )}
 
-      {/* MCP Server Manager */}
-      {isMcpManagerOpen && (
-        <McpServerManager
-          isOpen={isMcpManagerOpen}
-          onClose={() => setIsMcpManagerOpen(false)}
-        />
-      )}
-
       {/* Extensions Manager */}
       {isExtensionsOpen && (
         <ExtensionsManager
@@ -1444,7 +1433,7 @@ export default function App() {
         ref={nonoRef}
         lang={lang as any}
         displayName={displayName}
-        onNewPrompt={handleNewPrompt}
+        onNewPrompt={handleNewChat}
         status={nonoStatus}
         onOpenWorkbench={() => setIsWorkbenchOpen(true)}
         onOpenCompile={() => setIsCompilerModalOpen(true)}
