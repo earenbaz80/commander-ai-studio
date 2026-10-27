@@ -6,6 +6,22 @@ import { mapGeminiModel, isQuotaOrNotFoundError, executeLocalHfModel } from './l
 export const GEMINI_KEY_REQUIRED =
   'GEMINI_API_KEY requerida. Añádela en Configuración → GOOGLE GEMINI (o en el archivo .env) para usar los modelos de Google.';
 
+/**
+ * Cadena de respaldo de Gemini, verificada contra la API el 2026-10-27.
+ *
+ * Los ids anteriores (2.0-flash, 2.0-flash-lite, 1.5-flash-8b, 2.5-flash) ya
+ * devuelven 404 «no longer available»: reintentarlos sólo alargaba la espera
+ * hasta el error del motor local. El orden va del mismo nivel al más ligero y
+ * deja el alias `-latest` al final, que es el que más tarda en quedar obsoleto.
+ */
+export const GEMINI_FALLBACK_MODELS = [
+  'gemini-3.5-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  'gemini-3.6-flash',
+  'gemini-flash-lite-latest',
+];
+
 class MissingApiKeyError extends Error {
   code = 'MISSING_API_KEY';
   constructor() {
@@ -118,15 +134,14 @@ export async function handleGeminiGenerate(req: Request, res: Response) {
 
     const fallbackCandidates = Array.from(new Set([
       activeModel,
-      'gemini-2.0-flash',
-      'gemini-2.0-flash-lite',
-      'gemini-1.5-flash-8b',
-      'gemini-2.5-flash',
+      ...GEMINI_FALLBACK_MODELS,
     ]));
 
     let response: any;
     let fallbackUsed = false;
     let fallbackModelName = '';
+    /** Qué modelo falló y con qué estado; viaja en la respuesta si nada funciona. */
+    const failures: string[] = [];
 
     for (const modelToTry of fallbackCandidates) {
       try {
@@ -138,11 +153,12 @@ export async function handleGeminiGenerate(req: Request, res: Response) {
         if (modelToTry !== activeModel) {
           fallbackUsed = true;
           fallbackModelName = modelToTry;
-          console.warn(`[Auto-Fallback]: ${activeModel} agotó cuota o no disponible, respondiendo con ${modelToTry}`);
+          console.warn(`[Auto-Fallback]: ${activeModel} no disponible, respondiendo con ${modelToTry}`);
         }
         break;
       } catch (err: any) {
         if (isQuotaOrNotFoundError(err)) {
+          failures.push(`${modelToTry} (${err?.status || err?.code || 'error'})`);
           console.warn(`Modelo ${modelToTry} agotó cuota o falló (${err.status || err.message}), intentando alternativa con mayor cuota...`);
           continue;
         }
@@ -151,31 +167,47 @@ export async function handleGeminiGenerate(req: Request, res: Response) {
     }
 
     if (!response) {
-      console.warn('[Google Quota Exhausted]: Todos los modelos de Gemini agotaron cuota en la nube, usando motor local.');
+      console.warn(`[Google]: ningún modelo respondió (${failures.join(', ')}). Probando el motor local.`);
       const promptText = typeof contents === 'string'
         ? contents
         : Array.isArray(contents)
         ? contents.map((c: any) => c.text || JSON.stringify(c)).join('\n')
         : JSON.stringify(contents);
-      const localResult = await executeLocalHfModel({
-        prompt: promptText,
-        model: activeModel,
-        systemInstruction,
-        temperature,
-        maxTokens,
-      });
-      return res.json({
-        success: true,
-        text: `⚡ *[Aviso: La cuota gratuita de tu API Key de Google se ha agotado en Google AI Studio (Rate Limit 429). Tu respuesta fue generada exitosamente mediante Inferencia Local sin cortes]*\n\n${localResult.text}`,
-        metrics: localResult.metrics,
-      });
+      try {
+        const localResult = await executeLocalHfModel({
+          prompt: promptText,
+          model: activeModel,
+          systemInstruction,
+          temperature,
+          maxTokens,
+        });
+        return res.json({
+          success: true,
+          text: `⚡ *[Aviso: La cuota gratuita de tu API Key de Google se ha agotado en Google AI Studio (Rate Limit 429). Tu respuesta fue generada exitosamente mediante Inferencia Local sin cortes]*\n\n${localResult.text}`,
+          metrics: localResult.metrics,
+        });
+      } catch (localErr: any) {
+        // Sin runtime local no hay respuesta posible. Devolvemos qué falló en
+        // Google —accionable— en vez del error interno del motor local
+        // («MODEL_RUNTIME_UNAVAILABLE»), que no explica nada.
+        console.warn('[Google]: motor local no disponible:', localErr?.message || localErr);
+        return res.status(503).json({
+          success: false,
+          code: 'ALL_GEMINI_MODELS_UNAVAILABLE',
+          error:
+            `Ningún modelo de Gemini respondió (${failures.join(', ') || 'sin intentos'}). ` +
+            'Revisa tu cuota en Google AI Studio o elige otro modelo en Configuración.',
+          tried: failures,
+          provider: 'google',
+        });
+      }
     }
 
     console.log('Gemini API Response received');
     const latencyMs = Date.now() - startTime;
     let textOutput = response.text || '';
     if (fallbackUsed) {
-      textOutput = `⚡ *[Aviso: ${activeModel} agotó su cuota por minuto. Respuesta generada con el modelo de alta disponibilidad ${fallbackModelName}]*\n\n` + textOutput;
+      textOutput = `⚡ *[Aviso: ${activeModel} no respondió (cuota agotada o modelo retirado). Respuesta generada con ${fallbackModelName}]*\n\n` + textOutput;
     }
 
     const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
