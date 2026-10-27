@@ -36,7 +36,7 @@ export const DEFAULT_PERMISSIONS: Permissions = {
 /** Tools que modifican el filesystem o el repo. */
 const FILE_WRITE_TOOLS = new Set(['fs.write', 'fs.edit', 'git.commit']);
 /** Tools que ejecutan código/comandos (pueden modificar de forma indirecta). */
-const EXEC_TOOLS = new Set(['shell.run', 'code.run']);
+const EXEC_TOOLS = new Set(['shell.run', 'shell.job', 'code.run']);
 
 // ── Coincidencia de globs ( ** , * , ? ) sobre rutas relativas ──
 

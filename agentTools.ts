@@ -1,7 +1,9 @@
 import type { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { SHELL_BLOCKED, SHELL_OPERATORS, SHELL_ALLOW_PREFIX, AGENT_TOOLS, sanitizeGitMessage } from './security';
+import { SHELL_BLOCKED, SHELL_ALLOW_PREFIX, AGENT_TOOLS, sanitizeGitMessage } from './security';
+import { splitPipeline } from './src/agent/shellCommand';
+import { listJobs, readJobLog, runPipeline, startJob, stopJob } from './shellJobs';
 import { assertSafeOutboundUrl, safeFetch } from './ssrf';
 import { listRoots, resolveProjectPath } from './projects';
 import { snapshotPath } from './checkpoints';
@@ -471,58 +473,85 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
   }
 
   if (toolId === 'shell.run') {
-    const { spawn } = await import('child_process');
-    const cmd = String(input.command || '').slice(0, 2000);
-    if (!cmd.trim()) return { ok: false, error: 'command requerido' };
-    const lower = cmd.toLowerCase().trim();
-    if (SHELL_BLOCKED.some((b) => lower.includes(b))) {
-      return { ok: false, error: 'Comando bloqueado por seguridad', status: 403 };
-    }
-    if (SHELL_OPERATORS.some((op) => cmd.includes(op))) {
-      return { ok: false, error: 'Operadores de shell no permitidos (|, ;, &&, ||, `, $(), etc.)', status: 403 };
-    }
-    const allowed = SHELL_ALLOW_PREFIX.some((a) => lower.startsWith(a));
-    if (!allowed) {
-      return { ok: false, error: 'Comando no permitido. Usa npm/npx/node/python/git/ls/cat/echo/tsc/vite.', status: 403 };
-    }
-    const tokens = cmd.split(/\s+/).filter(Boolean);
-    const [bin, ...args] = tokens;
-    if (!bin) return { ok: false, error: 'comando vacío' };
-    for (const t of args) {
-      if (t.startsWith('-') || !/[\\/:]|\.\./.test(t)) continue;
-      try {
-        resolveProjectPath(t, rootHint);
-      } catch {
-        return { ok: false, error: `Ruta fuera de los proyectos permitidos: ${t}`, status: 403 };
+    const parsed = splitPipeline(input.command);
+    if (!parsed.ok) return { ok: false, error: parsed.error, status: 403 };
+    const cmd = String(input.command).trim();
+    // Cada etapa se valida por separado: un pipeline no puede colar un comando
+    // que solo no pasaría (p. ej. `cat x | sh`).
+    for (const segment of parsed.segments) {
+      const lower = segment.toLowerCase();
+      const blocked = SHELL_BLOCKED.find((b) => lower.includes(b));
+      if (blocked) {
+        return { ok: false, error: `Comando bloqueado por seguridad (${blocked.trim()})`, status: 403 };
+      }
+      if (!SHELL_ALLOW_PREFIX.some((a) => lower.startsWith(a))) {
+        return {
+          ok: false,
+          error: `Comando no permitido: ${segment.slice(0, 80)}. Usa npm/npx/node/python/git/ls/cat/echo/tsc/vite.`,
+          status: 403,
+        };
+      }
+      const tokens = segment.split(/\s+/).filter(Boolean);
+      for (const t of tokens.slice(1)) {
+        if (t.startsWith('-') || !/[\\/:]|\.\./.test(t)) continue;
+        try {
+          resolveProjectPath(t, rootHint);
+        } catch {
+          return { ok: false, error: `Ruta fuera de los proyectos permitidos: ${t}`, status: 403 };
+        }
       }
     }
     // El comando corre en el root del proyecto activo (siempre uno registrado).
     const cwd = rootHint ? resolveProjectPath('.', rootHint).abs : AGENT_ROOT;
-    const timeout = Math.min(Number(input.timeoutMs) || 30000, 60000);
-    try {
-      const start = Date.now();
-      const result = await new Promise<{ stdout: string; stderr: string; code: number }>((resolve, reject) => {
-        let child;
-        if (process.platform === 'win32') {
-          // Windows: echo/dir/type/copy/move/del/rmdir son builtins de cmd.exe y npm/npx
-          // son .cmd — spawn directo falla con ENOENT/EINVAL (CVE-2024-27980).
-          // El comando viaja como UN solo arg (sin concatenación) vía cmd /d /s /c.
-          child = spawn(process.env.COMSPEC || 'cmd.exe', ['/d', '/s', '/c', cmd], {
-            cwd, timeout, windowsHide: true, windowsVerbatimArguments: true,
-          });
-        } else {
-          child = spawn(bin, args, { cwd, timeout, windowsHide: true });
-        }
-        let stdout = ''; let stderr = '';
-        child.stdout.on('data', (d) => { stdout += d; if (stdout.length > 20000) stdout = stdout.slice(-20000); });
-        child.stderr.on('data', (d) => { stderr += d; if (stderr.length > 5000) stderr = stderr.slice(-5000); });
-        child.on('close', (code) => resolve({ stdout, stderr, code: code ?? 0 }));
-        child.on('error', reject);
-      });
-      return { ok: true, data: { stdout: result.stdout.slice(0, 20000), stderr: result.stderr.slice(0, 5000), exitCode: result.code, durationMs: Date.now() - start } };
-    } catch (e: any) {
-      return { ok: true, data: { stdout: '', stderr: String(e.message || '').slice(0, 5000), exitCode: 1, durationMs: 0 } };
+
+    // Segundo plano: el proceso escribe a un log y se consulta por id. Nada de
+    // esperar a que termine un servidor de desarrollo.
+    if (input.background === true) {
+      const started = startJob(cmd, parsed.segments, cwd);
+      if (!started.ok) return { ok: false, error: started.error };
+      return {
+        ok: true,
+        data: {
+          ...started.job,
+          background: true,
+          hint: `Sigue la salida con shell.job { action: "logs", id: "${started.job.id}" } y páralo con { action: "stop", id: "${started.job.id}" }.`,
+        },
+      };
     }
+
+    const timeout = Math.min(Number(input.timeoutMs) || 30000, 60000);
+    const start = Date.now();
+    const result = await runPipeline(parsed.segments, cwd, timeout);
+    return {
+      ok: true,
+      data: {
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+        durationMs: Date.now() - start,
+        ...(result.timedOut ? { timedOut: true } : {}),
+      },
+    };
+  }
+
+  if (toolId === 'shell.job') {
+    const action = String(input.action || 'list');
+    if (action === 'list') return { ok: true, data: { jobs: listJobs() } };
+    if (action === 'logs') {
+      const id = String(input.id || '').slice(0, 100);
+      if (!id) return { ok: false, error: 'id requerido para logs' };
+      const res = readJobLog(id, Number(input.tail) || 40);
+      return res.ok ? { ok: true, data: res.data } : { ok: false, error: res.error };
+    }
+    if (action === 'stop') {
+      const id = String(input.id || '').slice(0, 100);
+      if (!id) return { ok: false, error: 'id requerido para stop' };
+      const pid = input.pid === undefined || input.pid === null ? undefined : Number(input.pid);
+      if (pid !== undefined && !Number.isFinite(pid)) return { ok: false, error: 'pid inválido' };
+      const res = await stopJob(id, pid);
+      return res.ok ? { ok: true, data: res.data } : { ok: false, error: res.error };
+    }
+    return { ok: false, error: 'action debe ser list, logs o stop' };
   }
 
   if (toolId === 'web.fetch') {
