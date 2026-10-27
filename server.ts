@@ -369,6 +369,42 @@ app.post('/api/providers/:id/enabled', (req, res) => {
   } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
 });
 
+app.post('/api/providers', async (req, res) => {
+  try {
+    const { id, config, target } = req.body || {};
+    if (!id) return res.status(400).json({ success: false, error: 'ID de proveedor requerido' });
+
+    // Validar que la configuración tenga los campos requeridos para este proveedor
+    const requiredFields: Record<string, string[]> = {
+      google: ['apiKey'],
+      anthropic: ['apiKey'],
+      huggingface: ['apiToken'],
+      ollama: ['host'],
+      openrouter: ['apiKey'],
+      pollinations: [],
+      custom: ['baseUrl'],
+      xai: ['apiKey'],
+    };
+
+    const spec = requiredFields[id];
+    if (spec) {
+      const missing = spec.filter(field => !(config && typeof config[field] === 'string'));
+      if (missing.length > 0) {
+        return res.status(400).json({ success: false, error: 'Configuración incompleta', missing });
+      }
+    }
+
+    // Merge con configuración existente y guardar
+    const { writeConfig } = await import('./src/config/index');
+    const writeTarget: 'project' | 'global' = target === 'global' ? 'global' : 'project';
+    const configPath = writeConfig({ providers: { [id]: config } }, writeTarget);
+
+    res.json({ success: true, configPath, target: writeTarget });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Error creando proveedor' });
+  }
+});
+
 // ==================== MCP REGISTRY ====================
 
 // Monta el router de MCP bajo /api/mcp
