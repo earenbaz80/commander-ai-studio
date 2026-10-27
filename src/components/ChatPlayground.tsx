@@ -295,15 +295,15 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center space-y-4">
-              <h1 className="commander-title mx-auto text-3xl sm:text-4xl md:text-5xl text-center leading-tight px-2">
+              <h1 className="commander-title mx-auto text-xl sm:text-2xl text-center leading-tight px-2">
                 Commander AI Studio
               </h1>
               {/* El saludo ("¡Hola…") lo muestra únicamente Nono, de forma flotante */}
-              <p className="text-yellow-500/70 text-xs">
+              <p className="text-[#ffff55] text-sm">
                 {lang === 'es' ? 'Escribe tu mensaje o adjunta un archivo para comenzar' : lang === 'de' ? 'Schreibe eine Nachricht oder hänge eine Datei an, um zu beginnen' : 'Type your message or attach a file to start'}
               </p>
               {!isAuthenticated && (
-                <p className="text-[10px] text-cyan-500/60 pt-1 flex items-center justify-center gap-1">
+                <p className="text-xs text-cyan-200 pt-1 flex items-center justify-center gap-1">
                   <Zap className="w-3 h-3 shrink-0" />
                   {lang === 'es'
                     ? 'Sesión de invitado — el historial se guarda solo en este dispositivo'
