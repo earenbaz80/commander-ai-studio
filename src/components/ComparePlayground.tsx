@@ -40,13 +40,16 @@ export const ComparePlayground: React.FC<ComparePlaygroundProps> = ({
         const route = resolveChatRoute({ modelId: model, provider: modelObj?.provider });
         const isAnthropic = route.isAnthropic;
         const isHf = route.isHf;
+        const isFreeProvider = route.isFreeProvider;
+        const isLocal = route.isLocal;
+        const isCustom = route.isCustom;
         const endpoint = route.endpoint;
         const anthropicApiKey = parameters.anthropicApiKey || getCachedApiKey('ANTHROPIC_API_KEY') || undefined;
+        const geminiApiKey = getCachedApiKey('GEMINI_API_KEY') || undefined;
 
         const payload = isAnthropic
           ? {
               prompt,
-              contents: prompt,
               model,
               anthropicApiKey,
               systemInstruction: parameters.systemInstruction,
@@ -61,9 +64,30 @@ export const ComparePlayground: React.FC<ComparePlaygroundProps> = ({
               systemInstruction: parameters.systemInstruction,
               temperature: temp,
               maxTokens: parameters.maxTokens,
+              geminiApiKey: geminiApiKey || getCachedApiKey('GEMINI_API_KEY') || undefined,
+            }
+          : isFreeProvider || isLocal
+          ? {
+              prompt,
+              model: isLocal ? model.replace(/^local\//, '') : model,
+              systemInstruction: parameters.systemInstruction,
+              temperature: temp,
+              maxTokens: parameters.maxTokens,
+              openrouterApiKey: getCachedApiKey('OPENROUTER_API_KEY') || undefined,
+              ollamaHost: getCachedApiKey('OLLAMA_HOST') || undefined,
+            }
+          : isCustom
+          ? {
+              prompt,
+              model: getCachedApiKey('CUSTOM_MODEL') || model,
+              systemInstruction: parameters.systemInstruction,
+              temperature: temp,
+              maxTokens: parameters.maxTokens,
+              baseURL: getCachedApiKey('CUSTOM_BASE_URL') || undefined,
+              apiKey: getCachedApiKey('CUSTOM_API_KEY') || getCachedApiKey('OPENCODE_API_KEY') || undefined,
             }
           : {
-              apiKey: getCachedApiKey('GEMINI_API_KEY') || undefined,
+              apiKey: geminiApiKey,
               contents: prompt,
               systemInstruction: parameters.systemInstruction,
               model,

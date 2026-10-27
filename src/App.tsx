@@ -435,6 +435,7 @@ export default function App() {
     lang: lang as string,
     setIsGenerating,
     addToHistory,
+    messages,
   });
 
   // Execution Handler for Chat
@@ -510,10 +511,12 @@ export default function App() {
         };
       })) : [];
 
+      const historyForProvider = messages.map(m => ({ role: m.role, content: m.content })).concat([{ role: 'user', content: userText }]);
+
       const payload = isAnthropic
         ? {
             prompt: userText,
-            messages: messages.map(m => ({ role: m.role, content: m.content })).concat([{ role: 'user', content: userText }]),
+            messages: historyForProvider,
             model: activeModel,
             anthropicApiKey,
             systemInstruction: effectiveSystemInstruction,
@@ -523,6 +526,7 @@ export default function App() {
         : isHf
         ? {
             prompt: userText,
+            messages: historyForProvider,
             model: activeModel,
             hfApiToken: parameters.hfApiToken || getCachedApiKey('HF_API_TOKEN') || undefined,
             systemInstruction: effectiveSystemInstruction,
@@ -533,6 +537,7 @@ export default function App() {
         : isFreeProvider || isLocal
         ? {
             prompt: userText,
+            messages: historyForProvider,
             model: isLocal ? activeModel.replace(/^local\//, '') : activeModel,
             systemInstruction: effectiveSystemInstruction,
             temperature: parameters.temperature,
@@ -543,6 +548,7 @@ export default function App() {
         : isCustom
         ? {
             prompt: userText,
+            messages: historyForProvider,
             model: getCachedApiKey('CUSTOM_MODEL') || activeModel,
             systemInstruction: effectiveSystemInstruction,
             temperature: parameters.temperature,
