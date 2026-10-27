@@ -3,13 +3,25 @@ import { withActiveRoot } from '../activeProject';
 
 export interface FsReadInput {
   path: string;
-  maxBytes?: number;
+  /** Línea inicial (1-based). Con offset o limit se devuelve solo esa ventana. */
+  offset?: number;
+  /** Líneas a devolver desde offset (máx 2000; por defecto 200). */
+  limit?: number;
+  /** Prefija cada línea con su número (`  12| `). Por defecto, texto literal. */
+  numberLines?: boolean;
 }
 
 export interface FsReadOutput {
+  /** Texto literal del archivo o de la ventana (sin numerar salvo numberLines). */
   content: string;
   bytes: number;
   exists: boolean;
+  startLine: number;
+  endLine: number;
+  totalLines: number;
+  /** Hay líneas fuera de la ventana: pedir otra con offset/limit. */
+  truncated: boolean;
+  hint?: string;
 }
 
 async function callServer(toolId: string, input: any): Promise<any> {
@@ -27,7 +39,7 @@ async function callServer(toolId: string, input: any): Promise<any> {
 
 export const fsReadTool: ToolDefinition<FsReadInput, FsReadOutput> = {
   id: 'fs.read',
-  description: 'Leer archivo del workspace (vía servidor).',
+  description: 'Leer archivo del workspace por ventana: offset/limit y metadatos de líneas (vía servidor).',
   danger: false,
   requiresApproval: () => false,
   run: async (input) => callServer('fs.read', input),
@@ -92,21 +104,32 @@ export interface FsGrepInput {
   pattern: string;
   path?: string;
   include?: string;
+  /** Líneas de contexto antes de cada coincidencia (0-20). */
+  before?: number;
+  /** Líneas de contexto después de cada coincidencia (0-20). */
+  after?: number;
+  /** Atajo: fija before y after a la vez (0-20). */
+  context?: number;
 }
 
 export interface FsGrepMatch {
   file: string;
   line: number;
   text: string;
+  before?: string[];
+  after?: string[];
 }
 
 export interface FsGrepOutput {
   matches: FsGrepMatch[];
+  /** Se alcanzó el tope de 100 coincidencias: refina el patrón o la ruta. */
+  truncated?: boolean;
+  context?: { before: number; after: number };
 }
 
 export const fsGrepTool: ToolDefinition<FsGrepInput, FsGrepOutput> = {
   id: 'fs.grep',
-  description: 'Buscar texto en archivos (vía servidor).',
+  description: 'Buscar texto en archivos con contexto antes/después de cada coincidencia (vía servidor).',
   danger: false,
   requiresApproval: () => false,
   run: async (input) => callServer('fs.grep', input),

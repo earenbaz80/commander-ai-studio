@@ -20,6 +20,12 @@ const SKIP_DIRS = new Set([
   '.commander',
 ]);
 
+const GREP_MAX_MATCHES = 100;
+/** Líneas que devuelve `fs.read` cuando no se pide una ventana concreta. */
+const READ_WINDOW_LINES = 200;
+/** Tope duro de una ventana: más que esto ya no cabe en el contexto del modelo. */
+const READ_MAX_LINES = 2000;
+
 /**
  * Marcas de conflicto de git, una por bloque:
  *   <<<<<<< ours
@@ -267,8 +273,50 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
     if (!fs.existsSync(target)) return { ok: false, error: `No existe: ${p}` };
     const stats = fs.statSync(target);
     if (stats.isDirectory()) return { ok: false, error: 'Es directorio, usa fs.glob' };
-    const content = fs.readFileSync(target, 'utf8').slice(0, 2000000);
-    return { ok: true, data: { content, bytes: content.length, exists: true } };
+    // Lectura por ventana: sin `offset`/`limit` un archivo corto se devuelve
+    // entero (compatibilidad) y uno largo se recorta. Antes se metían hasta
+    // 2 MB de un solo archivo en el contexto, que es la forma más rápida de
+    // dejar ciego al modelo para el resto de la tarea.
+    const raw = fs.readFileSync(target, 'utf8');
+    const allLines = raw.split('\n');
+    const totalLines = raw === '' ? 0 : allLines.length - (raw.endsWith('\n') ? 1 : 0);
+    const requestedLimit = Number(input.limit);
+    const offset = Math.max(1, Math.trunc(Number(input.offset) || 1));
+    const limit = Math.min(
+      Number.isFinite(requestedLimit) && requestedLimit > 0 ? Math.trunc(requestedLimit) : READ_WINDOW_LINES,
+      READ_MAX_LINES,
+    );
+    // Pedir una ventana más allá del final no devuelve la última línea por
+    // sorpresa: ventana vacía y un aviso de qué rango existe.
+    const outside = totalLines > 0 && offset > totalLines;
+    const startLine = outside ? offset : Math.max(1, Math.min(offset, Math.max(totalLines, 1)));
+    const endLine = outside ? offset - 1 : Math.min(startLine + limit - 1, totalLines);
+    const windowLines = outside || totalLines === 0 ? [] : allLines.slice(startLine - 1, endLine);
+    const truncated = outside || startLine > 1 || endLine < totalLines;
+    const numberLines = input.numberLines === true;
+    const isWholeFile = startLine === 1 && endLine === totalLines;
+    // `content` es texto literal del archivo: si se numerara por defecto, el
+    // modelo pegaría el prefijo "  12| " en `fs.edit.oldString` y fallaría.
+    const content = isWholeFile && !numberLines
+      ? raw
+      : numberLines
+        ? windowLines.map((l, i) => `${String(startLine + i).padStart(5)}| ${l}`).join('\n')
+        : windowLines.join('\n');
+    const data: Record<string, unknown> = {
+      content,
+      bytes: content.length,
+      exists: true,
+      startLine,
+      endLine,
+      totalLines,
+      truncated,
+    };
+    if (outside) {
+      data.hint = `offset ${offset} fuera del archivo (${totalLines} líneas).`;
+    } else if (truncated) {
+      data.hint = `Ventana ${startLine}-${endLine} de ${totalLines} líneas. Pide offset/limit para leer otra parte (máx ${READ_MAX_LINES} por lectura).`;
+    }
+    return { ok: true, data };
   }
 
   if (toolId === 'fs.write') {
@@ -363,7 +411,16 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
       const pathErr = enforcePath(perms, String(input.path), 'read');
       if (pathErr) return { ok: false, error: pathErr, status: 403 };
     }
-    const matches: { file: string; line: number; text: string }[] = [];
+    // Contexto por coincidencia: `before`/`after` (o `context` para ambos).
+    // Sin esto, un grep solo devuelve la línea que coincide y el modelo tiene
+    // que volver a leer el archivo entero para saber qué la rodea.
+    const clampContext = (v: unknown) => {
+      const n = Math.trunc(Number(v));
+      return Number.isFinite(n) && n > 0 ? Math.min(n, 20) : 0;
+    };
+    const beforeN = clampContext(input.before ?? input.context);
+    const afterN = clampContext(input.after ?? input.context);
+    const matches: { file: string; line: number; text: string; before?: string[]; after?: string[] }[] = [];
     const walkGrep = (dir: string, root: string) => {
       try {
         const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -376,9 +433,16 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
             try {
               const content = fs.readFileSync(full, 'utf8');
               const lines = content.split('\n');
-              for (let i = 0; i < lines.length && matches.length < 100; i++) {
+              for (let i = 0; i < lines.length && matches.length < GREP_MAX_MATCHES; i++) {
                 if (lines[i].includes(pattern)) {
-                  matches.push({ file: rel, line: i + 1, text: lines[i].slice(0, 200) });
+                  const match: { file: string; line: number; text: string; before?: string[]; after?: string[] } = {
+                    file: rel,
+                    line: i + 1,
+                    text: lines[i].slice(0, 200),
+                  };
+                  if (beforeN) match.before = lines.slice(Math.max(0, i - beforeN), i).map((l) => l.slice(0, 200));
+                  if (afterN) match.after = lines.slice(i + 1, i + 1 + afterN).map((l) => l.slice(0, 200));
+                  matches.push(match);
                 }
               }
             } catch { /* binario */ }
@@ -388,9 +452,17 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
     };
     for (const root of roots) {
       walkGrep(root, root);
-      if (matches.length >= 100) break;
+      if (matches.length >= GREP_MAX_MATCHES) break;
     }
-    return { ok: true, data: { matches, roots } };
+    return {
+      ok: true,
+      data: {
+        matches,
+        roots,
+        truncated: matches.length >= GREP_MAX_MATCHES,
+        ...(beforeN || afterN ? { context: { before: beforeN, after: afterN } } : {}),
+      },
+    };
   }
 
   if (toolId === 'read_diagnostics') {
