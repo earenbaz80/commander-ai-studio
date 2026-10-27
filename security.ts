@@ -14,14 +14,19 @@ export const SHELL_BLOCKED = [
 export const SHELL_OPERATORS = ['|', ';', '&&', '||', '`', '$(', '${', '<(', '>(', '>>', '2>', '&>', '&', '>', '<', '%', '^'];
 
 export const SHELL_ALLOW_PREFIX = [
-  'npm ', 'git status', 'git log',
+  // npm: solo subcomandos que no instalan paquetes ajenos. `npm install <pkg>`
+  // y `npm exec` ejecutan el código del paquete (postinstall) con los
+  // privilegios del servidor, así que no pueden estar en la allowlist.
+  'npm run ', 'npm test', 'npm ls', 'npm list', 'npm --version',
+  'git status', 'git log',
   'git diff', 'ls', 'dir', 'echo ', 'tsc ', 'vite ',
   'mkdir ', 'pwd', 'whoami',
   'git add ', 'git commit ', 'git stash ', 'git branch ', 'git checkout ',
   'git remote ', 'git fetch ', 'git pull ', 'git push ', 'git show ',
-  'git restore ', 'git switch ', 'git config --get ', 'findstr ', 'find ',
+  'git restore ', 'git switch ', 'git config --get ', 'findstr ',
+  // Sin `find`: `find . -delete` y `find . -exec <cmd>` no usan operadores de
+  // shell, así que pasaban todos los filtros anteriores.
   'grep ', 'rg ', 'head ', 'tail ', 'wc ', 'sort ', 'uniq ',
-  'npm --version',
 ];
 
 export const AGENT_TOOLS = new Set([
