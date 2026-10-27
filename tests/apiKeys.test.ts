@@ -101,6 +101,21 @@ test('apiKeys: get lee el valor de la cookie', () => {
   assert.equal(res.body.value, 'AIzaFromCookie');
 });
 
+test('apiKeys: get acepta la key como param de ruta (GET /api/keys/:key)', () => {
+  // La ruta registrada en server.ts es `/api/keys/:key`; leer solo `req.query`
+  // devolvía 400 y dejaba la key vacía en el cliente.
+  const req = mockReq({
+    params: { key: 'GEMINI_API_KEY' },
+    cookies: { ai_studio_GEMINI_API_KEY: 'AIzaDesdeParam' },
+  });
+  const res = mockRes();
+  handleApiKeyGet(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.success, true);
+  assert.equal(res.body.value, 'AIzaDesdeParam');
+});
+
 test('apiKeys: get devuelve vacío si no hay cookie', () => {
   const res = mockRes();
   handleApiKeyGet(mockReq({ query: { key: 'GEMINI_API_KEY' } }), res);
