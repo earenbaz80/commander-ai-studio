@@ -23,10 +23,40 @@ test('SHELL_OPERATORS contiene operadores de shell peligrosos', () => {
 });
 
 test('SHELL_ALLOW_PREFIX contiene comandos seguros', () => {
-  assert.ok(SHELL_ALLOW_PREFIX.includes('npm '));
+  assert.ok(SHELL_ALLOW_PREFIX.includes('npm run '));
   assert.ok(SHELL_ALLOW_PREFIX.includes('git status'));
   assert.ok(SHELL_ALLOW_PREFIX.includes('ls'));
   assert.ok(SHELL_ALLOW_PREFIX.includes('echo '));
+});
+
+test('allowlist: npm install/exec quedan fuera (el postinstall es RCE)', () => {
+  // El prefijo suelto `npm ` permitía `npm install <pkg>` y `npm exec <pkg>`,
+  // que ejecutan código del paquete sin usar ningún operador de shell.
+  assert.ok(!SHELL_ALLOW_PREFIX.includes('npm '), 'no debe existir el prefijo "npm " suelto');
+  for (const cmd of ['npm install evil', 'npm i evil', 'npm exec evil', 'npm uninstall x']) {
+    assert.ok(
+      !SHELL_ALLOW_PREFIX.some((p) => cmd.toLowerCase().startsWith(p)),
+      `no debería permitir: ${cmd}`
+    );
+  }
+});
+
+test('allowlist: los npm permitidos siguen funcionando', () => {
+  for (const cmd of ['npm run build', 'npm test', 'npm test:node', 'npm ls']) {
+    assert.ok(
+      SHELL_ALLOW_PREFIX.some((p) => cmd.toLowerCase().startsWith(p)),
+      `debería permitir: ${cmd}`
+    );
+  }
+});
+
+test('allowlist: find queda fuera (-delete / -exec no usan operadores)', () => {
+  for (const cmd of ['find . -delete', 'find . -exec rm {}']) {
+    assert.ok(
+      !SHELL_ALLOW_PREFIX.some((p) => cmd.toLowerCase().startsWith(p)),
+      `no debería permitir: ${cmd}`
+    );
+  }
 });
 
 test('SHELL_ALLOW_PREFIX NO contiene comandos peligrosos', () => {
