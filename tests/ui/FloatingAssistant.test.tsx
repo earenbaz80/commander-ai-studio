@@ -88,7 +88,7 @@ describe('FloatingAssistant (Nono)', () => {
       render(<FloatingAssistant lang="es" />);
       fireEvent.click(getHead());
 
-      const input = screen.getByPlaceholderText('Escribe un mensaje...');
+      const input = screen.getByPlaceholderText('Escribe...');
       fireEvent.change(input, { target: { value: 'hola' } });
       fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -120,7 +120,7 @@ describe('FloatingAssistant (Nono)', () => {
     test('Enter con campo vacío no envía nada', () => {
       render(<FloatingAssistant lang="es" />);
       fireEvent.click(getHead());
-      const input = screen.getByPlaceholderText('Escribe un mensaje...') as HTMLInputElement;
+      const input = screen.getByPlaceholderText('Escribe...') as HTMLInputElement;
       fireEvent.change(input, { target: { value: '   ' } });
       fireEvent.keyDown(input, { key: 'Enter' });
       expect(input.value).toBe('   ');
@@ -130,7 +130,7 @@ describe('FloatingAssistant (Nono)', () => {
     test('expresión cambia según la palabra clave', () => {
       render(<FloatingAssistant lang="es" />);
       fireEvent.click(getHead());
-      const input = screen.getByPlaceholderText('Escribe un mensaje...');
+      const input = screen.getByPlaceholderText('Escribe...');
       fireEvent.change(input, { target: { value: 'hubo un error' } });
       fireEvent.keyDown(input, { key: 'Enter' });
       expect(getExpression()).toBe('error');
@@ -143,7 +143,7 @@ describe('FloatingAssistant (Nono)', () => {
       fireEvent.click(getHead());
       expect(document.querySelectorAll('.nono-panel .bg-\\[\\#ffff55\\]').length).toBe(0);
 
-      const input = screen.getByPlaceholderText('Escribe un mensaje...');
+      const input = screen.getByPlaceholderText('Escribe...');
       fireEvent.change(input, { target: { value: 'mensaje de prueba' } });
       fireEvent.keyDown(input, { key: 'Enter' });
       expect(document.querySelectorAll('.nono-panel .bg-\\[\\#ffff55\\]').length).toBe(1);
@@ -159,22 +159,27 @@ describe('FloatingAssistant (Nono)', () => {
 
       render(<FloatingAssistant lang="es" />);
       fireEvent.click(getHead());
-      const input = screen.getByPlaceholderText('Escribe un mensaje...');
+      const input = screen.getByPlaceholderText('Escribe...');
       fireEvent.change(input, { target: { value: 'texto a copiar' } });
       fireEvent.keyDown(input, { key: 'Enter' });
 
-      fireEvent.click(screen.getByLabelText('Copiar último mensaje'));
+      fireEvent.click(screen.getByLabelText('Copiar último'));
       await waitFor(() => expect(writeText).toHaveBeenCalledWith('texto a copiar'));
       expect(screen.getByText(/¡Copiado!/)).toBeInTheDocument();
     });
 
     test('📋 avisa si no hay nada que copiar', async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, writable: true });
+
       render(<FloatingAssistant lang="es" />);
       fireEvent.click(getHead());
       // Limpiamos el saludo inicial para dejar el chat vacío
       fireEvent.click(screen.getByLabelText('Limpiar chat'));
-      fireEvent.click(screen.getByLabelText('Copiar último mensaje'));
+      fireEvent.click(screen.getByLabelText('Copiar último'));
+
       expect(screen.getByText('Nada que copiar')).toBeInTheDocument();
+      expect(writeText).not.toHaveBeenCalled();
     });
 
     test('🆕 llama a onNewPrompt y cierra el panel', () => {
@@ -183,7 +188,7 @@ describe('FloatingAssistant (Nono)', () => {
       fireEvent.click(getHead());
       expect(document.querySelector('.nono-panel')).toBeInTheDocument();
 
-      fireEvent.click(screen.getByLabelText('Nuevo prompt'));
+      fireEvent.click(screen.getByLabelText('Nuevo chat'));
       expect(onNewPrompt).toHaveBeenCalledOnce();
       expect(document.querySelector('.nono-panel')).toBeNull();
     });
@@ -191,7 +196,7 @@ describe('FloatingAssistant (Nono)', () => {
     test('el botón 🆕 no existe sin onNewPrompt', () => {
       render(<FloatingAssistant lang="es" />);
       fireEvent.click(getHead());
-      expect(screen.queryByLabelText('Nuevo prompt')).toBeNull();
+      expect(screen.queryByLabelText('Nuevo chat')).toBeNull();
     });
   });
 
@@ -280,11 +285,36 @@ describe('FloatingAssistant (Nono)', () => {
       chatInput.remove();
     });
 
+    test('el SVG se remonta al empezar a escribir (rebote)', () => {
+      const chatInput = document.createElement('textarea');
+      chatInput.setAttribute('data-chat-input', '');
+      document.body.appendChild(chatInput);
+
+      render(<FloatingAssistant lang="es" />);
+      const before = getSvg();
+
+      act(() => {
+        chatInput.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      });
+      const after = getSvg();
+      // Remontar el SVG reinicia la animación de rebote de Nono
+      expect(after).not.toBe(before);
+      expect(document.querySelector('.nono-lean-chat')).toBeTruthy();
+
+      // Dentro de la misma ráfaga no se vuelve a remontar
+      act(() => {
+        chatInput.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      });
+      expect(getSvg()).toBe(after);
+
+      chatInput.remove();
+    });
+
     test('ignora el foco en el input del propio panel de Nono', () => {
       render(<FloatingAssistant lang="es" />);
       fireEvent.click(getHead());
 
-      const ownInput = screen.getByPlaceholderText('Escribe un mensaje...') as HTMLInputElement;
+      const ownInput = screen.getByPlaceholderText('Escribe...') as HTMLInputElement;
       ownInput.focus();
       ownInput.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
 
@@ -292,11 +322,37 @@ describe('FloatingAssistant (Nono)', () => {
     });
   });
 
+  describe('ojos que siguen el puntero', () => {
+    /** Coloca el centro de la cabeza en (500, 300): jsdom mide todo en 0. */
+    const stubHeadRect = () => {
+      getHead().getBoundingClientRect = () =>
+        ({ left: 480, top: 280, right: 520, bottom: 320, width: 40, height: 40, x: 480, y: 280 }) as DOMRect;
+    };
+
+    const getPupil = () =>
+      document.querySelector('svg[data-expression] circle[fill="#000000"]') as SVGCircleElement | null;
+
+    test('las pupilas miran hacia el puntero', () => {
+      render(<FloatingAssistant lang="es" />);
+      stubHeadRect();
+
+      // Sin movimiento, ambas pupilas están centradas (20 es el ojo izquierdo)
+      expect(Number(getPupil()?.getAttribute('cx'))).toBe(20);
+
+      fireEvent.mouseMove(window, { clientX: 1000, clientY: 300 });
+      expect(Number(getPupil()?.getAttribute('cx'))).toBeGreaterThan(20);
+      expect(Number(getPupil()?.getAttribute('cy'))).toBeCloseTo(38, 1);
+
+      fireEvent.mouseMove(window, { clientX: 500, clientY: 800 });
+      expect(Number(getPupil()?.getAttribute('cy'))).toBeGreaterThan(38);
+    });
+  });
+
   describe('internacionalización', () => {
     test('usa textos en inglés con lang="en"', () => {
       render(<FloatingAssistant lang="en" />);
       fireEvent.click(getHead());
-      expect(screen.getByPlaceholderText('Type a message...')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Type...')).toBeInTheDocument();
     });
   });
 
@@ -308,7 +364,7 @@ describe('FloatingAssistant (Nono)', () => {
       act(() => { vi.advanceTimersByTime(1200); });
       expect(getGreeting()).toBeTruthy();
       act(() => { vi.advanceTimersByTime(4000); });
-      expect(getGreeting()?.textContent).toContain('¿En qué puedo ayudarte hoy?');
+      expect(getGreeting()?.textContent).toContain('¿En qué ayudo?');
     });
 
     test('incluye el nombre del usuario', () => {
@@ -350,7 +406,7 @@ describe('FloatingAssistant (Nono)', () => {
     test('muestra una pregunta al hacer hover', () => {
       render(<FloatingAssistant lang="es" />);
       fireEvent.mouseEnter(getHead());
-      const el = document.querySelector('[data-nono-greeting]') as HTMLElement;
+      const el = document.querySelector('[data-nono-hover]') as HTMLElement;
       expect(el).toBeTruthy();
       expect(el.getAttribute('data-nono-hover')).toBe('true');
       expect(el.textContent?.trim().length).toBeGreaterThan(0);
@@ -360,7 +416,7 @@ describe('FloatingAssistant (Nono)', () => {
       const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
       render(<FloatingAssistant lang="es" displayName="Edel" />);
       fireEvent.mouseEnter(getHead());
-      const el = document.querySelector('[data-nono-greeting]') as HTMLElement;
+      const el = document.querySelector('[data-nono-hover]') as HTMLElement;
       expect(el.textContent).toContain('Edel');
       randomSpy.mockRestore();
     });
@@ -377,16 +433,13 @@ describe('FloatingAssistant (Nono)', () => {
       const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
       render(<FloatingAssistant lang="en" displayName="Edel" />);
       fireEvent.mouseEnter(getHead());
-      const el = document.querySelector('[data-nono-greeting]') as HTMLElement;
+      const el = document.querySelector('[data-nono-hover]') as HTMLElement;
       expect(el.textContent).toMatch(/how can I help/i);
       randomSpy.mockRestore();
     });
   });
 
-  /**
-   * Umbral de auto-sleep de Nono (ver `FloatingAssistant.tsx`: 5 minutos).
-   * Antes era 30 s; al subirlo a 5 min estos tests quedaron desfasados.
-   */
+  /** Umbral de auto-sueño de Nono (ver `FloatingAssistant.tsx`: 5 minutos). */
   const IDLE_SLEEP_MS = 5 * 60 * 1000;
 
   /** Avanza el reloj falso lo justo para que Nono entre en reposo. */
@@ -465,34 +518,59 @@ describe('FloatingAssistant (Nono)', () => {
         />
       );
       fireEvent.click(getHead());
-      expect(screen.getByLabelText('Abrir Workbench')).toBeInTheDocument();
-      expect(screen.getByLabelText('Compilar / Exportar proyecto')).toBeInTheDocument();
-      expect(screen.getByLabelText('Galería de proyectos')).toBeInTheDocument();
-      expect(screen.getByLabelText('Buscar en el proyecto')).toBeInTheDocument();
+      // Los chips ya no llevan aria-label: su nombre accesible es el texto visible.
+      expect(screen.getByRole('button', { name: 'Workbench' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Compilar' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Galería' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Buscar' })).toBeInTheDocument();
     });
 
     test('sin callbacks no muestra chips', () => {
       render(<FloatingAssistant lang="es" />);
       fireEvent.click(getHead());
-      expect(screen.queryByLabelText('Abrir Workbench')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Workbench' })).toBeNull();
     });
 
     test('el chip Workbench dispara su manejador', () => {
       const onWorkbench = vi.fn();
       render(<FloatingAssistant lang="es" onOpenWorkbench={onWorkbench} />);
       fireEvent.click(getHead());
-      fireEvent.click(screen.getByLabelText('Abrir Workbench'));
+      fireEvent.click(screen.getByRole('button', { name: 'Workbench' }));
       expect(onWorkbench).toHaveBeenCalledOnce();
     });
 
-    test('el comando /workbench dispara el mismo manejador', () => {
+    test('el comando /workbench dispara su manejador', () => {
       const onWorkbench = vi.fn();
       render(<FloatingAssistant lang="es" onOpenWorkbench={onWorkbench} />);
       fireEvent.click(getHead());
-      const input = screen.getByPlaceholderText('Escribe un mensaje...');
+      const input = screen.getByPlaceholderText('Escribe...');
       fireEvent.change(input, { target: { value: '/workbench' } });
       fireEvent.keyDown(input, { key: 'Enter' });
       expect(onWorkbench).toHaveBeenCalledOnce();
+      expect(screen.getByText(/Abriendo Workbench/)).toBeInTheDocument();
+    });
+
+    test('un comando sin manejador se reporta como desconocido', () => {
+      render(<FloatingAssistant lang="es" />);
+      fireEvent.click(getHead());
+      const input = screen.getByPlaceholderText('Escribe...');
+      fireEvent.change(input, { target: { value: '/workbench' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+      expect(screen.getByText(/Comando no reconocido/)).toBeInTheDocument();
+    });
+
+    test('el comando /nuevo dispara onNewPrompt y cierra el panel', () => {
+      const onNewPrompt = vi.fn();
+      render(<FloatingAssistant lang="es" onNewPrompt={onNewPrompt} />);
+      fireEvent.click(getHead());
+      const input = screen.getByPlaceholderText('Escribe...');
+      fireEvent.change(input, { target: { value: '/nuevo' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      expect(onNewPrompt).toHaveBeenCalledOnce();
+      expect(document.querySelector('.nono-panel')).toBeNull();
     });
   });
 });

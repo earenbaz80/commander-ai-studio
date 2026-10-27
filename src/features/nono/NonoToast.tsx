@@ -1,0 +1,171 @@
+import React, { useState, useEffect, useCallback } from 'react';
+
+export interface NonoToast {
+  id: string;
+  type: 'info' | 'success' | 'error' | 'warning' | 'action';
+  message: string;
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
+  duration?: number;
+}
+
+const TOAST_STYLES: Record<NonoToast['type'], string> = {
+  info: 'bg-[#001a33] border-[#00ffff] text-[#00ffff]',
+  success: 'bg-[#00243e] border-[#00ff66] text-[#00ff66]',
+  error: 'bg-[#240000] border-[#ff5555] text-[#ff5555]',
+  warning: 'bg-[#2a1a00] border-[#ffff55] text-[#ffff55]',
+  action: 'bg-[#001633] border-[#00ffff] text-[#00ffff]',
+};
+
+const ICONS: Record<NonoToast['type'], React.ReactNode> = {
+  info: <span className="text-[#00ffff]">●</span>,
+  success: <span className="text-[#00ff66]">✓</span>,
+  error: <span className="text-[#ff5555]">✕</span>,
+  warning: <span className="text-[#ffff55]">⚠</span>,
+  action: <span className="text-[#00ffff]">→</span>,
+};
+
+/**
+ * Componente de toast no intrusivo para Nono.
+ * Aparece en esquina superior derecha, no bloquea interacción.
+ * Auto-dismiss configurable.
+ */
+export const NonoToast: React.FC<{ toast: NonoToast; onDismiss: (id: string) => void }> = ({ 
+  toast, 
+  onDismiss 
+}) => {
+  const [visible, setVisible] = useState(false);
+  const [exiting, setExiting] = useState(false);
+
+  useEffect(() => {
+    setVisible(true);
+    const timer = setTimeout(() => {
+      setExiting(true);
+      setTimeout(() => onDismiss(toast.id), 300);
+    }, toast.duration ?? 5000);
+    return () => clearTimeout(timer);
+  }, [toast, onDismiss]);
+
+  if (!visible) return null;
+
+  const style = TOAST_STYLES[toast.type];
+  const action = toast.action;
+
+  return (
+    <div
+      className={`fixed top-4 right-4 z-[9999] flex items-start gap-2 max-w-sm px-3 py-2.5 rounded-lg border-2 shadow-[0_0_20px_rgba(0,0,0,0.5)] transition-all duration-300 ${
+        style
+      } ${exiting ? 'opacity-0 translate-x-full' : 'opacity-100 translate-x-0'}`}
+      role="alert"
+      aria-live="polite"
+    >
+      <span className="mt-0.5 text-xl">{ICONS[toast.type]}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-bold leading-snug">{toast.message}</p>
+        {action ? (
+          <button
+            onClick={() => {
+              action.onClick();
+              onDismiss(toast.id);
+            }}
+            className="mt-1 text-[10px] font-bold underline hover:opacity-70 transition-opacity"
+          >
+            {action.label}
+          </button>
+        ) : null}
+      </div>
+      <button
+        onClick={() => {
+          setExiting(true);
+          setTimeout(() => onDismiss(toast.id), 300);
+        }}
+        className="ml-2 text-current opacity-50 hover:opacity-100 transition-opacity leading-none"
+        aria-label="Cerrar"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Provider/hook para gestionar toasts globalmente.
+ * Uso: const { showToast } = useNonoToasts();
+ */
+export interface UseNonoToastsReturn {
+  toasts: NonoToast[];
+  showToast: (toast: Omit<NonoToast, 'id'>) => void;
+  dismissToast: (id: string) => void;
+}
+
+const createToastId = () => `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+// Simple state management using Zustand-like pattern with local state
+interface ToastsState {
+  toasts: NonoToast[];
+}
+
+const createToastsStore = () => {
+  let state: ToastsState = { toasts: [] };
+  const listeners = new Set<() => void>();
+
+  return {
+    getState: () => state,
+    setState: (partial: Partial<ToastsState>) => {
+      state = { ...state, ...partial };
+      listeners.forEach(l => l());
+    },
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+  };
+};
+
+const store = createToastsStore();
+
+export function useNonoToasts(): UseNonoToastsReturn {
+  const [, forceUpdate] = useState({});
+
+  useEffect(() => {
+    const unsubscribe = store.subscribe(() => forceUpdate(s => ({ ...s })));
+    return unsubscribe;
+  }, []);
+
+  const showToast = useCallback((toast: Omit<NonoToast, 'id'>) => {
+    const newToast: NonoToast = { ...toast, id: createToastId() };
+    store.setState({ toasts: [...store.getState().toasts, newToast] });
+    
+    setTimeout(() => {
+      dismissToast(newToast.id);
+    }, toast.duration ?? 5000);
+  }, []);
+
+  const dismissToast = useCallback((id: string) => {
+    store.setState({ toasts: store.getState().toasts.filter(t => t.id !== id) });
+  }, []);
+
+  return {
+    toasts: store.getState().toasts,
+    showToast,
+    dismissToast,
+  };
+}
+
+/**
+ * Componente contenedor para renderizar todos los toasts.
+ * Colocar una vez en App.tsx o layout principal.
+ */
+export const NonoToaster: React.FC = () => {
+  const { toasts, dismissToast } = useNonoToasts();
+
+  return (
+    <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+      {toasts.map(toast => (
+        <NonoToast key={toast.id} toast={toast} onDismiss={dismissToast} />
+      ))}
+    </div>
+  );
+}
