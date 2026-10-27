@@ -13,6 +13,7 @@ export interface AppExecutorContext {
   lang: string;
   setIsGenerating: (v: boolean) => void;
   addToHistory: (title: string, mode: StudioMode, msgs?: ChatMessage[]) => void;
+  messages: ChatMessage[];
 }
 
 export function useAppExecutors(ctx: AppExecutorContext) {
@@ -24,12 +25,13 @@ export function useAppExecutors(ctx: AppExecutorContext) {
     lang,
     setIsGenerating,
     addToHistory,
+    messages,
   } = ctx;
 
   const handleExecuteFreeform = useCallback(async (promptText: string) => {
     setIsGenerating(true);
     try {
-      const { endpoint, isAnthropic, isFreeProvider, isCustom, isHf } = resolveChatRoute({
+      const { endpoint, isAnthropic, isFreeProvider, isCustom, isHf, isLocal } = resolveChatRoute({
         modelId: selectedModel,
         provider: selectedProvider,
         downloadedModels,
@@ -37,9 +39,12 @@ export function useAppExecutors(ctx: AppExecutorContext) {
       const anthropicApiKey = parameters.anthropicApiKey || getCachedApiKey('ANTHROPIC_API_KEY') || undefined;
       const geminiApiKey = getCachedApiKey('GEMINI_API_KEY') || undefined;
 
+      const historyForProvider = messages.map(m => ({ role: m.role, content: m.content })).concat([{ role: 'user', content: promptText }]);
+
       const payload = isAnthropic
         ? {
             prompt: promptText,
+            messages: historyForProvider,
             model: selectedModel,
             anthropicApiKey,
             systemInstruction: parameters.systemInstruction,
@@ -49,16 +54,19 @@ export function useAppExecutors(ctx: AppExecutorContext) {
         : isHf
         ? {
             prompt: promptText,
+            messages: historyForProvider,
             model: selectedModel,
             hfApiToken: parameters.hfApiToken || getCachedApiKey('HF_API_TOKEN') || undefined,
             systemInstruction: parameters.systemInstruction,
             temperature: parameters.temperature,
+            maxTokens: parameters.maxTokens,
             geminiApiKey: geminiApiKey || getCachedApiKey('GEMINI_API_KEY') || undefined,
           }
-        : isFreeProvider
+        : isFreeProvider || isLocal
         ? {
             prompt: promptText,
-            model: selectedModel,
+            messages: historyForProvider,
+            model: isLocal ? selectedModel.replace(/^local\//, '') : selectedModel,
             systemInstruction: parameters.systemInstruction,
             temperature: parameters.temperature,
             maxTokens: parameters.maxTokens,
@@ -68,6 +76,7 @@ export function useAppExecutors(ctx: AppExecutorContext) {
         : isCustom
         ? {
             prompt: promptText,
+            messages: historyForProvider,
             model: getCachedApiKey('CUSTOM_MODEL') || selectedModel,
             systemInstruction: parameters.systemInstruction,
             temperature: parameters.temperature,
@@ -114,12 +123,12 @@ export function useAppExecutors(ctx: AppExecutorContext) {
     } finally {
       setIsGenerating(false);
     }
-  }, [selectedModel, selectedProvider, parameters, downloadedModels, lang, setIsGenerating, addToHistory]);
+  }, [selectedModel, selectedProvider, parameters, downloadedModels, lang, setIsGenerating, addToHistory, messages]);
 
   const handleExecuteStructured = useCallback(async (examples: StructuredExample[], testInput: string) => {
     setIsGenerating(true);
     try {
-      const { endpoint, isAnthropic, isFreeProvider, isCustom, isHf } = resolveChatRoute({
+      const { endpoint, isAnthropic, isFreeProvider, isCustom, isHf, isLocal } = resolveChatRoute({
         modelId: selectedModel,
         provider: selectedProvider,
         downloadedModels,
@@ -128,9 +137,11 @@ export function useAppExecutors(ctx: AppExecutorContext) {
       const geminiApiKey = getCachedApiKey('GEMINI_API_KEY') || undefined;
 
       const formattedPrompt = `${examples.map((ex) => `Entrada: ${ex.input}\nSalida: ${ex.output}`).join('\n\n')}\n\nEntrada: ${testInput}\nSalida:`;
+      const historyForProvider = messages.map(m => ({ role: m.role, content: m.content })).concat([{ role: 'user', content: formattedPrompt }]);
       const payload = isAnthropic
         ? {
             prompt: formattedPrompt,
+            messages: historyForProvider,
             model: selectedModel,
             anthropicApiKey,
             systemInstruction: parameters.systemInstruction || 'Responde manteniendo exactamente la estructura de los ejemplos anteriores.',
@@ -139,16 +150,18 @@ export function useAppExecutors(ctx: AppExecutorContext) {
         : isHf
         ? {
             prompt: formattedPrompt,
+            messages: historyForProvider,
             model: selectedModel,
             hfApiToken: parameters.hfApiToken || getCachedApiKey('HF_API_TOKEN') || undefined,
             geminiApiKey: geminiApiKey || getCachedApiKey('GEMINI_API_KEY') || undefined,
             systemInstruction: parameters.systemInstruction || 'Responde manteniendo exactamente la estructura de los ejemplos anteriores.',
             temperature: parameters.temperature,
           }
-        : isFreeProvider
+        : isFreeProvider || isLocal
         ? {
             prompt: formattedPrompt,
-            model: selectedModel,
+            messages: historyForProvider,
+            model: isLocal ? selectedModel.replace(/^local\\/, '') : selectedModel,
             systemInstruction: parameters.systemInstruction || 'Responde manteniendo exactamente la estructura de los ejemplos anteriores.',
             temperature: parameters.temperature,
             openrouterApiKey: getCachedApiKey('OPENROUTER_API_KEY') || undefined,
@@ -157,6 +170,7 @@ export function useAppExecutors(ctx: AppExecutorContext) {
         : isCustom
         ? {
             prompt: formattedPrompt,
+            messages: historyForProvider,
             model: getCachedApiKey('CUSTOM_MODEL') || selectedModel,
             systemInstruction: parameters.systemInstruction || 'Responde manteniendo exactamente la estructura de los ejemplos anteriores.',
             temperature: parameters.temperature,
@@ -197,7 +211,7 @@ export function useAppExecutors(ctx: AppExecutorContext) {
     } finally {
       setIsGenerating(false);
     }
-  }, [selectedModel, selectedProvider, parameters, downloadedModels, lang, setIsGenerating, addToHistory]);
+  }, [selectedModel, selectedProvider, parameters, downloadedModels, lang, setIsGenerating, addToHistory, messages]);
 
   const handleExecuteHfTab = useCallback(async (prompt: string, hfModel: string) => {
     setIsGenerating(true);
