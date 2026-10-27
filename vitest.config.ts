@@ -13,6 +13,7 @@ export default defineConfig({
     globals: false,
     setupFiles: ['./tests/ui/setup.ts'],
     // Tests de UI, config y MCP. Los tests puros de Node viven en tests/*.test.ts
+    // y usan node:test: se ejecutan con `npm run test:node`, no con Vitest.
     include: ['tests/ui/**/*.test.{ts,tsx}', 'tests/unit/**/*.test.ts', 'tests/mcp/**/*.test.ts'],
     css: false,
     restoreMocks: true,
