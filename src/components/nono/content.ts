@@ -2,9 +2,10 @@
  * Contenido y datos puros de Nono.
  * Sin dependencias de React: puro dato, testeable y reutilizable.
  */
-import type { Language } from '../../i18n/translations';
+import type { Language as I18nLanguage } from '../../i18n/translations';
 import type { ParameterConfig } from '../../types/studio';
 
+export type Language = I18nLanguage;
 export type NonoExpression =
   | 'neutral'
   | 'happy'
