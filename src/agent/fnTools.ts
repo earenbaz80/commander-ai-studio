@@ -1,8 +1,17 @@
 export const AGENT_FUNCTION_DECLARATIONS = [
   {
     name: 'fs_read',
-    description: 'Leer archivo del workspace. Devuelve contenido (cap 2MB).',
-    parameters: { type: 'OBJECT', properties: { path: { type: 'STRING', description: 'Ruta relativa al workspace' } }, required: ['path'] },
+    description: 'Leer archivo del workspace por ventana. Sin offset/limit devuelve hasta 200 líneas; con offset/limit, esa ventana (máx 2000). Devuelve startLine/endLine/totalLines y truncated. content es texto literal: úsalo tal cual en fs_edit.oldString.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        path: { type: 'STRING', description: 'Ruta relativa al workspace' },
+        offset: { type: 'NUMBER', description: 'Línea inicial, 1-based (opcional)' },
+        limit: { type: 'NUMBER', description: 'Líneas a devolver desde offset (máx 2000)' },
+        numberLines: { type: 'BOOLEAN', description: 'Prefijar cada línea con su número (solo para leer; no copiar en oldString)' },
+      },
+      required: ['path'],
+    },
   },
   {
     name: 'fs_write',
@@ -21,8 +30,19 @@ export const AGENT_FUNCTION_DECLARATIONS = [
   },
   {
     name: 'fs_grep',
-    description: 'Buscar texto/regex en archivos del workspace.',
-    parameters: { type: 'OBJECT', properties: { pattern: { type: 'STRING' }, path: { type: 'STRING' }, include: { type: 'STRING' } }, required: ['pattern'] },
+    description: 'Buscar texto en archivos del workspace, con contexto opcional antes/después de cada coincidencia (máx 100 coincidencias).',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        pattern: { type: 'STRING' },
+        path: { type: 'STRING' },
+        include: { type: 'STRING' },
+        before: { type: 'NUMBER', description: 'Líneas de contexto antes (0-20)' },
+        after: { type: 'NUMBER', description: 'Líneas de contexto después (0-20)' },
+        context: { type: 'NUMBER', description: 'Atajo: before y after a la vez (0-20)' },
+      },
+      required: ['pattern'],
+    },
   },
   {
     name: 'shell_run',

@@ -115,6 +115,112 @@ test('fs.grep encuentra texto en archivos', async () => {
   assert.ok(res.body.data.matches.length > 0);
 });
 
+// --- fs.read por ventana --------------------------------------------------
+
+test('fs.read con offset/limit devuelve solo la ventana, con sus metadatos', async () => {
+  const file = path.join(TEST_DIR, 'ventana.txt');
+  fs.writeFileSync(file, Array.from({ length: 50 }, (_, i) => `linea ${i + 1}`).join('\n') + '\n', 'utf8');
+
+  const res = await executeAgentTool('fs.read', { path: 'tests/tmp/ventana.txt', offset: 10, limit: 5 });
+
+  assert.equal(res.ok, true, String(res.error));
+  const data = res.data as any;
+  assert.equal(data.content, 'linea 10\nlinea 11\nlinea 12\nlinea 13\nlinea 14');
+  assert.equal(data.startLine, 10);
+  assert.equal(data.endLine, 14);
+  assert.equal(data.totalLines, 50);
+  assert.equal(data.truncated, true);
+  assert.match(String(data.hint), /Ventana 10-14 de 50/);
+});
+
+test('fs.read sin ventana devuelve el archivo exacto, incluido el salto final', async () => {
+  fs.writeFileSync(TEST_FILE, 'Hola mundo\n', 'utf8');
+
+  const res = await executeAgentTool('fs.read', { path: 'tests/tmp/test.txt' });
+
+  const data = res.data as any;
+  assert.equal(data.content, 'Hola mundo\n', 'el contenido debe ser literal para poder usarlo en fs.edit');
+  assert.equal(data.totalLines, 1);
+  assert.equal(data.truncated, false);
+});
+
+test('fs.read trunca un archivo largo en vez de volcarlo entero', async () => {
+  const file = path.join(TEST_DIR, 'largo.txt');
+  fs.writeFileSync(file, Array.from({ length: 400 }, (_, i) => `l${i + 1}`).join('\n'), 'utf8');
+
+  const data = (await executeAgentTool('fs.read', { path: 'tests/tmp/largo.txt' })).data as any;
+
+  assert.equal(data.endLine, 200, 'la ventana por defecto son 200 líneas');
+  assert.equal(data.totalLines, 400);
+  assert.equal(data.truncated, true);
+  assert.equal(String(data.content).split('\n').length, 200);
+  assert.ok(String(data.content).length < 4000, 'no debe acercarse al volcado completo');
+});
+
+test('fs.read numberLines numera sin alterar los metadatos', async () => {
+  fs.writeFileSync(path.join(TEST_DIR, 'numeros.txt'), 'uno\ndos\ntres\n', 'utf8');
+
+  const data = (await executeAgentTool('fs.read', {
+    path: 'tests/tmp/numeros.txt',
+    offset: 2,
+    limit: 2,
+    numberLines: true,
+  })).data as any;
+
+  assert.equal(data.content, '    2| dos\n    3| tres');
+  assert.equal(data.startLine, 2);
+  assert.equal(data.endLine, 3);
+  assert.equal(data.truncated, true, 'la línea 1 queda fuera de la ventana');
+});
+
+test('fs.read con offset después del final devuelve ventana vacía y avisa', async () => {
+  fs.writeFileSync(path.join(TEST_DIR, 'tres.txt'), 'a\nb\nc\n', 'utf8');
+
+  const res = await executeAgentTool('fs.read', { path: 'tests/tmp/tres.txt', offset: 99, limit: 10 });
+
+  assert.equal(res.ok, true, String(res.error));
+  const data = res.data as any;
+  assert.equal(data.content, '', 'no debe devolver la última línea como si fuera la 99');
+  assert.equal(data.totalLines, 3);
+  assert.equal(data.truncated, true);
+  assert.match(String(data.hint), /fuera del archivo/);
+});
+
+// --- fs.grep con contexto ------------------------------------------------
+
+test('fs.grep devuelve contexto antes y después de la coincidencia', async () => {
+  fs.writeFileSync(path.join(TEST_DIR, 'grep-ctx.txt'), 'a\nb\nOBJETIVO_CTX\nc\nd\n', 'utf8');
+
+  const res = await executeAgentTool('fs.grep', {
+    path: 'tests/tmp',
+    pattern: 'OBJETIVO_CTX',
+    before: 2,
+    after: 1,
+  });
+
+  assert.equal(res.ok, true, String(res.error));
+  const data = res.data as any;
+  assert.deepEqual(data.context, { before: 2, after: 1 });
+  const match = data.matches.find((m: any) => m.file.replace(/\\/g, '/').endsWith('grep-ctx.txt'));
+  assert.ok(match, 'debe encontrar el archivo de prueba');
+  assert.equal(match.line, 3);
+  assert.equal(match.text, 'OBJETIVO_CTX');
+  assert.deepEqual(match.before, ['a', 'b']);
+  assert.deepEqual(match.after, ['c']);
+});
+
+test('fs.grep sin contexto no añade before/after', async () => {
+  fs.writeFileSync(path.join(TEST_DIR, 'grep-sin-ctx.txt'), 'x\nSIN_CTX\ny\n', 'utf8');
+
+  const data = (await executeAgentTool('fs.grep', { pattern: 'SIN_CTX' })).data as any;
+  const match = data.matches.find((m: any) => m.file.replace(/\\/g, '/').endsWith('grep-sin-ctx.txt'));
+
+  assert.ok(match);
+  assert.equal(match.before, undefined);
+  assert.equal(match.after, undefined);
+  assert.equal(data.context, undefined);
+});
+
 test('shell.run ejecuta comando permitido', async () => {
   const req = mockReq({ toolId: 'shell.run', input: { command: 'echo hola' } });
   const res = mockRes();
