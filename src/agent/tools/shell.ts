@@ -23,7 +23,7 @@ export interface ShellRunOutput {
 const SAFE_COMMANDS: RegExp[] = [
   /^ls\b/, /^dir\b/, /^cat\b/, /^type\b/,
   /^echo\b/, /^pwd\b/, /^which\b/, /^where\b/,
-  /^find\b/, /^grep\b/, /^rg\b/, /^ag\b/,
+  /^grep\b/, /^rg\b/, /^ag\b/,
   /^head\b/, /^tail\b/, /^wc\b/, /^sort\b/, /^uniq\b/,
   /^git status\b/, /^git diff\b/, /^git log\b/, /^git branch\b/,
   /^git show\b/, /^git remote\b/, /^git tag\b/,
