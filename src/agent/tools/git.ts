@@ -76,10 +76,11 @@ export const gitRebaseTool: ToolDefinition<any, any> = {
  * bloque con las dos versiones (ours/theirs) y la ruta detectada. Con
  * `resolve: 'ours' | 'theirs'` aplica esa versión a todos los bloques del
  * archivo (`path`, o la ruta que indique la salida de merge) y lo deja sin
- * stagear. `all` trabaja sobre todo el merge: sin `resolve`/`stage`/`commit`/
- * `abort` consulta el estado, `stage` cierra con `git add`, `commit` completa
- * la fusión y `abort` la deshace restaurando el árbol. Modificar requiere
- * aprobación.
+ * stagear. En un modify/delete basta `path`: elige el lado que conserva el
+ * archivo (y lo prepara) o el que lo borra (`git rm`). `all` trabaja sobre
+ * todo el merge: sin `resolve`/`stage`/`commit`/`abort` consulta el estado,
+ * `stage` cierra con `git add`, `commit` completa la fusión y `abort` la
+ * deshace restaurando el árbol. Modificar requiere aprobación.
  *
  * Delega en el servidor: la versión anterior duplicaba el parseo aquí,
  * descartaba `theirs` y además ignoraba `resolve` sin avisar. */
@@ -109,10 +110,13 @@ export const gitConflictTool: ToolDefinition<any, any> = {
       });
     }
     const output = String(input?.output || '');
-    if (!output) return { ok: false, error: 'Sin output de git diff/merge' };
+    const targetPath = String(input?.path || '').trim();
     if (side === 'ours' || side === 'theirs') {
-      return callServer('git.conflict', { output, resolve: side, path: input?.path });
+      // Un modify/delete no tiene marcas que pegar: con la ruta basta.
+      if (!output && !targetPath) return { ok: false, error: 'Sin output de git diff/merge ni path' };
+      return callServer('git.conflict', { output, resolve: side, ...(targetPath ? { path: targetPath } : {}) });
     }
+    if (!output) return { ok: false, error: 'Sin output de git diff/merge' };
     return callServer('git.conflict', { output });
   },
 };

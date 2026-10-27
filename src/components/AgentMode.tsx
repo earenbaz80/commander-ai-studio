@@ -70,7 +70,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
   const [mergeInfo, setMergeInfo] = useState<{
     inMerge: boolean;
     total: number;
-    files: Array<{ path: string; conflicts: number; ready: boolean }>;
+    files: Array<{ path: string; conflicts: number; ready: boolean; kind?: string; deletedBy?: string }>;
   } | null>(null);
 
   // Al abrir el panel, consultar el merge en curso en vez de esperar a que se
@@ -154,6 +154,34 @@ export const AgentMode: React.FC<AgentModeProps> = ({
   const refreshMerge = async () => {
     const r = await gitConflictState();
     setMergeInfo(r?.ok ? r.data : null);
+  };
+
+  /**
+   * Resuelve un archivo concreto sin pegar nada. En un modify/delete elige el
+   * lado que conserva el archivo o el que lo borra; el servidor deja la
+   * decisión preparada con `git add` / `git rm`.
+   */
+  const resolveConflictPath = async (path: string, side: 'ours' | 'theirs') => {
+    setResolvingConflict(true);
+    setConflictMsg(null);
+    try {
+      const r = await onRunTool('git.conflict', { path, resolve: side });
+      if (r?.ok) {
+        setConflictMsg({
+          ok: true,
+          text: r.data?.kept
+            ? `${path}: lado ${side} conservado y preparado con git add`
+            : `${path}: borrado aceptado y preparado con git rm`,
+        });
+      } else {
+        setConflictMsg({ ok: false, text: String(r?.error || 'No se pudo resolver el conflicto') });
+      }
+      await refreshMerge();
+    } catch (e: any) {
+      setConflictMsg({ ok: false, text: String(e?.message || e) });
+    } finally {
+      setResolvingConflict(false);
+    }
   };
 
   /** Cierra el merge con `git add` sobre los archivos que ya no tienen marcas. */
@@ -765,9 +793,37 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                     </p>
                     <ul className="text-[10px] text-white/70 font-mono space-y-0.5">
                       {mergeInfo.files.slice(0, 6).map((f) => (
-                        <li key={f.path} className="truncate" title={f.path}>
-                          {f.ready ? '✓ ' : `${f.conflicts} bloque(s) · `}
-                          {f.path}
+                        <li key={f.path} className="flex items-center gap-1" title={f.path}>
+                          <span className="truncate flex-1">
+                            {f.kind === 'modify-delete'
+                              ? (f.deletedBy === 'ours'
+                                ? (lang === 'es' ? 'borrado por nosotros · ' : lang === 'de' ? 'von uns gelöscht · ' : 'deleted by us · ')
+                                : (lang === 'es' ? 'borrado por ellos · ' : lang === 'de' ? 'von ihnen gelöscht · ' : 'deleted by them · '))
+                              : f.kind === 'both-deleted'
+                                ? (lang === 'es' ? 'borrado en ambos lados · ' : lang === 'de' ? 'auf beiden Seiten gelöscht · ' : 'deleted on both sides · ')
+                                : f.ready ? '✓ ' : `${f.conflicts} bloque(s) · `}
+                            {f.path}
+                          </span>
+                          {(f.kind === 'modify-delete' || f.kind === 'both-deleted') && (
+                            <span className="flex gap-1 shrink-0">
+                              <button
+                                type="button"
+                                disabled={resolvingConflict}
+                                onClick={() => resolveConflictPath(f.path, 'ours')}
+                                className="nc-button text-[9px] px-1 py-0.5 bg-[#00aa00] text-black disabled:opacity-50"
+                              >
+                                Ours
+                              </button>
+                              <button
+                                type="button"
+                                disabled={resolvingConflict}
+                                onClick={() => resolveConflictPath(f.path, 'theirs')}
+                                className="nc-button text-[9px] px-1 py-0.5 bg-[#0055aa] text-white disabled:opacity-50"
+                              >
+                                Them
+                              </button>
+                            </span>
+                          )}
                         </li>
                       ))}
                       {mergeInfo.files.length > 6 && <li>…</li>}
