@@ -596,10 +596,123 @@ test('git.diff con ruta que contiene metacaracteres no ejecuta nada', async () =
   assert.ok(!JSON.stringify(res).includes('PWNED'), 'la salida no debe contener el efecto del payload');
 });
 
+// --- Conflictos modify/delete ---------------------------------------------
+// Un lado borra el archivo y el otro lo modifica: no hay marcas que contar y
+// el archivo puede faltar en el worktree. Cada repo se resuelve una sola vez,
+// así que se crean dos: uno para `ours` y otro para `theirs`.
+
+function makeModifyDeleteRepo(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-md-'));
+  addRoot(dir);
+  const g = (args: string[]) =>
+    execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=test', ...args], { cwd: dir });
+  g(['init', '-q']);
+  // El servidor hace `git add`/`git rm`; la identidad local evita depender de
+  // la config global si más adelante se commitea el merge.
+  g(['config', 'user.email', 't@example.com']);
+  g(['config', 'user.name', 'test']);
+  g(['checkout', '-q', '-b', 'main']);
+  fs.writeFileSync(path.join(dir, 'keep.ts'), 'base keep\n');
+  fs.writeFileSync(path.join(dir, 'gone.ts'), 'base gone\n');
+  g(['add', '-A']);
+  g(['commit', '-qm', 'base']);
+  // feature modifica keep.ts y borra gone.ts
+  g(['checkout', '-q', '-b', 'feature']);
+  fs.writeFileSync(path.join(dir, 'keep.ts'), 'feature keep\n');
+  g(['rm', '-q', 'gone.ts']);
+  g(['commit', '-qam', 'feature']);
+  // main borra keep.ts y modifica gone.ts
+  g(['checkout', '-q', 'main']);
+  g(['rm', '-q', 'keep.ts']);
+  fs.writeFileSync(path.join(dir, 'gone.ts'), 'main gone\n');
+  g(['commit', '-qam', 'main']);
+  assert.throws(() => g(['merge', 'feature']), 'el merge debe quedar en conflicto');
+  // keep.ts queda DU (borrado por nosotros) y gone.ts UD (borrado por ellos).
+  return dir;
+}
+
+const mdOursRoot = makeModifyDeleteRepo();
+const mdTheirsRoot = makeModifyDeleteRepo();
+
+test('git.conflict informa los modify/delete en vez de devolver conflicts -1', async () => {
+  const res = await executeAgentTool('git.conflict', { root: mdOursRoot, all: true });
+
+  assert.equal(res.ok, true, String(res.error));
+  const data = res.data as any;
+  assert.equal(data.inMerge, true);
+  assert.equal(data.total, 2);
+  const byPath = Object.fromEntries(data.files.map((f: any) => [f.path, f]));
+  assert.equal(byPath['keep.ts'].kind, 'modify-delete');
+  assert.equal(byPath['keep.ts'].deletedBy, 'ours');
+  assert.equal(byPath['gone.ts'].kind, 'modify-delete');
+  assert.equal(byPath['gone.ts'].deletedBy, 'theirs');
+  assert.equal(data.files.some((f: any) => f.conflicts === -1), false, 'ya no queda como ilegible');
+});
+
+test('git.conflict stage no decide un modify/delete por su cuenta', async () => {
+  const res = await executeAgentTool('git.conflict', { root: mdOursRoot, all: true, stage: true });
+
+  assert.equal(res.ok, false);
+  assert.match(String(res.error), /modify\/delete sin decidir/);
+  // No se toca nada: git deja keep.ts con el contenido del otro lado aunque
+  // nosotros lo hayamos borrado, y gone.ts conserva el de main.
+  assert.equal(lf(path.join(mdOursRoot, 'keep.ts')), 'feature keep\n');
+  assert.equal(lf(path.join(mdOursRoot, 'gone.ts')), 'main gone\n');
+});
+
+test('git.conflict resolve ours en un modify/delete conserva el archivo que sobrevive', async () => {
+  // gone.ts: nosotros lo modificamos y ellos lo borraron → ours = conservar.
+  const res = await executeAgentTool('git.conflict', { root: mdOursRoot, path: 'gone.ts', resolve: 'ours' });
+
+  assert.equal(res.ok, true, String(res.error));
+  const data = res.data as any;
+  assert.equal(data.kind, 'modify-delete');
+  assert.equal(data.kept, true);
+  assert.equal(data.staged, true);
+  assert.equal(lf(path.join(mdOursRoot, 'gone.ts')), 'main gone\n');
+
+  const state = await executeAgentTool('git.conflict', { root: mdOursRoot, all: true });
+  assert.deepEqual(((state.data as any).files as any[]).map((f) => f.path), ['keep.ts']);
+});
+
+test('git.conflict resolve ours en un modify/delete acepta el borrado del otro lado', async () => {
+  // keep.ts: nosotros lo borramos y ellos lo modificaron → ours = borrar.
+  const res = await executeAgentTool('git.conflict', { root: mdOursRoot, path: 'keep.ts', resolve: 'ours' });
+
+  assert.equal(res.ok, true, String(res.error));
+  assert.equal((res.data as any).kept, false);
+  assert.equal(fs.existsSync(path.join(mdOursRoot, 'keep.ts')), false);
+
+  const state = await executeAgentTool('git.conflict', { root: mdOursRoot, all: true });
+  assert.equal(state.ok, true, String(state.error));
+  assert.equal((state.data as any).total, 0);
+  assert.equal((state.data as any).inMerge, true, 'el merge sigue abierto hasta el commit');
+});
+
+test('git.conflict resolve all theirs restaura el archivo borrado por nosotros', async () => {
+  const res = await executeAgentTool('git.conflict', { root: mdTheirsRoot, all: true, resolve: 'theirs' });
+
+  assert.equal(res.ok, true, String(res.error));
+  const files = (res.data as any).files as Array<{ path: string; kind?: string; kept?: boolean }>;
+  const byPath = Object.fromEntries(files.map((f) => [f.path, f]));
+  assert.equal(byPath['keep.ts'].kept, true, 'theirs conserva keep.ts');
+  assert.equal(byPath['gone.ts'].kept, false, 'theirs borró gone.ts');
+  assert.equal(lf(path.join(mdTheirsRoot, 'keep.ts')), 'feature keep\n');
+  assert.equal(fs.existsSync(path.join(mdTheirsRoot, 'gone.ts')), false);
+
+  const state = await executeAgentTool('git.conflict', { root: mdTheirsRoot, all: true });
+  assert.equal((state.data as any).total, 0);
+  assert.equal((state.data as any).inMerge, true);
+});
+
 after(() => {
   if (fs.existsSync(TEST_DIR)) fs.rmSync(TEST_DIR, { recursive: true, force: true });
   try { removeRoot(gitRoot); } catch { /* ignore */ }
   if (fs.existsSync(gitRoot)) fs.rmSync(gitRoot, { recursive: true, force: true });
   try { removeRoot(mergeRoot); } catch { /* ignore */ }
   if (fs.existsSync(mergeRoot)) fs.rmSync(mergeRoot, { recursive: true, force: true });
+  for (const dir of [mdOursRoot, mdTheirsRoot]) {
+    try { removeRoot(dir); } catch { /* ignore */ }
+    if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

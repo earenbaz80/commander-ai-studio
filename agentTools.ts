@@ -665,6 +665,31 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
         }
         const modo = perms.mode === 'plan' ? 'Plan' : 'Sólo lectura';
 
+        /**
+         * Stages presentes en el índice: 2 = ours, 3 = theirs. En un
+         * modify/delete falta uno de los dos, y eso distingue «no hay marcas
+         * porque el archivo se borró» de «archivo limpio sin conflictos».
+         */
+        const stageMap = (only?: string): Map<string, { ours?: boolean; theirs?: boolean }> => {
+          const args = ['ls-files', '-u', '-z'];
+          if (only) args.push('--', only);
+          const map = new Map<string, { ours?: boolean; theirs?: boolean }>();
+          for (const entry of String(run(args)).split('\0')) {
+            const tab = entry.indexOf('\t');
+            if (tab < 0) continue;
+            const stage = entry.slice(0, tab).trim().split(/\s+/)[2];
+            const rel = entry.slice(tab + 1);
+            const rec = map.get(rel) || {};
+            if (stage === '2') rec.ours = true;
+            if (stage === '3') rec.theirs = true;
+            map.set(rel, rec);
+          }
+          return map;
+        };
+        /** modify/delete (o borrado en ambos lados): no hay texto que fusionar. */
+        const isNonTextConflict = (s?: { ours?: boolean; theirs?: boolean }) =>
+          !!s && !(s.ours && s.theirs);
+
         // `all`: resuelve de una vez todos los archivos no fusionados del merge
         // en curso, sin necesidad de pegar la salida de `git merge`.
         if (input?.all) {
@@ -677,17 +702,32 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
             .filter(Boolean);
           const mergeHead = String(run(['rev-parse', '--git-path', 'MERGE_HEAD'])).trim();
           const inMerge = !!mergeHead && fs.existsSync(path.resolve(cwd, mergeHead));
+          const stages = stageMap();
 
           // Sin `resolve`, `stage`, `commit` ni `abort` es una consulta: el panel
           // la usa al abrirse para no obligar a pegar la salida de `git merge`.
           if (!side && !stage && !commit && !abort) {
             const files = unmerged.map((rel) => {
+              const s = stages.get(rel);
+              // Un modify/delete no tiene marcas que contar: el archivo se borró
+              // en un lado. Antes esto devolvía conflicts: -1 y el panel no podía
+              // hacer nada con él.
+              if (isNonTextConflict(s)) {
+                const both = !s!.ours && !s!.theirs;
+                return {
+                  path: rel,
+                  conflicts: 0,
+                  ready: false,
+                  kind: both ? 'both-deleted' : 'modify-delete',
+                  deletedBy: both ? 'both' : (s!.ours ? 'theirs' : 'ours'),
+                };
+              }
               try {
                 const content = fs.readFileSync(path.resolve(cwd, rel), 'utf8');
                 const conflicts = (content.match(conflictBlockPattern()) || []).length;
                 return { path: rel, conflicts, ready: conflicts === 0 };
               } catch {
-                return { path: rel, conflicts: -1, ready: false };
+                return { path: rel, conflicts: -1, ready: false, kind: 'unreadable' };
               }
             });
             return { ok: true, data: { conflictId: uid('conflict'), inMerge, files, total: files.length } };
@@ -718,7 +758,7 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
           // que queda tras `stage`, con el índice listo y MERGE_HEAD vivo.
           if (!unmerged.length && !commit) return { ok: false, error: 'No hay archivos en conflicto' };
 
-          const files: Array<{ path: string; resolved: number }> = [];
+          const files: Array<{ path: string; resolved: number; kind?: string; kept?: boolean }> = [];
           const skipped: Array<{ path: string; error: string }> = [];
           if (side) {
             for (const rel of unmerged) {
@@ -729,6 +769,20 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
               }
               try {
                 const { abs } = insideRoot(rel, 'path');
+                const st = stages.get(rel);
+                if (isNonTextConflict(st)) {
+                  const kept = side === 'ours' ? !!st!.ours : !!st!.theirs;
+                  if (kept) {
+                    // Conservar el lado elegido: se materializa desde su stage.
+                    run(['checkout', `--${side}`, '--', rel]);
+                    run(['add', '--', rel]);
+                  } else {
+                    // Ese lado borró el archivo: aceptar el borrado.
+                    run(['rm', '-f', '--', rel]);
+                  }
+                  files.push({ path: rel, resolved: 0, kind: 'modify-delete', kept });
+                  continue;
+                }
                 const before = fs.readFileSync(abs, 'utf8');
                 let n = 0;
                 const after = before.replace(conflictBlockPattern(), (_all, ours, _base, theirs) => {
@@ -757,6 +811,13 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
               const pathErr = enforcePath(perms, rel, 'write');
               if (pathErr) {
                 unstaged.push({ path: rel, error: pathErr });
+                continue;
+              }
+              // Sin resolver, un modify/delete no tiene marcas que mirar: no se
+              // marca como resuelto por su cuenta, porque eso decidiría el
+              // borrado sin preguntar.
+              if (isNonTextConflict(stages.get(rel))) {
+                unstaged.push({ path: rel, error: 'modify/delete sin decidir: usa resolve ours|theirs' });
                 continue;
               }
               try {
@@ -818,10 +879,10 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
         }
 
         const output = String(input?.output || '');
-        if (!output) return { ok: false, error: 'Sin output de git diff/merge' };
 
         // Sin `resolve` sólo se inspecciona el primer bloque (no escribe nada).
         if (!side) {
+          if (!output) return { ok: false, error: 'Sin output de git diff/merge' };
           const re = /^<<<<<<< [^\n]+\n(.+?)\n======+\n(.+?)\n>>>>>>>/ms;
           const m = output.match(re);
           if (!m) return { ok: false, error: 'No hay bloque de conflicto detectable' };
@@ -850,6 +911,25 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
         const pathErr = enforcePath(perms, target, 'write');
         if (pathErr) return { ok: false, error: pathErr, status: 403 };
         const { abs } = insideRoot(target, 'path');
+
+        // Un modify/delete se resuelve por el stage elegido, sin marcas que
+        // escribir. Queda preparado en el acto: aceptar un borrado con `git rm`
+        // no se deshace con un checkout, así que no se deja a medias.
+        const targetStage = stageMap(target).get(target);
+        if (isNonTextConflict(targetStage)) {
+          const kept = side === 'ours' ? !!targetStage!.ours : !!targetStage!.theirs;
+          if (kept) {
+            run(['checkout', `--${side}`, '--', target]);
+            run(['add', '--', target]);
+          } else {
+            run(['rm', '-f', '--', target]);
+          }
+          return {
+            ok: true,
+            data: { conflictId: uid('conflict'), path: target, side, resolved: 0, kind: 'modify-delete', kept, staged: true },
+          };
+        }
+
         let stat: fs.Stats;
         try {
           stat = fs.statSync(abs);
