@@ -156,6 +156,27 @@ test('los defaults de Gemini salen del módulo compartido y la cadena no repite 
   }
 });
 
+test('los catálogos no ofrecen modelos retirados y siguen sincronizados', () => {
+  const [rootCatalog, publicCatalog] = ['models.json', 'public/models.json'].map((f) => readFileSync(f, 'utf8'));
+  assert.equal(rootCatalog, publicCatalog, 'models.json y public/models.json deben ser idénticos');
+
+  const entries = (JSON.parse(rootCatalog) as { models: { id: string; provider: string }[] }).models;
+  const offered = entries.filter((m) => m.provider === 'google').map((m) => m.id);
+  assert.ok(offered.length > 0, 'el catálogo debe ofrecer algún modelo de Google');
+  for (const id of offered) {
+    assert.ok(!RETIRED_GEMINI_MODELS.includes(id), `${id} está retirado y no debe ofrecerse`);
+  }
+
+  // El catálogo del código (GEMINI_MODELS) es el que pinta el selector.
+  const source = readFileSync('src/data/models.ts', 'utf8');
+  const section = source.slice(source.indexOf('export const GEMINI_MODELS'), source.indexOf('export const HUGGINGFACE_MODELS'));
+  const ids = [...section.matchAll(/id: '([^']+)'/g)].map((m) => m[1]);
+  assert.ok(ids.length > 0, 'GEMINI_MODELS no puede quedarse vacío');
+  for (const id of ids) {
+    assert.ok(!RETIRED_GEMINI_MODELS.includes(id), `${id} sigue en GEMINI_MODELS y ya no existe en la API`);
+  }
+});
+
 test('ningún id de Gemini escrito a mano fuera del módulo compartido', () => {
   const offenders: string[] = [];
   for (const file of sourceFiles('.')) {
