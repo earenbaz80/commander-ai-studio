@@ -65,3 +65,19 @@ block.txt
 block2.txt
 
 # build/ NO se ignora: contiene los íconos que usa electron-builder
+
+# ── Artefactos de ejecución en la raíz ──────────────────────────────
+# Volcados de build/tests y notas sueltas: nunca son fuente ni documentación.
+/*.txt
+
+# Parcheos ad-hoc ya aplicados. Los scripts de verdad viven en scripts/ y bin/.
+/*.py
+/*.ps1
+/*.bat
+
+# .js que `tsc` deja junto al fuente cuando se compila un fichero suelto.
+# El build del proyecto es `tsc --noEmit` + vite/esbuild, que nunca emite ahí.
+# eslint.config.js está versionado, así que no le afecta esta regla.
+/agentTools.js
+/apiKeys.js
+/security.js
