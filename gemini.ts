@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { mapGeminiModel, isQuotaOrNotFoundError, executeLocalHfModel } from './localModels';
-import { GEMINI_FALLBACK_MODELS } from './src/config/geminiModels';
+import { GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODELS } from './src/config/geminiModels';
 
 /** Mensaje único para cuando falta la API key de Google. */
 export const GEMINI_KEY_REQUIRED =
@@ -38,7 +38,7 @@ export async function handleGeminiGenerate(req: Request, res: Response) {
       geminiApiKey,
       contents,
       systemInstruction,
-      model = 'gemini-3.8-flash',
+      model = GEMINI_DEFAULT_MODEL,
       temperature = 0.7,
       topP = 0.95,
       topK = 40,
@@ -266,7 +266,7 @@ export async function handleGeminiStream(req: Request, res: Response) {
       geminiApiKey,
       contents,
       systemInstruction,
-      model = 'gemini-2.5-flash',
+      model = GEMINI_DEFAULT_MODEL,
       temperature = 0.7,
       topP = 0.95,
       topK = 40,

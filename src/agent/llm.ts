@@ -3,6 +3,7 @@ import type { ChatMessage } from '../types/studio';
 import { AGENT_FUNCTION_DECLARATIONS } from './fnTools';
 import { toolDialectForModel, toOpenAITools, toAnthropicTools } from './providers';
 import { resolveEndpoint } from '../lib/aiProviders';
+import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
 
 export interface LLMToolCall {
   id: string;
@@ -37,7 +38,7 @@ export async function callAgentLLM(
     model?: string;
   } = {}
 ): Promise<LLMResponse> {
-  const model = opts.model || 'gemini-2.5-flash';
+  const model = opts.model || GEMINI_DEFAULT_MODEL;
 
   const system = `Eres un agente autónomo pragmático para ingeniería de código.
 
@@ -152,7 +153,7 @@ export async function callAgentLLMTools(
   ctx: LLMContext & { systemExtra?: string; turns?: { role: string; text: string }[] },
   opts: { model?: string } = {}
 ): Promise<LLMNativeResult> {
-  const model = opts.model || 'gemini-2.5-flash';
+  const model = opts.model || GEMINI_DEFAULT_MODEL;
   const dialect = toolDialectForModel(model);
   const turns = ctx.turns || [];
   const user = `OBJETIVO: ${ctx.goal}\nCWD: ${ctx.cwd}\n\nPLAN ACTUAL:\n${JSON.stringify(ctx.plan, null, 2)}\n\nULTIMOS PASOS:\n${JSON.stringify(ctx.recentSteps.slice(-10), null, 2)}\n\nHISTORIAL:\n${turns.slice(-8).map((t) => `${t.role.toUpperCase()}: ${t.text.slice(0, 1200)}`).join('\n\n')}\n\nTOOLS:\n${ctx.toolSchema}${ctx.systemExtra ? `\n${ctx.systemExtra}` : ''}`;

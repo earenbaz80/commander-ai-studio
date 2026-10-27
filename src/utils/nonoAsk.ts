@@ -9,6 +9,7 @@ import { getApiKey } from '../lib/apiKeys';
 import type { ParameterConfig } from '../types/studio';
 import type { Language } from '../i18n/translations';
 import { detectCodePatterns, type CodePatternResult } from './codePatternDetector';
+import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
 
 export interface AskNonoOptions {
   selectedModel?: string;
@@ -93,7 +94,7 @@ export async function askNono(text: string, opts: AskNonoOptions = {}): Promise<
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         apiKey,
-        model: opts.selectedModel || 'gemini-2.5-flash',
+        model: opts.selectedModel || GEMINI_DEFAULT_MODEL,
         systemInstruction,
         contents: [String(text).slice(0, 2000)],
         temperature: params?.temperature ?? 0.8,

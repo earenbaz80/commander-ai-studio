@@ -1,4 +1,5 @@
 import { ParameterConfig } from '../types/studio';
+import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
 
 export interface MentionItem {
   id: string;
@@ -204,7 +205,7 @@ export const CONTEXT_MENTIONS: MentionItem[] = [
     badge: 'PARAM',
     getContent: (opts) => {
       const p = opts?.parameters;
-      const m = opts?.selectedModel || 'gemini-2.5-flash';
+      const m = opts?.selectedModel || GEMINI_DEFAULT_MODEL;
       return `[ACTIVE INFERENCE CONFIG]\nModel: ${m}\nTemperature: ${p?.temperature ?? 0.7}\nMax Tokens: ${p?.maxTokens ?? 2048}\nTopP: ${p?.topP ?? 0.95}\nThinking Level: ${p?.thinkingLevel ?? 'LOW'}`;
     },
   },
