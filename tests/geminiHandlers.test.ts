@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { handleGeminiGenerate, handleGeminiStream, GEMINI_KEY_REQUIRED } from '../gemini.js';
+import { handleGeminiGenerate, handleGeminiStream, GEMINI_KEY_REQUIRED, GEMINI_FALLBACK_MODELS } from '../gemini.js';
 
 function mockReq(body: any) {
   return {
@@ -49,6 +49,67 @@ test('gemini/generate sin API key responde 400 MISSING_API_KEY (no error de Goog
     assert.equal(res.body.code, 'MISSING_API_KEY');
     assert.equal(res.body.error, GEMINI_KEY_REQUIRED);
   });
+});
+
+/**
+ * Ids que la API ya no sirve (404 «no longer available» el 2026-10-27).
+ * Reintentarlos sólo alargaba la espera hasta el error del motor local.
+ */
+const RETIRED_GEMINI_MODELS = [
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-1.5-flash-8b',
+  'gemini-2.5-flash',
+];
+
+test('la cadena de respaldo de Gemini no reintenta ids retirados', () => {
+  assert.ok(GEMINI_FALLBACK_MODELS.length > 0, 'debe haber al menos un respaldo');
+  for (const id of GEMINI_FALLBACK_MODELS) {
+    assert.ok(typeof id === 'string' && id.length > 0, 'cada respaldo es un id no vacío');
+    assert.ok(id.startsWith('gemini-'), `id inesperado en la cadena: ${id}`);
+    assert.ok(!RETIRED_GEMINI_MODELS.includes(id), `${id} ya no existe en la API`);
+  }
+  assert.ok(
+    GEMINI_FALLBACK_MODELS.some((id) => id.endsWith('-latest')),
+    'conviene dejar un alias -latest, que es el que más tarda en quedar obsoleto'
+  );
+});
+
+/** fetch que responde 404 a todo: simula que Google retiró todos los modelos. */
+function stubNotFoundFetch() {
+  const body = JSON.stringify({ error: { code: 404, message: 'model not found' } });
+  return async () => ({
+    ok: false,
+    status: 404,
+    statusText: 'Not Found',
+    headers: new Headers({ 'content-type': 'application/json' }),
+    json: async () => JSON.parse(body),
+    text: async () => body,
+  });
+}
+
+test('si ningún modelo responde y no hay motor local, el error es accionable', async () => {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = 'clave-de-prueba-no-real';
+  (globalThis as any).fetch = stubNotFoundFetch();
+  try {
+    const res = mockRes();
+    await handleGeminiGenerate(mockReq({ contents: 'hola', model: 'gemini-3.8-flash' }), res);
+
+    assert.equal(res.statusCode, 503, 'no debe ser 500 (error interno del motor local)');
+    assert.equal(res.body.code, 'ALL_GEMINI_MODELS_UNAVAILABLE');
+    assert.ok(
+      Array.isArray(res.body.tried) && res.body.tried.length > 1,
+      `debe listar los modelos intentados (obtenido: ${JSON.stringify(res.body.tried)})`
+    );
+    assert.match(res.body.error, /Ningún modelo de Gemini respondió/);
+    assert.doesNotMatch(res.body.error, /MODEL_RUNTIME_UNAVAILABLE/);
+  } finally {
+    (globalThis as any).fetch = realFetch;
+    if (prevKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = prevKey;
+  }
 });
 
 test('gemini/stream sin API key emite un evento SSE de error claro y cierra', async () => {
