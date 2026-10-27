@@ -26,7 +26,7 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     name: 'Google',
     clientId: process.env.GOOGLE_CLIENT_ID || '',
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-    redirectUri: `${process.env.BASE_URL || 'http://localhost:3000'}/auth/google/callback`,
+    redirectUri: `${process.env.BASE_URL || 'http://localhost:3001'}/auth/google/callback`,
     scope: ['openid', 'email', 'profile'],
     authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenUrl: 'https://oauth2.googleapis.com/token',
@@ -37,7 +37,7 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     name: 'GitHub',
     clientId: process.env.GITHUB_CLIENT_ID || '',
     clientSecret: process.env.GITHUB_CLIENT_SECRET || '',
-    redirectUri: `${process.env.BASE_URL || 'http://localhost:3000'}/auth/github/callback`,
+    redirectUri: `${process.env.BASE_URL || 'http://localhost:3001'}/auth/github/callback`,
     scope: ['read:user', 'user:email'],
     authorizeUrl: 'https://github.com/login/oauth/authorize',
     tokenUrl: 'https://github.com/login/oauth/access_token',
@@ -48,7 +48,7 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     name: 'GitLab',
     clientId: process.env.GITLAB_CLIENT_ID || '',
     clientSecret: process.env.GITLAB_CLIENT_SECRET || '',
-    redirectUri: `${process.env.BASE_URL || 'http://localhost:3000'}/auth/gitlab/callback`,
+    redirectUri: `${process.env.BASE_URL || 'http://localhost:3001'}/auth/gitlab/callback`,
     scope: ['read_user', 'email'],
     authorizeUrl: 'https://gitlab.com/oauth/authorize',
     tokenUrl: 'https://gitlab.com/oauth/token',
@@ -59,7 +59,7 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     name: 'Microsoft',
     clientId: process.env.MICROSOFT_CLIENT_ID || '',
     clientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
-    redirectUri: `${process.env.BASE_URL || 'http://localhost:3000'}/auth/microsoft/callback`,
+    redirectUri: `${process.env.BASE_URL || 'http://localhost:3001'}/auth/microsoft/callback`,
     scope: ['openid', 'email', 'profile', 'User.Read'],
     authorizeUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
     tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
@@ -199,7 +199,7 @@ export async function handleOAuthCallback(req: Request, res: Response) {
     setSessionCookie(res, sessionToken);
 
     // Redirigir al frontend
-    return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/?auth=success`);
+    return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?auth=success`);
   } catch (error: any) {
     console.error('Error en OAuth callback:', error);
     return res.status(500).json({ success: false, error: 'Error en autenticación' });

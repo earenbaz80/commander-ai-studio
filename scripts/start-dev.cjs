@@ -4,7 +4,7 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 
 const cwd = path.join(__dirname, '..');
-const url = 'http://localhost:3000/api/health';
+const url = 'http://localhost:3001/api/health';
 
 const attempts = 30;
 let n = 0;
@@ -34,7 +34,7 @@ async function ping() {
 
   while (n < attempts) {
     if (await ping()) {
-      console.log(`OK dev server arriba (pid ${child.pid}) en http://localhost:3000`);
+      console.log(`OK dev server arriba (pid ${child.pid}) en http://localhost:3001`);
       return;
     }
     n += 1;

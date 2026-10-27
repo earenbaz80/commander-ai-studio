@@ -1,7 +1,7 @@
 // Smoke test contra un servidor en marcha (SMOKE_URL, por defecto http://localhost:3000).
 // Con SMOKE_PROD=1 se asume build de producción: exige las restricciones de producción
 // (debug cerrado, CSP presente). Sin esa variable se asume desarrollo.
-const base = process.env.SMOKE_URL || 'http://localhost:3000';
+const base = process.env.SMOKE_URL || 'http://localhost:3001';
 const isProd = process.env.SMOKE_PROD === '1';
 const JSZip = require('jszip');
 

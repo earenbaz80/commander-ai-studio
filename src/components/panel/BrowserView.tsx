@@ -13,13 +13,13 @@ import { Globe, ExternalLink, RefreshCw, Play, FileCode2, Lock, Loader2 } from '
 import { readProjectFile } from '../../utils/agentToolsApi';
 
 const QUICK_LINKS = [
-  { label: 'Dev Server', url: 'http://localhost:3000' },
+  { label: 'Dev Server', url: 'http://localhost:3001' },
   { label: 'Vite', url: 'http://localhost:5173' },
 ];
 
 export const BrowserView: React.FC<{ projectPath: string }> = ({ projectPath }) => {
   const [mode, setMode] = useState<'url' | 'local'>('url');
-  const [url, setUrl] = useState('http://localhost:3000');
+  const [url, setUrl] = useState('http://localhost:3001');
   const [activeUrl, setActiveUrl] = useState('');
   const [localPath, setLocalPath] = useState('index.html');
   const [srcdoc, setSrcdoc] = useState('');

@@ -13,6 +13,7 @@ import { handleGeminiGenerate, handleGeminiStream, handleGeminiInteractions } fr
 import { handleAnthropicGenerate, handleAnthropicStream } from './anthropic';
 import { executeLocalHfModel } from './localModels';
 import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList, apiKeyMiddleware } from './apiKeys';
+import { loadConfig } from './src/config/index';
 import skillsRouter from './skills/api';
 import { forkSessionWorkspace, deleteSessionWorkspace, listSessions } from './sessionWorkspace';
 import { handleOAuthLogin, handleOAuthCallback, handleLogout, getCurrentUser } from './oauth';
@@ -34,16 +35,18 @@ app.use((_req, _res, next) => {
   _res.setHeader('Referrer-Policy', 'no-referrer');
   next();
 });
-const CORS_ALLOW = (process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:3280').split(',');
+const CORS_ALLOW = (process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:3280,http://localhost:5173,http://localhost:5174,http://localhost:5175').split(',');
 app.use((_req, _res, next) => {
   const origin = _req.headers.origin as string | undefined;
   if (origin && CORS_ALLOW.includes(origin)) {
     _res.setHeader('Access-Control-Allow-Origin', origin);
+    _res.setHeader('Access-Control-Allow-Credentials', 'true');
     _res.setHeader('Vary', 'Origin');
   }
   if (_req.method === 'OPTIONS') {
-    _res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    _res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    _res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
+    _res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    _res.setHeader('Access-Control-Allow-Credentials', 'true');
     return _res.sendStatus(204);
   }
   next();
@@ -2012,9 +2015,15 @@ async function bootstrap() {
     app.get(/.*/, (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
+  } else {
+    // Desarrollo: montar Vite como middleware (HMR + API en mismo puerto)
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
   }
-  // En desarrollo NO montamos Vite middleware aquí.
-  // Vite corre en proceso separado (puerto 5173) y hace proxy a /api -> 3000
 
 app.get('/api/system/info', (_req, res) => {
   try {
@@ -2036,15 +2045,39 @@ app.get('/api/system/info', (_req, res) => {
   }
 });
 
-  const PORT = process.env.PORT || 3000;
-  const server = app.listen(PORT, () => {
+const PORT = Number(process.env.PORT || loadConfig().server?.port || 3280);
+const HOST = '127.0.0.1';
+const server = app.listen(PORT, HOST, () => {
     console.log(`🚀 Commander AI Studio server running on port ${PORT}`);
-    console.log(`   Health: http://localhost:${PORT}/api/health`);
+    console.log(`   Health: http://${HOST}:${PORT}/api/health`);
+    console.log(`   API Proxy: http://${HOST}:${PORT}/api/providers -> registered routes`);
   });
 
-  // Terminal persistente vía WebSocket en /ws/terminal.
-  const { attachTerminalWs } = await import('./src/terminal/wsServer.js');
-  attachTerminalWs(server);
+  server.on('error', (err) => {
+    console.error('Server error:', err);
+  });
+
+  server.on('listening', () => {
+    console.log('Server listening event fired');
+  });
+
+  server.on('close', () => {
+    console.log('Server closed');
+  });
+
+  // Terminal persistente vía WebSocket en /ws/terminal (deshabilitado temporalmente).
+  // const { attachTerminalWs } = await import('./src/terminal/wsServer.js');
+  // attachTerminalWs(server);
+
+  // Mantener proceso vivo en desarrollo
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('Server ready - keeping process alive');
+    const keepAlive = setInterval(() => {}, 1000);
+    process.on('SIGINT', () => {
+      clearInterval(keepAlive);
+      server.close(() => process.exit(0));
+    });
+  }
 
   return app;
 }
@@ -2052,6 +2085,14 @@ app.get('/api/system/info', (_req, res) => {
 bootstrap().catch((err) => {
   console.error('Fallo al arrancar el servidor:', err);
   process.exit(1);
+});
+
+// Debug: mantener proceso vivo
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
 });
 
 export { bootstrap as startServer };

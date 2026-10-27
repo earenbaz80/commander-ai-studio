@@ -66,19 +66,8 @@ export default defineConfig(({ command }) => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
-      // En desarrollo, redirige la API y el WebSocket de la terminal al
-      // backend Express (puerto 3000). En producción/Electron todo va al
-      // mismo origen, así que este proxy solo aplica al `vite dev`.
-      proxy: {
-        '/api': {
-          target: process.env.API_PROXY_TARGET || 'http://localhost:3000',
-          changeOrigin: true,
-        },
-        '/ws/terminal': {
-          target: process.env.WS_PROXY_TARGET || 'ws://localhost:3000',
-          ws: true,
-        },
-      },
+      // En desarrollo con Express + Vite middleware, API y frontend comparten origen.
+      // El proxy ya no es necesario.
     },
   };
 });
