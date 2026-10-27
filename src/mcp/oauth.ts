@@ -60,7 +60,7 @@ function generatePkce(): { verifier: string; challenge: string } {
 }
 
 function getCallbackBase(): string {
-  return process.env.BASE_URL || process.env.PUBLIC_URL || 'http://localhost:3000';
+  return process.env.BASE_URL || process.env.PUBLIC_URL || 'http://localhost:3001';
 }
 
 /** Recupera la config de auth de un servidor MCP desde commander.json. */

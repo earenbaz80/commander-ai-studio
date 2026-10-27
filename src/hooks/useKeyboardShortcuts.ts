@@ -24,7 +24,7 @@ export interface KeyboardShortcutsOptions {
   setIsWorkbenchOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setIsCompilerModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSymbolSearchOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  handleNewPrompt: () => void;
+  handleNewChat: () => void;
   handleSaveVersion: (title: string, note?: string) => void | Promise<void>;
   handleGeneralAudit: () => void;
   sendBrowserNotification: (title: string, body: string) => void;
@@ -42,7 +42,7 @@ export function useKeyboardShortcuts(opts: KeyboardShortcutsOptions): void {
     setIsWorkbenchOpen,
     setIsCompilerModalOpen,
     setIsSymbolSearchOpen,
-    handleNewPrompt,
+    handleNewChat,
     handleSaveVersion,
     handleGeneralAudit,
     sendBrowserNotification,
@@ -89,7 +89,7 @@ export function useKeyboardShortcuts(opts: KeyboardShortcutsOptions): void {
       // 3. Ctrl+Alt+N or Cmd+Alt+N to trigger a new prompt / reset session
       if (isMetaOrCtrl && e.altKey && e.key.toLowerCase() === 'n') {
         e.preventDefault();
-        handleNewPrompt();
+        handleNewChat();
         sendBrowserNotification(
           lang === 'es' ? '🆕 Nuevo Proyecto' : lang === 'de' ? '🆕 Neues Projekt' : '🆕 New Project',
           lang === 'es' ? 'Se ha iniciado una nueva sesión de prompt.' : lang === 'de' ? 'Eine neue Prompt-Sitzung wurde gestartet.' : 'A new prompt session has been initialized.'
@@ -151,5 +151,5 @@ export function useKeyboardShortcuts(opts: KeyboardShortcutsOptions): void {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [lang, promptTitle, parameters, tabs, setIsShortcutsModalOpen, setIsInspectorOpen, setIsSidebarOpen, setIsWorkbenchOpen, setIsCompilerModalOpen, setIsSymbolSearchOpen, handleNewPrompt, handleSaveVersion, handleGeneralAudit, sendBrowserNotification]);
+  }, [lang, promptTitle, parameters, tabs, setIsShortcutsModalOpen, setIsInspectorOpen, setIsSidebarOpen, setIsWorkbenchOpen, setIsCompilerModalOpen, setIsSymbolSearchOpen, handleNewChat, handleSaveVersion, handleGeneralAudit, sendBrowserNotification]);
 }

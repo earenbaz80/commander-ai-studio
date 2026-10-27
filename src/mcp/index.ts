@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import fs from 'fs';
+import path from 'path';
 import { getToolsConfig, writeConfig } from '../config/index.js';
 import { listServerTools, callServerTool } from './client.js';
 import {
@@ -134,6 +136,61 @@ mcpRouter.post('/uninstall', (req, res) => {
   } catch (err) {
     console.error('[MCP] uninstall failed:', err);
     res.status(500).json({ error: 'Failed to uninstall MCP server' });
+  }
+});
+
+/**
+ * Importa servidores MCP desde una carpeta externa (ej. .config/opencode/mcp o similar).
+ * body: { sourceDir: string }
+ */
+mcpRouter.post('/import', (req, res) => {
+  try {
+    const { sourceDir } = req.body ?? {};
+    if (!sourceDir || typeof sourceDir !== 'string') {
+      return res.status(400).json({ error: 'sourceDir (string) is required' });
+    }
+    // Lee archivos de configuración MCP del directorio origen
+    const importPath = path.resolve(process.cwd(), sourceDir);
+    if (!fs.existsSync(importPath)) {
+      return res.status(400).json({ error: 'sourceDir no existe' });
+    }
+    const tools = getToolsConfig();
+    const mcp = getMcp(tools);
+    mcp.enabled = true;
+    let imported = 0;
+    const errors: string[] = [];
+    try {
+      const entries = fs.readdirSync(importPath);
+      for (const entry of entries) {
+        const fullPath = path.join(importPath, entry);
+        if (!fs.statSync(fullPath).isFile()) continue;
+        if (entry.endsWith('.json') || entry.endsWith('.mcp.json')) {
+          try {
+            const content = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+            if (content.mcpServers) {
+              for (const [name, cfg] of Object.entries(content.mcpServers)) {
+                mcp.servers![name] = cfg as any;
+                imported++;
+              }
+            } else if (content.command) {
+              // Formato individual: { command, args, env }
+              const name = entry.replace(/\.(json|mcp\.json)$/, '');
+              mcp.servers![name] = content as any;
+              imported++;
+            }
+          } catch (e) {
+            errors.push(`${entry}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+      }
+    } catch (e) {
+      errors.push(`lectura directorio: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    writeConfig({ tools }, 'project');
+    res.json({ success: true, imported, errors });
+  } catch (err) {
+    console.error('[MCP] import failed:', err);
+    res.status(500).json({ error: 'Failed to import MCP servers' });
   }
 });
 

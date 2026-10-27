@@ -55,7 +55,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
     {
       keys: ['Ctrl', 'Alt', 'N'],
       cmdKeys: ['⌘', '⌥', 'N'],
-      action: lang === 'es' ? 'Nuevo prompt (reiniciar sesión)' : lang === 'de' ? 'Neuer Prompt (Sitzung zurücksetzen)' : 'New Prompt (reset session)',
+      action: lang === 'es' ? 'Nuevo chat (nueva sesión)' : lang === 'de' ? 'Neuer Chat (neue Sitzung)' : 'New chat (new session)',
       icon: <Plus className="w-4 h-4 text-green-400" />,
     },
     {

@@ -36,7 +36,7 @@ export function useAppPrompts(opts: AppPromptsOptions) {
     }, 60);
   }, [activeTab, setProjectToast, lang, tabs, setMode, handleSendMessage, setIsAuditing]);
 
-  const handleNewPrompt = useCallback(() => {
+  const handleNewChat = useCallback(() => {
     const sessionId = `sess-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     currentSessionId.current = sessionId;
     setPromptTitle('Nuevo Proyecto Prompt');
@@ -44,5 +44,5 @@ export function useAppPrompts(opts: AppPromptsOptions) {
     setNonoStatus({ type: 'new_prompt' });
   }, [currentSessionId, setPromptTitle, tabs, activeTab, setNonoStatus]);
 
-  return { handleGeneralAudit, handleNewPrompt };
+  return { handleGeneralAudit, handleNewChat };
 }

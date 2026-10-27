@@ -156,7 +156,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
     { keys: 'Ctrl + B', mac: '⌘ + B', action: L('Mostrar / ocultar la barra lateral', 'Toggle the sidebar') },
     { keys: 'Ctrl + Alt + B', mac: '⌘ + ⌥ + B', action: L('Mostrar / ocultar el Workbench', 'Toggle the Workbench') },
     { keys: 'Ctrl + ,', mac: '⌘ + ,', action: L('Abrir / cerrar Parámetros (inspector)', 'Toggle Settings (inspector)') },
-    { keys: 'Ctrl + Alt + N', mac: '⌘ + ⌥ + N', action: L('Nuevo prompt (reiniciar sesión)', 'New prompt (reset session)') },
+    { keys: 'Ctrl + Alt + N', mac: '⌘ + ⌥ + N', action: L('Nuevo chat (nueva sesión)', 'New chat (new session)') },
     { keys: 'Ctrl + S', mac: '⌘ + S', action: L('Guardar versión del prompt actual', 'Save the current prompt version') },
     { keys: 'Ctrl + Shift + S', mac: '⌘ + ⇧ + S', action: L('Guardar como archivo nuevo del proyecto (editor)', 'Save as a new project file (editor)') },
     { keys: 'Ctrl + Alt + C', mac: '⌘ + ⌥ + C', action: L('Abrir el Compilador nativo', 'Open the Native Compiler') },
