@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { AgentOrchestrator } from './orchestrator';
 import { AgentLoop } from './loop';
 import { uid } from './id';
@@ -50,6 +50,13 @@ export function useAgent(cwd: string, model?: string) {
       },
     });
   }
+
+  // Update orchestrator cwd when it changes
+  useEffect(() => {
+    if (orchestratorRef.current) {
+      orchestratorRef.current.setCwd(cwd);
+    }
+  }, [cwd]);
 
   const orchestrator = orchestratorRef.current!;
 
