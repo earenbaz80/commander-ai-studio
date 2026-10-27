@@ -27,6 +27,11 @@ jobs:
       - name: Tipos (tsc --noEmit)
         run: npm run typecheck
 
+      # node:test va antes de Vitest para que esta suite no se salte: en Actions
+      # un paso que falla aborta los siguientes.
+      - name: Tests (node:test)
+        run: npm run test:node
+
       - name: Tests (Vitest)
         run: npm run test
 
