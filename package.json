@@ -21,6 +21,7 @@
     "electron": "electron .",
     "electron:dev": "ELECTRON_START_URL=http://localhost:5173 npm run electron",
     "test": "vitest run",
+    "test:node": "tsx --test \"tests/*.test.ts\"",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "lint": "eslint src",
