@@ -25,7 +25,7 @@ const {
 
 let mainWindow = null;
 let tray = null;
-const SERVER_PORT = 3000;
+const SERVER_PORT = 3001;
 
 async function startEmbeddedServer() {
   if (app.isPackaged || !process.env.ELECTRON_START_URL) {
@@ -97,7 +97,7 @@ function createWindow() {
 
   function loadApp() {
     const targetUrl = process.env.ELECTRON_START_URL ||
-      (!app.isPackaged && process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : null);
+      (!app.isPackaged && process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : null);
 
     if (targetUrl) {
       console.log('[Electron] Intentando cargar URL de desarrollo:', targetUrl);

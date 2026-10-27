@@ -208,7 +208,7 @@ describe('TerminalView', () => {
 describe('BrowserView', () => {
   test('carga la URL del dev server por defecto', () => {
     render(<BrowserView projectPath="C:/tmp/x" />);
-    expect(screen.getByPlaceholderText('https://…')).toHaveValue('http://localhost:3000');
+    expect(screen.getByPlaceholderText('https://…')).toHaveValue('http://localhost:3001');
     // Sin navegación aún no hay iframe
     expect(screen.queryByTitle('Navegador integrado')).toBeNull();
   });
@@ -217,7 +217,7 @@ describe('BrowserView', () => {
     render(<BrowserView projectPath="C:/tmp/x" />);
     fireEvent.click(screen.getByText('Dev Server'));
     const frame = screen.getByTitle('Navegador integrado') as HTMLIFrameElement;
-    expect(frame.getAttribute('src')).toBe('http://localhost:3000');
+    expect(frame.getAttribute('src')).toBe('http://localhost:3001');
   });
 
   test('Enter en la barra navega a la URL', () => {

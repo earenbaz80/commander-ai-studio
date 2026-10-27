@@ -2,7 +2,7 @@
 // Requiere servidor en SMOKE_URL (default http://localhost:3000).
 const fs = require('fs');
 try { require('dotenv').config(); } catch { /* dotenv opcional */ }
-const base = process.env.SMOKE_URL || 'http://localhost:3000';
+const base = process.env.SMOKE_URL || 'http://localhost:3001';
 let fail = 0;
 async function check(name, fn) {
   try { await fn(); console.log(`OK ${name}`); }
