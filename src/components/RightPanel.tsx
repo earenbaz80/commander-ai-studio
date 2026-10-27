@@ -8,12 +8,14 @@ import {
   Database,
   X,
   Server,
+  Settings,
 } from 'lucide-react';
 import { saveApiKey } from '../lib/apiKeys';
 import { ApiKeyInput } from './ApiKeyInput';
 import { JsonSchemaModal } from './JsonSchemaModal';
 import { FunctionCallingModal } from './FunctionCallingModal';
 import { DatasetFineTuningModal } from './DatasetFineTuningModal';
+import { ProviderManager } from './panel/ProviderManager';
 import { ParameterConfig, ProviderType, StudioMode } from '../types/studio';
 import { useModelsCatalog } from '../data/modelsLoader';
 import { Language, TRANSLATIONS } from '../i18n/translations';
@@ -66,6 +68,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false);
   const [isFunctionModalOpen, setIsFunctionModalOpen] = useState(false);
   const [isDatasetModalOpen, setIsDatasetModalOpen] = useState(false);
+  const [isProviderManagerOpen, setIsProviderManagerOpen] = useState(false);
   const [panelWidth, setPanelWidth] = useState(initialWidth);
   const [, setIsResizing] = useState(false);
   const safetyRef = useRef<HTMLDivElement>(null);
@@ -296,6 +299,15 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           >
             <Server className="w-3.5 h-3.5 text-[#ffff55]" />
             <span>{lang === 'es' ? 'CONFIGURAR LLM LOCAL (Ollama / OpenAI)' : lang === 'de' ? 'LOKALES LLM KONFIGURIEREN (Ollama / OpenAI)' : 'CONFIGURE LOCAL LLM (Ollama / OpenAI)'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsProviderManagerOpen(true)}
+            className="nc-button w-full text-left flex items-center gap-1.5 text-[10px] bg-[#0000aa] border-[#00ffff] mt-1.5"
+            title={lang === 'es' ? 'Gestionar todos los proveedores (API keys, hosts, modelos)' : lang === 'de' ? 'Alle Anbieter verwalten (API-Keys, Hosts, Modelle)' : 'Manage all providers (API keys, hosts, models)'}
+          >
+            <Settings className="w-3.5 h-3.5 text-[#ffff55]" />
+            <span>{lang === 'es' ? 'GESTIONAR PROVEEDORES' : lang === 'de' ? 'ANBIETER VERWALTEN' : 'MANAGE PROVIDERS'}</span>
           </button>
         </div>
 
@@ -796,6 +808,11 @@ export const RightPanel: React.FC<RightPanelProps> = ({
         setParameters={setParameters}
         selectedModel={selectedModel}
       />
+      <ProviderManager
+        isOpen={isProviderManagerOpen}
+        onClose={() => setIsProviderManagerOpen(false)}
+        lang={lang}
+      />
     </aside>
   );
 };
@@ -806,7 +823,7 @@ export const LivePreview: React.FC<{
   selectedModel: string;
   parameters: ParameterConfig;
 }> = () => {
-  const [previewUrl, setPreviewUrl] = useState<string>('http://localhost:3000');
+  const [previewUrl, setPreviewUrl] = useState<string>('http://localhost:3001');
   const [, setIsLoading] = useState(false);
   const [previewContent] = useState<string>('');
   const [mode, setMode] = useState<'iframe' | 'local'>('iframe');
@@ -821,7 +838,7 @@ export const LivePreview: React.FC<{
           value={previewUrl}
           onChange={(e) => setPreviewUrl(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && setMode('iframe')}
-          placeholder="http://localhost:3000"
+          placeholder="http://localhost:3001"
           className="flex-1 bg-[#000d1a] text-[10px] font-mono text-[#00ffff] px-2 py-1 rounded border border-[#004466] outline-none focus:border-[#00ffff]"
         />
         <button
