@@ -6,6 +6,7 @@ import { mapFunctionCall } from './fnTools';
 import { modelSupportsTools } from './providers';
 import { TOOL_REGISTRY } from './registry';
 import { loadMCPServers, mcpListTools, listRegistryServers, listRegistryServerTools } from './mcp';
+import { TURN_CHARS, compactTurns, serializeResults } from './contextBudget';
 
 const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.grep', 'shell.run', 'read_diagnostics', 'task', 'git.status', 'git.diff', 'git.log', 'git.commit', 'git.worktree', 'git.rebase', 'git.conflict', 'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list'];
 
@@ -126,8 +127,9 @@ export class AgentLoop {
   }
 
   private pushTurn(role: string, text: string) {
-    this.turns.push({ role, text: text.slice(0, 2000) });
-    if (this.turns.length > 10) this.turns = this.turns.slice(-10);
+    this.turns.push({ role, text: text.slice(0, TURN_CHARS) });
+    // Presupuesto: últimos turnos literales, los anteriores resumidos.
+    this.turns = compactTurns(this.turns);
   }
 
   /** ToolCalls ejecutables con el presupuesto restante (cada call consume 2 steps: llamada + resultado). */
@@ -244,7 +246,7 @@ export class AgentLoop {
     this.pushTurn('model', `${native.thought || ''}\nCalls: ${executable.map((m) => m.tool).join(', ')}`.slice(0, 2000));
     const results = await this.runParallel(executable);
     const fails = results.filter((r) => !r.ok);
-    this.pushTurn('user', `Resultados:\n${JSON.stringify(results).slice(0, 3000)}`);
+    this.pushTurn('user', `Resultados:\n${serializeResults(results)}`);
     if (fails.length > 0) {
       this.addThoughtCapped('Tools con fallo', fails.map((f) => `${f.tool}: ${f.error}`).join('\n').slice(0, 1000));
     }
@@ -314,7 +316,7 @@ export class AgentLoop {
 
     if (executable.length > 0) {
       const results = await this.runParallel(executable);
-      this.pushTurn('user', `Resultados:\n${JSON.stringify(results).slice(0, 3000)}`);
+      this.pushTurn('user', `Resultados:\n${serializeResults(results)}`);
       const fails = results.filter((r) => !r.ok);
       if (fails.length > 0) {
         this.addThoughtCapped('Tool falló', fails.map((f) => `${f.tool} error: ${f.error}`).join('\n').slice(0, 1000));
