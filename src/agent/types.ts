@@ -6,6 +6,8 @@ export type ToolId =
   | 'fs.grep'
   | 'shell.run'
   | 'shell.job'
+  | 'browser'
+  | 'preview'
   | 'read_diagnostics'
   | 'task'
   | 'git.status'

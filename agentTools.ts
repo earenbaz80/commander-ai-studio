@@ -5,13 +5,15 @@ import { SHELL_BLOCKED, SHELL_ALLOW_PREFIX, AGENT_TOOLS, sanitizeGitMessage } fr
 import { splitPipeline } from './src/agent/shellCommand';
 import { listJobs, readJobLog, runPipeline, startJob, stopJob } from './shellJobs';
 import { assertSafeOutboundUrl, safeFetch } from './ssrf';
-import { listRoots, resolveProjectPath } from './projects';
+import { displayPath, listRoots, resolveProjectPath } from './projects';
 import { snapshotPath } from './checkpoints';
 import { uid } from './src/agent/id';
 import { invalidateIndex } from './repoIndex';
 import { getPermissions, enforceTool, enforcePath } from './permissions';
 import { executeTask, getSession } from './agentSession';
 import { listServerTools, callServerTool } from './src/mcp/client';
+import { runBrowserAction } from './browserSession';
+import { checkPreview, listPreviews, openPreview, stopPreview } from './previewServer';
 
 const AGENT_ROOT = process.cwd();
 
@@ -255,6 +257,47 @@ export interface ToolResult {
  * agente en el servidor (P1 #6): devuelve un ToolResult en vez de escribir
  * en `res`, de modo que pueda invocarse sin un Request/Response.
  */
+/**
+ * Valida un pipeline etapa por etapa con la allowlist de `shell.run`.
+ *
+ * Lo comparten `shell.run` y `preview.open`: si la validación viviera sólo en
+ * una de las dos, la otra sería un bypass (un `preview` que arranca `curl | sh`
+ * en segundo plano).
+ */
+export function checkShellSegments(
+  command: unknown,
+  rootHint?: string,
+): { ok: true; segments: string[]; command: string } | { ok: false; error: string; status: number } {
+  const parsed = splitPipeline(command);
+  if (!parsed.ok) return { ok: false, error: parsed.error, status: 403 };
+  // Cada etapa se valida por separado: un pipeline no puede colar un comando
+  // que solo no pasaría (p. ej. `cat x | sh`).
+  for (const segment of parsed.segments) {
+    const lower = segment.toLowerCase();
+    const blocked = SHELL_BLOCKED.find((b) => lower.includes(b));
+    if (blocked) {
+      return { ok: false, error: `Comando bloqueado por seguridad (${blocked.trim()})`, status: 403 };
+    }
+    if (!SHELL_ALLOW_PREFIX.some((a) => lower.startsWith(a))) {
+      return {
+        ok: false,
+        error: `Comando no permitido: ${segment.slice(0, 80)}. Usa npm/npx/node/python/git/ls/cat/echo/tsc/vite.`,
+        status: 403,
+      };
+    }
+    const tokens = segment.split(/\s+/).filter(Boolean);
+    for (const t of tokens.slice(1)) {
+      if (t.startsWith('-') || !/[\\/:]|\.\./.test(t)) continue;
+      try {
+        resolveProjectPath(t, rootHint);
+      } catch {
+        return { ok: false, error: `Ruta fuera de los proyectos permitidos: ${t}`, status: 403 };
+      }
+    }
+  }
+  return { ok: true, segments: parsed.segments, command: String(command).trim() };
+}
+
 export async function executeAgentTool(toolId: string, input: any): Promise<ToolResult> {
   const rootHint = input?.root ? String(input.root).slice(0, 1024) : undefined;
 
@@ -473,41 +516,19 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
   }
 
   if (toolId === 'shell.run') {
-    const parsed = splitPipeline(input.command);
-    if (!parsed.ok) return { ok: false, error: parsed.error, status: 403 };
-    const cmd = String(input.command).trim();
-    // Cada etapa se valida por separado: un pipeline no puede colar un comando
-    // que solo no pasaría (p. ej. `cat x | sh`).
-    for (const segment of parsed.segments) {
-      const lower = segment.toLowerCase();
-      const blocked = SHELL_BLOCKED.find((b) => lower.includes(b));
-      if (blocked) {
-        return { ok: false, error: `Comando bloqueado por seguridad (${blocked.trim()})`, status: 403 };
-      }
-      if (!SHELL_ALLOW_PREFIX.some((a) => lower.startsWith(a))) {
-        return {
-          ok: false,
-          error: `Comando no permitido: ${segment.slice(0, 80)}. Usa npm/npx/node/python/git/ls/cat/echo/tsc/vite.`,
-          status: 403,
-        };
-      }
-      const tokens = segment.split(/\s+/).filter(Boolean);
-      for (const t of tokens.slice(1)) {
-        if (t.startsWith('-') || !/[\\/:]|\.\./.test(t)) continue;
-        try {
-          resolveProjectPath(t, rootHint);
-        } catch {
-          return { ok: false, error: `Ruta fuera de los proyectos permitidos: ${t}`, status: 403 };
-        }
-      }
-    }
+    // Allowlist, denylist y rutas: las mismas reglas que usa `preview`, para que
+    // arrancar un dev server no sea una puerta trasera al shell.
+    const checked = checkShellSegments(input.command, rootHint);
+    if (!checked.ok) return checked;
+    const cmd = checked.command;
+    const segments = checked.segments;
     // El comando corre en el root del proyecto activo (siempre uno registrado).
     const cwd = rootHint ? resolveProjectPath('.', rootHint).abs : AGENT_ROOT;
 
     // Segundo plano: el proceso escribe a un log y se consulta por id. Nada de
     // esperar a que termine un servidor de desarrollo.
     if (input.background === true) {
-      const started = startJob(cmd, parsed.segments, cwd);
+      const started = startJob(cmd, segments, cwd);
       if (!started.ok) return { ok: false, error: started.error };
       return {
         ok: true,
@@ -521,7 +542,7 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
 
     const timeout = Math.min(Number(input.timeoutMs) || 30000, 60000);
     const start = Date.now();
-    const result = await runPipeline(parsed.segments, cwd, timeout);
+    const result = await runPipeline(segments, cwd, timeout);
     return {
       ok: true,
       data: {
@@ -552,6 +573,71 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
       return res.ok ? { ok: true, data: res.data } : { ok: false, error: res.error };
     }
     return { ok: false, error: 'action debe ser list, logs o stop' };
+  }
+
+  if (toolId === 'browser') {
+    const action = String(input.action || '').trim().toLowerCase();
+    // La ruta del PNG se resuelve aquí: el sandbox de rutas y los permisos de
+    // escritura son política de la tool, no del driver (que sólo escribe donde
+    // se le dice).
+    let screenshot: { absPath: string; relPath: string } | undefined;
+    if (action === 'screenshot') {
+      const requested = String(input.path || '').trim();
+      if (requested) {
+        const pathErr = enforcePath(perms, requested, 'write');
+        if (pathErr) return { ok: false, error: pathErr, status: 403 };
+      }
+      const rel = requested || `.commander/screenshots/${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+      try {
+        const resolved = resolveProjectPath(rel, rootHint);
+        // `displayPath` cae al absoluto cuando la relativa se escapa: en Windows
+        // el realpath de un directorio puede volver en forma corta (8.3), y una
+        // relativa calculada contra él saldría con "..\..".
+        screenshot = { absPath: resolved.abs, relPath: displayPath(resolved.abs, resolved.root) };
+      } catch (e: any) {
+        return { ok: false, error: String(e?.message || e).slice(0, 300), status: 403 };
+      }
+    }
+    return runBrowserAction({
+      ...input,
+      action,
+      root: rootHint ? resolveProjectPath('.', rootHint).abs : AGENT_ROOT,
+      ...(screenshot ? { screenshot } : {}),
+    });
+  }
+
+  if (toolId === 'preview') {
+    const action = String(input.action || '').trim().toLowerCase();
+    if (action === 'check') {
+      const r = await checkPreview(input.url);
+      return r.ok ? { ok: true, data: r.data } : { ok: false, error: r.error };
+    }
+    if (action === 'status') {
+      return { ok: true, data: { previews: await listPreviews() } };
+    }
+    if (action === 'stop') {
+      const jobId = String(input.jobId || input.id || '').slice(0, 100);
+      if (!jobId) return { ok: false, error: 'jobId requerido para stop' };
+      const pid = input.pid === undefined || input.pid === null ? undefined : Number(input.pid);
+      if (pid !== undefined && !Number.isFinite(pid)) return { ok: false, error: 'pid inválido' };
+      const res = await stopPreview(jobId, pid);
+      return res.ok ? { ok: true, data: res.data } : { ok: false, error: res.error };
+    }
+    if (action === 'open') {
+      const checked = checkShellSegments(input.command, rootHint);
+      if (!checked.ok) return checked;
+      const cwd = rootHint ? resolveProjectPath('.', rootHint).abs : AGENT_ROOT;
+      const r = await openPreview({
+        command: checked.command,
+        segments: checked.segments,
+        cwd,
+        url: input.url,
+        port: input.port,
+        timeoutMs: input.timeoutMs,
+      });
+      return r.ok ? { ok: true, data: r.data } : { ok: false, error: r.error };
+    }
+    return { ok: false, error: 'action debe ser open, check, status o stop' };
   }
 
   if (toolId === 'web.fetch') {

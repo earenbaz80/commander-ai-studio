@@ -72,6 +72,45 @@ export const AGENT_FUNCTION_DECLARATIONS = [
     },
   },
   {
+    name: 'browser',
+    description: 'Navegador headless (Chromium). open: abre sesión (url opcional). navigate: va a una url http/https. snapshot: devuelve la página como árbol de texto con un uid por elemento (e1, e2…). click/type/press: actúan sobre el uid del ÚLTIMO snapshot; si la página cambia hay que volver a leerla. scroll: desplaza dy/dx px. screenshot: guarda un PNG (path opcional dentro del proyecto). logs: errores de consola y peticiones fallidas. close: cierra la sesión. list: sesiones abiertas.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', enum: ['open', 'navigate', 'snapshot', 'click', 'type', 'press', 'scroll', 'screenshot', 'logs', 'close', 'list'], description: 'Acción a ejecutar' },
+        sessionId: { type: 'STRING', description: 'Sesión concreta (por defecto la última del proyecto)' },
+        url: { type: 'STRING', description: 'Destino de open/navigate' },
+        uid: { type: 'STRING', description: 'uid del elemento según el último snapshot' },
+        text: { type: 'STRING', description: 'Texto de type' },
+        submit: { type: 'BOOLEAN', description: 'Con type: pulsar Enter después' },
+        key: { type: 'STRING', description: 'Tecla de press (Enter, Tab, Escape…)' },
+        dy: { type: 'NUMBER', description: 'Píxeles a desplazar en vertical (scroll)' },
+        dx: { type: 'NUMBER', description: 'Píxeles a desplazar en horizontal (scroll)' },
+        path: { type: 'STRING', description: 'Ruta del PNG dentro del proyecto (screenshot)' },
+        fullPage: { type: 'BOOLEAN', description: 'Capturar la página completa (screenshot)' },
+        clear: { type: 'BOOLEAN', description: 'Vaciar los logs tras leerlos' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'preview',
+    description: 'Preview de un dev server. open: arranca el comando en segundo plano (misma allowlist que shell_run) y espera a que el puerto responda; devuelve url y jobId, o ready:false con el final del log. check: ¿responde esta url? status: previews vivos. stop: para el trabajo por jobId.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', enum: ['open', 'check', 'status', 'stop'], description: 'Acción a ejecutar' },
+        command: { type: 'STRING', description: 'Comando a arrancar (open)' },
+        url: { type: 'STRING', description: 'URL a sondear (check) o a fijar como destino (open)' },
+        port: { type: 'NUMBER', description: 'Puerto del dev server (open)' },
+        timeoutMs: { type: 'NUMBER', description: 'Espera máxima en ms (1000-180000)' },
+        jobId: { type: 'STRING', description: 'Trabajo a parar (stop)' },
+        pid: { type: 'NUMBER', description: 'Comprobación extra en stop: debe pertenecer al trabajo' },
+      },
+      required: ['action'],
+    },
+  },
+  {
     name: 'read_diagnostics',
     description: 'Diagnósticos estáticos TypeScript del proyecto (tsc --noEmit). Opcional path para filtrar un archivo.',
     parameters: { type: 'OBJECT', properties: { path: { type: 'STRING', description: 'Ruta relativa a filtrar (opcional)' } } },
@@ -181,6 +220,7 @@ export const AGENT_FUNCTION_DECLARATIONS = [
 const FN_TO_TOOL: Record<string, string> = {
   fs_read: 'fs.read', fs_write: 'fs.write', fs_edit: 'fs.edit',
   fs_glob: 'fs.glob', fs_grep: 'fs.grep', shell_run: 'shell.run', shell_job: 'shell.job',
+  browser: 'browser', preview: 'preview',
   read_diagnostics: 'read_diagnostics',
   task: 'task',
   git_status: 'git.status', git_diff: 'git.diff', git_log: 'git.log', git_commit: 'git.commit', git_worktree: 'git.worktree', git_rebase: 'git.rebase', git_conflict: 'git.conflict',
