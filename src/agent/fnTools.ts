@@ -215,6 +215,28 @@ export const AGENT_FUNCTION_DECLARATIONS = [
     description: 'Llamar tool de un servidor MCP. Para servidores locales del registro usa `server` (nombre); para remotos usa `serverUrl`.',
     parameters: { type: 'OBJECT', properties: { server: { type: 'STRING', description: 'Nombre del servidor MCP local (registro commander.json)' }, serverUrl: { type: 'STRING', description: 'URL del servidor MCP remoto (alternativa a server)' }, tool: { type: 'STRING', description: 'Nombre de la tool a invocar' }, args: { type: 'OBJECT', description: 'Argumentos de la tool' } }, required: ['tool'] },
   },
+  {
+    name: 'update_plan',
+    description: 'Actualizar el plan visible de la tarea. Envía la lista completa de pasos en orden y marca done:true los terminados (o manda sólo {id, done} para cambiar el estado de un paso ya listado). No ejecuta nada en el workspace: sólo refleja el progreso.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        items: {
+          type: 'ARRAY',
+          description: 'Pasos del plan, en orden',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              id: { type: 'STRING', description: 'Id estable; reutilízalo para actualizar un paso existente' },
+              text: { type: 'STRING', description: 'Descripción corta del paso' },
+              done: { type: 'BOOLEAN', description: 'true si el paso ya está completado' },
+            },
+          },
+        },
+      },
+      required: ['items'],
+    },
+  },
 ];
 
 const FN_TO_TOOL: Record<string, string> = {

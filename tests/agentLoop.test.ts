@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { AgentLoop, type AgentLLMClient } from '../src/agent/loop.js';
 import { AgentOrchestrator } from '../src/agent/orchestrator.js';
 import type { AgentTask, AgentStep, AgentState } from '../src/agent/types.js';
+import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from '../src/agent/fnTools.js';
+import { PLAN_TOOL, normalizePlan } from '../src/agent/plan.js';
 
 /**
  * LLM fake determinista: alterna toolCalls (fs.read) y finish.
@@ -173,4 +175,72 @@ test('AgentLoop spawnSubagent ejecuta tarea acotada', async () => {
   assert.ok(subId.startsWith('sub'), `subId debería empezar por "sub" (obtenido: ${subId})`);
   const state = getState();
   assert.ok(state.steps.some((s) => s.title === 'Subagente'), 'Debería registrar el lanzamiento del subagente');
+});
+
+// ── update_plan: plan en la vía nativa ────────────────────────────────
+// `stepNative` no recibe un campo `plan` del proveedor, así que el plan sólo
+// puede llegar por esta pseudo-tool. Antes, con modelos de function calling el
+// panel de plan se quedaba vacío para siempre.
+
+test('update_plan se declara al modelo pero no se mapea a una tool del registro', () => {
+  const decl = AGENT_FUNCTION_DECLARATIONS.find((d) => d.name === PLAN_TOOL);
+  assert.ok(decl, 'update_plan debe estar en las declaraciones de funciones');
+  assert.equal(mapFunctionCall(PLAN_TOOL, { items: [] }), null, 'no debe resolverse a una tool ejecutable');
+});
+
+test('AgentLoop aplica update_plan en la vía nativa y no lo toma por respuesta final', async () => {
+  const { orchestrator, steps, getState } = createMockOrchestrator();
+  let turns = 0;
+  const client: AgentLLMClient = {
+    callJson: async () => ({ finish: true, answer: 'no debería usarse' }),
+    callTools: async () => {
+      turns += 1;
+      return {
+        thought: 'planifico',
+        calls: [
+          {
+            name: PLAN_TOOL,
+            args: {
+              items: [
+                { id: 'p1', text: 'leer el repo' },
+                { id: 'p2', text: 'editar el bucle', done: true },
+              ],
+            },
+          },
+        ],
+      };
+    },
+  };
+  const loop = new AgentLoop(orchestrator, 'gemini-2.0-flash', client);
+
+  await loop.start({ id: 'plan-1', goal: 'Test goal', cwd: '.', maxSteps: 5 });
+
+  const state = getState();
+  assert.equal(turns, 1, 'debe usar la vía nativa');
+  assert.deepEqual(
+    state.plan.map((p) => ({ id: p.id, text: p.text, done: p.done })),
+    [
+      { id: 'p1', text: 'leer el repo', done: false },
+      { id: 'p2', text: 'editar el bucle', done: true },
+    ]
+  );
+  assert.equal(state.running, true, 'un turno que sólo actualiza el plan no termina la tarea');
+  assert.ok(!steps.some((s) => s.title === 'Finalizado'), 'no debe marcar Finalizado');
+  loop.stop();
+});
+
+test('normalizePlan marca por id sin repetir el texto y descarta basura', () => {
+  const current = [{ id: 'p1', text: 'leer el repo', done: false }];
+
+  assert.deepEqual(normalizePlan([{ id: 'p1', done: true }], current), [
+    { id: 'p1', text: 'leer el repo', done: true },
+  ]);
+  assert.deepEqual(normalizePlan('no soy un array', current), current, 'un plan inválido no borra el actual');
+  assert.equal(normalizePlan([{ text: '   ' }, { done: true }, null]).length, 0);
+  assert.equal(normalizePlan([{ id: 'a', text: 'x' }, { id: 'a', text: 'y' }]).length, 1, 'ids repetidos');
+  assert.equal(
+    normalizePlan(Array.from({ length: 30 }, (_, i) => ({ text: `paso ${i}` }))).length,
+    20,
+    'el plan se recorta para no inflar el prompt'
+  );
 });
