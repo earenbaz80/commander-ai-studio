@@ -4,7 +4,6 @@ import App from './App.tsx';
 import { ChatStoreProvider } from './stores/chatStore';
 import { UIStoreProvider } from './stores/uiStore';
 import './index.css';
-import { registerServiceWorker } from './serviceWorkerRegistration';
 
 interface Props {
   children: ReactNode;
@@ -83,5 +82,4 @@ createRoot(document.getElementById('root')!).render(
   </ErrorBoundary>
 );
 
-// Register Service Worker for offline core assets and UI templates
-registerServiceWorker();
+
