@@ -1,6 +1,7 @@
 import type { ToolDefinition } from './types';
 import { fsReadTool, fsWriteTool, fsEditTool, fsGlobTool, fsGrepTool } from './tools/fs';
 import { shellRunTool, shellJobTool } from './tools/shell';
+import { browserTool, previewTool } from './tools/browser';
 import { readDiagnosticsTool } from './tools/diagnostics';
 import { taskTool } from './tools/task';
 import { webFetchTool, webSearchTool, codeRunTool } from './tools/web';
@@ -23,6 +24,8 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition<any, any>> = {
   [fsGrepTool.id]: fsGrepTool,
   [shellRunTool.id]: shellRunTool,
   [shellJobTool.id]: shellJobTool,
+  [browserTool.id]: browserTool,
+  [previewTool.id]: previewTool,
   [readDiagnosticsTool.id]: readDiagnosticsTool,
   [taskTool.id]: taskTool,
   [webFetchTool.id]: webFetchTool,

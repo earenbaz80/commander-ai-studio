@@ -36,7 +36,11 @@ export const DEFAULT_PERMISSIONS: Permissions = {
 /** Tools que modifican el filesystem o el repo. */
 const FILE_WRITE_TOOLS = new Set(['fs.write', 'fs.edit', 'git.commit']);
 /** Tools que ejecutan código/comandos (pueden modificar de forma indirecta). */
-const EXEC_TOOLS = new Set(['shell.run', 'shell.job', 'code.run']);
+/**
+ * `browser` y `preview` también entran aquí: uno maneja un proceso externo y
+ * el otro puede dejar un servidor corriendo. En modo plan/readonly no arrancan.
+ */
+const EXEC_TOOLS = new Set(['shell.run', 'shell.job', 'code.run', 'browser', 'preview']);
 
 // ── Coincidencia de globs ( ** , * , ? ) sobre rutas relativas ──
 
