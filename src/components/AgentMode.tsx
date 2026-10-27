@@ -1,10 +1,11 @@
 import type { Language } from '../i18n/translations';
 import React, { useMemo, useState, useEffect } from 'react';
-import { Send, Play, Square, Terminal, ListTodo, Plug, Activity, X, RefreshCw, RotateCcw, Clock, Users } from 'lucide-react';
+import { Send, Play, Square, Terminal, ListTodo, Plug, Activity, X, RefreshCw, RotateCcw, Clock, Users, Check } from 'lucide-react';
 import type { AgentState, AgentStep } from '../agent/types';
 import { loadMCPServers, saveMCPServers, mcpListTools, type MCPServerConfig } from '../agent/mcp';
 import { loadMetrics, metricsSummary } from '../agent/telemetry';
 import { loadSessions, deleteSession, type AgentSession } from '../agent/sessions';
+import { gitConflictState } from '../agent/tools/git';
 import PlanEditor, { type PlanItem } from './PlanEditor';
 import RollbackTimeline from './RollbackTimeline';
 import SubAgentPanel from './SubAgentPanel';
@@ -63,7 +64,28 @@ export const AgentMode: React.FC<AgentModeProps> = ({
   // `state` viene del orquestador como prop de solo lectura, así que la salida
   // del conflicto de merge se mantiene como estado local de la vista.
   const [conflictOutput, setConflictOutput] = useState<string>('');
+  const [conflictPath, setConflictPath] = useState<string>('');
+  const [conflictMsg, setConflictMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [resolvingConflict, setResolvingConflict] = useState(false);
+  const [mergeInfo, setMergeInfo] = useState<{
+    inMerge: boolean;
+    total: number;
+    files: Array<{ path: string; conflicts: number; ready: boolean }>;
+  } | null>(null);
+
+  // Al abrir el panel, consultar el merge en curso en vez de esperar a que se
+  // pegue la salida de `git merge`. Es sólo lectura: ni aprobación ni pasos.
+  useEffect(() => {
+    if (activePanel !== 'conflict') return;
+    let cancelled = false;
+    (async () => {
+      const r = await gitConflictState();
+      if (!cancelled) setMergeInfo(r?.ok ? r.data : null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activePanel]);
 
   useEffect(() => {
     const loadPlugins = async () => {
@@ -125,6 +147,129 @@ export const AgentMode: React.FC<AgentModeProps> = ({
       }
     } catch (e) {
       console.error('Failed to uninstall plugin', e);
+    }
+  };
+
+  /** Relee el estado del merge (archivos, bloques, cuáles ya están listos). */
+  const refreshMerge = async () => {
+    const r = await gitConflictState();
+    setMergeInfo(r?.ok ? r.data : null);
+  };
+
+  /** Cierra el merge con `git add` sobre los archivos que ya no tienen marcas. */
+  const closeMerge = async () => {
+    setResolvingConflict(true);
+    setConflictMsg(null);
+    try {
+      const r = await onRunTool('git.conflict', { all: true, stage: true });
+      if (r?.ok) {
+        const staged = (r.data?.staged || []) as string[];
+        const unstaged = (r.data?.unstaged || []) as Array<{ path: string; error: string }>;
+        setConflictMsg({
+          ok: true,
+          text: `${staged.length} archivo(s) marcados con git add`
+            + (unstaged.length ? `; pendientes: ${unstaged.map((s) => `${s.path} (${s.error})`).join(', ')}` : ''),
+        });
+      } else {
+        setConflictMsg({ ok: false, text: String(r?.error || 'No se pudo cerrar el merge') });
+      }
+      await refreshMerge();
+    } catch (e: any) {
+      setConflictMsg({ ok: false, text: String(e?.message || e) });
+    } finally {
+      setResolvingConflict(false);
+    }
+  };
+
+  /**
+   * Completa el merge con el commit de fusión, una vez que todos los archivos
+   * están preparados con git add. El servidor no hace `git add -A` aquí: sólo
+   * entra lo ya preparado y usa el mensaje de merge que preparó git.
+   */
+  const commitMerge = async () => {
+    setResolvingConflict(true);
+    setConflictMsg(null);
+    try {
+      const r = await onRunTool('git.conflict', { all: true, commit: true });
+      if (r?.ok) {
+        setConflictMsg({ ok: true, text: `Merge completado en ${r.data?.hash || 'HEAD'}` });
+      } else {
+        setConflictMsg({ ok: false, text: String(r?.error || 'No se pudo completar el merge') });
+      }
+      await refreshMerge();
+    } catch (e: any) {
+      setConflictMsg({ ok: false, text: String(e?.message || e) });
+    } finally {
+      setResolvingConflict(false);
+    }
+  };
+
+  /**
+   * Deshace el merge en curso con `git merge --abort`: el árbol vuelve al
+   * estado previo al intento. La herramienta pide aprobación antes de correr.
+   */
+  const abortMerge = async () => {
+    setResolvingConflict(true);
+    setConflictMsg(null);
+    try {
+      const r = await onRunTool('git.conflict', { all: true, abort: true });
+      if (r?.ok) {
+        setConflictMsg({ ok: true, text: 'Merge abortado: el árbol quedó como estaba antes del merge' });
+        setConflictOutput('');
+        setConflictPath('');
+      } else {
+        setConflictMsg({ ok: false, text: String(r?.error || 'No se pudo abortar el merge') });
+      }
+      await refreshMerge();
+    } catch (e: any) {
+      setConflictMsg({ ok: false, text: String(e?.message || e) });
+    } finally {
+      setResolvingConflict(false);
+    }
+  };
+
+  /**
+   * Aplica ours/theirs al archivo en conflicto. La tool escribe el archivo y
+   * deja el resultado sin stagear; el servidor rechaza rutas fuera del proyecto.
+   */
+  const resolveConflict = async (side: 'ours' | 'theirs', all = false) => {
+    setResolvingConflict(true);
+    setConflictMsg(null);
+    try {
+      const r = await onRunTool(
+        'git.conflict',
+        all
+          ? { all: true, resolve: side }
+          : { output: conflictOutput, path: conflictPath.trim(), resolve: side },
+      );
+      if (r?.ok) {
+        if (all) {
+          const files = (r.data?.files || []) as Array<{ path: string }>;
+          const skipped = (r.data?.skipped || []) as Array<{ path: string; error: string }>;
+          setConflictMsg({
+            ok: true,
+            text: `${files.length} archivo(s) resueltos como ${side}`
+              + (skipped.length ? `; omitidos: ${skipped.map((s) => s.path).join(', ')}` : '')
+              + ' (sin stagear)',
+          });
+          setConflictOutput('');
+          setConflictPath('');
+        } else {
+          setConflictMsg({
+            ok: true,
+            text: `${r.data?.resolved ?? 0} bloque(s) resueltos como ${side} en ${r.data?.path || conflictPath} (sin stagear)`,
+          });
+          setConflictOutput('');
+          setConflictPath('');
+        }
+      } else {
+        setConflictMsg({ ok: false, text: String(r?.error || 'No se pudo resolver el conflicto') });
+      }
+      await refreshMerge();
+    } catch (e: any) {
+      setConflictMsg({ ok: false, text: String(e?.message || e) });
+    } finally {
+      setResolvingConflict(false);
     }
   };
 
@@ -590,13 +735,121 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                   <span>RESOLUCIÓN DE CONFLICTOS</span>
                 </div>
 
+                <div className="flex gap-2 flex-wrap items-center">
+                  <span className="text-[10px] text-[#00ffff]/60">
+                    {lang === 'es' ? 'Todo el merge:' : lang === 'de' ? 'Ganzer Merge:' : 'Whole merge:'}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={resolvingConflict}
+                    onClick={() => resolveConflict('ours', true)}
+                    className="nc-button text-[10px] px-2 py-1 bg-[#00aa00] text-black disabled:opacity-50"
+                  >
+                    Ours
+                  </button>
+                  <button
+                    type="button"
+                    disabled={resolvingConflict}
+                    onClick={() => resolveConflict('theirs', true)}
+                    className="nc-button text-[10px] px-2 py-1 bg-[#0055aa] text-white disabled:opacity-50"
+                  >
+                    Them
+                  </button>
+                </div>
+
+                {mergeInfo && mergeInfo.files.length > 0 && (
+                  <div className="space-y-1 bg-black/30 border border-[#ffff55]/20 rounded p-2">
+                    <p className="text-[10px] text-[#ffff55]">
+                      {(mergeInfo.inMerge ? (lang === 'es' ? 'Merge en curso: ' : lang === 'de' ? 'Merge läuft: ' : 'Merge in progress: ')
+                        : (lang === 'es' ? 'Conflictos sin fusionar: ' : 'Unmerged: ')) + `${mergeInfo.total} archivo(s)`}
+                    </p>
+                    <ul className="text-[10px] text-white/70 font-mono space-y-0.5">
+                      {mergeInfo.files.slice(0, 6).map((f) => (
+                        <li key={f.path} className="truncate" title={f.path}>
+                          {f.ready ? '✓ ' : `${f.conflicts} bloque(s) · `}
+                          {f.path}
+                        </li>
+                      ))}
+                      {mergeInfo.files.length > 6 && <li>…</li>}
+                    </ul>
+                    {mergeInfo.files.some((f) => f.ready) && (
+                      <button
+                        type="button"
+                        disabled={resolvingConflict}
+                        onClick={closeMerge}
+                        className="nc-button text-[10px] px-2 py-1 bg-[#ffff55] text-black disabled:opacity-50"
+                      >
+                        <Check className="w-3 h-3" />{' '}
+                        {lang === 'es' ? 'Cerrar merge (git add)' : lang === 'de' ? 'Merge schließen (git add)' : 'Close merge (git add)'}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {mergeInfo?.inMerge && mergeInfo.files.length === 0 && (
+                  <div className="space-y-1 bg-black/30 border border-[#00ff00]/30 rounded p-2">
+                    <p className="text-[10px] text-[#00ff00]">
+                      {lang === 'es'
+                        ? 'Todo preparado con git add: falta el commit de merge.'
+                        : lang === 'de'
+                          ? 'Alles mit git add vorbereitet: fehlt der Merge-Commit.'
+                          : 'Everything staged with git add: the merge commit is left.'}
+                    </p>
+                    <button
+                      type="button"
+                      disabled={resolvingConflict}
+                      onClick={commitMerge}
+                      className="nc-button text-[10px] px-2 py-1 bg-[#00aa00] text-black disabled:opacity-50"
+                    >
+                      <Check className="w-3 h-3" />{' '}
+                      {lang === 'es' ? 'Commit del merge' : lang === 'de' ? 'Merge committen' : 'Commit merge'}
+                    </button>
+                  </div>
+                )}
+
+                {mergeInfo?.inMerge && (
+                  <button
+                    type="button"
+                    disabled={resolvingConflict}
+                    onClick={abortMerge}
+                    className="nc-button text-[10px] px-2 py-1 bg-[#aa0000] text-white disabled:opacity-50"
+                    title={lang === 'es'
+                      ? 'Deshace el merge: descarta las resoluciones y restaura el árbol previo'
+                      : lang === 'de'
+                        ? 'Bricht den Merge ab: verwirft die Auflösungen und stellt den vorherigen Stand wieder her'
+                        : 'Undo the merge: drops the resolutions and restores the previous tree'}
+                  >
+                    <X className="w-3 h-3" />{' '}
+                    {lang === 'es' ? 'Abortar merge' : lang === 'de' ? 'Merge abbrechen' : 'Abort merge'}
+                  </button>
+                )}
+
                 <textarea
                   value={conflictOutput}
-                  onChange={(e) => setConflictOutput(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setConflictOutput(v);
+                    setConflictMsg(null);
+                    // `git merge` nombra el archivo: prefill para no teclearlo.
+                    if (!conflictPath) {
+                      const m = v.match(/Merge conflict in (\S+)\s*$/m) || v.match(/both modified:\s+(\S+)\s*$/m);
+                      if (m) setConflictPath(m[1]);
+                    }
+                  }}
                   placeholder={lang === 'es'
                     ? 'Pega aquí la salida del merge en conflicto...'
                     : lang === 'de' ? 'Füge hier die fehlgeschlagene Merge-Ausgabe ein...' : 'Paste the failing merge output here...'}
                   className="w-full h-32 bg-black/40 text-white border border-[#ffff55]/40 p-2 rounded text-[10px] font-mono outline-none focus:border-[#ffff55]"
+                  spellCheck={false}
+                />
+
+                <input
+                  value={conflictPath}
+                  onChange={(e) => setConflictPath(e.target.value)}
+                  placeholder={lang === 'es'
+                    ? 'Archivo en conflicto (p. ej. src/x.ts)'
+                    : lang === 'de' ? 'Konfliktdatei (z. B. src/x.ts)' : 'Conflicted file (e.g. src/x.ts)'}
+                  className="w-full bg-black/40 text-white border border-[#ffff55]/40 px-2 py-1 rounded text-[10px] font-mono outline-none focus:border-[#ffff55]"
                   spellCheck={false}
                 />
 
@@ -612,13 +865,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                       type="button"
                       disabled={resolvingConflict}
                       onClick={async () => {
-                        setResolvingConflict(true);
-                        try {
-                          await onRunTool('git.conflict', { output: conflictOutput, resolve: 'ours' });
-                          setConflictOutput('');
-                        } finally {
-                          setResolvingConflict(false);
-                        }
+                        await resolveConflict('ours');
                       }}
                       className="nc-button text-[10px] px-2 py-1 bg-[#00aa00] text-black disabled:opacity-50"
                     >
@@ -628,13 +875,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                       type="button"
                       disabled={resolvingConflict}
                       onClick={async () => {
-                        setResolvingConflict(true);
-                        try {
-                          await onRunTool('git.conflict', { output: conflictOutput, resolve: 'theirs' });
-                          setConflictOutput('');
-                        } finally {
-                          setResolvingConflict(false);
-                        }
+                        await resolveConflict('theirs');
                       }}
                       className="nc-button text-[10px] px-2 py-1 bg-[#0055aa] text-white disabled:opacity-50"
                     >
@@ -649,6 +890,12 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                       <X className="w-3 h-3" /> {lang === 'es' ? 'Limpiar' : lang === 'de' ? 'Leeren' : 'Clear'}
                     </button>
                   </div>
+                )}
+
+                {conflictMsg && (
+                  <p className={`text-[10px] ${conflictMsg.ok ? 'text-[#00ff00]' : 'text-red-400'}`}>
+                    {conflictMsg.text}
+                  </p>
                 )}
               </div>
             )}
