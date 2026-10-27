@@ -22,8 +22,13 @@ const SKIP_DIRS = new Set([
   'node_modules', 'dist', 'release', 'out', 'coverage',
   '.git', '.next', '.nuxt', '.cache', '.vite', '.turbo', '.parcel-cache',
   '.commander',
+  // Artefactos de build que no son código del usuario: un `target` de Rust
+  // puede tener miles de binarios de varios MB.
+  'target',
 ]);
 
+/** fs.grep no abre archivos más grandes que esto: son binarios o bundles minificados. */
+const GREP_MAX_BYTES = 512 * 1024;
 const GREP_MAX_MATCHES = 100;
 /** Líneas que devuelve `fs.read` cuando no se pide una ventana concreta. */
 const READ_WINDOW_LINES = 200;
@@ -476,6 +481,9 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
           } else {
             const rel = path.relative(root, full);
             try {
+              // Sin este corte, un directorio de artefactos (p. ej. un empaquetado
+              // con `target/` de Rust) bloquea el event loop leyendo GB de binarios.
+              if (fs.statSync(full).size > GREP_MAX_BYTES) continue;
               const content = fs.readFileSync(full, 'utf8');
               const lines = content.split('\n');
               for (let i = 0; i < lines.length && matches.length < GREP_MAX_MATCHES; i++) {
