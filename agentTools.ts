@@ -678,13 +678,21 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
     const timeout = Math.min(Number(input.timeoutMs) || 30000, 60000);
     const start = Date.now();
     const result = await runPipeline(segments, cwd, timeout);
+    // Un comando que vuelca megabytes deja al modelo sin contexto para el resto
+    // de la tarea: la salida se entrega recortada, con el tamaño real y una
+    // pista de cómo seguirla entera si hace falta.
+    const cap = 8000;
+    const clip = (s: string) => (s.length > cap ? s.slice(0, cap) + `\n… [${s.length - cap} caracteres omitidos]` : s);
     return {
       ok: true,
       data: {
-        stdout: result.stdout,
-        stderr: result.stderr,
+        stdout: clip(result.stdout),
+        stderr: clip(result.stderr),
         exitCode: result.exitCode,
         durationMs: Date.now() - start,
+        stdoutBytes: result.stdout.length,
+        stderrBytes: result.stderr.length,
+        ...(result.stdout.length > cap || result.stderr.length > cap ? { truncated: true, hint: 'Salida recortada. Para comandos largos usa background:true y shell.job { action: "logs" }.' } : {}),
         ...(result.timedOut ? { timedOut: true } : {}),
       },
     };
