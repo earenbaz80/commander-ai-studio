@@ -399,15 +399,22 @@ function searchRootsFor(rootHint?: string): string[] {
  *
  * `EXEC_TOOLS` bloquea en plan/readonly todo lo que pueda modificar algo de
  * forma indirecta, y es la clasificación correcta para el caso general. Pero
- * dos de esas tools tienen una variante que sólo lee el repo:
+ * varias de esas tools tienen una variante que sólo lee:
  *   • `git.worktree action=list` lista los worktrees;
  *   • `git.conflict` sin `resolve` (ni `stage`/`commit`/`abort` sobre `all`)
  *     inspecciona marcas y stages. Bloquearla dejaba al agente sin poder ni
- *     mirar un conflicto en modo plan, y al panel sin su consulta de estado.
+ *     mirar un conflicto en modo plan, y al panel sin su consulta de estado;
+ *   • `mcp.call` con `method: 'tools/list'` enumera las tools de un servidor
+ *     MCP. Es el camino del descubrimiento remoto (`src/agent/mcp.ts`), así
+ *     que bloquearlo dejaba al agente de plan sin saber que esos servidores
+ *     existen: el bucle capturaba el 403 como «servidor caído».
  *
  * Las variantes que sí escriben siguen cayendo en `enforceTool`, y además
  * `git.conflict` revalida modo y globs de `files.write` dentro de su propia
- * rama de `resolve`: el límite no depende de este atajo.
+ * rama de `resolve`: el límite no depende de este atajo. Para MCP no hay
+ * equivalente: `tools/call` puede ser cualquier cosa y sólo el servidor, que
+ * es de terceros, sabe si su tool escribe. Los hints `readOnlyHint` del
+ * protocolo son una promesa del propio servidor y aquí no se usan.
  */
 function isReadOnlyCall(toolId: string, input: any): boolean {
   if (toolId === 'git.worktree') {
@@ -417,6 +424,10 @@ function isReadOnlyCall(toolId: string, input: any): boolean {
     const side = String(input?.resolve || '').trim().toLowerCase();
     const mutatesAll = !!input?.all && (!!input?.stage || !!input?.commit || !!input?.abort);
     return !side && !mutatesAll;
+  }
+  if (toolId === 'mcp.call') {
+    // Sin `method` la rama MCP asume `tools/call`, que sigue bloqueado.
+    return String(input?.method || '').trim().toLowerCase() === 'tools/list';
   }
   return false;
 }

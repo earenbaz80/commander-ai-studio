@@ -662,6 +662,38 @@ test('git.conflict en readonly deja consultar el merge y no modificarlo', async 
   }
 });
 
+test('mcp.call con tools/list pasa en plan y readonly; tools/call sigue bloqueado', async () => {
+  const dir = path.join(TEST_DIR, 'mcp-modos');
+  fs.mkdirSync(dir, { recursive: true });
+  // Servidor inexistente a propósito: lo que se prueba es el gate, que decide
+  // antes de salir a la red. El fallo de conexión no es un 403.
+  const input = { root: dir, serverUrl: 'http://127.0.0.1:9/nada' };
+  try {
+    for (const mode of ['plan', 'readonly'] as const) {
+      setPermissions(dir, { mode });
+
+      // El gate es lo único que se afirma: si pasa, el error que llegue será de
+      // transporte o de la lista SSRF, nunca el del modo.
+      const listing = await executeAgentTool('mcp.call', { ...input, method: 'tools/list' });
+      assert.doesNotMatch(
+        String(listing.error || ''),
+        /no se puede ejecutar mcp\.call/,
+        `${mode}: enumerar no puede cortarse en el gate de permisos`
+      );
+
+      const invoking = await executeAgentTool('mcp.call', { ...input, method: 'tools/call' });
+      assert.equal((invoking as any).status, 403, `${mode}: invocar sí se bloquea`);
+      assert.match(String(invoking.error), /Modo (Plan|Sólo lectura)/);
+
+      // Sin `method` la rama MCP asume tools/call: tampoco pasa.
+      const implicit = await executeAgentTool('mcp.call', { ...input, tool: 'saluda', args: {} });
+      assert.equal((implicit as any).status, 403, `${mode}: sin method es una invocación`);
+    }
+  } finally {
+    setPermissions(dir, { mode: 'build' });
+  }
+});
+
 test('git.conflict sólo pide aprobación cuando resuelve', () => {
   assert.equal(gitConflictTool.requiresApproval({ output: 'x' } as any, {} as any), false);
   assert.equal(gitConflictTool.requiresApproval({ output: 'x', resolve: 'ours' } as any, {} as any), true);
