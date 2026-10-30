@@ -8,6 +8,7 @@ import { spawn, execFileSync } from 'child_process';
 import { GoogleGenAI } from '@google/genai';
 import JSZip from 'jszip';
 import { handleAgentRunTool } from './agentTools';
+import * as persistence from './persistence';
 import { addRoot, listRoots, removeRoot, removableRoots, resolveProjectPath } from './projects';
 import { handleGeminiGenerate, handleGeminiStream, handleGeminiInteractions } from './gemini';
 import { handleAnthropicGenerate, handleAnthropicStream } from './anthropic';
@@ -347,6 +348,26 @@ app.delete('/api/sessions/:id', (req, res) => {
   } catch (e: any) {
     res.status(400).json({ success: false, error: e?.message || 'No se pudo eliminar el workspace de sesión' });
   }
+});
+
+// ── Nono durable memory (cross-session observations) ──
+app.get('/api/nono/observations', (req, res) => {
+  try {
+    const projectId = req.query.projectId ? String(req.query.projectId) : null;
+    const limit = req.query.limit ? Number(req.query.limit) : 50;
+    const q = req.query.q ? String(req.query.q) : '';
+    const rows = q
+      ? persistence.searchNonoObservations(projectId, q, limit)
+      : persistence.listNonoObservations(projectId, limit);
+    res.json({ success: true, observations: rows });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
+});
+app.post('/api/nono/observations', (req, res) => {
+  try {
+    const b = req.body || {};
+    const id = persistence.saveNonoObservation(b.projectId ?? null, String(b.kind || 'note'), String(b.content || ''), b.ts);
+    res.json({ success: true, id });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
 });
 
 // ==================== PROVIDERS / OBSERVABILIDAD ====================
