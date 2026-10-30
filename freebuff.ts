@@ -63,7 +63,6 @@ export async function handleFreebuffGenerate(req: Request, res: Response) {
       maxTokens = 2048,
       tools,
       apiKey,
-      baseURL,
     } = req.body || {};
 
     const key = resolveFreebuffKey(apiKey, getApiKey(req, 'FREEBUFF_API_KEY'));
@@ -71,9 +70,10 @@ export async function handleFreebuffGenerate(req: Request, res: Response) {
       return res.json({ success: false, error: FREEBUFF_KEY_REQUIRED });
     }
 
-    // La base sigue el mismo orden que la clave: cuerpo → panel → entorno → default.
+    // La base NO se acepta del cuerpo: el que llama podría mandar la clave del
+    // panel a otro host. Se configura en el panel (cookie) o en el entorno.
     const base = String(
-      baseURL || getApiKey(req, 'FREEBUFF_BASE_URL') || process.env.FREEBUFF_BASE_URL || FREEBUFF_DEFAULT_BASE
+      getApiKey(req, 'FREEBUFF_BASE_URL') || process.env.FREEBUFF_BASE_URL || FREEBUFF_DEFAULT_BASE
     ).replace(/\/+$/, '');
     const wanted = String(model || FREEBUFF_DEFAULT_MODEL).replace(/^freebuff\//, '');
     const userText = String(prompt ?? contents ?? '');
