@@ -4,7 +4,12 @@
  * Cubre los contratos que hasta ahora sólo se probaban a mano con curl:
  *   • `POST /api/threads` exige id (antes nacía un hilo llamado `"undefined"`);
  *   • `POST /api/queue/:threadId` responde 404 si el hilo no existe (antes un
- *     400 con el texto crudo `FOREIGN KEY constraint failed`).
+ *     400 con el texto crudo `FOREIGN KEY constraint failed`);
+ *   • las rutas autónomas validan su cuerpo antes de gastar una llamada al
+ *     LLM: sin `goal` (plan) o sin `parentSessionId` (run) son 400.
+ *
+ * Los dos últimos casos se paran en la validación a propósito: pasar de ahí
+ * significa hablar con el modelo de verdad, y eso no puede vivir en la suite.
  *
  * La gracia del arnés es que ejercita las rutas reales de `server.ts`, no una
  * copia del handler: si alguien vuelve a quitar el guard, esto se pone rojo.
@@ -77,6 +82,36 @@ test('un hilo se crea, encola y se borra con su cola en cascada', async () => {
 
   const after = await srv.request('GET', `/api/queue/${id}`);
   assert.equal(after.body.items.length, 0, 'borrar el hilo se lleva su cola');
+});
+
+test('POST /api/autonomous/:threadId/plan sin goal responde 400 sin llamar al modelo', async () => {
+  const thread = uniqueId('http-auto-plan');
+  const res = await srv.request('POST', `/api/autonomous/${thread}/plan`, { parentSessionId: 'sess-x' });
+
+  assert.equal(res.status, 400, `se esperaba 400, llegó ${res.status}: ${res.raw}`);
+  assert.equal(res.body.success, false);
+  assert.match(String(res.body.error), /goal requerido/);
+
+  // Un goal de sólo espacios pasa el `if (!goal)` de un string crudo, pero el
+  // `trim()` del handler lo deja vacío: mismo 400, sin plan ni tareas.
+  const blank = await srv.request('POST', `/api/autonomous/${thread}/plan`, { goal: '   ' });
+  assert.equal(blank.status, 400, `un goal en blanco también es 400, llegó ${blank.status}: ${blank.raw}`);
+  assert.match(String(blank.body.error), /goal requerido/);
+
+  const queue = await srv.request('GET', `/api/queue/${thread}`);
+  assert.equal(queue.body.items.length, 0, 'un rechazo no debe encolar nada');
+});
+
+test('POST /api/autonomous/:threadId/run sin parentSessionId responde 400', async () => {
+  const thread = uniqueId('http-auto-run');
+  const res = await srv.request('POST', `/api/autonomous/${thread}/run`, { goal: 'objetivo' });
+
+  assert.equal(res.status, 400, `se esperaba 400, llegó ${res.status}: ${res.raw}`);
+  assert.equal(res.body.success, false);
+  assert.match(String(res.body.error), /parentSessionId requerido/);
+  // Si el guard faltara, la ruta respondería 200 `started: true` y la campaña
+  // correría en segundo plano sin sesión padre: el test no vería el fallo.
+  assert.equal(res.body.started, undefined, 'no debe haberse lanzado una campaña');
 });
 
 test('POST /api/queue de un hilo inexistente responde 404, no un FOREIGN KEY', async () => {
