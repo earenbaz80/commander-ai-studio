@@ -1,6 +1,6 @@
-import type { AgentState } from './types';
+import { type AgentState } from './types';
+import * as serverPersistence from './persistence';
 
-const KEY = 'commander_agent_sessions_v1';
 export interface AgentSession {
   id: string;
   goal: string;
@@ -8,18 +8,68 @@ export interface AgentSession {
   state: AgentState;
 }
 
-export function loadSessions(): AgentSession[] {
+const KEY = 'commander_agent_sessions_v1';
+const MAX = 20;
+
+function loadLocal(): AgentSession[] {
   try {
-    return JSON.parse(localStorage.getItem(KEY) || '[]');
-  } catch { return []; }
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
-export function saveSession(s: AgentSession) {
-  try {
-    const all = loadSessions().filter((x) => x.id !== s.id);
-    all.unshift(s);
-    localStorage.setItem(KEY, JSON.stringify(all.slice(0, 20)));
-  } catch { /* ignore */ }
+function saveLocal(sessions: AgentSession[]): void {
+  try { localStorage.setItem(KEY, JSON.stringify(sessions)); } catch { /* ignore */ }
+}
+
+export function loadSessions(): AgentSession[] {
+  return loadLocal();
+}
+
+export function getSession(id: string): AgentSession | undefined {
+  return loadLocal().find((s) => s.id === id);
+}
+
+export function saveSession(s: AgentSession): void {
+  // 1. Local (síncrono, inmediato, para la UI).
+  const sessions = loadLocal().filter((x) => x.id !== s.id);
+  sessions.unshift(s);
+  if (sessions.length > MAX) sessions.length = MAX;
+  saveLocal(sessions);
+
+  // 2. Servidor (durable, asíncrono, fire-and-forget). No bloquea la UI.
+  void (async () => {
+    try {
+      const projectId = (s.state as any)?.projectPath || (s.state as any)?.cwd || undefined;
+      if (projectId) {
+        await serverPersistence.createThread({
+          id: s.id,
+          projectPath: projectId,
+          title: s.goal.slice(0, 80),
+          model: (s.state as any)?.model,
+          agentMode: (s.state as any)?.mode,
+        });
+      } else {
+        await serverPersistence.createThread({ id: s.id, title: s.goal.slice(0, 80), model: (s.state as any)?.model });
+      }
+      await serverPersistence.appendMessage(s.id, {
+        requestId: `goal-${s.id}`,
+        role: 'user',
+        parts: { goal: s.goal },
+        ts: s.ts,
+      });
+      await serverPersistence.appendMessage(s.id, {
+        requestId: `state-${s.id}`,
+        role: 'assistant',
+        parts: { state: s.state },
+        ts: s.ts,
+      });
+    } catch { /* servidor no disponible: queda en localStorage */ }
+  })();
 }
 
 /**
@@ -44,16 +94,46 @@ export function saveSessionThrottled(s: AgentSession): void {
   }, 1000);
 }
 
-export function getSession(id: string): AgentSession | undefined {
-  return loadSessions().find((x) => x.id === id);
-}
-
-export function deleteSession(id: string) {
+export async function loadSessionFromServer(id: string): Promise<AgentSession | null> {
   try {
-    localStorage.setItem(KEY, JSON.stringify(loadSessions().filter((x) => x.id !== id)));
-  } catch { /* ignore */ }
+    const t = await serverPersistence.getThread(id);
+    if (!t) return null;
+    const msgs = await serverPersistence.loadMessages(id);
+    let state: AgentState | null = null;
+    let goal = t.title || '';
+    for (const m of msgs) {
+      try {
+        const parts = JSON.parse(m.parts_json);
+        if (m.role === 'user' && parts?.goal) goal = parts.goal;
+        if (m.role === 'assistant' && parts?.state) state = parts.state as AgentState;
+      } catch { /* ignore */ }
+    }
+    if (!state) return null;
+    return { id: t.id, goal, ts: t.updated_at, state };
+  } catch {
+    return null;
+  }
 }
 
-export function clearSessions() {
+export async function loadSessionsFromServer(): Promise<AgentSession[]> {
+  try {
+    const threads = await serverPersistence.listThreads();
+    const out: AgentSession[] = [];
+    for (const t of threads) {
+      const s = await loadSessionFromServer(t.id);
+      if (s) out.push(s);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+export function deleteSession(id: string): void {
+  const sessions = loadLocal().filter((s) => s.id !== id);
+  saveLocal(sessions);
+  void serverPersistence.deleteThread(id).catch(() => { /* ignore */ });
+}
+
+export function clearSessions(): void {
   try { localStorage.removeItem(KEY); } catch { /* ignore */ }
 }

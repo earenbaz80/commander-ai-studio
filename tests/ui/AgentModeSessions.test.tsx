@@ -49,7 +49,7 @@ describe('AgentMode · sesiones interrumpidas', () => {
     const onContinue = vi.fn();
 
     render(<AgentMode {...baseProps()} onContinue={onContinue} />);
-    fireEvent.click(screen.getByText('SESESIONES'));
+    fireEvent.click(screen.getByText('SESIONES'));
 
     expect(screen.getByText(/interrumpida/)).toBeInTheDocument();
 
@@ -61,9 +61,40 @@ describe('AgentMode · sesiones interrumpidas', () => {
     localStorage.setItem('commander_agent_sessions_v1', JSON.stringify([interrupted]));
 
     render(<AgentMode {...baseProps()} />);
-    fireEvent.click(screen.getByText('SESESIONES'));
+    fireEvent.click(screen.getByText('SESIONES'));
 
     expect(screen.queryByText('Continuar')).toBeNull();
+  });
+
+  test('en alemán los textos del panel salen del diccionario', () => {
+    localStorage.setItem('commander_agent_sessions_v1', JSON.stringify([interrupted]));
+
+    render(
+      <AgentMode
+        {...baseProps()}
+        lang="de"
+        onContinue={vi.fn()}
+        onRestore={vi.fn()}
+        onFork={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByText('SITZUNGEN'));
+
+    // Antes estas cadenas se quedaban en castellano con la UI en alemán.
+    expect(screen.getByText(/unterbrochen/)).toBeInTheDocument();
+    expect(screen.getByText('Fortsetzen')).toBeInTheDocument();
+    expect(screen.getByTitle('Sitzungen aktualisieren')).toBeInTheDocument();
+    expect(screen.getByTitle('Sitzung löschen')).toBeInTheDocument();
+    expect(screen.getByTitle('Ab dem zuletzt gespeicherten Schritt fortsetzen')).toBeInTheDocument();
+    // Y los botones que seguían en inglés.
+    expect(screen.getByText('Wiederherstellen')).toBeInTheDocument();
+    expect(screen.getByText('Abzweigen')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('METRIKEN'));
+    expect(screen.getByText('TOOL-METRIKEN')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('MCP'));
+    expect(screen.getByText(/MCP-SERVER \(\d+\/\d+\)/)).toBeInTheDocument();
   });
 
   test('una sesión cerrada no se marca como interrumpida', () => {
@@ -74,7 +105,7 @@ describe('AgentMode · sesiones interrumpidas', () => {
     localStorage.setItem('commander_agent_sessions_v1', JSON.stringify([done]));
 
     render(<AgentMode {...baseProps()} onContinue={vi.fn()} />);
-    fireEvent.click(screen.getByText('SESESIONES'));
+    fireEvent.click(screen.getByText('SESIONES'));
 
     expect(screen.queryByText(/interrumpida/)).toBeNull();
     expect(screen.getByText('Continuar')).toBeInTheDocument();
