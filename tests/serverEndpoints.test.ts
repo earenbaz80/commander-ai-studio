@@ -37,6 +37,50 @@ after(async () => { await srv?.stop(); });
 
 const uniqueId = (prefix: string) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
+/**
+ * Petición con cabeceras propias. `srv.request` no las acepta y las claves del
+ * panel viajan en la cookie, así que aquí se repite el mismo molde del arnés
+ * (socket por petición, cuerpo leído entero, 30 s por petición).
+ */
+function requestConCookie(
+  method: string,
+  path: string,
+  body: unknown,
+  cookie: string
+): Promise<{ status: number; body: any; raw: string }> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(path, srv.baseUrl);
+    const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
+    const req = http.request(
+      {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname + url.search,
+        method,
+        agent: false,
+        headers: {
+          ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': String(payload.length) } : {}),
+          Cookie: cookie,
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => {
+          const raw = Buffer.concat(chunks).toString('utf8');
+          let parsed: any = null;
+          try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; }
+          resolve({ status: res.statusCode ?? 0, body: parsed, raw });
+        });
+      }
+    );
+    req.setTimeout(30_000, () => req.destroy(new Error('sin respuesta del server en 30s')));
+    req.on('error', reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
 test('la base del arnés es temporal: los tests no tocan la del proyecto', () => {
   assert.ok(srv.dbPath, 'el arnés debe declarar la base que está usando');
   assert.ok(
@@ -280,4 +324,47 @@ test('POST /api/worktrees valida y aplica permisos antes de crear nada', async (
   });
   assert.equal(fuera.status, 400, `una ruta fuera de los roots no puede gobernar un worktree: ${fuera.raw}`);
   assert.match(String(fuera.body.error), /No existe|fuera de los proyectos|Path requerido/i);
+});
+
+test('la clave y la base guardadas en el panel llegan al proxy de Freebuff', async () => {
+  // El panel guarda las claves en cookies httpOnly con `POST /api/keys`; acá se
+  // mandan directamente, que es lo que el navegador haría después. Se apunta el
+  // destino a un upstream local para ver de verdad con qué clave sale la
+  // petición, sin red externa ni créditos. Sin el middleware montado en /api,
+  // el handler no ve la cookie y responde FREEBUFF_API_KEY requerida.
+  const recibido: { auth?: string; body: any }[] = [];
+  const upstream = http.createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => chunks.push(c));
+    req.on('end', () => {
+      recibido.push({ auth: req.headers.authorization, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ model: 'gemini-4-argon', choices: [{ message: { content: 'hecho' } }] }));
+    });
+  });
+  await new Promise<void>((r) => upstream.listen(0, '127.0.0.1', () => r()));
+
+  try {
+    const port = (upstream.address() as any).port;
+    const cookie = [
+      `ai_studio_FREEBUFF_API_KEY=${encodeURIComponent('fb-del-panel')}`,
+      `ai_studio_FREEBUFF_BASE_URL=${encodeURIComponent(`http://127.0.0.1:${port}`)}`,
+    ].join('; ');
+
+    const res = await requestConCookie(
+      'POST',
+      '/api/freebuff/generate',
+      { prompt: 'hola', model: 'freebuff/gemini-4-argon' },
+      cookie
+    );
+
+    assert.equal(res.status, 200, res.raw);
+    assert.equal(res.body.success, true, `el proxy debía autenticarse con la clave del panel: ${res.raw}`);
+    assert.equal(res.body.text, 'hecho');
+    assert.equal(recibido.length, 1, 'una sola llamada al upstream');
+    assert.equal(recibido[0].auth, 'Bearer fb-del-panel', 'la clave de la cookie llegó al proveedor');
+    assert.equal(recibido[0].body.model, 'gemini-4-argon', 'el prefijo freebuff/ se quita antes de salir');
+  } finally {
+    await new Promise<void>((r) => upstream.close(() => r()));
+  }
 });

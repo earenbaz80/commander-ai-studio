@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { FREEBUFF_DEFAULT_MODEL } from './src/config/freebuffModels';
+import { getApiKey } from './apiKeys';
 
 /**
  * Proxy de Freebuff: `/api/freebuff/generate`.
@@ -24,14 +25,18 @@ export const FREEBUFF_KEY_REQUIRED =
   'FREEBUFF_API_KEY requerida: se obtiene en Freebuff → Account → Developer API';
 
 /**
- * Clave efectiva: la que manda el panel → `FREEBUFF_API_KEY` → `OPENAI_API_KEY`.
+ * Clave efectiva: cuerpo → panel (cookie) → `FREEBUFF_API_KEY` → `OPENAI_API_KEY`.
  *
- * El último escalón existe porque Freebuff es OpenAI-compatible y una cuenta
- * que ya tenía su clave de OpenAI a mano puede reutilizarla. No es al revés a
- * propósito: si sobra la de OpenAI, Freebuff tiene que seguir usando la suya.
+ * El panel es el que guarda la clave con `POST /api/keys`; sin este escalón la
+ * clave quedaba en la cookie y el proxy sólo la veía si el cliente además la
+ * repetía en el cuerpo. El último escalón existe porque Freebuff es
+ * OpenAI-compatible y una cuenta que ya tenía su clave de OpenAI a mano puede
+ * reutilizarla. No es al revés a propósito: si sobra la de OpenAI, Freebuff
+ * tiene que seguir usando la suya.
  */
-export function resolveFreebuffKey(fromRequest: unknown): string {
+export function resolveFreebuffKey(fromRequest: unknown, fromPanel?: unknown): string {
   if (fromRequest) return String(fromRequest);
+  if (fromPanel) return String(fromPanel);
   return process.env.FREEBUFF_API_KEY || process.env.OPENAI_API_KEY || '';
 }
 
@@ -61,12 +66,15 @@ export async function handleFreebuffGenerate(req: Request, res: Response) {
       baseURL,
     } = req.body || {};
 
-    const key = resolveFreebuffKey(apiKey);
+    const key = resolveFreebuffKey(apiKey, getApiKey(req, 'FREEBUFF_API_KEY'));
     if (!key) {
       return res.json({ success: false, error: FREEBUFF_KEY_REQUIRED });
     }
 
-    const base = String(baseURL || process.env.FREEBUFF_BASE_URL || FREEBUFF_DEFAULT_BASE).replace(/\/+$/, '');
+    // La base sigue el mismo orden que la clave: cuerpo → panel → entorno → default.
+    const base = String(
+      baseURL || getApiKey(req, 'FREEBUFF_BASE_URL') || process.env.FREEBUFF_BASE_URL || FREEBUFF_DEFAULT_BASE
+    ).replace(/\/+$/, '');
     const wanted = String(model || FREEBUFF_DEFAULT_MODEL).replace(/^freebuff\//, '');
     const userText = String(prompt ?? contents ?? '');
 

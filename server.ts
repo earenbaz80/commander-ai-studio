@@ -92,11 +92,17 @@ app.use((_req, _res, next) => {
   next();
 });
 
+// Las claves que guarda el panel viven en cookies httpOnly. Este middleware las
+// copia a `req.apiKeys` una sola vez para todo /api: los handlers las leen con
+// `getApiKey(req, 'NOMBRE')` y no vuelven a mirar cookies por su cuenta. Va
+// después del parser (necesita `req.cookies`) y antes de las rutas.
+app.use('/api', apiKeyMiddleware);
+
 // API Keys management endpoints (httpOnly cookies)
-app.post('/api/keys', apiKeyMiddleware, handleApiKeySet);
-app.get('/api/keys', apiKeyMiddleware, handleApiKeysList);
-app.get('/api/keys/:key', apiKeyMiddleware, handleApiKeyGet);
-app.delete('/api/keys', apiKeyMiddleware, handleApiKeyDelete);
+app.post('/api/keys', handleApiKeySet);
+app.get('/api/keys', handleApiKeysList);
+app.get('/api/keys/:key', handleApiKeyGet);
+app.delete('/api/keys', handleApiKeyDelete);
 
 // Health check endpoint for Electron and orchestration diagnostics
 // @ts-ignore
