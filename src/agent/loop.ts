@@ -4,10 +4,10 @@ import type { AgentTask } from './types';
 import { callAgentLLM, callAgentLLMTools } from './llm';
 import { mapFunctionCall } from './fnTools';
 import { PLAN_TOOL, normalizePlan } from './plan';
-import { modelSupportsTools } from './providers';
+import { modelSupportsTools, getContextWindow } from './providers';
 import { TOOL_REGISTRY } from './registry';
 import { loadMCPServers, mcpListTools, listRegistryServers, listRegistryServerTools } from './mcp';
-import { TURN_CHARS, compactTurns, serializeResults } from './contextBudget';
+import { RESULT_TURN_CHARS, TURN_CHARS, TURNS_BUDGET_CHARS, clipMiddle, compactTurns, serializeResults, createReadIndex, recordRead, ReadIndex } from './contextBudget';
 
 const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.propose.write', 'fs.propose.edit', 'fs.glob', 'fs.grep', 'shell.run', 'shell.job', 'browser', 'preview', 'read_diagnostics', 'task', 'spawn_agents', 'skill', 'git.status', 'git.diff', 'git.log', 'git.commit', 'git.worktree', 'git.rebase', 'git.conflict', 'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list'];
 /**
@@ -88,10 +88,12 @@ export class AgentLoop {
   private task: AgentTask | null = null;
   private running = false;
   private model?: string;
+  private skills: string[] = [];
   private llm: AgentLLMClient;
   private agentsMd = '';
   private mcpSchema = '';
   private turns: { role: string; text: string }[] = [];
+  private readIndex: ReadIndex = createReadIndex();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private repeats = new RepeatGuard();
 
@@ -102,7 +104,8 @@ export class AgentLoop {
   }
 
   /**
-   * Pre-vuelo compartido por `start` y `resume`: reglas del repo y tools MCP.
+   * Pre-vuelo compartido por `start` y `resume`: reglas del repo, tools MCP y
+   * skills.
    * No toca el log de pasos, así que no consume presupuesto de maxSteps.
    */
   private async prepare(): Promise<{ rules: { file: string; text: string } | null; mcpParts: string[] }> {
@@ -110,6 +113,14 @@ export class AgentLoop {
     const mcpParts = await this.loadMCPTools();
     this.agentsMd = rules?.text ?? '';
     this.mcpSchema = mcpParts.join('\n').slice(0, 2000);
+    // Skills disponibles (no bloqueante).
+    try {
+      const r = await fetch('/api/skills');
+      if (r.ok) {
+        const data = await r.json();
+        this.skills = (data.skills || []).map((s: any) => s.id || s.name).filter(Boolean).slice(0, 50);
+      }
+    } catch { /* ignore */ }
     return { rules, mcpParts };
   }
 
@@ -227,9 +238,37 @@ export class AgentLoop {
   }
 
   private pushTurn(role: string, text: string) {
-    this.turns.push({ role, text: text.slice(0, TURN_CHARS) });
-    // Presupuesto: últimos turnos literales, los anteriores resumidos.
-    this.turns = compactTurns(this.turns);
+    // Los turnos con resultados llevan el código que el modelo va a editar:
+    // recortarlos al presupuesto de razonamiento lo dejaba leyendo a ciegas.
+    const cap = role === 'user' ? RESULT_TURN_CHARS : TURN_CHARS;
+    this.turns.push({ role, text: clipMiddle(text, cap) });
+    // Puerta dura: solo compactamos cuando el contexto supera el 80% de la
+    // ventana del modelo; por debajo, se conserva todo (sin resumir).
+    const threshold = Math.floor(getContextWindow(this.model) * 4 * 0.8);
+    const current = this.turns.reduce((a, t) => a + (t.text?.length || 0), 0);
+    if (current > threshold) {
+      const maxChars = Math.min(TURNS_BUDGET_CHARS, threshold);
+      this.turns = compactTurns(this.turns, { maxChars, readIndex: this.readIndex });
+    }
+  }
+
+  /** Registra en el índice de lecturas los fs.read exitosos, para que sobrevivan a la compactación. */
+  private recordReads(calls: Array<{ tool: string; input: unknown }>, results: Array<{ tool: string; ok: boolean; data?: unknown; error?: unknown }>) {
+    for (let i = 0; i < calls.length; i++) {
+      const c = calls[i];
+      const r = results[i];
+      if (!r?.ok || c.tool !== 'fs.read') continue;
+      const input = (c.input || {}) as { path?: string };
+      const data = (r.data || {}) as { startLine?: number; endLine?: number; totalLines?: number };
+      if (!input.path) continue;
+      recordRead(this.readIndex, String(input.path), Number(data.startLine) || 1, Number(data.endLine) || 0, Number(data.totalLines) || 0);
+    }
+  }
+
+  /** Turno con el lote de resultados, ya recortado al presupuesto del turno. */
+  private pushResults(results: Array<{ tool: string; ok: boolean; data?: unknown; error?: unknown }>) {
+    const prefix = 'Resultados:\n';
+    this.pushTurn('user', prefix + serializeResults(results, RESULT_TURN_CHARS - prefix.length));
   }
 
   /** ToolCalls ejecutables con el presupuesto restante (cada call consume 2 steps: llamada + resultado). */
@@ -336,6 +375,7 @@ export class AgentLoop {
           recentSteps,
           plan,
           agentsMd: this.agentsMd,
+          skills: this.skills,
           turns: this.turns,
         },
         { model: this.model }
@@ -404,9 +444,10 @@ export class AgentLoop {
     this.pushTurn('model', `${native.thought || ''}\nCalls: ${executable.map((m) => m.tool).join(', ')}`.slice(0, 2000));
     const repeated = this.repeats.track(executable);
     const results = await this.runParallel(this.dropExhausted(executable));
+    this.recordReads(executable, results);
     this.warnRepeats(repeated.filter((item) => item.times < BLOCK_AFTER_REPEATS));
     const fails = results.filter((r) => !r.ok);
-    this.pushTurn('user', `Resultados:\n${serializeResults(results)}`);
+    if (results.length > 0) this.pushResults(results);
     if (fails.length > 0) {
       this.addThoughtCapped('Tools con fallo', fails.map((f) => `${f.tool}: ${f.error}`).join('\n').slice(0, 1000));
     }
@@ -427,6 +468,7 @@ export class AgentLoop {
         recentSteps,
         plan,
         agentsMd: this.agentsMd,
+        skills: this.skills,
       },
       { model: this.model }
     );
@@ -477,7 +519,8 @@ export class AgentLoop {
     if (executable.length > 0) {
       const repeated = this.repeats.track(executable);
       const results = await this.runParallel(this.dropExhausted(executable));
-      this.pushTurn('user', `Resultados:\n${serializeResults(results)}`);
+      this.recordReads(executable, results);
+      if (results.length > 0) this.pushResults(results);
       this.warnRepeats(repeated.filter((item) => item.times < BLOCK_AFTER_REPEATS));
       const fails = results.filter((r) => !r.ok);
       if (fails.length > 0) {
