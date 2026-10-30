@@ -18,10 +18,12 @@ import {
   handleFreebuffGenerate,
   resolveFreebuffKey,
 } from '../freebuff.js';
+import { apiKeyMiddleware } from '../apiKeys.js';
 import { FREEBUFF_DEFAULT_MODEL } from '../src/config/freebuffModels.js';
 
-function mockReq(body: any) {
-  return { body, ip: '127.0.0.1', headers: {} } as any;
+/** `cookies` es lo que deja el parser de `server.ts`: así entra la clave del panel. */
+function mockReq(body: any, cookies: Record<string, string> = {}) {
+  return { body, ip: '127.0.0.1', headers: {}, cookies } as any;
 }
 
 function mockRes() {
@@ -109,7 +111,46 @@ test('la clave del panel gana a la del entorno, y FREEBUFF_API_KEY gana a OPENAI
 
     process.env.FREEBUFF_API_KEY = 'fb-del-entorno';
     assert.equal(resolveFreebuffKey(undefined), 'fb-del-entorno', 'la clave propia del proveedor manda');
-    assert.equal(resolveFreebuffKey('fb-del-panel'), 'fb-del-panel', 'lo que manda el panel gana a todo');
+    assert.equal(resolveFreebuffKey(undefined, 'fb-de-la-cookie'), 'fb-de-la-cookie', 'la del panel gana al entorno');
+    assert.equal(resolveFreebuffKey('fb-del-cuerpo', 'fb-de-la-cookie'), 'fb-del-cuerpo', 'lo explícito del cuerpo gana al panel');
+  });
+});
+
+test('la clave del panel (cookie) llega al upstream sin que el cuerpo la repita', async () => {
+  await sinEntorno(async () => {
+    const { impl, calls } = stubFetch(() => upstreamOk({ choices: [{ message: { content: 'vale' } }] }));
+    await conFetch(impl, async () => {
+      const req = mockReq({ prompt: 'hola' }, { ai_studio_FREEBUFF_API_KEY: 'fb-de-la-cookie' });
+      apiKeyMiddleware(req, mockRes(), () => {});
+
+      const res = mockRes();
+      await handleFreebuffGenerate(req, res);
+
+      assert.equal(res.body?.success, true, JSON.stringify(res.body));
+      assert.equal(res.body?.text, 'vale');
+      assert.equal(calls.length, 1, 'con clave del panel sí se llama al proveedor');
+      assert.equal(calls[0].init.headers.Authorization, 'Bearer fb-de-la-cookie');
+    });
+  });
+});
+
+test('FREEBUFF_BASE_URL guardada en el panel manda la petición a esa base', async () => {
+  await sinEntorno(async () => {
+    const { impl, calls } = stubFetch(() => upstreamOk({ choices: [{ message: { content: 'ok' } }] }));
+    await conFetch(impl, async () => {
+      const req = mockReq(
+        { prompt: 'hola' },
+        {
+          ai_studio_FREEBUFF_API_KEY: 'fb-de-la-cookie',
+          ai_studio_FREEBUFF_BASE_URL: 'https://proxy.local/v1/',
+        }
+      );
+      apiKeyMiddleware(req, mockRes(), () => {});
+
+      await handleFreebuffGenerate(req, mockRes());
+
+      assert.equal(calls[0].url, 'https://proxy.local/v1/chat/completions', 'la base del panel pierde las barras finales');
+    });
   });
 });
 
