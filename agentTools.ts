@@ -303,6 +303,33 @@ export function checkShellSegments(
   return { ok: true, segments: parsed.segments, command: String(command).trim() };
 }
 
+/**
+ * ¿La llamada sólo consulta, aunque la tool figure entre las que ejecutan?
+ *
+ * `EXEC_TOOLS` bloquea en plan/readonly todo lo que pueda modificar algo de
+ * forma indirecta, y es la clasificación correcta para el caso general. Pero
+ * dos de esas tools tienen una variante que sólo lee el repo:
+ *   • `git.worktree action=list` lista los worktrees;
+ *   • `git.conflict` sin `resolve` (ni `stage`/`commit`/`abort` sobre `all`)
+ *     inspecciona marcas y stages. Bloquearla dejaba al agente sin poder ni
+ *     mirar un conflicto en modo plan, y al panel sin su consulta de estado.
+ *
+ * Las variantes que sí escriben siguen cayendo en `enforceTool`, y además
+ * `git.conflict` revalida modo y globs de `files.write` dentro de su propia
+ * rama de `resolve`: el límite no depende de este atajo.
+ */
+function isReadOnlyCall(toolId: string, input: any): boolean {
+  if (toolId === 'git.worktree') {
+    return String(input?.action || '').toLowerCase() === 'list';
+  }
+  if (toolId === 'git.conflict') {
+    const side = String(input?.resolve || '').trim().toLowerCase();
+    const mutatesAll = !!input?.all && (!!input?.stage || !!input?.commit || !!input?.abort);
+    return !side && !mutatesAll;
+  }
+  return false;
+}
+
 export async function executeAgentTool(toolId: string, input: any): Promise<ToolResult> {
   const rootHint = input?.root ? String(input.root).slice(0, 1024) : undefined;
 
@@ -311,7 +338,9 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
   // permisos cambiando `input.root`.
   const permRoot = rootHint ? resolveProjectPath('.', rootHint).abs : AGENT_ROOT;
   const perms = getPermissions(permRoot);
-  const toolErr = enforceTool(perms, toolId);
+  // Las variantes de sólo consulta se permiten incluso en modo plan/readonly
+  // (las listas de tools permitidas/denegadas siguen aplicando dentro).
+  const toolErr = enforceTool(perms, toolId, { readOnly: isReadOnlyCall(toolId, input) });
   if (toolErr) return { ok: false, error: toolErr, status: 403 };
 
   if (toolId === 'fs.read') {

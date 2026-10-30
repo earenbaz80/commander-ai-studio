@@ -67,6 +67,22 @@ test('enforceTool: readonly deniega escribir y ejecutar', () => {
   assert.equal(enforceTool(ro, 'fs.read'), null);
 });
 
+test('enforceTool: readOnly es de la llamada, no de la tool', () => {
+  const ro = { ...DEFAULT_PERMISSIONS, mode: 'readonly' as const };
+
+  // Una variante que sólo consulta atraviesa el modo (git.worktree list, la
+  // inspección de git.conflict), pero la tool sigue bloqueada si escribe.
+  assert.match(enforceTool(ro, 'git.conflict') || '', /Sólo lectura/);
+  assert.equal(enforceTool(ro, 'git.conflict', { readOnly: true }), null);
+
+  // Y `readOnly` no abre un agujero en las listas: denegar la tool la deniega
+  // también en su variante de consulta.
+  const denied = { ...ro, deniedTools: ['git.conflict'] };
+  assert.match(enforceTool(denied, 'git.conflict', { readOnly: true }) || '', /denegada/);
+  const whitelist = { ...ro, allowedTools: ['fs.read'] };
+  assert.match(enforceTool(whitelist, 'git.conflict', { readOnly: true }) || '', /deshabilitada/);
+});
+
 test('enforceTool: allowedTools restringe y deniedTools deniega', () => {
   const perms = { ...DEFAULT_PERMISSIONS, allowedTools: ['fs.read'] };
   assert.equal(enforceTool(perms, 'fs.read'), null);
