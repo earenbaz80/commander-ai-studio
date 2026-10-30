@@ -7,7 +7,7 @@
  * devuelve `{ ok:false, error }` legible para que la UI lo muestre tal cual.
  */
 
-import { resolveEndpoint } from '../lib/aiProviders';
+import { clientCredentialsFor, resolveEndpoint } from '../lib/aiProviders';
 
 /** Clave donde la app guarda el modelo activo (la escribe App.tsx). */
 export const SELECTED_MODEL_KEY = 'ai_studio_selected_model';
@@ -199,8 +199,7 @@ async function runInlinePrompt(prompt: InlinePrompt, opts: RunOptions = {}): Pro
     maxTokens: opts.maxTokens ?? 256,
     openrouterApiKey: readSetting('OPENROUTER_API_KEY'),
     ollamaHost: readSetting('OLLAMA_HOST'),
-    baseURL: readSetting('CUSTOM_BASE_URL'),
-    apiKey: readSetting('CUSTOM_API_KEY') || readSetting('OPENCODE_API_KEY'),
+    ...clientCredentialsFor(model, readSetting),
   };
 
   let res: Response;

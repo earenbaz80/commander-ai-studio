@@ -148,6 +148,36 @@ export function detectProvider(
   return 'google';
 }
 
+/** Base y clave que el cliente puede aportar para un modelo. */
+export interface ClientCredentials {
+  baseURL?: string;
+  apiKey?: string;
+}
+
+/**
+ * Credenciales del cliente para este modelo: sólo `custom/` las necesita.
+ *
+ * `/api/custom/generate` toma `baseURL` y `apiKey` de la petición, pero el resto
+ * de proveedores resuelve su clave en el servidor (panel o entorno) y, si les
+ * llega la de Custom, la usan como propia: `/api/freebuff/generate` prefiere
+ * `baseURL` a `FREEBUFF_BASE_URL` y toma `apiKey` como clave de Freebuff, así
+ * que con Custom configurado la petición se iba a otro host con una clave
+ * ajena. Mandarlas sólo con ids `custom/` deja ese campo para quien lo entiende.
+ *
+ * @param model    Id ya prefijado con el proveedor.
+ * @param readKey  Lector de claves del cliente (caché del panel o localStorage).
+ */
+export function clientCredentialsFor(
+  model: string,
+  readKey: (name: string) => string | undefined
+): ClientCredentials {
+  if (!model.startsWith('custom/')) return {};
+  return {
+    baseURL: readKey('CUSTOM_BASE_URL') || undefined,
+    apiKey: readKey('CUSTOM_API_KEY') || readKey('OPENCODE_API_KEY') || undefined,
+  };
+}
+
 /**
  * Resuelve el endpoint HTTP para un id de modelo.
  *

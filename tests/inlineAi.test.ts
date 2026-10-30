@@ -20,6 +20,8 @@ test('routeForModel enruta cada familia al endpoint del agente', () => {
   assert.equal(routeForModel('pollinations/openai'), '/api/pollinations/generate');
   assert.equal(routeForModel('ollama/llama3.2'), '/api/ollama/generate');
   assert.equal(routeForModel('gemini-2.5-flash'), '/api/gemini/generate');
+  // El id parece de Gemini, pero el prefijo manda: va al proxy de Freebuff.
+  assert.equal(routeForModel('freebuff/gemini-4-argon'), '/api/freebuff/generate');
 });
 
 test('getActiveModel cae al default gratuito sin localStorage', () => {
@@ -73,6 +75,15 @@ test('buildEditPrompt incluye la instrucción y el fragmento', () => {
   assert.match(user, /FRAGMENTO A REEMPLAZAR:\nconst a = JSON\.parse\(x\);/);
 });
 
+/** Simula ajustes guardados por el usuario (aquí, Custom configurado). */
+function withLocalSettings<T>(settings: Record<string, string>, fn: () => Promise<T>): Promise<T> {
+  const previo = (globalThis as any).localStorage;
+  (globalThis as any).localStorage = { getItem: (k: string) => settings[k] ?? null };
+  return fn().finally(() => {
+    (globalThis as any).localStorage = previo;
+  });
+}
+
 function mockFetch(impl: (url: string, init: RequestInit) => Response | Promise<Response>) {
   const original = globalThis.fetch;
   globalThis.fetch = ((url: any, init: any) => Promise.resolve(impl(String(url), init))) as typeof fetch;
@@ -117,6 +128,52 @@ test('requestInlineEdit propaga el error del proveedor (p. ej. falta API key)', 
     const res = await requestInlineEdit({ instruction: 'mejora', code: 'x', model: 'gemini-2.5-flash' });
     assert.equal(res.ok, false);
     assert.match(res.error || '', /GEMINI_API_KEY/);
+  } finally {
+    restore();
+  }
+});
+
+test('requestInlineEdit va al proxy de Freebuff y deja el prefijo al servidor', async () => {
+  let seenUrl = '';
+  let seenBody: any = null;
+  const restore = mockFetch((url, init) => {
+    seenUrl = url;
+    seenBody = JSON.parse(String(init.body));
+    return new Response(JSON.stringify({ text: 'const b = 2;' }), { status: 200 });
+  });
+  try {
+    // Con Custom configurado: es cuando la base y la clave ajenas se colaban.
+    const res = await withLocalSettings(
+      { CUSTOM_BASE_URL: 'https://custom.invalid/v1', CUSTOM_API_KEY: 'clave-de-custom' },
+      () => requestInlineEdit({ instruction: 'renombra', code: 'const a = 1;', model: 'freebuff/gpt-6-luna' })
+    );
+    assert.equal(seenUrl, '/api/freebuff/generate');
+    assert.equal(res.ok, true);
+    assert.equal(res.text, 'const b = 2;');
+    // El prefijo lo quita el proxy (es quien conoce el catálogo), no el editor.
+    assert.equal(seenBody.model, 'freebuff/gpt-6-luna');
+    // Y la base y la clave de Custom no viajan: el proxy usa las suyas.
+    assert.equal(seenBody.baseURL, undefined, 'la base la pone el servidor');
+    assert.equal(seenBody.apiKey, undefined, 'la clave la resuelve el proxy');
+  } finally {
+    restore();
+  }
+});
+
+test('requestInlineEdit con custom/ sí manda su base y su clave', async () => {
+  let seenBody: any = null;
+  const restore = mockFetch((_url, init) => {
+    seenBody = JSON.parse(String(init.body));
+    return new Response(JSON.stringify({ text: 'ok' }), { status: 200 });
+  });
+  try {
+    await withLocalSettings(
+      { CUSTOM_BASE_URL: 'https://custom.invalid/v1', CUSTOM_API_KEY: 'clave-de-custom' },
+      () => requestInlineEdit({ instruction: 'x', code: 'y', model: 'custom/llama' })
+    );
+    // Este endpoint sí las lee del cuerpo: quitarlas en todos lados lo rompería.
+    assert.equal(seenBody.baseURL, 'https://custom.invalid/v1');
+    assert.equal(seenBody.apiKey, 'clave-de-custom');
   } finally {
     restore();
   }
