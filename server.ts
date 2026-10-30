@@ -350,6 +350,64 @@ app.delete('/api/sessions/:id', (req, res) => {
   }
 });
 
+// ── Persistencia durable (SQLite) de threads/mensajes ──
+app.get('/api/threads', (req, res) => {
+  try {
+    const projectId = req.query.projectId ? String(req.query.projectId) : undefined;
+    res.json({ success: true, threads: persistence.listThreads(projectId) });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
+});
+app.post('/api/threads', (req, res) => {
+  try {
+    const b = req.body || {};
+    // `String(undefined)` es la cadena "undefined": sin este control, un cliente
+    // que olvidaba el id creaba un hilo con ese nombre literal, invisible para
+    // quien lo buscara después. Los llamadores reales siempre mandan id.
+    const id = typeof b.id === 'string' ? b.id.trim() : '';
+    if (!id) return res.status(400).json({ success: false, error: 'id de hilo requerido' });
+    if (b.projectId && b.projectPath) persistence.upsertProject(String(b.projectId), String(b.projectPath), b.defaultBranch);
+    const t = persistence.createThread({ id, projectId: b.projectId, projectPath: b.projectPath, title: b.title, model: b.model, agentMode: b.agentMode, executionMode: b.executionMode, stateJson: b.stateJson });
+    res.json({ success: true, thread: t });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+app.get('/api/threads/:id', (req, res) => {
+  try {
+    const t = persistence.getThread(String(req.params.id));
+    if (!t) return res.status(404).json({ success: false, error: 'not found' });
+    res.json({ success: true, thread: t });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
+});
+app.get('/api/threads/:id/messages', (req, res) => {
+  try {
+    const limit = req.query.limit ? Number(req.query.limit) : 200;
+    res.json({ success: true, messages: persistence.loadMessages(String(req.params.id), limit) });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
+});
+app.post('/api/threads/:id/messages', (req, res) => {
+  try {
+    const b = req.body || {};
+    const seq = persistence.appendMessage({
+      threadId: String(req.params.id),
+      requestId: b.requestId, inputId: b.inputId, origin: b.origin,
+      steering: !!b.steering, role: String(b.role), parts: b.parts ?? b.content,
+      attachments: b.attachments, metrics: b.metrics, ts: b.ts,
+    });
+    res.json({ success: true, seq });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+app.get('/api/search', (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (!q) return res.json({ success: true, results: [] });
+    const limit = req.query.limit ? Number(req.query.limit) : 20;
+    res.json({ success: true, results: persistence.searchConversations(q, limit) });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
+});
+app.delete('/api/threads/:id', (req, res) => {
+  try { persistence.deleteThread(String(req.params.id)); res.json({ success: true }); }
+  catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+
 // ── Nono durable memory (cross-session observations) ──
 app.get('/api/nono/observations', (req, res) => {
   try {
@@ -368,6 +426,45 @@ app.post('/api/nono/observations', (req, res) => {
     const id = persistence.saveNonoObservation(b.projectId ?? null, String(b.kind || 'note'), String(b.content || ''), b.ts);
     res.json({ success: true, id });
   } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+
+// ── Queue / autonomous runs ──
+app.get('/api/queue/:threadId', (req, res) => {
+  try {
+    const state = req.query.state ? String(req.query.state) : undefined;
+    res.json({ success: true, items: persistence.listQueue(String(req.params.threadId), state) });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
+});
+app.post('/api/queue/:threadId', (req, res) => {
+  try {
+    const b = req.body || {};
+    const threadId = String(req.params.threadId);
+    // La cola referencia `threads(id)`: sin hilo, el INSERT moría con
+    // «FOREIGN KEY constraint failed» (un 400 con texto de SQLite). No es un
+    // cuerpo inválido, es un recurso que no existe: 404. El hilo NO se crea
+    // aquí a propósito — una petición de cola suelta no debe inventar hilos.
+    if (!persistence.getThread(threadId)) {
+      return res.status(404).json({ success: false, error: 'hilo no encontrado' });
+    }
+    const item = persistence.enqueueItem({ id: String(b.id || `q-${Date.now()}`), threadId, prompt: String(b.prompt || ''), label: b.label, chatText: b.chatText, note: b.note, kind: b.kind, delivery: b.delivery, priority: b.priority, position: b.position, source: b.source, skillName: b.skillName });
+    res.json({ success: true, item });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+app.post('/api/queue/:threadId/dequeue', (req, res) => {
+  try {
+    const item = persistence.dequeueNext(String(req.params.threadId));
+    res.json({ success: true, item });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
+});
+app.patch('/api/queue/item/:id', (req, res) => {
+  try {
+    persistence.updateQueueItem(String(req.params.id), req.body || {});
+    res.json({ success: true });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+app.get('/api/receipts/:threadId', (req, res) => {
+  try { res.json({ success: true, receipts: persistence.listReceipts(String(req.params.threadId)) }); }
+  catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
 });
 
 // ==================== PROVIDERS / OBSERVABILIDAD ====================
