@@ -17,6 +17,8 @@ interface NonoMemory {
     showNono: boolean;
     reducedMotion: boolean;
     compactMode: boolean;
+    /** Anima a Nono aunque el sistema pida menos movimiento. */
+    forceMotion: boolean;
   };
   /** Historial de interacciones para aprendizaje */
   interactionHistory: {
@@ -38,6 +40,7 @@ const DEFAULT_MEMORY: NonoMemory = {
     showNono: true,
     reducedMotion: false,
     compactMode: false,
+    forceMotion: false,
   },
   interactionHistory: [],
 };
