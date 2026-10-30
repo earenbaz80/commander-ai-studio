@@ -301,6 +301,40 @@ test('shell.run ejecuta comando permitido', async () => {
   assert.ok(res.body.data.stdout.includes('hola'));
 });
 
+test('shell.run recorta la salida y dice cuánto omitió', async () => {
+  // La salida larga sale de listar un directorio con muchos ficheros: el comando
+  // en sí está limitado a 2000 caracteres, así que no vale un `echo <9000 x>`.
+  const dir = path.join(TEST_DIR, 'salida-larga');
+  fs.mkdirSync(dir, { recursive: true });
+  for (let i = 0; i < 300; i++) {
+    fs.writeFileSync(path.join(dir, `archivo-de-prueba-con-nombre-largo-${i}.txt`), 'x', 'utf8');
+  }
+
+  // cmd.exe lee las barras normales como opciones: en Windows la ruta va con
+  // separador del sistema, y cada plataforma lista con su comando.
+  const command = process.platform === 'win32'
+    ? 'dir ' + path.join('tests', 'tmp', 'salida-larga')
+    : 'ls tests/tmp/salida-larga';
+  const big = await executeAgentTool('shell.run', { command });
+  assert.equal(big.ok, true, String(big.error));
+  const data = big.data as any;
+  assert.ok(data.stdoutBytes > 8000, `debe informar el tamaño real: ${data.stdoutBytes}`);
+  assert.ok(data.stdout.length < data.stdoutBytes, 'lo entregado va recortado');
+  assert.match(String(data.stdout), /caracteres omitidos/);
+  assert.equal(data.truncated, true);
+  assert.match(String(data.hint), /shell\.job/);
+});
+
+test('shell.run no marca recorte cuando la salida es corta', async () => {
+  const short = await executeAgentTool('shell.run', { command: 'echo hola' });
+  assert.equal(short.ok, true, String(short.error));
+  const data = short.data as any;
+  assert.match(String(data.stdout), /hola/);
+  assert.equal(typeof data.stdoutBytes, 'number');
+  assert.equal(data.truncated, undefined, 'sin recorte no debe anunciarlo');
+  assert.equal(data.hint, undefined);
+});
+
 test('shell.run admite pipes entre etapas permitidas', async () => {
   // `grep` no está en Windows y `findstr` no está en POSIX: cada uno en su casa.
   const command = process.platform === 'win32'
