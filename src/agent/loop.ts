@@ -349,6 +349,15 @@ export class AgentLoop {
       this.orchestrator.addThought('Razonamiento', native.thought.slice(0, 2000));
     }
 
+    // El modelo pedido no respondió: queda como paso visible, no como un aviso
+    // escondido en el texto de la respuesta.
+    if (native.fallback) {
+      this.addThoughtCapped(
+        'Modelo sustituido',
+        `${native.fallback.from} no respondió; respondió ${native.fallback.to}`
+      );
+    }
+
     // `update_plan` es una pseudo-tool: la consume el bucle y nunca llega al
     // registro ni al backend. En la vía nativa el modelo no tiene campo `plan`,
     // así que ésta es su única forma de mover el plan que ve la UI.

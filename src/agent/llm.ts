@@ -143,6 +143,13 @@ ${ctx.toolSchema}`;
 export interface LLMNativeResult {
   thought: string;
   calls: { name: string; args: any }[];
+  /** Modelo que respondió de verdad, cuando el proveedor lo declara. */
+  model?: string;
+  /**
+   * El modelo pedido no respondió y contestó otro. `null` = respondió el pedido;
+   * ausente = el proveedor no lo declara (OpenAI/Ollama, servidores antiguos).
+   */
+  fallback?: { from: string; to: string } | null;
 }
 
 // Tool-use nativo (function calling) por dialecto:
@@ -203,7 +210,12 @@ export async function callAgentLLMTools(
 
   if (dialect === 'gemini') {
     const calls = (data.functionCalls || []).map((fc: any) => ({ name: fc.name, args: fc.args || {} }));
-    return { thought: data.text || '', calls };
+    return {
+      thought: data.text || '',
+      calls,
+      ...(typeof data.model === 'string' ? { model: data.model } : {}),
+      ...(data.fallback ? { fallback: data.fallback } : {}),
+    };
   }
 
   if (dialect === 'anthropic') {

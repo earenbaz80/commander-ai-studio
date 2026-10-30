@@ -289,6 +289,41 @@ test('AgentLoop registra un aviso cuando el modelo repite la misma llamada', asy
   }
 });
 
+test('el bucle registra qué modelo respondió cuando el pedido no lo hizo', async () => {
+  const { orchestrator, steps } = createMockOrchestrator();
+  const client: AgentLLMClient = {
+    callJson: async () => ({ finish: true, answer: '' }),
+    callTools: async () => ({
+      thought: 'listo',
+      calls: [],
+      model: 'gemini-3.5-flash-lite',
+      fallback: { from: 'gemini-3.5-flash', to: 'gemini-3.5-flash-lite' },
+    }),
+  };
+  const loop = new AgentLoop(orchestrator, 'gemini-3.5-flash', client);
+
+  await loop.start({ id: 'fb-1', goal: 'Test goal', cwd: '.', maxSteps: 6 });
+  try {
+    const step = steps.find((s) => s.title === 'Modelo sustituido');
+    assert.ok(step, 'la sustitución debe quedar como paso, no escondida en el texto');
+    assert.match(String(step?.content), /gemini-3\.5-flash no respondió; respondió gemini-3\.5-flash-lite/);
+  } finally {
+    loop.stop();
+  }
+});
+
+test('sin sustitución no se registra ningún paso de modelo', async () => {
+  const { orchestrator, steps } = createMockOrchestrator();
+  const client: AgentLLMClient = {
+    callJson: async () => ({ finish: true, answer: '' }),
+    callTools: async () => ({ thought: 'listo', calls: [], model: 'gemini-3.5-flash', fallback: null }),
+  };
+  const loop = new AgentLoop(orchestrator, 'gemini-3.5-flash', client);
+  await loop.start({ id: 'fb-2', goal: 'Test goal', cwd: '.', maxSteps: 6 });
+  loop.stop();
+  assert.ok(!steps.some((s) => s.title === 'Modelo sustituido'));
+});
+
 test('normalizePlan marca por id sin repetir el texto y descarta basura', () => {
   const current = [{ id: 'p1', text: 'leer el repo', done: false }];
 
