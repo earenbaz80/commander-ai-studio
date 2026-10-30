@@ -39,18 +39,53 @@ export class AgentLoop {
     this.llm = llmClient;
   }
 
-  async start(task: AgentTask) {
-    this.task = task;
-    this.running = true;
-    this.turns = [];
-    // Pre-vuelo: reglas del repo y tools MCP. Se cargan ANTES de orchestrator.start()
-    // (que reinicia el log de steps) para no consumir el presupuesto de maxSteps.
+  /**
+   * Pre-vuelo compartido por `start` y `resume`: reglas del repo y tools MCP.
+   * No toca el log de pasos, así que no consume presupuesto de maxSteps.
+   */
+  private async prepare(): Promise<{ rules: { file: string; text: string } | null; mcpParts: string[] }> {
     const rules = await this.loadRepoRules();
     const mcpParts = await this.loadMCPTools();
     this.agentsMd = rules?.text ?? '';
     this.mcpSchema = mcpParts.join('\n').slice(0, 2000);
+    return { rules, mcpParts };
+  }
+
+  async start(task: AgentTask) {
+    this.task = task;
+    this.running = true;
+    this.turns = [];
+    // Pre-vuelo ANTES de orchestrator.start() (que reinicia el log de steps).
+    const { rules, mcpParts } = await this.prepare();
     this.orchestrator.start(task, task.plan);
     this.orchestrator.addThought('Inicio', `Objetivo: ${task.goal}\nCWD: ${task.cwd}`);
+    if (rules) {
+      this.orchestrator.addThought('Reglas repo', `Cargado ${rules.file} (${rules.text.length} chars)`);
+    }
+    if (mcpParts.length > 0) {
+      this.orchestrator.addThought('MCP', `Servidores activos: ${mcpParts.length}`);
+    }
+    await this.step();
+  }
+
+  /**
+   * Retoma una corrida interrumpida (app cerrada, recarga, servidor caído)
+   * conservando sus pasos y su plan.
+   *
+   * El presupuesto se renueva: los pasos ya ejecutados no deben comerse el de
+   * esta continuación, o el bucle moriría en el primer turno.
+   */
+  async resume(task: AgentTask) {
+    const used = this.orchestrator.getState().steps.length;
+    this.task = { ...task, maxSteps: (task.maxSteps ?? 40) + used };
+    this.running = true;
+    this.turns = [];
+    const { rules, mcpParts } = await this.prepare();
+    if (!this.orchestrator.resume()) {
+      this.running = false;
+      return;
+    }
+    this.orchestrator.addThought('Continuación', `Retomando «${task.goal}» tras una interrupción (${used} pasos previos)`);
     if (rules) {
       this.orchestrator.addThought('Reglas repo', `Cargado ${rules.file} (${rules.text.length} chars)`);
     }

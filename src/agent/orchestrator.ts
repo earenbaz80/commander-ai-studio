@@ -77,6 +77,23 @@ export class AgentOrchestrator {
     this.emit();
   }
 
+  /**
+   * Reanuda una sesión restaurada sin borrar su plan ni sus pasos.
+   * Es el equivalente a `start` para una corrida que quedó a medias: la UI ya
+   * tiene delante el avance guardado y sólo hay que volver a ponerla en marcha.
+   */
+  resume(): boolean {
+    if (!this.state.task) return false;
+    this.currentPlan = this.state.plan || [];
+    this.executionQueue = [...this.currentPlan];
+    this.state.running = true;
+    this.state.thinking = true;
+    this.state.error = undefined;
+    this.state.currentStepId = undefined;
+    this.emit();
+    return true;
+  }
+
   start(task: any, plan?: any[]) {
     this.currentPlan = plan || [];
     this.executionQueue = [...this.currentPlan];

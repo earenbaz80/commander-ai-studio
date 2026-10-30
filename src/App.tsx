@@ -1182,6 +1182,7 @@ export default function App() {
                 state={agent.state}
                 onRunTool={agent.runTool}
                 onRestore={agent.restoreSession}
+                onContinue={agent.continueSession}
                 onFork={agent.forkSession}
                 onRollbackRun={agent.rollbackRun}
                 onPlanChange={agent.setPlan}
