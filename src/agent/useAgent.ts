@@ -3,6 +3,7 @@ import { AgentOrchestrator } from './orchestrator';
 import { AgentLoop } from './loop';
 import { uid } from './id';
 import { saveSession, saveSessionThrottled, type AgentSession } from './sessions';
+import { clearActiveSession, rememberTask } from './activeSession';
 import { recordMetric } from './telemetry';
 import type { AgentState, ApprovalRequest, ApprovalResult } from './types';
 
@@ -79,12 +80,21 @@ export function useAgent(cwd: string, model?: string) {
   const loop = useMemo(() => new AgentLoop(orchestrator, model), [orchestrator, model]);
 
   const startTask = (goal: string, plan?: Array<{ id: string; text: string; done: boolean }>) => {
+    // Deja anotada la tarea para que `spawn_agents` pueda registrar después su
+    // sesión padre (objetivo, cwd, modelo). Sin red aquí: la sesión se crea en
+    // el primer uso y no arranca el bucle del LLM.
+    const taskId = uid('task');
+    rememberTask({ taskId, goal, cwd, model });
     // maxSteps cuenta micro-steps (thought/call/result); 40 ≈ 6-8 turnos LLM
-    loop.start({ id: uid('task'), goal, cwd, maxSteps: 40, plan });
+    loop.start({ id: taskId, goal, cwd, maxSteps: 40, plan });
   };
   const restoreSession = (s: import('./sessions').AgentSession) => {
     orchestrator.restoreState(s.state);
     setState({ ...orchestrator.getState() });
+    // El id de sesión del servidor se perdió con la recarga: se vuelve a anotar
+    // la tarea para que `spawn_agents` la registre cuando la necesite.
+    const task = s.state?.task;
+    if (task?.id) rememberTask({ taskId: task.id, goal: task.goal, cwd: task.cwd || cwd, model });
   };
   /**
    * Continúa una sesión interrumpida: la restaura y vuelve a poner el bucle en
@@ -95,6 +105,8 @@ export function useAgent(cwd: string, model?: string) {
     if (!task) return false;
     orchestrator.restoreState(s.state);
     setState({ ...orchestrator.getState() });
+    // Continuar puede ocurrir sin restaurar antes: se anota igual (sin red).
+    rememberTask({ taskId: task.id, goal: task.goal, cwd: task.cwd || cwd, model });
     void loop.resume({ ...task, cwd: task.cwd || cwd });
     return true;
   };
@@ -107,6 +119,7 @@ export function useAgent(cwd: string, model?: string) {
   };
   const stop = () => {
     loop.stop();
+    clearActiveSession();
     try {
       const s = orchestrator.getState();
       if (s.task) saveSession({ id: s.task.id, goal: s.task.goal, ts: Date.now(), state: s });

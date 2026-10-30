@@ -9,16 +9,21 @@ import { GoogleGenAI } from '@google/genai';
 import JSZip from 'jszip';
 import { handleAgentRunTool } from './agentTools';
 import * as persistence from './persistence';
+import * as worktrees from './worktrees';
 import { runAutonomousCampaign, planCampaign } from './autonomousRun';
 import { setServerBaseUrl } from './serverRuntime';
 import { addRoot, listRoots, removeRoot, removableRoots, resolveProjectPath } from './projects';
+import { enforceTool, getPermissions } from './permissions';
+// `listSessions` ya lo exporta `sessionWorkspace` (sesiones de UI): se aliasa.
+import { createSession, getSession, listSessions as listAgentSessions, removeSession } from './agentSession';
+import { clearSubAgents, listSubAgents, subscribeSubAgents } from './subAgents';
 import { handleGeminiGenerate, handleGeminiStream, handleGeminiInteractions } from './gemini';
 import { handleAnthropicGenerate, handleAnthropicStream } from './anthropic';
 import { executeLocalHfModel } from './localModels';
 import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList, apiKeyMiddleware } from './apiKeys';
 import { loadConfig } from './src/config/index';
 import skillsRouter from './skills/api';
-import { forkSessionWorkspace, deleteSessionWorkspace, listSessions } from './sessionWorkspace';
+import { forkSessionWorkspace, deleteSessionWorkspace, listSessions, createGitWorktree } from './sessionWorkspace';
 import { handleOAuthLogin, handleOAuthCallback, handleLogout, getCurrentUser } from './oauth';
 import { executeWithFallback, getProviderMetrics, checkAllProvidersHealth, resetCircuitBreaker, setProviderEnabled } from './fallbackRouter';
 import { GEMINI_DEFAULT_MODEL } from './src/config/geminiModels';
@@ -324,6 +329,112 @@ app.post('/api/anthropic/stream', handleAnthropicStream);
 // Agent tools endpoint
 app.post('/api/agent/run-tool', handleAgentRunTool);
 
+// ── Sesiones de agente ──
+//
+// El registro de `AgentSession` vive en memoria del servidor y hasta ahora nadie
+// lo poblaba: `task` y `spawn_agents` buscaban un padre (`getSession`) que no
+// existía nunca, así que los subagentes sólo podían fallar con 404. El cliente
+// crea aquí una sesión al empezar una tarea.
+//
+// No se arranca: es un contexto padre (objetivo, cwd, modelo, límites) para que
+// los subagentes hereden. Arrancarla pondría a correr el bucle del LLM y
+// gastaría tokens por duplicado, que es justo lo que el cliente ya hace.
+app.post('/api/agent/sessions', (req, res) => {
+  try {
+    const b = req.body || {};
+    const goal = String(b.goal || '').trim();
+    if (!goal) return res.status(400).json({ success: false, error: 'goal requerido' });
+    if (goal.length > 2000) return res.status(400).json({ success: false, error: 'goal demasiado largo (>2000)' });
+    // El cwd se resuelve contra los roots conocidos: una sesión con un cwd
+    // arbitrario sería una puerta a ejecutar tools fuera de todo proyecto.
+    const cwd = resolveProjectPath('.', String(b.cwd || b.root || process.cwd())).abs;
+    const mode = ['build', 'plan', 'readonly'].includes(String(b.mode)) ? String(b.mode) as any : undefined;
+    const allowedTools = Array.isArray(b.allowedTools) ? b.allowedTools.map(String).slice(0, 50) : undefined;
+    const session = createSession({
+      goal,
+      cwd,
+      model: b.model ? String(b.model).slice(0, 200) : undefined,
+      maxSteps: Math.min(Math.max(Number(b.maxSteps) || 20, 1), 50),
+      mode,
+      allowedTools,
+    });
+    res.json({ success: true, session: { id: session.id, goal, cwd, model: session.getModel(), status: session.getStatus() } });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+app.get('/api/agent/sessions', (_req, res) => {
+  try {
+    res.json({ success: true, sessions: listAgentSessions() });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
+});
+app.delete('/api/agent/sessions/:id', (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!getSession(id)) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    removeSession(id);
+    // Los subagentes de una sesión borrada ya no se pueden mostrar.
+    clearSubAgents(id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+
+// Subagentes de una sesión: estado en vivo y resultado final. Es lo que consulta
+// el panel mientras corre un `spawn_agents`; no ejecuta nada.
+app.get('/api/agent/sessions/:id/subagents', (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!getSession(id)) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    res.json({ success: true, subagents: listSubAgents(id) });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
+});
+
+// Stream de subagentes (SSE): manda la lista completa al conectar y otra vez en
+// cada cambio (arranca, termina bien, falla). Así el panel no sondea y sigue
+// actualizándose aunque su pestaña esté cerrada.
+app.get('/api/agent/sessions/:id/events', (req, res) => {
+  const id = String(req.params.id || '');
+  if (!getSession(id)) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  let closed = false;
+  let unsubscribe = () => { /* se reemplaza al suscribirse */ };
+  let keepAlive: ReturnType<typeof setInterval> | null = null;
+
+  // Un solo sitio cierra la respuesta: el socket del cliente o el borrado de la
+  // sesión padre. Sin esto último, el panel se quedaba «en vivo» para siempre.
+  const finish = () => {
+    if (closed) return;
+    closed = true;
+    if (keepAlive) clearInterval(keepAlive);
+    unsubscribe();
+    try { res.end(); } catch { /* socket cerrado */ }
+  };
+
+  const send = (rows: unknown, opts?: { final?: boolean }) => {
+    if (closed) return;
+    try {
+      res.write(`event: subagents\ndata: ${JSON.stringify({ subagents: rows })}\n\n`);
+      // La sesión padre desapareció: se avisa con un evento propio (no basta
+      // con cerrar, porque `EventSource` reconectaría y el cliente no sabría
+      // distinguir un 404 de un reintento inútil) y se cierra la respuesta.
+      if (opts?.final) res.write('event: gone\ndata: {}\n\n');
+    } catch { /* socket cerrado */ }
+    if (opts?.final) finish();
+  };
+  // Estado inicial: si el cliente llega tarde, ya ve lo que hay.
+  send(listSubAgents(id));
+  unsubscribe = subscribeSubAgents(id, send);
+  // Comentario periódico: mantiene viva la conexión a través de proxies.
+  keepAlive = setInterval(() => {
+    try { res.write(': ping\n\n'); } catch { /* socket cerrado */ }
+  }, 15_000);
+
+  req.on('close', finish);
+});
+
 // ==================== SKILLS (P1 #9) ====================
 
 // Monta el router de skills bajo /api/skills
@@ -350,6 +461,17 @@ app.delete('/api/sessions/:id', (req, res) => {
   } catch (e: any) {
     res.status(400).json({ success: false, error: e?.message || 'No se pudo eliminar el workspace de sesión' });
   }
+});
+
+// ── Worktree de ejecución (modo worktree) ──
+app.post('/api/worktree/create', (req, res) => {
+  try {
+    const projectPath = String(req.body?.projectPath || '').trim();
+    const threadId = String(req.body?.threadId || '').trim();
+    if (!projectPath || !threadId) return res.status(400).json({ success: false, error: 'projectPath y threadId requeridos' });
+    const out = createGitWorktree(projectPath, threadId);
+    res.json({ success: true, ...out });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message || 'No se pudo crear el worktree' }); }
 });
 
 // ── Persistencia durable (SQLite) de threads/mensajes ──
@@ -427,6 +549,41 @@ app.post('/api/nono/observations', (req, res) => {
     const b = req.body || {};
     const id = persistence.saveNonoObservation(b.projectId ?? null, String(b.kind || 'note'), String(b.content || ''), b.ts);
     res.json({ success: true, id });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+
+// ── Worktrees ──
+app.get('/api/worktrees', (req, res) => {
+  try {
+    const projectPath = String(req.query.projectPath || '');
+    if (!projectPath) return res.status(400).json({ success: false, error: 'projectPath requerido' });
+    res.json({ success: true, worktrees: worktrees.listWorktrees(projectPath) });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
+});
+app.post('/api/worktrees', (req, res) => {
+  try {
+    const b = req.body || {};
+    // Crear un worktree hace `git worktree add`, copia `.env` y corre
+    // `npm install`: es una escritura más, así que pasa por los mismos permisos
+    // que las tools. Sin este gate, `worktree.create` era la única vía del
+    // agente que ignoraba el modo plan y las listas del proyecto. El root se
+    // canonicaliza para que no se pueda gobernar un permiso y escribir en otro.
+    const projectPath = String(b.projectPath || '').trim();
+    // Obligatorio: sin esto, `resolveProjectPath('.', '')` caía al primer root
+    // conocido y el worktree se creaba en el proyecto equivocado.
+    if (!projectPath) return res.status(400).json({ success: false, error: 'projectPath requerido' });
+    const root = resolveProjectPath('.', projectPath).root;
+    const denied = enforceTool(getPermissions(root), 'worktree.create');
+    if (denied) return res.status(403).json({ success: false, error: denied });
+    const r = worktrees.createWorktree(String(b.threadId || b.id), root);
+    res.json({ success: true, ...r });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+app.delete('/api/worktrees', (req, res) => {
+  try {
+    const b = req.body || {};
+    worktrees.removeWorktree(String(b.path), String(b.projectPath), !!b.force);
+    res.json({ success: true });
   } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
 });
 
@@ -2245,13 +2402,11 @@ app.get('/api/system/info', (_req, res) => {
 const PORT = Number(process.env.PORT || loadConfig().server?.port || 3280);
 const HOST = '127.0.0.1';
 const server = app.listen(PORT, HOST, () => {
-    // Con PORT=0 (puerto efímero) el SO elige cuál: hay que anunciar el real,
-    // no el 0 pedido, o quien lo lea del log —la suite de tests, sin ir más
-    // lejos— acaba haciendo peticiones al puerto equivocado.
+    // Con PORT=0 el SO elige el puerto: el propio server tiene que anunciar y
+    // usar el real, no el 0 pedido. Las llamadas internas del agente
+    // (llm/fallback/autonomous) se resuelven contra esta base URL.
     const addr = server.address();
     const port = typeof addr === 'object' && addr ? addr.port : PORT;
-    // Las llamadas internas del agente (runner autónomo incluido) van por
-    // HTTP contra este mismo server: necesita saber su propia base.
     setServerBaseUrl(`http://${HOST}:${port}`);
     console.log(`🚀 Commander AI Studio server running on port ${port}`);
     console.log(`   Health: http://${HOST}:${port}/api/health`);

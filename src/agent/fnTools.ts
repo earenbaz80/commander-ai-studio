@@ -25,13 +25,13 @@ export const AGENT_FUNCTION_DECLARATIONS = [
   },
   {
     name: 'fs_propose_write',
-    description: 'Proponer escribir un archivo (crear o sobreescribir) SIN tocar disco: devuelve un diff unificado y el archivo queda intacto. Funciona en modo plan.',
-    parameters: { type: 'OBJECT', properties: { path: { type: 'STRING' }, content: { type: 'STRING' } }, required: ['path', 'content'] },
+    description: 'Proponer escribir/crear un archivo SIN tocar disco. Devuelve un diff unificado para revisión; funciona en modo plan. No modifica el archivo. Con diagnose:true typechequea el contenido propuesto sin escribirlo.',
+    parameters: { type: 'OBJECT', properties: { path: { type: 'STRING' }, content: { type: 'STRING' }, diagnose: { type: 'BOOLEAN' } }, required: ['path', 'content'] },
   },
   {
     name: 'fs_propose_edit',
-    description: 'Proponer un edit reemplazando texto exacto SIN tocar disco: devuelve un diff unificado. Funciona en modo plan.',
-    parameters: { type: 'OBJECT', properties: { path: { type: 'STRING' }, oldString: { type: 'STRING' }, newString: { type: 'STRING' }, replaceAll: { type: 'BOOLEAN' } }, required: ['path', 'oldString', 'newString'] },
+    description: 'Proponer un edit (str_replace) SIN tocar disco. Devuelve un diff unificado para revisión; funciona en modo plan. No modifica el archivo. Con diagnose:true typechequea el resultado sin escribirlo.',
+    parameters: { type: 'OBJECT', properties: { path: { type: 'STRING' }, oldString: { type: 'STRING' }, newString: { type: 'STRING' }, replaceAll: { type: 'BOOLEAN' }, diagnose: { type: 'BOOLEAN' } }, required: ['path', 'oldString', 'newString'] },
   },
   {
     name: 'fs_glob',
@@ -137,11 +137,34 @@ export const AGENT_FUNCTION_DECLARATIONS = [
         allowedTools: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Tools permitidas (null = todas las del padre)' },
         mode: { type: 'STRING', enum: ['build', 'plan', 'readonly'], description: 'Modo del subagente' },
         maxSteps: { type: 'NUMBER', description: 'Límite de pasos' },
-        parentSessionId: { type: 'STRING', description: 'ID de la sesión padre (requerido)' },
+        template: { type: 'STRING', description: 'Plantilla: file-explorer, researcher, reviewer, planner' },
+        // Igual que en `spawn_agents`: el id lo pone la app, no el modelo.
+        parentSessionId: { type: 'STRING', description: 'Lo inyecta la app; no hace falta enviarlo' },
       },
-      required: ['goal', 'parentSessionId'],
+      required: ['goal'],
     },
   },
+  {
+    name: 'skill',
+    description: 'Lee un skill (SKILL.md) del directorio skills/ y devuelve su contenido. Resuelve recursos relativos a su directorio.',
+    parameters: { type: 'OBJECT', properties: { name: { type: 'STRING', description: 'Nombre del skill (kebab-case)' } }, required: ['name'] },
+  },
+  {
+    name: 'spawn_agents',
+    description: 'Lanza hasta 6 subagentes en paralelo con sus propios objetivos. Devuelve sus resultados.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        agents: { type: 'ARRAY', items: { type: 'OBJECT', properties: { goal: { type: 'STRING' }, instructions: { type: 'STRING' }, model: { type: 'STRING' }, allowedTools: { type: 'ARRAY', items: { type: 'STRING' } }, mode: { type: 'STRING', enum: ['build', 'plan', 'readonly'] }, maxSteps: { type: 'NUMBER' }, template: { type: 'STRING' } }, required: ['goal'] } },
+        // No es `required`: el id lo pone la app con la sesión que registró el
+        // servidor al empezar la tarea. Pedírselo al modelo sólo servía para
+        // que inventara uno y los subagentes murieran con 404.
+        parentSessionId: { type: 'STRING', description: 'Lo inyecta la app; no hace falta enviarlo' },
+      },
+      required: ['agents'],
+    },
+  },
+
   {
     name: 'git_status',
     description: 'git status corto del workspace.',
@@ -221,6 +244,16 @@ export const AGENT_FUNCTION_DECLARATIONS = [
     parameters: { type: 'OBJECT', properties: { code: { type: 'STRING' } }, required: ['code'] },
   },
   {
+    name: 'run_file_change_hooks',
+    description: 'Corre el formateador (prettier) sobre un archivo recién modificado.',
+    parameters: { type: 'OBJECT', properties: { path: { type: 'STRING' } }, required: ['path'] },
+  },
+  {
+    name: 'worktree_create',
+    description: 'Crear un worktree git aislado para un thread (copia env, bootstrap de deps). Devuelve la ruta para usar como root.',
+    parameters: { type: 'OBJECT', properties: { threadId: { type: 'STRING' }, projectPath: { type: 'STRING' } }, required: ['threadId', 'projectPath'] },
+  },
+  {
     name: 'mcp_call',
     description: 'Llamar tool de un servidor MCP. Para servidores locales del registro usa `server` (nombre); para remotos usa `serverUrl`.',
     parameters: { type: 'OBJECT', properties: { server: { type: 'STRING', description: 'Nombre del servidor MCP local (registro commander.json)' }, serverUrl: { type: 'STRING', description: 'URL del servidor MCP remoto (alternativa a server)' }, tool: { type: 'STRING', description: 'Nombre de la tool a invocar' }, args: { type: 'OBJECT', description: 'Argumentos de la tool' } }, required: ['tool'] },
@@ -250,14 +283,13 @@ export const AGENT_FUNCTION_DECLARATIONS = [
 ];
 
 const FN_TO_TOOL: Record<string, string> = {
-  fs_read: 'fs.read', fs_write: 'fs.write', fs_edit: 'fs.edit',
-  fs_propose_write: 'fs.propose.write', fs_propose_edit: 'fs.propose.edit',
+  fs_read: 'fs.read', fs_write: 'fs.write', fs_edit: 'fs.edit', fs_propose_write: 'fs.propose.write', fs_propose_edit: 'fs.propose.edit',
   fs_glob: 'fs.glob', fs_grep: 'fs.grep', shell_run: 'shell.run', shell_job: 'shell.job',
   browser: 'browser', preview: 'preview',
   read_diagnostics: 'read_diagnostics',
-  task: 'task',
+  task: 'task', spawn_agents: 'spawn_agents', skill: 'skill',
   git_status: 'git.status', git_diff: 'git.diff', git_log: 'git.log', git_commit: 'git.commit', git_worktree: 'git.worktree', git_rebase: 'git.rebase', git_conflict: 'git.conflict',
-  web_fetch: 'web.fetch', web_search: 'web.search', code_run: 'code.run',
+  web_fetch: 'web.fetch', web_search: 'web.search', code_run: 'code.run', run_file_change_hooks: 'run_file_change_hooks', worktree_create: 'worktree.create',
   mcp_call: 'mcp.call',
 };
 

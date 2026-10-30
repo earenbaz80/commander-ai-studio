@@ -111,6 +111,82 @@ export function forkSessionWorkspace(sourcePath: string): { id: string; path: st
   return { id, path: dest };
 }
 
+export function createGitWorktree(projectPath: string, threadId: string): { path: string; branch: string } {
+  const src = path.resolve(projectPath.trim());
+  if (!fs.existsSync(src) || !fs.statSync(src).isDirectory()) throw new Error('No existe o no es un directorio');
+  if (!isGitRepo(src)) throw new Error('No es un repositorio git');
+
+  const repoName = path.basename(src);
+  const shortId = threadId.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 12) || 'wt';
+  const dest = path.join(os.homedir(), '.commander', 'worktrees', shortId, repoName);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+
+  // Branch name
+  const branch = `commander/${shortId}`;
+  const ok = gitWorktreeAdd(src, dest, branch);
+  if (!ok) throw new Error('No se pudo crear el worktree');
+
+  // Copy ignored env files (Freebuff pattern)
+  const envFiles = ['.env', '.env.local', '.env.development', '.env.development.local', '.infisical.json', '.vercel/project.json'];
+  for (const f of envFiles) {
+    const srcFile = path.join(src, f);
+    const destFile = path.join(dest, f);
+    try {
+      if (fs.existsSync(srcFile) && fs.statSync(srcFile).isFile()) {
+        fs.mkdirSync(path.dirname(destFile), { recursive: true });
+        fs.copyFileSync(srcFile, destFile);
+      }
+    } catch { /* best effort */ }
+  }
+  // .freebuffignore force-includes
+  try {
+    const ignoreFile = path.join(src, '.freebuffignore');
+    if (fs.existsSync(ignoreFile)) {
+      const lines = fs.readFileSync(ignoreFile, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      for (const rel of lines) {
+        const s = path.join(src, rel);
+        const d = path.join(dest, rel);
+        try {
+          if (fs.existsSync(s)) {
+            fs.mkdirSync(path.dirname(d), { recursive: true });
+            if (fs.statSync(s).isDirectory()) {
+              // shallow copy of directory
+              fs.cpSync(s, d, { recursive: true, force: true });
+            } else {
+              fs.copyFileSync(s, d);
+            }
+          }
+        } catch { /* best effort */ }
+      }
+    }
+  } catch { /* best effort */ }
+
+  // Bootstrap deps based on lockfile
+  try {
+    const lockfiles: { file: string; cmd: string; args: string[] }[] = [
+      { file: 'pnpm-lock.yaml', cmd: 'pnpm', args: ['install', '--frozen-lockfile'] },
+      { file: 'yarn.lock', cmd: 'yarn', args: ['install', '--frozen-lockfile'] },
+      { file: 'package-lock.json', cmd: 'npm', args: ['ci'] },
+      { file: 'bun.lockb', cmd: 'bun', args: ['install', '--frozen-lockfile'] },
+      { file: 'bun.lock', cmd: 'bun', args: ['install', '--frozen-lockfile'] },
+    ];
+    for (const lf of lockfiles) {
+      if (fs.existsSync(path.join(dest, lf.file))) {
+        try { execFileSync(lf.cmd, lf.args, { cwd: dest, stdio: 'ignore', timeout: 300000 }); } catch { /* best effort */ }
+        break;
+      }
+    }
+    // Fallback: if package.json exists but no lockfile, npm install
+    if (!lockfiles.some((lf) => fs.existsSync(path.join(dest, lf.file))) && fs.existsSync(path.join(dest, 'package.json'))) {
+      try { execFileSync('npm', ['install'], { cwd: dest, stdio: 'ignore', timeout: 300000 }); } catch { /* best effort */ }
+    }
+  } catch { /* best effort */ }
+
+  // Register as a root so the agent can access it
+  try { addRoot(dest); } catch { /* already registered */ }
+
+  return { path: dest, branch };
+}
 export function deleteSessionWorkspace(id: string): { removed: boolean } {
   if (!id || typeof id !== 'string') throw new Error('id requerido');
   const idx = readIndex();

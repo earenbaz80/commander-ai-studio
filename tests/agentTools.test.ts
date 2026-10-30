@@ -1138,6 +1138,81 @@ test('fs.propose.write no propone sobre un archivo de secretos', async () => {
   assert.equal((res as any).status, 403);
 });
 
+test('skill lee el SKILL.md del proyecto abierto, no sólo del cwd del servidor', async () => {
+  const dir = path.join(TEST_DIR, 'skill-proyecto');
+  fs.mkdirSync(path.join(dir, 'skills', 'demo'), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'skills', 'demo', 'SKILL.md'),
+    '---\ndescription: Skill de prueba\n---\n\n# Demo\n',
+    'utf8'
+  );
+
+  const res = await executeAgentTool('skill', { root: dir, name: 'demo' });
+
+  assert.equal(res.ok, true, String(res.error));
+  const data = res.data as any;
+  assert.equal(data.name, 'demo');
+  assert.equal(data.description, 'Skill de prueba');
+  assert.match(String(data.path).replace(/\\/g, '/'), /skill-proyecto\/skills\/demo\/SKILL\.md$/);
+  assert.match(data.content, /# Demo/);
+});
+
+test('skill sigue encontrando el catálogo propio cuando el proyecto no lo tiene', async () => {
+  // `ponytail` vive en el `skills/` versionado del repo: es el fallback tras el root.
+  const res = await executeAgentTool('skill', { root: TEST_DIR, name: 'ponytail' });
+
+  assert.equal(res.ok, true, String(res.error));
+  assert.match(String((res.data as any).path).replace(/\\/g, '/'), /skills\/ponytail\/SKILL\.md$/);
+});
+
+test('skill rechaza nombres con traversal y SKILL.md sin front-matter', async () => {
+  const traversal = await executeAgentTool('skill', { root: TEST_DIR, name: '../../package' });
+  assert.equal(traversal.ok, false);
+  assert.match(String(traversal.error), /inválido/);
+
+  const dir = path.join(TEST_DIR, 'skill-sin-frontmatter');
+  fs.mkdirSync(path.join(dir, 'skills', 'plano'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'skills', 'plano', 'SKILL.md'), '# sin cabecera\n', 'utf8');
+
+  const plano = await executeAgentTool('skill', { root: dir, name: 'plano' });
+  assert.equal(plano.ok, false);
+  assert.match(String(plano.error), /front-matter/);
+});
+
+test('spawn_agents exige una sesión de servidor y no inventa una', async () => {
+  // El handler existe y se alcanza (no responde «Tool desconocida»), pero los
+  // subagentes necesitan una sesión padre viva en el servidor.
+  const sinPadre = await executeAgentTool('spawn_agents', { root: TEST_DIR, agents: [{ goal: 'mirar' }] });
+  assert.equal(sinPadre.ok, false);
+  assert.match(String(sinPadre.error), /parentSessionId requerido/);
+
+  const padreFantasma = await executeAgentTool('spawn_agents', {
+    root: TEST_DIR,
+    agents: [{ goal: 'mirar' }],
+    parentSessionId: 'sesion-que-no-existe',
+  });
+  assert.equal(padreFantasma.ok, false);
+  assert.equal((padreFantasma as any).status, 404);
+  assert.match(String(padreFantasma.error), /Sesión padre no encontrada/);
+});
+
+test('worktree.create existe en run-tool y valida antes de tocar git', async () => {
+  // Raíz propia: la del repo tiene su whitelist en `.commander/permissions.json`
+  // y este test mide el registro, no la configuración local de nadie.
+  const dir = path.join(TEST_DIR, 'worktree-create');
+  fs.mkdirSync(dir, { recursive: true });
+
+  // El cliente entra por `POST /api/worktrees`, pero el id está en AGENT_TOOLS:
+  // si el handler no existiera aquí, la respuesta sería «Tool desconocida».
+  const sinThread = await executeAgentTool('worktree.create', { root: dir, projectPath: '.' });
+  assert.equal(sinThread.ok, false);
+  assert.match(String(sinThread.error), /threadId requerido/);
+
+  const sinProyecto = await executeAgentTool('worktree.create', { root: dir, threadId: 'th-1' });
+  assert.equal(sinProyecto.ok, false);
+  assert.match(String(sinProyecto.error), /projectPath requerido/);
+});
+
 after(() => {
   if (fs.existsSync(TEST_DIR)) fs.rmSync(TEST_DIR, { recursive: true, force: true });
   try { removeRoot(gitRoot); } catch { /* ignore */ }

@@ -22,6 +22,7 @@ import { AGENT_FUNCTION_DECLARATIONS } from './src/agent/fnTools';
 import { TOOL_REGISTRY } from './src/agent/registry';
 import { loadMCPServers, mcpListTools } from './src/agent/mcp';
 import { executeAgentTool } from './agentTools';
+import { startSubAgent, finishSubAgent } from './subAgents';
 import { getServerBaseUrl } from './serverRuntime';
 import { GEMINI_DEFAULT_MODEL } from './src/config/geminiModels';
 
@@ -77,6 +78,8 @@ export interface TaskToolInput {
   mode?: 'build' | 'plan' | 'readonly';
   /** Límite de pasos. */
   maxSteps?: number;
+  /** Plantilla de subagente (file-explorer, researcher, reviewer, planner). */
+  template?: string;
 }
 
 export interface SessionConfig {
@@ -91,9 +94,10 @@ export interface SessionConfig {
   allowedTools?: string[] | null;
 }
 
-export type SessionStatus = 'running' | 'done' | 'error' | 'stopped';
+/** `idle`: sesión creada como contexto padre y nunca arrancada (no gasta tokens). */
+export type SessionStatus = 'idle' | 'running' | 'done' | 'error' | 'stopped';
 
-const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.grep', 'shell.run', 'read_diagnostics', 'git.status', 'git.diff', 'git.log', 'git.commit', 'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list'];
+const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.grep', 'shell.run', 'read_diagnostics', 'git.status', 'git.diff', 'git.log', 'git.commit', 'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list', 'task', 'spawn_agents', 'skill'];
 
 // ── LLM en el servidor (llamada interna a los endpoints existentes) ──
 
@@ -105,7 +109,7 @@ async function callLlmNative(
   const dialect = toolDialectForModel(model);
   const turns = ctx.turns || [];
   const user = `OBJETIVO: ${ctx.goal}\nCWD: ${ctx.cwd}\n\nPLAN ACTUAL:\n${JSON.stringify(ctx.plan, null, 2)}\n\nULTIMOS PASOS:\n${JSON.stringify(ctx.recentSteps.slice(-10), null, 2)}\n\nHISTORIAL:\n${turns.slice(-8).map((t) => `${t.role.toUpperCase()}: ${t.text.slice(0, 1200)}`).join('\n\n')}\n\nTOOLS:\n${ctx.toolSchema}${ctx.systemExtra ? `\n${ctx.systemExtra}` : ''}`;
-  const systemInstruction = `Eres un agente autónomo de código. Razona brevemente en texto y llama herramientas para avanzar hacia: ${ctx.goal}. Si el objetivo está cumplido, responde SOLO texto final sin llamar herramientas.${ctx.agentsMd ? `\nREGLAS DEL REPO:\n${ctx.agentsMd.slice(0, 4000)}` : ''}`;
+  const systemInstruction = `Eres un agente autónomo de código. Razona brevemente en texto y llama herramientas para avanzar hacia: ${ctx.goal}. Si el objetivo está cumplido, responde SOLO texto final sin llamar herramientas. Antes de editar, localiza el código con fs.glob/fs.grep y léelo con fs.read para tener el texto exacto: los cambios pequeños van con fs.edit y un oldString idéntico al del archivo.${ctx.agentsMd ? `\nREGLAS DEL REPO:\n${ctx.agentsMd.slice(0, 4000)}` : ''}`;
 
   if (dialect === 'json-text') return { thought: '', calls: [] };
 
@@ -246,9 +250,11 @@ ${ctx.toolSchema}`;
 
 export class AgentSession {
   readonly id: string;
+  /** Cuándo se creó: `listSessions` lo devolvía como 0, que no ordena nada. */
+  readonly createdAt = Date.now();
   private cfg: SessionConfig;
   private maxSteps: number;
-  private status: SessionStatus = 'running';
+  private status: SessionStatus = 'idle';
   private steps: AgentStep[] = [];
   private plan: AgentPlanItem[] = [];
   private turns: { role: string; text: string }[] = [];
@@ -300,6 +306,9 @@ export class AgentSession {
 
   async start() {
     this.running = true;
+    // Sin esto la sesión corría pero `getStatus()` seguía diciendo `idle`: la
+    // distinción entre «creada como padre» y «trabajando» se perdía.
+    this.status = 'running';
     this.emit({ type: 'status', status: 'running' });
     try {
       await this.loadContext();
@@ -519,9 +528,16 @@ export class AgentSession {
 
 const sessions = new Map<string, AgentSession>();
 
+/** Tope del registro en memoria: una sesión padre por tarea se acumularía. */
+const MAX_SESSIONS = 100;
+
 export function createSession(cfg: SessionConfig): AgentSession {
   const s = new AgentSession(cfg);
   sessions.set(s.id, s);
+  if (sessions.size > MAX_SESSIONS) {
+    const oldest = sessions.keys().next().value;
+    if (oldest && oldest !== s.id) sessions.delete(oldest);
+  }
   return s;
 }
 
@@ -531,7 +547,7 @@ export function getSession(id: string): AgentSession | undefined {
 
 export function listSessions(): Array<{ id: string; goal: string; model: string; status: SessionStatus; steps: number; createdAt: number }> {
   return Array.from(sessions.values()).map((s) => ({
-    id: s.id, goal: s.getGoal(), model: s.getModel(), status: s.getStatus(), steps: s.getSteps().length, createdAt: 0,
+    id: s.id, goal: s.getGoal(), model: s.getModel(), status: s.getStatus(), steps: s.getSteps().length, createdAt: s.createdAt,
   }));
 }
 
@@ -555,44 +571,80 @@ export async function executeTask(
   const model = input.model || parent.getModel();
   const cwd = parentCwd || parent.getConfig().cwd;
 
+  // Resolver plantilla si se pidió
+  let resolvedAllowed = input.allowedTools;
+  let resolvedMode = input.mode;
+  let resolvedMax = input.maxSteps;
+  if (input.template) {
+    const { getTemplate } = await import('./src/agent/subagentTemplates');
+    const tpl = getTemplate(String(input.template));
+    if (tpl) {
+      resolvedAllowed = input.allowedTools ?? tpl.allowedTools;
+      resolvedMode = input.mode ?? tpl.defaultMode;
+      resolvedMax = input.maxSteps ?? tpl.defaultMaxSteps;
+    }
+  }
+
   const session = createSession({
     goal: input.goal,
     cwd,
     model,
     keys: parentKeys,
-    maxSteps: Math.min(Math.max(Number(input.maxSteps) || 8, 1), 50),
+    maxSteps: Math.min(Math.max(Number(resolvedMax) || 8, 1), 50),
   });
 
   // Sobrescribe permisos si se especifican
-  if (input.mode) session.setMode(input.mode);
-  if (input.allowedTools) session.setAllowedTools(input.allowedTools);
+  if (resolvedMode) session.setMode(resolvedMode);
+  if (resolvedAllowed) session.setAllowedTools(resolvedAllowed);
 
   const resultPromise = new Promise<{ ok: boolean; answer?: string; error?: string }>((resolve) => {
+    // El timeout se cancela al resolver: si quedaba armado, el temporizador de
+    // 120 s mantenía vivo el proceso del servidor (y cualquier runner de tests)
+    // aunque el subagente hubiera terminado en milisegundos.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const done = (r: { ok: boolean; answer?: string; error?: string }) => {
+      if (timer) { clearTimeout(timer); timer = null; }
+      resolve(r);
+    };
     const cleanup = session.addListener((evt) => {
       if (evt.type === 'finish') {
         cleanup();
-        resolve({ ok: true, answer: evt.answer });
+        done({ ok: true, answer: evt.answer });
       } else if (evt.type === 'error') {
         cleanup();
-        resolve({ ok: false, error: evt.error });
+        done({ ok: false, error: evt.error });
       } else if (evt.type === 'status' && evt.status === 'done') {
         // Si no hubo 'finish' explícito, busca la última respuesta
         const steps = session.getSteps();
         const last = steps.find((s) => s.type === 'thought' && s.title === 'Finalizado');
         cleanup();
-        resolve({ ok: true, answer: last?.content || 'Subagente completado sin respuesta explícita' });
+        done({ ok: true, answer: last?.content || 'Subagente completado sin respuesta explícita' });
       }
     });
     // Timeout de seguridad
-    setTimeout(() => {
+    timer = setTimeout(() => {
       cleanup();
       session.stop();
-      resolve({ ok: false, error: 'Subagente excedió tiempo límite' });
+      done({ ok: false, error: 'Subagente excedió tiempo límite' });
     }, 120_000);
   });
 
+  // La UI consulta esto mientras corre (y después, para ver cómo acabó): el
+  // registro de sesiones borra al hijo al terminar, así que sin esta anotación
+  // el panel vería la lista vacía justo cuando llega el resultado.
+  startSubAgent({ id: session.id, parentSessionId, goal: input.goal, model });
+
   void session.start();
-  return resultPromise;
+  try {
+    const result = await resultPromise;
+    finishSubAgent(session.id, { ok: result.ok, answer: result.answer, error: result.error, steps: session.getSteps().length });
+    return result;
+  } finally {
+    // El hijo es efímero: si se quedara en el registro, cada subagente dejaría
+    // una sesión que nadie consulta y, al pasar de MAX_SESSIONS, el desalojo
+    // podría tirar a la padre y dejar sin padre a los siguientes spawn_agents.
+    removeSession(session.id);
+  }
 }
 
 export function removeSession(id: string): void {

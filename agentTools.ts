@@ -9,15 +9,17 @@ import {
   isSensitivePath,
   sanitizeGitMessage,
 } from './security';
+import { diffLines, toUnifiedDiff } from './src/utils/patch';
+import { diagnoseProposed } from './src/agent/proposedDiagnostics';
 import { splitPipeline } from './src/agent/shellCommand';
 import { listJobs, readJobLog, runPipeline, startJob, stopJob } from './shellJobs';
 import { assertSafeOutboundUrl, safeFetch } from './ssrf';
 import { displayPath, listRoots, resolveProjectPath } from './projects';
+import { createWorktree } from './worktrees';
 import { snapshotPath } from './checkpoints';
 import { uid } from './src/agent/id';
 import { invalidateIndex } from './repoIndex';
 import { getPermissions, enforceTool, enforcePath } from './permissions';
-import { diffLines, toUnifiedDiff } from './src/utils/patch';
 import { executeTask, getSession } from './agentSession';
 import { listServerTools, callServerTool } from './src/mcp/client';
 import { runBrowserAction } from './browserSession';
@@ -424,6 +426,24 @@ function proposal(p: string, before: string, after: string, exists: boolean) {
 }
 
 /**
+ * Hooks de cambio de archivo: corre el formateador (prettier) sobre el archivo
+ * recién escrito/editado. Nunca bloquea la operación: si falla, se reporta.
+ */
+async function runFileChangeHooks(absPath: string, root: string): Promise<{ ran: boolean; output?: string; error?: string }> {
+  const ext = path.extname(absPath).toLowerCase();
+  if (!['.ts', '.tsx', '.js', '.jsx', '.css', '.json', '.md'].includes(ext)) {
+    return { ran: false };
+  }
+  try {
+    const { execFileSync } = await import('child_process');
+    const out = execFileSync('npx', ['prettier', '--write', absPath], { cwd: root, encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024 });
+    return { ran: true, output: String(out).slice(0, 2000) };
+  } catch (e: any) {
+    return { ran: true, error: String(e.message || e).slice(0, 500) };
+  }
+}
+
+/**
  * ¿La llamada sólo consulta, aunque la tool figure entre las que ejecutan?
  *
  * `EXEC_TOOLS` bloquea en plan/readonly todo lo que pueda modificar algo de
@@ -552,7 +572,9 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, content, 'utf8');
     try { invalidateIndex(rootAbs); } catch { /* ignore */ }
-    return { ok: true, data: { path: p, bytes: content.length } };
+    // Hooks de cambio de archivo: formateador sobre el archivo recién escrito.
+    const hooks = await runFileChangeHooks(target, rootAbs);
+    return { ok: true, data: { path: p, bytes: content.length, hooks } };
   }
 
   if (toolId === 'fs.edit') {
@@ -583,7 +605,9 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
     } catch { /* ignore */ }
     fs.writeFileSync(target, updated, 'utf8');
     try { invalidateIndex(rootAbs); } catch { /* ignore */ }
-    return { ok: true, data: { path: p, replaced: count } };
+    // Hooks de cambio de archivo: formateador sobre el archivo recién editado.
+    const hooks = await runFileChangeHooks(target, rootAbs);
+    return { ok: true, data: { path: p, replaced: count, hooks } };
   }
 
   // ── Dry-run: proponer un cambio sin tocar disco ──
@@ -606,7 +630,11 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
     const after = input.replaceAll
       ? before.split(oldStr).join(newStr)
       : before.replace(oldStr, () => newStr);
-    return { ok: true, data: proposal(p, before, after, true) };
+    const data: any = proposal(p, before, after, true);
+    if (data.changed && input.diagnose === true) {
+      data.diagnostics = diagnoseProposed(permRoot, p, after);
+    }
+    return { ok: true, data };
   }
 
   if (toolId === 'fs.propose.write') {
@@ -619,8 +647,35 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
     const target = agentSafePath(p, rootHint);
     const isFile = fs.existsSync(target) && !fs.statSync(target).isDirectory();
     const before = isFile ? fs.readFileSync(target, 'utf8') : '';
-    return { ok: true, data: proposal(p, before, content, isFile) };
+    const data: any = proposal(p, before, content, isFile);
+    if (data.changed && input.diagnose === true) {
+      data.diagnostics = diagnoseProposed(permRoot, p, content);
+    }
+    return { ok: true, data };
   }
+
+  if (toolId === 'run_file_change_hooks') {
+    const p = String(input.path || '').slice(0, 500);
+    if (!p) return { ok: false, error: 'path requerido' };
+    const target = agentSafePath(p, rootHint);
+    const root = rootHint ? resolveProjectPath('.', rootHint).abs : AGENT_ROOT;
+    const hooks = await runFileChangeHooks(target, root);
+    return { ok: true, data: hooks };
+  }
+
+  if (toolId === 'worktree.create') {
+    // El cliente entra por `POST /api/worktrees`; esto cubre a quien llame al
+    // run-tool con el mismo id, para que estar en AGENT_TOOLS no sea media
+    // verdad. `projectPath` se resuelve contra los roots conocidos: crear un
+    // worktree corre git y npm, y no debe poder apuntar a cualquier carpeta.
+    const threadId = String(input.threadId || input.id || '').slice(0, 128);
+    if (!threadId) return { ok: false, error: 'threadId requerido' };
+    const projectPath = String(input.projectPath || '').slice(0, 2000);
+    if (!projectPath) return { ok: false, error: 'projectPath requerido' };
+    const { root } = resolveProjectPath('.', projectPath);
+    return { ok: true, data: createWorktree(threadId, root) };
+  }
+
 
   const roots = searchRootsFor(rootHint);
 
@@ -754,9 +809,6 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
     const timeout = Math.min(Number(input.timeoutMs) || 30000, 60000);
     const start = Date.now();
     const result = await runPipeline(segments, cwd, timeout);
-    // Un comando que vuelca megabytes deja al modelo sin contexto para el resto
-    // de la tarea: la salida se entrega recortada, con el tamaño real y una
-    // pista de cómo seguirla entera si hace falta.
     const cap = 8000;
     const clip = (s: string) => (s.length > cap ? s.slice(0, cap) + `\n… [${s.length - cap} caracteres omitidos]` : s);
     return {
@@ -1416,17 +1468,92 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
   }
 
   if (toolId === 'task') {
-    const { goal, instructions, model, allowedTools, mode, maxSteps } = input || {};
+    const { goal, instructions, model, allowedTools, mode, maxSteps, template } = input || {};
     if (!goal || typeof goal !== 'string') return { ok: false, error: 'goal requerido', status: 400 };
     const parentSessionId = input.parentSessionId;
     if (!parentSessionId) return { ok: false, error: 'parentSessionId requerido para task', status: 400 };
     const parent = getSession(parentSessionId);
     if (!parent) return { ok: false, error: `Sesión padre no encontrada: ${parentSessionId}`, status: 404 };
-    // Claves del padre (se pasan en la creación de la sesión)
-    const keys = input.keys; // opcional: claves específicas para el subagente
-    return executeTask(parentSessionId, { goal, instructions, model, allowedTools, mode, maxSteps }, keys);
+    const keys = input.keys;
+    // Resolver plantilla si se pidió
+    let resolvedAllowed = allowedTools;
+    let resolvedMode = mode;
+    let resolvedMax = maxSteps;
+    if (template) {
+      const { getTemplate } = await import('./src/agent/subagentTemplates');
+      const tpl = getTemplate(String(template));
+      if (tpl) {
+        resolvedAllowed = allowedTools ?? tpl.allowedTools;
+        resolvedMode = mode ?? tpl.defaultMode;
+        resolvedMax = maxSteps ?? tpl.defaultMaxSteps;
+      }
+    }
+    return executeTask(parentSessionId, { goal, instructions, model, allowedTools: resolvedAllowed, mode: resolvedMode, maxSteps: resolvedMax }, keys);
   }
 
+  if (toolId === 'spawn_agents') {
+    const parentSessionId = input?.parentSessionId;
+    if (!parentSessionId) return { ok: false, error: 'parentSessionId requerido', status: 400 };
+    const parent = getSession(parentSessionId);
+    if (!parent) return { ok: false, error: `Sesión padre no encontrada: ${parentSessionId}`, status: 404 };
+    const agents = Array.isArray(input?.agents) ? input.agents : [];
+    if (agents.length === 0) return { ok: false, error: 'agents requerido (array)', status: 400 };
+    const capped = agents.slice(0, 6);
+    const results = await Promise.allSettled(
+      capped.map((a: any) => executeTask(parentSessionId, {
+        goal: String(a.goal || ''),
+        instructions: a.instructions,
+        model: a.model,
+        allowedTools: a.allowedTools,
+        mode: a.mode,
+        maxSteps: a.maxSteps,
+        template: a.template,
+      }, input?.keys))
+    );
+    const out = results.map((r, i) => ({
+      index: i,
+      ok: r.status === 'fulfilled' ? (r.value as any).ok : false,
+      answer: r.status === 'fulfilled' ? (r.value as any).answer : undefined,
+      error: r.status === 'rejected' ? String(r.reason) : (r.status === 'fulfilled' ? (r.value as any).error : undefined),
+    }));
+    return { ok: true, data: { results: out, spawned: capped.length, capped: agents.length > 6 } };
+  }
+
+  if (toolId === 'skill') {
+    const name = String(input?.name || input?.skill || '').trim();
+    if (!name) return { ok: false, error: 'name requerido', status: 400 };
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) return { ok: false, error: 'nombre de skill inválido', status: 400 };
+    if (name.length > 64) return { ok: false, error: 'nombre demasiado largo', status: 400 };
+    // Buscar SKILL.md en skills/<name>/SKILL.md, skills/commands/<name>.md,
+    // skills/agents/<name>.md y skills/templates/<name>.md, primero en el
+    // proyecto abierto y después en el catálogo del propio Commander. Sin esto
+    // la tool sólo veía los skills del cwd del servidor: abrir otro proyecto y
+    // pedir su skill daba 404 con el archivo delante.
+    const roots: string[] = [];
+    if (rootHint) {
+      try { roots.push(resolveProjectPath('.', rootHint).root); } catch { /* root inválido: queda el catálogo */ }
+    }
+    roots.push(process.cwd());
+    const candidates = roots.flatMap((r) => [
+      path.join(r, 'skills', name, 'SKILL.md'),
+      path.join(r, 'skills', 'commands', name + '.md'),
+      path.join(r, 'skills', 'agents', name + '.md'),
+      path.join(r, 'skills', 'templates', name + '.md'),
+    ]);
+    let found: string | null = null;
+    for (const c of candidates) {
+      if (fs.existsSync(c) && fs.statSync(c).isFile()) { found = c; break; }
+    }
+    if (!found) return { ok: false, error: `Skill no encontrada: ${name}`, status: 404 };
+    const raw = fs.readFileSync(found, 'utf8');
+    // Validar front-matter YAML
+    const fmMatch = raw.match(/^---\n([\s\S]*?)\n---/);
+    if (!fmMatch) return { ok: false, error: 'SKILL.md sin front-matter YAML', status: 400 };
+    const descMatch = fmMatch[1].match(/^description:\s*(.+)$/m);
+    const desc = descMatch ? descMatch[1].trim() : '';
+    if (desc.length > 1024) return { ok: false, error: 'description demasiado larga (>1024)', status: 400 };
+    return { ok: true, data: { name, path: found, description: desc, content: raw } };
+  }
   return { ok: false, error: `Tool desconocida: ${toolId}`, status: 400 };
 }
 
