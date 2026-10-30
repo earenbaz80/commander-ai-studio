@@ -21,6 +21,12 @@ jobs:
       # --ignore-scripts: no hace falta Electron ni sus binaries para lint/typecheck/test.
       - run: npm ci --ignore-scripts
 
+      # Barato y primero: si el índice quedó fijado a un árbol viejo, lo que
+      # sigue se estaría midiendo sobre otra foto. En un checkout limpio pasa
+      # sin hacer nada; protege las ramas donde alguien corre el flujo local.
+      - name: Índice de git sano
+        run: npm run check:index
+
       - name: Lint (ESLint)
         run: npm run lint
 
