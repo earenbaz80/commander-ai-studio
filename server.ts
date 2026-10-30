@@ -9,6 +9,8 @@ import { GoogleGenAI } from '@google/genai';
 import JSZip from 'jszip';
 import { handleAgentRunTool } from './agentTools';
 import * as persistence from './persistence';
+import { runAutonomousCampaign, planCampaign } from './autonomousRun';
+import { setServerBaseUrl } from './serverRuntime';
 import { addRoot, listRoots, removeRoot, removableRoots, resolveProjectPath } from './projects';
 import { handleGeminiGenerate, handleGeminiStream, handleGeminiInteractions } from './gemini';
 import { handleAnthropicGenerate, handleAnthropicStream } from './anthropic';
@@ -465,6 +467,46 @@ app.patch('/api/queue/item/:id', (req, res) => {
 app.get('/api/receipts/:threadId', (req, res) => {
   try { res.json({ success: true, receipts: persistence.listReceipts(String(req.params.threadId)) }); }
   catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
+});
+
+// ── Autonomous plan (manager-LLM descompone objetivo en tareas) ──
+app.post('/api/autonomous/:threadId/plan', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const goal = String(b.goal || '').trim();
+    if (!goal) return res.status(400).json({ success: false, error: 'goal requerido' });
+    const out = await planCampaign(String(req.params.threadId), goal, {
+      parentSessionId: String(b.parentSessionId || ''),
+      keys: b.keys,
+      cwd: b.cwd,
+      model: b.model,
+      maxSteps: b.maxSteps,
+      allowedTools: b.allowedTools,
+      mode: b.mode,
+    });
+    res.json({ success: true, ...out });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
+});
+
+// ── Autonomous run (background) ──
+app.post('/api/autonomous/:threadId/run', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const parentSessionId = String(b.parentSessionId || '');
+    if (!parentSessionId) return res.status(400).json({ success: false, error: 'parentSessionId requerido' });
+    // Fire-and-forget: respond immediately, run in background.
+    void runAutonomousCampaign(String(req.params.threadId), {
+      parentSessionId,
+      goal: b.goal ? String(b.goal) : undefined,
+      keys: b.keys,
+      cwd: b.cwd,
+      model: b.model,
+      maxSteps: b.maxSteps,
+      allowedTools: b.allowedTools,
+      mode: b.mode,
+    }).catch((e) => console.error('autonomous run failed:', e?.message));
+    res.json({ success: true, started: true });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
 });
 
 // ==================== PROVIDERS / OBSERVABILIDAD ====================
@@ -2208,6 +2250,9 @@ const server = app.listen(PORT, HOST, () => {
     // lejos— acaba haciendo peticiones al puerto equivocado.
     const addr = server.address();
     const port = typeof addr === 'object' && addr ? addr.port : PORT;
+    // Las llamadas internas del agente (runner autónomo incluido) van por
+    // HTTP contra este mismo server: necesita saber su propia base.
+    setServerBaseUrl(`http://${HOST}:${port}`);
     console.log(`🚀 Commander AI Studio server running on port ${port}`);
     console.log(`   Health: http://${HOST}:${port}/api/health`);
     console.log(`   API Proxy: http://${HOST}:${port}/api/providers -> registered routes`);
