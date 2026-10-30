@@ -1,5 +1,5 @@
 import React, { forwardRef, useRef, useEffect, useState } from 'react';
-import { Clipboard, PanelRight, Hammer, Library, Search, Trash2, Plus, Send, X } from 'lucide-react';
+import { Clipboard, PanelRight, Hammer, Library, Search, Trash2, Plus, Send, X, Activity } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FloatingAssistantProps, FloatingAssistantHandle, NonoExpression } from './nono/content';
 import { NonoHead } from './nono/NonoHead';
@@ -8,10 +8,13 @@ import {
   useNonoChat,
   useNonoSuggestions,
   useNonoMemory,
+  useNonoContext,
 } from '../features/nono/hooks';
 
 /** Umbral de auto-sueño de Nono: 5 minutos de inactividad. */
 const IDLE_SLEEP_MS = 5 * 60 * 1000;
+/** Sin interacción, Nono tarda esto en empezar a derivar alrededor de su ancla. */
+const IDLE_DRIFT_MS = 15 * 1000;
 
 /**
  * Nono - Asistente flotante (versión slim ~400 líneas).
@@ -36,12 +39,26 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
   selectedProvider,
   parameters,
   projectInfo,
+  projectId,
+  docked = false,
+  onToggleDock,
   suggestionConfig,
   codeContext,
   hidden,
 }, ref) => {
   const headRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  /** Texto corto por idioma (el resto del archivo usa ternarios en línea). */
+  const tr = (es: string, en: string, de?: string) => (lang === 'es' ? es : lang === 'de' && de ? de : en);
+
+  // Deriva en reposo: se enciende cuando nadie interactúa con Nono.
+  const [hovered, setHovered] = useState(false);
+  const [idle, setIdle] = useState(false);
+
+  /** Bandera síncrona de sueño: se enciende en el instante de dormirse, sin
+   * esperar a un render, para que los ciclos propios de Nono no lo despierten. */
+  const asleepRef = useRef(false);
 
   // Hooks especializados
   const {
@@ -105,12 +122,34 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
     projectInfo,
     suggestionConfig,
     isOpen,
+    isAsleepRef: asleepRef,
     setExpression,
   });
 
-  const { memory } = useNonoMemory();
+  const { memory, updateUI } = useNonoMemory();
+  const { suggestions, refresh, dismiss } = useNonoContext(memory.ui.showNono, projectId ?? null);
 
-  // Sincronizar isOpen con drag hook (simplificado)
+  /**
+   * Animación completa aunque el sistema pida menos movimiento.
+   *
+   * El CSS apaga lo agitado bajo `prefers-reduced-motion: reduce`; esta clase
+   * en :root desactiva ese bloque. Va por clase y no por estilos en línea para
+   * que el SVG no se remonte al cambiar la preferencia (remontarlo reiniciaría
+   * el rebote y el parpadeo).
+   */
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle('nono-force-motion', memory.ui.forceMotion);
+    return () => root.classList.remove('nono-force-motion');
+  }, [memory.ui.forceMotion]);
+
+  // Refrescar contexto cuando se abre Nono
+  useEffect(() => {
+    if (isOpen && memory.ui.showNono) refresh();
+  }, [isOpen, memory.ui.showNono, refresh]);
+
+  // En modo docked el panel está siempre abierto (no hay cabeza flotante para abrirlo).
+  useEffect(() => { if (docked) setIsOpen(true); }, [docked, setIsOpen]);
   // En versión completa pasarían como dependencias mutuas
 
   // Reacciones a eventos de la app (status)
@@ -137,7 +176,8 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
 
   const [typedGreeting, setTypedGreeting] = useState('');
   useEffect(() => {
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduceMotion =
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches && !memory.ui.forceMotion;
     setTypedGreeting(''); setGreetingVisible(false);
     const startDelay = setTimeout(() => {
       setGreetingVisible(true); setExpression('happy');
@@ -146,7 +186,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
       return () => { clearTimeout(startDelay); clearInterval(interval); };
     }, 1100);
     return () => { clearTimeout(startDelay); };
-  }, [greetingText, setGreetingVisible, setExpression]);
+  }, [greetingText, setGreetingVisible, setExpression, memory.ui.forceMotion]);
 
   // Ojos: dirección desde el centro de la cabeza hasta el puntero.
   // NonoHead la recibe como vector unitario y desplaza las pupilas.
@@ -165,19 +205,70 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
-  // Auto-sueño: en reposo Nono baja los párpados (LED verde + Zzz). Cualquier
-  // cambio de expresión o de estado de observación reinicia la cuenta.
+  // Auto-sueño: en reposo Nono baja los párpados (LED verde + Zzz). La cuenta se
+  // reinicia sólo con actividad del usuario. Las expresiones que Nono se provoca
+  // solo (el ciclo de sugerencias, cada 50 s) no cuentan: si contaran, la cuenta
+  // nunca llegaría a los 5 minutos y jamás se dormiría.
+  const expressionRef = useRef(expression);
+  expressionRef.current = expression;
+
+  // Mantiene la bandera en sintonía cuando despierta por cualquier otro motivo.
   useEffect(() => {
-    if (isOpen) return; // con el panel abierto no se duerme
-    const timer = setTimeout(() => setExpression('sleepy'), IDLE_SLEEP_MS);
+    asleepRef.current = expression === 'sleepy';
+  }, [expression]);
+
+  useEffect(() => {
+    // Con el panel abierto, el chat en uso o una interacción directa no se duerme.
+    if (isOpen || isWatchingChat || hovered || dragPos || isTyping || isChatTyping) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const schedule = (delay: number) => {
+      timer = setTimeout(() => {
+        // Si está en mitad de una animación propia (pensando, curioso, feliz por
+        // un evento), se espera a que vuelva al reposo en vez de dormirlo a media
+        // expresión.
+        const current = expressionRef.current;
+        const busy = current !== 'neutral' && current !== 'sleepy';
+        if (busy) {
+          schedule(10_000);
+          return;
+        }
+        asleepRef.current = true;
+        setExpression('sleepy');
+      }, delay);
+    };
+    schedule(IDLE_SLEEP_MS);
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [isOpen, isWatchingChat, hovered, dragPos, isTyping, isChatTyping, setExpression]);
+
+  // Deriva: tras un rato sin tocarlo ni escribir en el chat, Nono se desplaza
+  // alrededor de su ancla. Cualquier interacción lo devuelve al centro.
+  useEffect(() => {
+    if (hovered || isOpen || isTyping || isChatTyping || dragPos) {
+      setIdle(false);
+      return;
+    }
+    const timer = setTimeout(() => setIdle(true), IDLE_DRIFT_MS);
     return () => clearTimeout(timer);
-  }, [isOpen, isWatchingChat, expression, setExpression]);
+  }, [hovered, isOpen, isTyping, isChatTyping, dragPos]);
 
   // Parpadeo
   const [blink, setBlink] = useState(false);
   useEffect(() => {
-    const loop = () => { setTimeout(() => { setBlink(true); setTimeout(() => setBlink(false), 120); loop(); }, 2000 + Math.random() * 4000); };
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const loop = () => {
+      if (cancelled) return;
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        setBlink(true);
+        setTimeout(() => { if (!cancelled) setBlink(false); }, 120);
+        loop();
+      }, 2000 + Math.random() * 4000);
+    };
     loop();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, []);
 
   // Anclaje a divider del chat
@@ -215,6 +306,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
     <>
       {/* Texto flotante: saludo / hover / sugerencia / frase contextual */}
       {(() => {
+        if (docked) return null;
         const floatingMessage = hoverPhrase || contextPhrase || projectSuggestion || typedGreeting;
         const floatingVisible = !isOpen && (hoverPhrase || contextPhrase || showProjectSuggestion || greetingVisible);
         const typingCaret = !hoverPhrase && !contextPhrase && !showProjectSuggestion && greetingVisible && typedGreeting.length < greetingText.length;
@@ -238,7 +330,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
 
       {/* Panel de chat */}
       {isOpen && (
-        <div className="nono-panel fixed z-[9999] w-80 max-w-[calc(100vw-2rem)] bg-[#001a33] border-2 border-[#00ffff] rounded-lg shadow-[0_0_30px_rgba(0,255,255,0.3)] flex flex-col overflow-hidden" style={panelStyle}>
+        <div className={`nono-panel ${docked ? 'relative w-full h-full' : 'fixed z-[9999] w-80 max-w-[calc(100vw-2rem)]'} bg-[#001a33] border-2 border-[#00ffff] rounded-lg shadow-[0_0_30px_rgba(0,255,255,0.3)] flex flex-col overflow-hidden`} style={docked ? undefined : panelStyle}>
           <div className="flex items-center justify-between px-3 py-2 bg-[#00aaaa] border-b-2 border-[#000055] shrink-0">
             <div className="flex items-center gap-2">
               <span className="text-black font-bold text-sm">Nono</span>
@@ -247,13 +339,36 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
             {actionFeedback && (
               <span className="ml-auto mr-1 text-[10px] text-[#ffff55] animate-pulse">{actionFeedback}</span>
             )}
-            <button onClick={() => setIsOpen(false)} aria-label="Cerrar" className="text-black hover:text-red-500 font-bold leading-none px-1"><X className="w-4 h-4" /></button>
+            {onToggleDock && <button onClick={onToggleDock} aria-label={docked ? 'Desacoplar' : 'Acoplar'} className="text-black hover:text-[#000080] font-bold leading-none px-1" title={docked ? 'Modo flotante' : 'Acoplar a panel'}><PanelRight className="w-4 h-4" /></button>}
+            <button onClick={() => { if (docked && onToggleDock) onToggleDock(); else setIsOpen(false); }} aria-label="Cerrar" className="text-black hover:text-red-500 font-bold leading-none px-1"><X className="w-4 h-4" /></button>
           </div>
 
           <div className="flex items-center gap-1 px-2 py-1 bg-[#00243e] border-b border-[#004466] shrink-0">
             <button onClick={handleClearChat} aria-label="Limpiar chat" className="text-[#00ffff] hover:bg-[#000080] border border-[#004466] rounded px-1.5 py-0.5 text-[10px] font-bold"><Trash2 className="w-3.5 h-3.5" /></button>
             <button onClick={handleCopyLast} aria-label="Copiar último" className="text-[#00ffff] hover:bg-[#000080] border border-[#004466] rounded px-1.5 py-0.5 text-[10px] font-bold"><Clipboard className="w-3.5 h-3.5" /></button>
             {onNewPrompt && <button onClick={handleNewPromptClick} aria-label="Nuevo chat" className="text-[#ffff55] hover:bg-[#000080] border border-[#004466] rounded px-1.5 py-0.5 text-[10px] font-bold"><Plus className="w-3.5 h-3.5" /></button>}
+            <button
+              onClick={() => updateUI('forceMotion', !memory.ui.forceMotion)}
+              aria-label={memory.ui.forceMotion ? 'Animar siempre: activado' : 'Animar siempre: desactivado'}
+              aria-pressed={memory.ui.forceMotion}
+              title={
+                memory.ui.forceMotion
+                  ? tr(
+                      'Animar siempre: activo, se ignora la preferencia del sistema',
+                      'Always animate: on, the system preference is ignored',
+                      'Immer animieren: aktiv, die Systemeinstellung wird ignoriert'
+                    )
+                  : tr(
+                      'Animar siempre aunque el sistema pida menos movimiento',
+                      'Always animate even if the system asks for less motion',
+                      'Immer animieren, auch wenn das System weniger Bewegung möchte'
+                    )
+              }
+              className={`ml-auto flex items-center gap-1 border rounded px-1.5 py-0.5 text-[10px] font-bold ${memory.ui.forceMotion ? 'bg-[#ffff55] text-black border-[#ffff55]' : 'text-[#00ffff] hover:bg-[#000080] border-[#004466]'}`}
+            >
+              <Activity className="w-3.5 h-3.5" />
+              {lang === 'es' ? 'animar' : lang === 'de' ? 'animieren' : 'animate'}
+            </button>
           </div>
 
           {(onOpenWorkbench || onOpenCompile || onOpenGallery || onOpenSearch) && (
@@ -262,6 +377,17 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
               {onOpenCompile && <ActionChip icon={Hammer} label={lang === 'es' ? 'Compilar' : 'Compile'} onClick={() => { onOpenCompile(); setExpression('happy'); }} color="yellow" />}
               {onOpenGallery && <ActionChip icon={Library} label={lang === 'es' ? 'Galería' : 'Gallery'} onClick={() => { onOpenGallery(); setExpression('happy'); }} />}
               {onOpenSearch && <ActionChip icon={Search} label={lang === 'es' ? 'Buscar' : 'Search'} onClick={() => { onOpenSearch(); setExpression('happy'); }} />}
+            </div>
+          )}
+
+          {suggestions.length > 0 && (
+            <div className="px-2 py-1 bg-[#001633] border-b border-[#004466] shrink-0 space-y-1">
+              {suggestions.map((s) => (
+                <div key={s.id} className="flex items-center justify-between gap-2 text-[10px] text-[#ffff55] bg-[#000d1a] border border-[#004466] rounded px-2 py-1">
+                  <span>{s.text}</span>
+                  <button onClick={() => dismiss(s.id)} aria-label="Descartar" className="text-[#00ffff] hover:text-red-400 font-bold leading-none">×</button>
+                </div>
+              ))}
             </div>
           )}
 
@@ -285,29 +411,47 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
         </div>
       )}
 
-      {/* Cabeza de Nono */}
+      {/* Cabeza de Nono (solo en modo flotante) */}
+      {!docked && (
       <div
         ref={headRef}
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
         onClick={handleToggle}
         onDoubleClick={handleDoubleClick}
-        onMouseEnter={handleHeadMouseEnter}
-        onMouseLeave={handleHeadMouseLeave}
+        onMouseEnter={() => { setHovered(true); handleHeadMouseEnter(); }}
+        onMouseLeave={() => { setHovered(false); handleHeadMouseLeave(); }}
         tabIndex={0}
         role="button"
         aria-label="Nono"
-        className={`fixed z-[9998] select-none touch-none focus-visible:outline-2 focus-visible:outline-[#ffff55] cursor-pointer ${expression !== 'sleepy' ? 'nono-awake' : ''} ${isChatTyping && !dragPos ? 'nono-lean-chat' : ''}`}
+        className={`fixed z-[9998] select-none touch-none focus-visible:outline-2 focus-visible:outline-[#ffff55] cursor-pointer ${expression !== 'sleepy' ? (idle ? 'nono-awake nono-idle' : 'nono-awake') : 'nono-asleep'} ${isChatTyping && !dragPos ? 'nono-lean-chat' : ''}`}
         style={headStyle}
       >
+        {/* Charco de luz bajo Nono: sobre un fondo casi negro una sombra
+            oscura no se ve, así que la altura se lee por el brillo que se
+            apaga al subir. */}
+        <div
+          aria-hidden="true"
+          data-nono-shadow="true"
+          className="nono-shadow pointer-events-none absolute left-1/2 -translate-x-1/2 rounded-full"
+          style={{
+            bottom: -10,
+            width: memory.ui.compactMode ? 42 : 56,
+            height: 10,
+            background:
+              'radial-gradient(ellipse at center, rgba(0,255,255,0.5) 0%, rgba(0,255,255,0.16) 55%, transparent 82%)',
+            filter: 'blur(3px)',
+          }}
+        />
         {/* `key` remonta el SVG al empezar a escribir, reiniciando el rebote. */}
-        <NonoHead key={chatBounceToken} expression={expression as NonoExpression} eyeOffset={eyeOffset} blink={blink} size={48} show3D={true} />
+        <NonoHead key={chatBounceToken} expression={expression as NonoExpression} eyeOffset={eyeOffset} blink={blink} size={memory.ui.compactMode ? 36 : 48} show3D={true} />
         {expression === 'sleepy' && !hoverPhrase && !contextPhrase && (
           <div className="nono-sleep-z absolute pointer-events-none" aria-hidden="true">
             <span>Z</span><span>z</span><span>z</span>
           </div>
         )}
       </div>
+      )}
     </>
   );
 });

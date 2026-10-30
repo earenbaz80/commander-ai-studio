@@ -1,9 +1,9 @@
 /**
  * Tests de FloatingAssistant (Nono): apertura, mini-chat, acciones rápidas,
- * persistencia de posición, arrastre y reanclaje.
+ * persistencia de posición, arrastre, reanclaje y ajuste de animación.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { FloatingAssistant } from '../../src/components/FloatingAssistant';
 
 /** Nono busca la cabeza por su aria-label ("Nono"). */
@@ -16,15 +16,21 @@ describe('FloatingAssistant (Nono)', () => {
 
   beforeEach(() => {
     localStorage.clear();
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // Reloj falso sin `shouldAdvanceTime`: el tiempo sólo avanza cuando el test lo pide,
+    // así ninguna aserción depende de cuánto tarde la máquina en ejecutarla.
+    vi.useFakeTimers();
     unexpectedFetches = [];
     // Nono lee la clave de Gemini del servidor; cualquier otra llamada de red es un fallo.
+    // Al abrir el panel también refresca su contexto (sondeo de tools + memoria durable):
+    // esas rutas contestan vacías para que no generen sugerencias.
+    const json = (payload: unknown) => ({ ok: true, json: async () => payload }) as Response;
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      if (String(url).startsWith('/api/keys/')) {
-        return { ok: true, json: async () => ({ success: true, value: '' }) } as Response;
-      }
-      unexpectedFetches.push(String(url));
-      throw new Error(`fetch no mockeado: ${url}`);
+      const u = String(url);
+      if (u.startsWith('/api/keys/')) return json({ success: true, value: '' });
+      if (u.startsWith('/api/agent/run-tool')) return json({ success: true, data: {} });
+      if (u.startsWith('/api/nono/observations')) return json({ observations: [] });
+      unexpectedFetches.push(u);
+      throw new Error(`fetch no mockeado: ${u}`);
     }));
   });
 
@@ -164,7 +170,14 @@ describe('FloatingAssistant (Nono)', () => {
       fireEvent.keyDown(input, { key: 'Enter' });
 
       fireEvent.click(screen.getByLabelText('Copiar último'));
-      await waitFor(() => expect(writeText).toHaveBeenCalledWith('texto a copiar'));
+      // Sin `waitFor`: el aviso «¡Copiado!» se autolimpia a los 1,8 s de reloj falso.
+      // Basta con vaciar los microtasks que el handler espera en `clipboard.writeText`;
+      // así el aviso se mira en el mismo instante en que se pinta.
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(writeText).toHaveBeenCalledWith('texto a copiar');
       expect(screen.getByText(/¡Copiado!/)).toBeInTheDocument();
     });
 
@@ -483,6 +496,51 @@ describe('FloatingAssistant (Nono)', () => {
       expect(zzz).toBeTruthy();
       expect(zzz?.querySelectorAll('span').length).toBe(3);
     });
+
+    /** Proyecto con datos suficientes para que el ciclo de sugerencias dispare. */
+    const projectInfo = {
+      path: 'C:/tmp/proyecto-web',
+      files: ['src/App.tsx', 'index.html'],
+      hasPackageJson: true,
+      hasTsConfig: true,
+      hasGit: true,
+      framework: 'React',
+      mainLanguage: 'ts',
+      mode: 'chat' as const,
+    };
+
+    /**
+     * Avanza el umbral de sueño en pasos cortos, no de un tirón: React tiene que
+     * re-renderizar entre tick y tick de las sugerencias, como en tiempo real.
+     */
+    const advancePastIdleWithSuggestions = () => {
+      for (let elapsed = 0; elapsed < IDLE_SLEEP_MS + 16_000; elapsed += 5_000) {
+        act(() => {
+          vi.advanceTimersByTime(5_000);
+        });
+      }
+    };
+
+    test('se duerme aunque el proyecto le dispare sugerencias cada 50 s', () => {
+      // Regresión: cada sugerencia cambia la expresión, y la cuenta de sueño se
+      // reiniciaba con cualquier cambio, así que nunca llegaba a los 5 minutos.
+      render(<FloatingAssistant lang="es" projectInfo={projectInfo} />);
+      advancePastIdleWithSuggestions();
+      expect(getExpression()).toBe('sleepy');
+      expect(document.querySelector('.nono-sleep-z')).toBeTruthy();
+    });
+
+    test('una sugerencia periódica no lo despierta', () => {
+      render(<FloatingAssistant lang="es" projectInfo={projectInfo} />);
+      advancePastIdleWithSuggestions();
+      expect(getExpression()).toBe('sleepy');
+
+      // Cruzamos un tick completo del ciclo de sugerencias (50 s).
+      act(() => {
+        vi.advanceTimersByTime(60000);
+      });
+      expect(getExpression()).toBe('sleepy');
+    });
   });
 
   describe('reacciones contextuales a la app', () => {
@@ -571,6 +629,82 @@ describe('FloatingAssistant (Nono)', () => {
       fireEvent.keyDown(input, { key: 'Enter' });
       expect(onNewPrompt).toHaveBeenCalledOnce();
       expect(document.querySelector('.nono-panel')).toBeNull();
+    });
+  });
+
+  describe('animación forzada (ajuste «animar»)', () => {
+    /**
+     * El ajuste no toca estilos: pone esta clase en :root y el CSS de
+     * `prefers-reduced-motion` la deja fuera con `:not(.nono-force-motion)`.
+     * Por eso se comprueba en `document.documentElement`, no en el SVG.
+     */
+    const rootHasForce = () => document.documentElement.classList.contains('nono-force-motion');
+
+    /** Abre el panel y devuelve el botón del ajuste (su aria-label cambia con el estado). */
+    const openPanel = () => {
+      fireEvent.click(getHead());
+      return screen.getByLabelText(/^Animar siempre: (des)?activado$/);
+    };
+
+    beforeEach(() => {
+      // El root es compartido por toda la suite: que un test no herede el estado de otro.
+      document.documentElement.classList.remove('nono-force-motion');
+    });
+
+    test('por defecto no fuerza la animación (respeta al sistema)', () => {
+      render(<FloatingAssistant lang="es" />);
+      expect(rootHasForce()).toBe(false);
+      const button = openPanel();
+      expect(button).toHaveAttribute('aria-pressed', 'false');
+      expect(button).toHaveAccessibleName('Animar siempre: desactivado');
+    });
+
+    test('al pulsarlo pone la clase en el root', () => {
+      render(<FloatingAssistant lang="es" />);
+      fireEvent.click(openPanel());
+
+      expect(rootHasForce()).toBe(true);
+      const button = screen.getByLabelText('Animar siempre: activado');
+      expect(button).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    test('volver a pulsarlo devuelve al modo respetuoso', () => {
+      render(<FloatingAssistant lang="es" />);
+      fireEvent.click(openPanel());
+      expect(rootHasForce()).toBe(true);
+
+      fireEvent.click(screen.getByLabelText('Animar siempre: activado'));
+      expect(rootHasForce()).toBe(false);
+      expect(screen.getByLabelText('Animar siempre: desactivado')).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    test('persiste tras remontar el componente', () => {
+      const first = render(<FloatingAssistant lang="es" />);
+      fireEvent.click(openPanel());
+      expect(rootHasForce()).toBe(true);
+
+      // La preferencia queda en la memoria de Nono, no sólo en el estado de React.
+      const saved = JSON.parse(localStorage.getItem('nono-memory-v1')!);
+      expect(saved.ui.forceMotion).toBe(true);
+
+      first.unmount();
+      // Desmontar no debe dejar la clase pegada en un root compartido.
+      expect(rootHasForce()).toBe(false);
+
+      render(<FloatingAssistant lang="es" />);
+      // La clase vuelve sola: el estado inicial sale de la memoria guardada.
+      expect(rootHasForce()).toBe(true);
+      fireEvent.click(getHead());
+      expect(screen.getByLabelText('Animar siempre: activado')).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    test('no reescribe el ajuste al desmontar', () => {
+      const { unmount } = render(<FloatingAssistant lang="es" />);
+      fireEvent.click(openPanel());
+      unmount();
+
+      const saved = JSON.parse(localStorage.getItem('nono-memory-v1')!);
+      expect(saved.ui.forceMotion).toBe(true);
     });
   });
 });
