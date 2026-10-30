@@ -4,7 +4,61 @@ import { AGENT_FUNCTION_DECLARATIONS } from './fnTools';
 import { toolDialectForModel, toOpenAITools, toAnthropicTools } from './providers';
 import { clientCredentialsFor, resolveEndpoint } from '../lib/aiProviders';
 import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
+import { RESULT_TURN_CHARS, clipMiddle, formatStepDigest } from './contextBudget';
 
+/**
+ * System prompt estructurado por secciones. Es la única fuente de la verdad
+ * sobre cómo se comporta el agente: identidad, contrato de tools, guía de
+ * workspace, higiene git y reglas del repo. Antes eran ~10 líneas sueltas.
+ */
+export function buildSystemPrompt(ctx: LLMContext): string {
+  const isPlan = ctx.mode === 'plan';
+  const sections: string[] = [];
+  sections.push(
+    `Eres un agente autónomo de ingeniería de código (Commander). Razona brevemente en texto y llama herramientas para avanzar hacia el objetivo. Si el objetivo ya está cumplido, responde SOLO texto final sin llamar herramientas.`
+  );
+  sections.push(
+    `PLAN: mantén el plan al día con \`update_plan\` (marca done:true lo terminado).`
+  );
+  sections.push(
+    `PROTOCOLO DE EDICIÓN:
+- Antes de editar, localiza el código con fs.glob/fs.grep y léelo con fs.read para tener el texto exacto.
+- Cambios pequeños: fs.edit con oldString idéntico al archivo. Crear archivos: fs.write.
+- En cuanto tengas el texto delante, haz la edición en el paso siguiente: no vuelvas a buscar ni a releer lo ya leído.
+- Para un cambio que quieras revisar antes de aplicar, usa fs.propose.write / fs.propose.edit: devuelven un diff unificado sin tocar disco (funcionan incluso en modo plan).
+- Tras editar código, usa read_diagnostics para verificar que no introdujiste errores de TypeScript.`
+  );
+  sections.push(
+    `CONTRATO DE TOOLS:
+- Las tools de filesystem nunca leen ni buscan archivos sensibles (.env y familia, id_rsa, .pem/.key, .p12, credenciales). Si necesitas un valor de .env, pídele al usuario que lo copie o lee una plantilla .env.example.
+- Los comandos de shell pasan por una allowlist; no hay sustitución de variables ni encadenamiento fuera de \`|\` entre etapas permitidas.
+- Puedes lanzar subagentes con la tool 'task' (goal, instructions, model, allowedTools, mode, maxSteps, parentSessionId).
+- Puedes proponer VARIAS toolCalls independientes a la vez (se ejecutan en paralelo).`
+  );
+  sections.push(
+    `GUÍA DE WORKSPACE (checkout local compartido):
+- Compartes el checkout con el usuario y posibles otros agentes. Antes de editar, inspecciona git status y la rama.
+- No descartes, sobrescribas, stashees, stagees ni commitees cambios que no hiciste tú. Evita \`git add -A\`; stagea archivos concretos.
+- Otro thread puede tener un dev server en el 3280: inspecciona los listeners antes de elegir puerto.`
+  );
+  sections.push(
+    `HIGIENE GIT: no hagas commit, push ni PR salvo que el usuario lo pida explícitamente.`
+  );
+  if (isPlan) {
+    sections.push(
+      `MODO PLAN: estás diseñando un plan, no construyéndolo. Explora con las tools de solo lectura. No llames fs.write/fs.edit ni comandos que muten. Aprobar el plan es lo que arranca la construcción.`
+    );
+  }
+  if (ctx.skills && ctx.skills.length > 0) {
+    sections.push(
+      `SKILLS DISPONIBLES: ${ctx.skills.join(', ')}.\nTutorial: lee el SKILL.md relevante antes de usar un skill; resuelve recursos relativos a su directorio. Usa la tool 'skill' con el nombre.`
+    );
+  }
+  if (ctx.agentsMd) {
+    sections.push(`REGLAS DEL REPO (AGENTS.md):\n${ctx.agentsMd.slice(0, 4000)}`);
+  }
+  return sections.join('\n\n');
+}
 export interface LLMToolCall {
   id: string;
   tool: string;
@@ -28,6 +82,8 @@ export interface LLMContext {
   recentSteps: any[];
   plan: any[];
   agentsMd?: string;
+  mode?: 'build' | 'plan' | 'readonly';
+  skills?: string[];
 }
 
 export async function callAgentLLM(
@@ -40,24 +96,9 @@ export async function callAgentLLM(
 ): Promise<LLMResponse> {
   const model = opts.model || GEMINI_DEFAULT_MODEL;
 
-  const system = `Eres un agente autónomo pragmático para ingeniería de código.
+  const system = `${buildSystemPrompt(ctx)}
 
-REGLAS:
-- Responde ÚNICAMENTE con JSON válido. Sin markdown. Sin texto fuera.
-- Objetivo: cumplir ${ctx.goal} en ${ctx.cwd}.
-- Puedes usar herramientas: fs.read, fs.write, fs.edit, fs.glob, fs.grep, shell.run, read_diagnostics, task, git.status, git.diff, git.log, git.commit, web.fetch, web.search, code.run, mcp.call.
-- Si necesitas leer archivos, usar fs.glob/fs.grep primero. Para docs web usa web.search/web.fetch.
-- Tras editar código, usa read_diagnostics para verificar que no introdujiste errores de TypeScript.
-- Puedes lanzar subagentes con la tool 'task' (goal, instructions, model, allowedTools, mode, maxSteps, parentSessionId).
-- Puedes proponer VARIAS toolCalls independientes a la vez (se ejecutan en paralelo).
-- Si vas a editar, lee el archivo completo para obtener contexto exacto.
-- Para cambios pequeños usa fs.edit con oldString EXACTO. Para crear archivos usa fs.write.
-- Si el comando shell es potencialmente destructivo, lo marcarás pero ejecutará solo con aprobación.
-- Sé minimalista. Un tool_call a la vez si es incierto.
-- Si ya cumpliste el objetivo, responde con {"finish": true, "answer": "..."}.
-${ctx.agentsMd ? `\nREGLAS DEL REPO (AGENTS.md):\n${ctx.agentsMd.slice(0, 4000)}\n` : ''}
-
-FORMATO JSON:
+FORMATO JSON (responde ÚNICAMENTE con JSON válido, sin markdown, sin texto fuera):
 {
   "thought": "razonamiento breve",
   "plan": [{"id":"p1","text":"...","done":false}],
@@ -72,17 +113,14 @@ CWD: ${ctx.cwd}
 PLAN ACTUAL:
 ${JSON.stringify(ctx.plan, null, 2)}
 
-ULTIMOS PASOS:
-${JSON.stringify(ctx.recentSteps.slice(-10), null, 2)}
+PASOS RECIENTES:
+${formatStepDigest(ctx.recentSteps)}
 
-HISTORIAL BREVE:
-${JSON.stringify(
+${ctx.history.length > 0 ? `HISTORIAL:\n${JSON.stringify(
   ctx.history.slice(-6).map((m) => ({ role: m.role, content: m.content.slice(0, 400) })),
   null,
   2
-)}
-
-TOOLS:
+)}\n\n` : ''}TOOLS:
 ${ctx.toolSchema}`;
 
   try {
@@ -161,8 +199,8 @@ export async function callAgentLLMTools(
   const model = opts.model || GEMINI_DEFAULT_MODEL;
   const dialect = toolDialectForModel(model);
   const turns = ctx.turns || [];
-  const user = `OBJETIVO: ${ctx.goal}\nCWD: ${ctx.cwd}\n\nPLAN ACTUAL:\n${JSON.stringify(ctx.plan, null, 2)}\n\nULTIMOS PASOS:\n${JSON.stringify(ctx.recentSteps.slice(-10), null, 2)}\n\nHISTORIAL:\n${turns.slice(-8).map((t) => `${t.role.toUpperCase()}: ${t.text.slice(0, 1200)}`).join('\n\n')}\n\nTOOLS:\n${ctx.toolSchema}${ctx.systemExtra ? `\n${ctx.systemExtra}` : ''}`;
-  const systemInstruction = `Eres un agente autónomo de código. Razona brevemente en texto y llama herramientas para avanzar hacia: ${ctx.goal}. Si el objetivo está cumplido, responde SOLO texto final sin llamar herramientas. Mantén el plan al día con \`update_plan\` (marca done:true lo terminado).${ctx.agentsMd ? `\nREGLAS DEL REPO:\n${ctx.agentsMd.slice(0, 4000)}` : ''}`;
+  const user = `OBJETIVO: ${ctx.goal}\nCWD: ${ctx.cwd}\n\nPLAN ACTUAL:\n${JSON.stringify(ctx.plan, null, 2)}\n\nPASOS RECIENTES:\n${formatStepDigest(ctx.recentSteps)}\n\nHISTORIAL:\n${turns.slice(-8).map((t) => `${t.role.toUpperCase()}: ${clipMiddle(t.text, t.role === 'user' ? RESULT_TURN_CHARS : 1200)}`).join('\n\n')}\n\nTOOLS:\n${ctx.toolSchema}${ctx.systemExtra ? `\n${ctx.systemExtra}` : ''}`;
+  const systemInstruction = buildSystemPrompt(ctx);
 
   if (dialect === 'json-text') {
     // Sin tool-calling nativo: el llamador debe usar callAgentLLM (JSON en texto).

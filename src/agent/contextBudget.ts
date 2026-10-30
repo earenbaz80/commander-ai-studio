@@ -19,8 +19,20 @@ export interface ContextTurn {
   text: string;
 }
 
-/** Caracteres por turno al guardarlo (antes era `.slice(0, 2000)` en el bucle). */
+/** Caracteres de un turno de razonamiento al guardarlo. */
 export const TURN_CHARS = 2000;
+
+/**
+ * Caracteres de un turno que lleva el resultado de una tool.
+ *
+ * Es el presupuesto que de verdad importa. Con 2000 el corte caía en la línea 38
+ * de un fichero de 63: el modelo pedía «lee el validador», recibía la cabecera,
+ * no veía el cuerpo y volvía a leerlo — 37 pasos sin una sola edición.
+ *
+ * 6 000 deja entero el `fs.read` de un fichero de ~3 KB y, en uno grande, cabeza
+ * y cola (`clipMiddle`) en vez de sólo la cabeza.
+ */
+export const RESULT_TURN_CHARS = 6_000;
 
 /** Presupuesto total de turnos recordados, en caracteres. */
 export const TURNS_BUDGET_CHARS = 16_000;
@@ -28,8 +40,14 @@ export const TURNS_BUDGET_CHARS = 16_000;
 /** Turnos recientes que se repiten literalmente. */
 export const RECENT_TURNS = 6;
 
-/** Caracteres que se conservan de un turno ya resumido. */
-export const SUMMARY_CHARS = 400;
+/**
+ * Caracteres que se conservan de un turno ya resumido.
+ *
+ * Con 400 y recortando sólo por delante el turno no dejaba ni un anclaje del
+ * fichero que el modelo acababa de leer (medido: 0 de 4); con la cola y 1 200
+ * sobreviven la regla de sustitución y el filtro de etapas vacías.
+ */
+export const SUMMARY_CHARS = 1_200;
 
 /** Presupuesto de todos los resultados de tools de un paso, en caracteres. */
 export const RESULTS_BUDGET_CHARS = 24_000;
@@ -128,11 +146,15 @@ export function serializeResults(
   return clipMiddle(text, totalChars);
 }
 
-/** Resume un turno antiguo: principio del texto y marca de compactado. */
+/**
+ * Resume un turno antiguo: cabeza y cola, con marca de compactado. La cola
+ * importa porque el final de un fichero es donde suele estar la línea que hay
+ * que editar, y un resumen sólo por delante la tiraba.
+ */
 function summarize(text: string): string {
   const value = String(text ?? '');
   if (value.length <= SUMMARY_CHARS) return value;
-  return `${value.slice(0, SUMMARY_CHARS).trimEnd()} … [compactado]`;
+  return `${clipMiddle(value, SUMMARY_CHARS).trimEnd()} … [compactado]`;
 }
 
 const totalChars = (turns: ContextTurn[]) => turns.reduce((n, t) => n + t.text.length, 0);
@@ -142,23 +164,106 @@ const totalChars = (turns: ContextTurn[]) => turns.reduce((n, t) => n + t.text.l
  * Si con los resúmenes todavía no cabe en `maxChars`, se van tirando los más
  * viejos (nunca los recientes: son los que explican el paso actual).
  */
+/** Índice de archivos leídos: sobrevive a la compactación como outline. */
+export interface ReadIndexEntry {
+  path: string;
+  ranges: Array<{ start: number; end: number }>;
+  totalLines: number;
+}
+export type ReadIndex = Map<string, ReadIndexEntry>;
+
+export function createReadIndex(): ReadIndex {
+  return new Map();
+}
+
+export function recordRead(index: ReadIndex, path: string, startLine: number, endLine: number, totalLines: number) {
+  if (!path) return;
+  const key = String(path);
+  const entry = index.get(key) || { path: key, ranges: [], totalLines: totalLines || 0 };
+  entry.totalLines = totalLines || entry.totalLines;
+  const ranges = [...entry.ranges, { start: startLine, end: endLine }].sort((a, b) => a.start - b.start);
+  const merged: Array<{ start: number; end: number }> = [];
+  for (const r of ranges) {
+    const last = merged[merged.length - 1];
+    if (last && r.start <= last.end + 1) last.end = Math.max(last.end, r.end);
+    else merged.push({ ...r });
+  }
+  entry.ranges = merged;
+  index.set(key, entry);
+}
+
+export function formatReadIndex(index: ReadIndex): string {
+  if (index.size === 0) return '';
+  const lines = ['ARCHIVOS LEÍDOS (outline; relee sólo el rango que falte):'];
+  for (const entry of index.values()) {
+    const ranges = entry.ranges.map((r) => (r.start === r.end ? `${r.start}` : `${r.start}-${r.end}`)).join(', ');
+    lines.push(`- ${entry.path} (total ${entry.totalLines} líneas): ${ranges}`);
+  }
+  return lines.join('\n');
+}
+
 export function compactTurns(
   turns: ContextTurn[],
-  opts: { maxChars?: number; keepRecent?: number } = {},
+  opts: { maxChars?: number; keepRecent?: number; readIndex?: ReadIndex } = {},
 ): ContextTurn[] {
   const maxChars = opts.maxChars ?? TURNS_BUDGET_CHARS;
   const keepRecent = Math.max(0, opts.keepRecent ?? RECENT_TURNS);
   const list = Array.isArray(turns) ? turns : [];
-  if (list.length <= keepRecent) return list.slice();
+  if (list.length <= keepRecent) {
+    // Aun sin compactar, adjuntar outline si existe.
+    const outline = opts.readIndex ? formatReadIndex(opts.readIndex) : '';
+    if (outline && list.length > 0) {
+      return [{ role: 'user', text: outline }, ...list.slice()];
+    }
+    return list.slice();
+  }
 
   const recent = list.slice(-keepRecent);
   const compacted = list
     .slice(0, -keepRecent)
     .map((t) => ({ role: t.role, text: summarize(t.text) }));
 
-  const result = [...compacted, ...recent];
-  while (result.length > recent.length && totalChars(result) > maxChars) {
-    result.shift();
+  const outline = opts.readIndex ? formatReadIndex(opts.readIndex) : '';
+  const result: ContextTurn[] = outline
+    ? [{ role: 'user', text: outline }, ...compacted, ...recent]
+    : [...compacted, ...recent];
+
+  // Proteger el turno de outline: nunca se descarta.
+  while (result.length > recent.length + (outline ? 1 : 0) && totalChars(result) > maxChars) {
+    // shift el primer no-outline, no-outline
+    let victim = outline ? 1 : 0;
+    // encontrar el primer compactado (no outline, no recent)
+    // recent están al final; outline (si existe) al inicio.
+    const limit = result.length - recent.length;
+    if (victim >= limit) break;
+    result.splice(victim, 1);
   }
   return result;
+}
+
+/**
+ * Resumen de una línea por paso ejecutado.
+ *
+ * Antes el prompt nativo mandaba el JSON completo de los últimos 12 pasos
+ * (con `content` de hasta 500 caracteres cada uno) **y además** los turnos
+ * compactados, que ya contienen ese mismo contenido. La misma historia viajaba
+ * dos veces y el presupuesto se gastaba en duplicados.
+ *
+ * Acá queda sólo lo que los turnos no dicen: qué tool se llamó, en qué orden y
+ * con qué estado. El contenido (resultado, código, salida) sigue viniendo por
+ * `turns`, que es la fuente única.
+ */
+export function formatStepDigest(steps: unknown, limit = 12): string {
+  const list = Array.isArray(steps) ? steps.slice(-limit) : [];
+  if (list.length === 0) return '(sin pasos todavía)';
+  return list
+    .map((raw, i) => {
+      const s = (raw || {}) as { id?: unknown; toolId?: unknown; type?: unknown; status?: unknown; title?: unknown };
+      const id = s.id ?? i + 1;
+      const tool = String(s.toolId || s.type || '?');
+      const status = s.status ? ` ${String(s.status)}` : '';
+      const title = String(s.title || '').replace(/\s+/g, ' ').trim();
+      return `#${id} ${tool}${status}${title ? ` — ${clipMiddle(title, 80)}` : ''}`;
+    })
+    .join('\n');
 }

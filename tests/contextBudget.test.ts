@@ -3,10 +3,16 @@ import assert from 'node:assert/strict';
 import {
   clipMiddle,
   compactTurns,
+  createReadIndex,
   estimateTokens,
   forContext,
+  formatReadIndex,
+  formatStepDigest,
   limitForTool,
+  recordRead,
   serializeResults,
+  RESULT_TURN_CHARS,
+  TURN_CHARS,
 } from '../src/agent/contextBudget.js';
 
 test('clipMiddle conserva cabeza y cola y dice cuánto omitió', () => {
@@ -98,4 +104,76 @@ test('compactTurns tira resúmenes viejos si aún no cabe', () => {
 test('estimateTokens redondea a 4 caracteres por token', () => {
   assert.equal(estimateTokens('abcd'), 1);
   assert.equal(estimateTokens('abcde'), 2);
+});
+
+test('el turno con resultados tiene más presupuesto que el de razonamiento', () => {
+  // Con el mismo tope, el corte caía en la línea 38 de un fichero de 63: el
+  // modelo recibía la cabecera, no el cuerpo y volvía a leerlo.
+  assert.ok(RESULT_TURN_CHARS > TURN_CHARS, 'un fs.read cabe donde un turno de razonamiento no');
+  assert.ok(RESULT_TURN_CHARS >= 3000, 'debe caber entero un fichero de ~3 KB');
+});
+
+test('recordRead fusiona rangos contiguos y solapados y guarda el total', () => {
+  const index = createReadIndex();
+  recordRead(index, 'a.ts', 40, 80, 120);
+  recordRead(index, 'a.ts', 1, 39, 120); // contiguo: 39+1 = 40
+  recordRead(index, 'a.ts', 70, 90, 120); // solapa con el primero
+
+  assert.deepEqual(index.get('a.ts')!.ranges, [{ start: 1, end: 90 }]);
+  assert.equal(index.get('a.ts')!.totalLines, 120);
+});
+
+test('recordRead deja separados los huecos e ignora lecturas sin ruta', () => {
+  const index = createReadIndex();
+  recordRead(index, '', 1, 10, 0);
+  recordRead(index, 'b.ts', 1, 10, 50);
+  recordRead(index, 'b.ts', 20, 30, 50);
+
+  assert.equal(index.size, 1, 'sin ruta no hay entrada');
+  assert.deepEqual(index.get('b.ts')!.ranges, [
+    { start: 1, end: 10 },
+    { start: 20, end: 30 },
+  ]);
+});
+
+test('formatReadIndex calla si no hay lecturas y lista rangos si las hay', () => {
+  assert.equal(formatReadIndex(createReadIndex()), '', 'sin lecturas no añade un turno vacío');
+
+  const index = createReadIndex();
+  recordRead(index, 'a.ts', 5, 5, 5);
+  recordRead(index, 'b.ts', 1, 10, 42);
+  const out = formatReadIndex(index);
+
+  assert.match(out, /^ARCHIVOS LEÍDOS/);
+  assert.match(out, /a\.ts \(total 5 líneas\): 5$/m, 'un rango de una línea se escribe sin guion');
+  assert.match(out, /b\.ts \(total 42 líneas\): 1-10$/m);
+});
+
+test('compactTurns conserva el outline de lecturas aunque no quepa nada más', () => {
+  const index = createReadIndex();
+  recordRead(index, 'validador.ts', 1, 63, 63);
+
+  const largo = Array.from({ length: 30 }, (_, i) => ({ role: 'model', text: `t${i}-` + 'w'.repeat(1990) }));
+  const out = compactTurns(largo, { maxChars: 12_000, keepRecent: 6, readIndex: index });
+  assert.match(out[0].text, /ARCHIVOS LEÍDOS/, 'el outline va primero');
+  assert.match(out[0].text, /validador\.ts \(total 63 líneas\)/);
+
+  const corto = compactTurns([{ role: 'model', text: 'a' }], { readIndex: index });
+  assert.match(corto[0].text, /validador\.ts/, 'también sin compactar hay outline');
+});
+
+test('formatStepDigest resume los pasos sin repetir su contenido', () => {
+  assert.equal(formatStepDigest([]), '(sin pasos todavía)');
+
+  const steps = Array.from({ length: 20 }, (_, i) => ({
+    id: i + 1,
+    toolId: 'fs.read',
+    status: 'done',
+    title: `leer archivo ${i}`,
+  }));
+  const out = formatStepDigest(steps, 3);
+
+  assert.equal(out.split('\n').length, 3, 'sólo los últimos N');
+  assert.match(out, /^#18 fs\.read done — leer archivo 17$/m);
+  assert.match(out, /^#20 fs\.read done — leer archivo 19$/m);
 });
