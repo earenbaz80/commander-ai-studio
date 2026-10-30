@@ -209,17 +209,34 @@ test('sin tools no manda los campos y sin modelo ni prompt usa los valores de si
   assert.deepEqual(call.body.messages, [{ role: 'user', content: 'desde contents' }], '`contents` sirve de prompt');
 });
 
-test('el baseURL del panel se respeta y pierde las barras finales', async () => {
-  const { impl, calls } = stubFetch(() => upstreamOk({ choices: [{ message: { content: 'ok' } }] }));
+test('la base configurada pierde las barras finales', async () => {
+  await sinEntorno(async () => {
+    const { impl, calls } = stubFetch(() => upstreamOk({ choices: [{ message: { content: 'ok' } }] }));
 
-  await conFetch(impl, async () => {
-    await handleFreebuffGenerate(
-      mockReq({ prompt: 'hola', apiKey: 'k', baseURL: 'http://127.0.0.1:9/proxy///' }),
-      mockRes()
-    );
+    await conFetch(impl, async () => {
+      const req = mockReq({ prompt: 'hola', apiKey: 'k' }, { ai_studio_FREEBUFF_BASE_URL: 'http://127.0.0.1:9/proxy///' });
+      apiKeyMiddleware(req, mockRes(), () => {});
+      await handleFreebuffGenerate(req, mockRes());
+    });
+
+    assert.equal(calls[0].url, 'http://127.0.0.1:9/proxy/chat/completions');
   });
+});
 
-  assert.equal(calls[0].url, 'http://127.0.0.1:9/proxy/chat/completions');
+test('el baseURL del cuerpo se ignora: el cliente no elige el destino', async () => {
+  // Antes, un `baseURL` en el cuerpo ganaba al resto y la clave del panel salía
+  // hacia ese host. El destino sólo se configura en el panel o en el entorno.
+  await sinEntorno(async () => {
+    const { impl, calls } = stubFetch(() => upstreamOk({ choices: [{ message: { content: 'ok' } }] }));
+
+    await conFetch(impl, async () => {
+      const req = mockReq({ prompt: 'hola', apiKey: 'k', baseURL: 'http://atacante.local/v1' });
+      apiKeyMiddleware(req, mockRes(), () => {});
+      await handleFreebuffGenerate(req, mockRes());
+    });
+
+    assert.equal(calls[0].url, `${FREEBUFF_DEFAULT_BASE}/chat/completions`, 'sin base configurada se usa la de siempre');
+  });
 });
 
 test('traduce los tool_calls y descarta los que no traen nombre', async () => {
