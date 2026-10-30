@@ -39,6 +39,38 @@ export const AGENT_TOOLS = new Set([
   'git.worktree', 'git.rebase', 'git.conflict',
 ]);
 
+// ── Rutas sensibles: nunca se leen ni se buscan ──
+//
+// `shell.run` ya bloquea `.env`/id_rsa/credentials desde SHELL_BLOCKED, pero
+// las tools de filesystem pasan por otro camino. Sin este filtro, un
+// `fs.read({path: '.env'})` manda las claves del proyecto al proveedor del LLM.
+
+/** Nombres completos que siempre son secretos. */
+const SECRET_BASENAMES = new Set([
+  '.npmrc', '.netrc', '_netrc', '.pgpass', '.htpasswd',
+  'id_rsa', 'id_dsa', 'id_ecdsa', 'id_ed25519',
+]);
+
+/** Extensiones de material criptográfico. */
+const SECRET_EXTENSIONS = ['.pem', '.key', '.p12', '.pfx', '.jks', '.keystore'];
+
+/** Plantillas de entorno: inertes, el agente sí puede leerlas. */
+export const ENV_TEMPLATE_RE = /^\.env\.(example|sample|template|dist|defaults)$/i;
+
+/** ¿La ruta es un archivo de secretos que el agente no debe leer? */
+export function isSensitivePath(relPath: string): boolean {
+  const base = String(relPath || '').split(/[\\/]/).pop() || '';
+  const lower = base.toLowerCase();
+  if (lower === '.env') return true;
+  if (lower.startsWith('.env.') && !ENV_TEMPLATE_RE.test(lower)) return true;
+  if (SECRET_BASENAMES.has(lower)) return true;
+  return SECRET_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+export const SENSITIVE_READ_MESSAGE =
+  'Archivo sensible (claves/credenciales): no se lee ni se busca. ' +
+  'Pide al usuario que copie el valor que necesites, o lee una plantilla .env.example.';
+
 /**
  * Sanea un mensaje de commit antes de interpolarlo en `git commit -m "..."`.
  * El comando se ejecuta vía shell (execSync), así que hay que eliminar

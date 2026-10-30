@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SHELL_BLOCKED, SHELL_OPERATORS, SHELL_ALLOW_PREFIX, sanitizeGitMessage } from '../security.js';
+import { SHELL_BLOCKED, SHELL_OPERATORS, SHELL_ALLOW_PREFIX, isSensitivePath, sanitizeGitMessage } from '../security.js';
 
 test('SHELL_BLOCKED contiene patrones destructivos críticos', () => {
   assert.ok(SHELL_BLOCKED.includes('rm -rf /'));
@@ -10,6 +10,24 @@ test('SHELL_BLOCKED contiene patrones destructivos críticos', () => {
   assert.ok(SHELL_BLOCKED.includes('/etc/passwd'));
   assert.ok(SHELL_BLOCKED.includes('.ssh'));
   assert.ok(SHELL_BLOCKED.includes('.env'));
+});
+
+test('isSensitivePath marca los secretos y deja pasar las plantillas', () => {
+  for (const p of [
+    '.env',
+    'config/.env.production',
+    '.ssh/id_ed25519',
+    'id_rsa',
+    '.npmrc',
+    '.pgpass',
+    'certs/server.pem',
+    'server.key',
+  ]) {
+    assert.equal(isSensitivePath(p), true, `debe ser sensible: ${p}`);
+  }
+  for (const p of ['.env.example', '.env.sample', 'README.md', 'src/env.ts', 'environment.json', '']) {
+    assert.equal(isSensitivePath(p), false, `no debe ser sensible: ${p}`);
+  }
 });
 
 test('SHELL_OPERATORS contiene operadores de shell peligrosos', () => {

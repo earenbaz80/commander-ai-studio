@@ -149,6 +149,44 @@ test('fs.glob y fs.grep buscan en el root de la petición, no en el repo', async
   assert.match(String(matches[0].file).replace(/\\/g, '/'), /solo-aqui\.ts$/);
 });
 
+test('fs.read se niega a leer archivos de secretos y sí lee la plantilla', async () => {
+  const dir = path.join(TEST_DIR, 'secretos');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, '.env'), 'API_KEY=secreto\n', 'utf8');
+  fs.writeFileSync(path.join(dir, '.env.example'), 'API_KEY=\n', 'utf8');
+
+  const env = await executeAgentTool('fs.read', { path: 'tests/tmp/secretos/.env' });
+  assert.equal(env.ok, false, 'un .env no se lee, aunque exista y esté dentro del root');
+  assert.equal((env as any).status, 403);
+  assert.match(String(env.error), /sensible/i);
+
+  const template = await executeAgentTool('fs.read', { path: 'tests/tmp/secretos/.env.example' });
+  assert.equal(template.ok, true, String(template.error));
+  assert.match(String((template.data as any).content), /API_KEY=/);
+});
+
+test('fs.glob no lista secretos y fs.grep no busca dentro de ellos', async () => {
+  const dir = path.join(TEST_DIR, 'secretos');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, '.env'), 'API_KEY=secreto\n', 'utf8');
+  fs.writeFileSync(path.join(dir, '.env.example'), 'API_KEY=\n', 'utf8');
+
+  const glob = await executeAgentTool('fs.glob', { pattern: '.env', root: dir });
+  assert.equal(glob.ok, true, String(glob.error));
+  const listed = (glob.data as any).files as string[];
+  assert.equal(listed.includes('.env'), false, 'listar el nombre ya es filtrar mal');
+  assert.ok(listed.includes('.env.example'), 'la plantilla sí aparece');
+
+  const byPath = await executeAgentTool('fs.grep', { pattern: 'secreto', path: 'tests/tmp/secretos/.env' });
+  assert.equal(byPath.ok, false, 'grep sobre un .env explícito debe negarse');
+  assert.equal((byPath as any).status, 403);
+  assert.match(String(byPath.error), /sensible/i);
+
+  const byWalk = await executeAgentTool('fs.grep', { pattern: 'secreto', root: dir });
+  assert.equal(byWalk.ok, true, String(byWalk.error));
+  assert.deepEqual((byWalk.data as any).matches, [], 'recorrer el root no puede abrir el .env');
+});
+
 // --- fs.read por ventana --------------------------------------------------
 
 test('fs.read con offset/limit devuelve solo la ventana, con sus metadatos', async () => {
