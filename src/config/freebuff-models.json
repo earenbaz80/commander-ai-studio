@@ -1,0 +1,14 @@
+{
+  "defaultModel": "gemini-4-argon",
+  "toolModels": [
+    "deepseek-v4.1-flash",
+    "claude-haiku-5-5",
+    "gpt-6-luna",
+    "gemini-3.8-flash",
+    "gpt-6.1-sol",
+    "gemini-4-argon",
+    "qwen3.8-max",
+    "minimax-m3",
+    "claude-fable-5-1"
+  ]
+}

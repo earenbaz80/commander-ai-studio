@@ -78,6 +78,14 @@ export const PROVIDER_CONFIGS: Record<ProviderType, ProviderConfig> = {
     supportsThinking: false,
     defaultEndpoint: '/api/custom/generate',
   },
+  freebuff: {
+    id: 'freebuff',
+    name: 'Freebuff',
+    supportsStreaming: false,
+    supportsTools: true,
+    supportsThinking: false,
+    defaultEndpoint: '/api/freebuff/generate',
+  },
   xai: {
     id: 'xai',
     name: 'xAI Grok',
@@ -123,6 +131,7 @@ export function detectProvider(
   if (modelId.startsWith('openrouter/')) return 'openrouter';
   if (modelId.startsWith('pollinations/')) return 'pollinations';
   if (modelId.startsWith('custom/')) return 'custom';
+  if (modelId.startsWith('freebuff/')) return 'freebuff';
   if (modelId.startsWith('local/')) return 'local';
 
   // HuggingFace: id con barra del tipo org/repo, o coincidencia con el catálogo.

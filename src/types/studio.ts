@@ -9,7 +9,17 @@ export type StudioMode =
   | 'live_voice'
   | 'agent';
 
-export type ProviderType = 'google' | 'huggingface' | 'xai' | 'anthropic' | 'ollama' | 'openrouter' | 'pollinations' | 'custom' | 'local';
+export type ProviderType =
+  | 'google'
+  | 'huggingface'
+  | 'xai'
+  | 'anthropic'
+  | 'ollama'
+  | 'openrouter'
+  | 'pollinations'
+  | 'custom'
+  | 'local'
+  | 'freebuff';
 
 /** Modo de ejecución del agente. */
 export type RunMode = 'build' | 'plan' | 'readonly';
