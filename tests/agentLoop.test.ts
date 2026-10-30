@@ -165,6 +165,29 @@ test('AgentLoop con modelo Pollinations usa JSON mode (sin tool-calling nativo)'
   loop.stop();
 });
 
+test('AgentLoop con un modelo Freebuff con tool-calls usa la vía nativa', async () => {
+  const { loop, getState, invoked } = createLoop('freebuff/gpt-6-luna');
+
+  const task: AgentTask = { id: 'test-6c', goal: 'Test goal', cwd: '.', maxSteps: 5 };
+  await loop.start(task);
+
+  assert.equal(getState().running, true);
+  assert.ok(invoked.includes('callTools'), 'Freebuff con tool-calls debe usar callTools');
+  loop.stop();
+});
+
+test('AgentLoop con un modelo Freebuff sin tool-calls cae a JSON en texto', async () => {
+  const { loop, getState, invoked } = createLoop('freebuff/qwen-chat-7b');
+
+  const task: AgentTask = { id: 'test-6d', goal: 'Test goal', cwd: '.', maxSteps: 5 };
+  await loop.start(task);
+
+  assert.equal(getState().running, true);
+  assert.ok(invoked.includes('callJson'), 'Freebuff sin tool-calls debe usar callJson');
+  assert.ok(!invoked.includes('callTools'), 'no debe gastar un paso en un tool-call que el modelo no sabe hacer');
+  loop.stop();
+});
+
 test('AgentLoop spawnSubagent ejecuta tarea acotada', async () => {
   const { loop, getState } = createLoop('gemini-2.0-flash');
 
