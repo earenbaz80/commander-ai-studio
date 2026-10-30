@@ -1,7 +1,14 @@
 import type { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { SHELL_BLOCKED, SHELL_ALLOW_PREFIX, AGENT_TOOLS, sanitizeGitMessage } from './security';
+import {
+  SHELL_BLOCKED,
+  SHELL_ALLOW_PREFIX,
+  AGENT_TOOLS,
+  SENSITIVE_READ_MESSAGE,
+  isSensitivePath,
+  sanitizeGitMessage,
+} from './security';
 import { splitPipeline } from './src/agent/shellCommand';
 import { listJobs, readJobLog, runPipeline, startJob, stopJob } from './shellJobs';
 import { assertSafeOutboundUrl, safeFetch } from './ssrf';
@@ -430,6 +437,7 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
   if (toolId === 'fs.read') {
     const p = String(input.path || '').slice(0, 500);
     if (!p) return { ok: false, error: 'path requerido' };
+    if (isSensitivePath(p)) return { ok: false, error: SENSITIVE_READ_MESSAGE, status: 403 };
     const pathErr = enforcePath(perms, p, 'read');
     if (pathErr) return { ok: false, error: pathErr, status: 403 };
     const target = agentSafePath(p, rootHint);
@@ -486,6 +494,7 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
     const p = String(input.path || '').slice(0, 500);
     const content = String(input.content || '').slice(0, 5000000);
     if (!p) return { ok: false, error: 'path requerido' };
+    if (isSensitivePath(p)) return { ok: false, error: SENSITIVE_READ_MESSAGE, status: 403 };
     const pathErr = enforcePath(perms, p, 'write');
     if (pathErr) return { ok: false, error: pathErr, status: 403 };
     const target = agentSafePath(p, rootHint);
@@ -511,6 +520,7 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
     const oldStr = String(input.oldString || '');
     const newStr = String(input.newString || '');
     if (!p || !oldStr) return { ok: false, error: 'path y oldString requeridos' };
+    if (isSensitivePath(p)) return { ok: false, error: SENSITIVE_READ_MESSAGE, status: 403 };
     const pathErr = enforcePath(perms, p, 'write');
     if (pathErr) return { ok: false, error: pathErr, status: 403 };
     const target = agentSafePath(p, rootHint);
@@ -551,6 +561,7 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
             if (!e.name.startsWith('.') && !SKIP_DIRS.has(e.name)) walk(full, root);
           } else {
             const rel = path.relative(root, full);
+            if (isSensitivePath(rel)) continue;
             if (matchesGlob(rel, pattern)) {
               // Siempre en POSIX: el modelo pide rutas con `/`, también en Windows.
               files.push(rel.split(path.sep).join('/'));
@@ -570,6 +581,9 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
     const pattern = String(input.pattern || '').slice(0, 500);
     if (!pattern) return { ok: false, error: 'pattern requerido' };
     if (input.path) {
+      if (isSensitivePath(String(input.path))) {
+        return { ok: false, error: SENSITIVE_READ_MESSAGE, status: 403 };
+      }
       const pathErr = enforcePath(perms, String(input.path), 'read');
       if (pathErr) return { ok: false, error: pathErr, status: 403 };
     }
@@ -592,6 +606,7 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
             if (!e.name.startsWith('.') && !SKIP_DIRS.has(e.name)) walkGrep(full, root);
           } else {
             const rel = path.relative(root, full);
+            if (isSensitivePath(rel)) continue;
             try {
               // Sin este corte, un directorio de artefactos (p. ej. un empaquetado
               // con `target/` de Rust) bloquea el event loop leyendo GB de binarios.
