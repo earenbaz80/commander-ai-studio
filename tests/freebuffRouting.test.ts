@@ -117,6 +117,68 @@ test('con tool-calls, el agente llama al proxy con las tools en formato OpenAI',
   });
 });
 
+/**
+ * Simula un usuario con Custom configurado: los valores quedan en la caché de
+ * claves del proceso, así que este archivo tiene que usarlos tal cual después.
+ */
+async function conCustomConfigurado<T>(fn: () => Promise<T>): Promise<T> {
+  const previo = (globalThis as any).localStorage;
+  const valores: Record<string, string> = {
+    CUSTOM_BASE_URL: 'https://custom.invalid/v1',
+    CUSTOM_API_KEY: 'clave-de-custom',
+  };
+  (globalThis as any).localStorage = { getItem: (k: string) => valores[k] ?? null };
+  try {
+    return await fn();
+  } finally {
+    (globalThis as any).localStorage = previo;
+  }
+}
+
+test('la base y la clave de Custom no viajan al proxy de Freebuff', async () => {
+  const { impl, calls } = stubFetch(() => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ text: 'ok', toolCalls: [] }),
+  }));
+
+  await conCustomConfigurado(() =>
+    conFetch(impl, async () => {
+      await callAgentLLMTools(ctx(), { model: `freebuff/${CON_TOOLS}` });
+
+      assert.equal(calls.length, 1);
+      assert.equal(
+        calls[0].body.baseURL,
+        undefined,
+        'la base la pone el servidor: mandarle la de Custom desviaba la petición a otro host'
+      );
+      assert.equal(
+        calls[0].body.apiKey,
+        undefined,
+        'la clave la resuelve el proxy (FREEBUFF_API_KEY); la de Custom no le sirve'
+      );
+    })
+  );
+});
+
+test('con custom/ sí viajan: son las que entiende /api/custom/generate', async () => {
+  const { impl, calls } = stubFetch(() => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ text: 'ok', toolCalls: [] }),
+  }));
+
+  await conCustomConfigurado(() =>
+    conFetch(impl, async () => {
+      await callAgentLLMTools(ctx(), { model: 'custom/llama' });
+
+      assert.equal(calls[0].url, '/api/custom/generate');
+      assert.equal(calls[0].body.baseURL, 'https://custom.invalid/v1');
+      assert.equal(calls[0].body.apiKey, 'clave-de-custom');
+    })
+  );
+});
+
 test('sin tool-calls no se llama a la red: el loop usa el camino json-text', async () => {
   const { impl, calls } = stubFetch(() => {
     throw new Error('no debería salir ninguna petición');
