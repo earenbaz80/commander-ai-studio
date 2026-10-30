@@ -27,6 +27,7 @@ import { forkSessionWorkspace, deleteSessionWorkspace, listSessions, createGitWo
 import { handleOAuthLogin, handleOAuthCallback, handleLogout, getCurrentUser } from './oauth';
 import { executeWithFallback, getProviderMetrics, checkAllProvidersHealth, resetCircuitBreaker, setProviderEnabled } from './fallbackRouter';
 import { GEMINI_DEFAULT_MODEL } from './src/config/geminiModels';
+import { FREEBUFF_DEFAULT_MODEL } from './src/config/freebuffModels';
 
 dotenv.config();
 
@@ -2352,6 +2353,111 @@ app.post('/api/custom/generate', async (req, res) => {
     });
   } catch (error: any) {
     return res.json({ ok: false, error: error.message || 'Custom generate falló' });
+  }
+});
+
+// ==================== FREEBUFF ====================
+
+/**
+ * Freebuff expone un endpoint OpenAI-compatible con su propio catálogo de
+ * modelos (`GET /api/v1/paid/models`, 280 ids). Su clave es la del panel de
+ * cuenta (Account → Developer API), no la de Gemini ni la de OpenAI, así que
+ * tiene variable propia: compartir CUSTOM_API_KEY haría que apuntar «custom» a
+ * otro sitio rompiera Freebuff en silencio.
+ */
+const FREEBUFF_DEFAULT_BASE = 'https://freebuff.com/api/v1/paid';
+
+/** `arguments` llega como string JSON; un modelo descuidado lo manda ya objeto. */
+function parseToolArgs(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === 'object') return raw as Record<string, unknown>;
+  if (typeof raw !== 'string' || !raw.trim()) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+app.post('/api/freebuff/generate', async (req, res) => {
+  try {
+    const {
+      prompt,
+      contents,
+      model,
+      systemInstruction = '',
+      temperature = 0.7,
+      maxTokens = 2048,
+      tools,
+      apiKey,
+      baseURL,
+    } = req.body || {};
+
+    const key = apiKey || process.env.FREEBUFF_API_KEY || process.env.OPENAI_API_KEY;
+    if (!key) {
+      return res.json({
+        success: false,
+        error: 'FREEBUFF_API_KEY requerida: se obtiene en Freebuff → Account → Developer API',
+      });
+    }
+
+    const base = String(baseURL || process.env.FREEBUFF_BASE_URL || FREEBUFF_DEFAULT_BASE).replace(/\/+$/, '');
+    const wanted = String(model || FREEBUFF_DEFAULT_MODEL).replace(/^freebuff\//, '');
+    const userText = String(prompt ?? contents ?? '');
+
+    const body: Record<string, unknown> = {
+      model: wanted,
+      messages: [
+        ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
+        { role: 'user', content: userText },
+      ],
+      temperature,
+      max_tokens: maxTokens,
+    };
+    if (Array.isArray(tools) && tools.length > 0) {
+      body.tools = tools;
+      body.tool_choice = 'auto';
+    }
+
+    const response = await fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({} as any));
+      const message = detail?.error?.message || detail?.error || `Freebuff HTTP ${response.status}`;
+      return res.json({ success: false, error: String(message), status: response.status });
+    }
+
+    const data: any = await response.json();
+    const message = data?.choices?.[0]?.message || {};
+    const toolCalls = Array.isArray(message.tool_calls)
+      ? message.tool_calls
+          .map((tc: any) => ({
+            id: tc?.id,
+            name: tc?.function?.name,
+            args: parseToolArgs(tc?.function?.arguments),
+          }))
+          .filter((tc: any) => typeof tc.name === 'string' && tc.name)
+      : [];
+
+    return res.json({
+      success: true,
+      text: typeof message.content === 'string' ? message.content : '',
+      toolCalls,
+      // Quién contestó de verdad, como en Gemini: el agente lo deja como paso.
+      model: data?.model || wanted,
+      metrics: {
+        promptTokens: data?.usage?.prompt_tokens || 0,
+        responseTokens: data?.usage?.completion_tokens || 0,
+        totalTokens: data?.usage?.total_tokens || 0,
+        latencyMs: 0,
+      },
+    });
+  } catch (error: any) {
+    return res.json({ success: false, error: error?.message || 'Freebuff generate falló' });
   }
 });
 

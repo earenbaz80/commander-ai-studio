@@ -23,6 +23,7 @@
     "electron:dev": "ELECTRON_START_URL=http://localhost:5173 npm run electron",
     "test": "vitest run",
     "test:node": "tsx scripts/test-node.ts",
+    "models:freebuff": "node scripts/sync-freebuff-models.mjs",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "lint": "eslint src",

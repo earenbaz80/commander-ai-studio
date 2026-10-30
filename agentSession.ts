@@ -117,6 +117,7 @@ async function callLlmNative(
     dialect === 'gemini' ? '/api/gemini/generate'
     : model.startsWith('openrouter/') ? '/api/openrouter/generate'
     : model.startsWith('ollama/') ? '/api/ollama/generate'
+    : model.startsWith('freebuff/') ? '/api/freebuff/generate'
     : '/api/custom/generate';
 
   const payload: Record<string, unknown> = {
@@ -197,6 +198,7 @@ ${ctx.toolSchema}`;
   const route = model.startsWith('custom/') ? '/api/custom/generate'
     : model.startsWith('openrouter/') ? '/api/openrouter/generate'
     : model.startsWith('pollinations/') ? '/api/pollinations/generate'
+    : model.startsWith('freebuff/') ? '/api/freebuff/generate'
     : model.startsWith('ollama/') ? '/api/ollama/generate'
     : '/api/gemini/generate';
 
