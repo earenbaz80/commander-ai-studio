@@ -211,8 +211,12 @@ describe('ChatPlayground', () => {
       render(<ChatPlayground {...baseProps()} messages={[modelMessage('Contenido copiable')]} />);
       fireEvent.click(screen.getByText('Copiar'));
 
-      await waitFor(() => expect(writeText).toHaveBeenCalledWith('Contenido copiable'));
-      expect(screen.getByText('Copiado')).toBeInTheDocument();
+      // Ambas aserciones en el mismo `waitFor`: «Copiado» se autolimpia a los 2 s,
+      // así que no conviene dejar una espera entre comprobar el portapapeles y el aviso.
+      await waitFor(() => {
+        expect(writeText).toHaveBeenCalledWith('Contenido copiable');
+        expect(screen.getByText('Copiado')).toBeInTheDocument();
+      });
     });
   });
 
@@ -266,7 +270,7 @@ describe('ChatPlayground', () => {
       render(<ChatPlayground {...baseProps()} />);
       const groups = Array.from(document.querySelectorAll('optgroup')).map((g) => g.getAttribute('label'));
       expect(groups).toContain('Google Gemini');
-      expect(groups).toContain('Anthropic Claude');
+      expect(groups).toContain('OpenRouter');
       expect(groups).toContain('HuggingFace (Local)');
       expect(groups).toContain('Ollama (Local)');
     });
@@ -275,8 +279,8 @@ describe('ChatPlayground', () => {
       const props = baseProps();
       render(<ChatPlayground {...props} />);
       const selector = screen.getByLabelText('Modelo que se usará para responder');
-      fireEvent.change(selector, { target: { value: 'claude-3-7-sonnet-20250219' } });
-      expect(props.setSelectedModel).toHaveBeenCalledWith('claude-3-7-sonnet-20250219');
+      fireEvent.change(selector, { target: { value: 'ollama/llama3.2' } });
+      expect(props.setSelectedModel).toHaveBeenCalledWith('ollama/llama3.2');
     });
 
     test('un modelo fuera del catálogo se muestra igual', () => {

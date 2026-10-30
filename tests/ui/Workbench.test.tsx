@@ -2,7 +2,7 @@
  * Tests del Workbench: menú de vistas, árbol de archivos, terminal
  * integrada (misma ruta que usan los modelos) y navegador embebido.
  */
-import { describe, test, expect, vi, beforeEach } from 'vitest';
+import { describe, test, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { WorkbenchPanel } from '../../src/components/WorkbenchPanel';
 import { TerminalView } from '../../src/components/panel/TerminalView';
@@ -18,6 +18,20 @@ const cmValue = (): string => {
   if (!el) return '';
   const view = CMView.findFromDOM(el);
   return view ? view.state.doc.toString() : '';
+};
+
+/**
+ * Espera a que el editor perezoso esté montado.
+ *
+ * `EditorView` carga CodeMirror con `React.lazy`, así que el primer render pinta
+ * el fallback «CARGANDO EDITOR…» y el editor aparece cuando resuelve el import.
+ * Con la suite completa en paralelo ese import puede pasar del segundo que
+ * `waitFor` espera por defecto, y el test fallaba sin que la app estuviera mal.
+ * El timeout no es un sleep: se sigue esperando al DOM, sólo se le da margen a
+ * la carga del chunk.
+ */
+const waitForEditor = async () => {
+  await waitFor(() => expect(document.querySelector('.cm-content')).toBeTruthy(), { timeout: 5000 });
 };
 
 /** Reemplaza el documento del editor CodeMirror montado (simula teclear). */
@@ -331,6 +345,13 @@ describe('TabsView', () => {
 });
 
 describe('EditorView', () => {
+  beforeAll(async () => {
+    // Precargamos el chunk que `EditorView` pide de forma perezosa: así el
+    // `import()` de `React.lazy` sale de la caché de módulos y el montaje del
+    // editor no depende de cuánto tarde Vite en transformarlo.
+    await import('../../src/components/panel/CodeEditor');
+  });
+
   beforeEach(() => {
     localStorage.clear();
   });
@@ -340,7 +361,7 @@ describe('EditorView', () => {
     expect(screen.getByTitle('Abrir archivo local desde tu disco')).toBeInTheDocument();
     expect(screen.getByTitle('Guardar archivo en tu disco')).toBeInTheDocument();
     // El editor (CodeMirror) carga bajo demanda.
-    await waitFor(() => expect(document.querySelector('.cm-content')).toBeTruthy());
+    await waitForEditor();
     expect(screen.getByText(/Bloc de notas local/)).toBeInTheDocument();
   });
 
@@ -446,7 +467,7 @@ describe('EditorView', () => {
     (URL as any).revokeObjectURL = vi.fn();
 
     render(<EditorView projectPath="" />);
-    await waitFor(() => expect(document.querySelector('.cm-content')).toBeTruthy());
+    await waitForEditor();
     cmSet('Hola guardado local');
 
     fireEvent.click(screen.getByTitle('Guardar archivo en tu disco'));
@@ -480,7 +501,7 @@ describe('EditorView', () => {
 
     render(<EditorView projectPath="C:/tmp/proyecto-web" />);
 
-    await waitFor(() => expect(document.querySelector('.cm-content')).toBeTruthy());
+    await waitForEditor();
     cmSet('hola');
 
     fireEvent.click(screen.getByTitle('Guardar como otro archivo del proyecto (Ctrl+Shift+S)'));
