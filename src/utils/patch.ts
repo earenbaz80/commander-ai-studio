@@ -186,6 +186,32 @@ export function diffLines(oldText: string, newText: string, context = 3): DiffRe
   return { hunks, additions, deletions };
 }
 
+/**
+ * Renderiza un `DiffResult` como diff unificado (`--- a/x` / `+++ b/x` / `@@`).
+ *
+ * Es el formato que espera un modelo para razonar sobre un cambio sin aplicarlo:
+ * lo usan las tools `fs.propose.*` (dry-run) y es lo mismo que mostraría
+ * `git diff`, pero calculado en memoria sobre contenido propuesto.
+ */
+export function toUnifiedDiff(
+  relPath: string,
+  result: DiffResult,
+  opts: { exists?: boolean } = {}
+): string {
+  const exists = opts.exists !== false;
+  const out: string[] = [
+    `--- ${exists ? `a/${relPath}` : '/dev/null'}`,
+    `+++ b/${relPath}`,
+  ];
+  for (const h of result.hunks) {
+    out.push(`@@ -${h.oldStart},${h.oldCount} +${h.newStart},${h.newCount} @@`);
+    for (const l of h.lines) {
+      out.push((l.type === 'add' ? '+' : l.type === 'del' ? '-' : ' ') + l.text);
+    }
+  }
+  return out.join('\n');
+}
+
 function isAccepted(accepted: Set<string> | string[], id: string): boolean {
   return accepted instanceof Set ? accepted.has(id) : accepted.includes(id);
 }

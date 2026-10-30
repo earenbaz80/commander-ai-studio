@@ -24,6 +24,16 @@ export const AGENT_FUNCTION_DECLARATIONS = [
     parameters: { type: 'OBJECT', properties: { path: { type: 'STRING' }, oldString: { type: 'STRING' }, newString: { type: 'STRING' }, replaceAll: { type: 'BOOLEAN' } }, required: ['path', 'oldString', 'newString'] },
   },
   {
+    name: 'fs_propose_write',
+    description: 'Proponer escribir un archivo (crear o sobreescribir) SIN tocar disco: devuelve un diff unificado y el archivo queda intacto. Funciona en modo plan.',
+    parameters: { type: 'OBJECT', properties: { path: { type: 'STRING' }, content: { type: 'STRING' } }, required: ['path', 'content'] },
+  },
+  {
+    name: 'fs_propose_edit',
+    description: 'Proponer un edit reemplazando texto exacto SIN tocar disco: devuelve un diff unificado. Funciona en modo plan.',
+    parameters: { type: 'OBJECT', properties: { path: { type: 'STRING' }, oldString: { type: 'STRING' }, newString: { type: 'STRING' }, replaceAll: { type: 'BOOLEAN' } }, required: ['path', 'oldString', 'newString'] },
+  },
+  {
     name: 'fs_glob',
     description: 'Listar archivos por patrón glob (p. ej. src/**/*.tsx).',
     parameters: { type: 'OBJECT', properties: { pattern: { type: 'STRING' } }, required: ['pattern'] },
@@ -241,6 +251,7 @@ export const AGENT_FUNCTION_DECLARATIONS = [
 
 const FN_TO_TOOL: Record<string, string> = {
   fs_read: 'fs.read', fs_write: 'fs.write', fs_edit: 'fs.edit',
+  fs_propose_write: 'fs.propose.write', fs_propose_edit: 'fs.propose.edit',
   fs_glob: 'fs.glob', fs_grep: 'fs.grep', shell_run: 'shell.run', shell_job: 'shell.job',
   browser: 'browser', preview: 'preview',
   read_diagnostics: 'read_diagnostics',

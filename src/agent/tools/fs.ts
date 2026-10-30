@@ -84,6 +84,54 @@ export const fsEditTool: ToolDefinition<FsEditInput, FsEditOutput> = {
   run: async (input) => callServer('fs.edit', input),
 };
 
+export interface FsProposeWriteInput {
+  path: string;
+  content: string;
+}
+export interface FsProposeWriteOutput {
+  path: string;
+  changed: boolean;
+  exists: boolean;
+  additions: number;
+  deletions: number;
+  diff: string;
+  hint?: string;
+}
+export const fsProposeWriteTool: ToolDefinition<FsProposeWriteInput, FsProposeWriteOutput> = {
+  id: 'fs.propose.write',
+  description:
+    'Proponer escribir un archivo (crear o sobreescribir) SIN tocar disco. Devuelve un diff unificado ' +
+    'para que el usuario decida si se aplica. Funciona en modo plan.',
+  danger: false,
+  requiresApproval: () => false,
+  run: async (input) => callServer('fs.propose.write', input),
+};
+
+export interface FsProposeEditInput {
+  path: string;
+  oldString: string;
+  newString: string;
+  replaceAll?: boolean;
+}
+export interface FsProposeEditOutput {
+  path: string;
+  changed: boolean;
+  exists: boolean;
+  additions: number;
+  deletions: number;
+  diff: string;
+  hint?: string;
+}
+export const fsProposeEditTool: ToolDefinition<FsProposeEditInput, FsProposeEditOutput> = {
+  id: 'fs.propose.edit',
+  description:
+    'Proponer un edit (str_replace) SIN tocar disco. Devuelve un diff unificado para revisión. ' +
+    'Funciona en modo plan.',
+  danger: false,
+  requiresApproval: () => false,
+  run: async (input) => callServer('fs.propose.edit', input),
+};
+
 export interface FsGlobInput {
   pattern: string;
 }

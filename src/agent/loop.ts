@@ -9,7 +9,7 @@ import { TOOL_REGISTRY } from './registry';
 import { loadMCPServers, mcpListTools, listRegistryServers, listRegistryServerTools } from './mcp';
 import { TURN_CHARS, compactTurns, serializeResults } from './contextBudget';
 
-const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.grep', 'shell.run', 'shell.job', 'browser', 'preview', 'read_diagnostics', 'task', 'git.status', 'git.diff', 'git.log', 'git.commit', 'git.worktree', 'git.rebase', 'git.conflict', 'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list'];
+const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.propose.write', 'fs.propose.edit', 'fs.glob', 'fs.grep', 'shell.run', 'shell.job', 'browser', 'preview', 'read_diagnostics', 'task', 'git.status', 'git.diff', 'git.log', 'git.commit', 'git.worktree', 'git.rebase', 'git.conflict', 'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list'];
 /**
  * Huella estable de una toolCall: misma tool y mismos argumentos (el orden de
  * las claves no cuenta).
