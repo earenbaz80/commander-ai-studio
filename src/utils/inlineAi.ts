@@ -8,11 +8,12 @@
  */
 
 import { clientCredentialsFor, resolveEndpoint } from '../lib/aiProviders';
+import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
 
 /** Clave donde la app guarda el modelo activo (la escribe App.tsx). */
 export const SELECTED_MODEL_KEY = 'ai_studio_selected_model';
-/** Fallback si no hay modelo elegido: gratuito y sin API key. */
-export const DEFAULT_INLINE_MODEL = 'pollinations/openai';
+/** Fallback si no hay modelo elegido: el mismo modelo por defecto de la app. */
+export const DEFAULT_INLINE_MODEL = GEMINI_DEFAULT_MODEL;
 
 /** Clave de localStorage que habilita el ghost-text del editor (apagado por defecto). */
 export const AI_ENABLED_KEY = 'commander_editor_ai_enabled';

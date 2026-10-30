@@ -13,6 +13,7 @@ import {
   requestInlineEdit,
   DEFAULT_INLINE_MODEL,
 } from '../src/utils/inlineAi.js';
+import { GEMINI_DEFAULT_MODEL } from '../src/config/geminiModels.js';
 
 test('routeForModel enruta cada familia al endpoint del agente', () => {
   assert.equal(routeForModel('custom/foo'), '/api/custom/generate');
@@ -24,8 +25,15 @@ test('routeForModel enruta cada familia al endpoint del agente', () => {
   assert.equal(routeForModel('freebuff/gemini-4-argon'), '/api/freebuff/generate');
 });
 
-test('getActiveModel cae al default gratuito sin localStorage', () => {
+test('getActiveModel cae al default sin localStorage', () => {
   assert.equal(getActiveModel(), DEFAULT_INLINE_MODEL);
+});
+
+test('el default del editor es el modelo por defecto de la app, y va a su endpoint', () => {
+  // Antes era `pollinations/openai`, que respondía 404: el editor se quedaba
+  // sin sugerencias y el fallo aparecía al escribir, no al configurar.
+  assert.equal(DEFAULT_INLINE_MODEL, GEMINI_DEFAULT_MODEL);
+  assert.equal(routeForModel(DEFAULT_INLINE_MODEL), '/api/gemini/generate');
 });
 
 test('stripCodeFences quita la valla envolvente', () => {
