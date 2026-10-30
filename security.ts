@@ -29,21 +29,39 @@ export const SHELL_ALLOW_PREFIX = [
   'grep ', 'rg ', 'head ', 'tail ', 'wc ', 'sort ', 'uniq ',
 ];
 
+/**
+ * Tools que el servidor ejecuta para el agente. Es la lista que decide dos cosas:
+ *
+ *  - qué `toolId` acepta `/api/agent/run-tool` (y, con eso, qué puede llamar el
+ *    orquestador sin morir en un 400);
+ *  - qué tools se pueden recortar con `allowedTools`/`deniedTools` del proyecto.
+ *
+ * La mayoría viaja por run-tool. `worktree.create` no: el cliente habla con
+ * `POST /api/worktrees` porque lo que hace (git worktree add, copiar .env,
+ * `npm install`) no es una tool de contexto. Aun así entra aquí, porque ese
+ * endpoint aplica los mismos permisos: estar en esta lista es lo que hace que
+ * el modo plan y las listas del proyecto lo gobiernen.
+ *
+ * `tests/toolRegistry.test.ts` cruza esta lista con `TOOL_REGISTRY` en las dos
+ * direcciones: una tool que el modelo ve y el servidor rechaza es un bug de una
+ * línea, y una que el servidor acepta pero nadie define es la mitad de un unit.
+ */
 export const AGENT_TOOLS = new Set([
   'fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.grep',
   'fs.propose.edit', 'fs.propose.write',
   'shell.run', 'shell.job',
   'browser', 'preview',
   'read_diagnostics',
-  'task',
+  'task', 'spawn_agents', 'skill', 'run_file_change_hooks',
   'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list',
   'git.status', 'git.diff', 'git.log', 'git.commit',
   'git.worktree', 'git.rebase', 'git.conflict',
+  'worktree.create',
 ]);
 
 // ── Rutas sensibles: nunca se leen ni se buscan ──
 //
-// `shell.run` ya bloquea `.env`/id_rsa/credentials desde SHELL_BLOCKED, pero
+// `shell.run` ya bloquea `.env`/`id_rsa`/`credentials` desde SHELL_BLOCKED, pero
 // las tools de filesystem pasan por otro camino. Sin este filtro, un
 // `fs.read({path: '.env'})` manda las claves del proyecto al proveedor del LLM.
 

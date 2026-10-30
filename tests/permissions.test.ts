@@ -51,7 +51,11 @@ test('enforceTool: build permite todo', () => {
 
 test('enforceTool: plan deniega escribir y ejecutar, permite leer', () => {
   const plan = { ...DEFAULT_PERMISSIONS, mode: 'plan' as const };
-  for (const t of ['fs.write', 'fs.edit', 'shell.run', 'git.commit', 'code.run']) {
+  // `run_file_change_hooks` reescribe el archivo con el formateador: es una
+  // escritura con otro nombre, y whitelistearla no puede abrir plan mode.
+  // `worktree.create` entra aunque no viaje por run-tool: su ruta
+  // (`POST /api/worktrees`) consulta esta misma lista antes de crear la rama.
+  for (const t of ['fs.write', 'fs.edit', 'shell.run', 'git.commit', 'code.run', 'run_file_change_hooks', 'worktree.create']) {
     assert.match(enforceTool(plan, t) || '', /Modo Plan/);
   }
   for (const t of ['fs.read', 'fs.glob', 'fs.grep', 'read_diagnostics']) {

@@ -25,6 +25,7 @@
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { startServer, type ServerHarness } from './helpers/serverHarness.js';
@@ -125,4 +126,158 @@ test('POST /api/queue de un hilo inexistente responde 404, no un FOREIGN KEY', a
 
   const list = await srv.request('GET', `/api/queue/${ghost}`);
   assert.equal(list.body.items.length, 0, 'no debe quedar nada encolado');
+});
+
+test('las sesiones de agente se crean, listan y borran', async () => {
+  const sinGoal = await srv.request('POST', '/api/agent/sessions', {});
+  assert.equal(sinGoal.status, 400, sinGoal.raw);
+  assert.match(String(sinGoal.body.error), /goal requerido/);
+
+  const creada = await srv.request('POST', '/api/agent/sessions', { goal: 'revisar el diff', maxSteps: 5 });
+  assert.equal(creada.status, 200, creada.raw);
+  const id = creada.body.session.id;
+  assert.ok(id, 'la respuesta trae el id que usará spawn_agents');
+  assert.equal(creada.body.session.status, 'idle', 'crear la sesión no arranca el bucle del LLM');
+
+  const lista = await srv.request('GET', '/api/agent/sessions');
+  assert.equal(lista.status, 200, lista.raw);
+  const item = (lista.body.sessions as any[]).find((s) => s.id === id);
+  assert.ok(item, 'la sesión creada aparece en el registro');
+  assert.ok(item.createdAt > 0, 'createdAt sirve para ordenar; antes era siempre 0');
+
+  const borrada = await srv.request('DELETE', `/api/agent/sessions/${id}`);
+  assert.equal(borrada.status, 200, borrada.raw);
+  const otraVez = await srv.request('DELETE', `/api/agent/sessions/${id}`);
+  assert.equal(otraVez.status, 404, 'borrar dos veces no finge éxito');
+
+  const despues = await srv.request('GET', '/api/agent/sessions');
+  assert.equal((despues.body.sessions as any[]).some((s) => s.id === id), false);
+});
+
+test('spawn_agents encuentra la sesión padre que crea el bootstrap', async () => {
+  const creada = await srv.request('POST', '/api/agent/sessions', { goal: 'padre de subagentes', maxSteps: 3 });
+  assert.equal(creada.status, 200, creada.raw);
+  const id = creada.body.session.id;
+
+  // Sin agentes responde 400, y sólo llega ahí si el padre existe: con un id
+  // inventado el handler muere antes, con 404.
+  const vacio = await srv.request('POST', '/api/agent/run-tool', {
+    toolId: 'spawn_agents',
+    input: { parentSessionId: id, agents: [] },
+  });
+  assert.equal(vacio.status, 400, `el padre debe existir: ${vacio.raw}`);
+  assert.match(String(vacio.body.error), /agents requerido/);
+
+  const fantasma = await srv.request('POST', '/api/agent/run-tool', {
+    toolId: 'spawn_agents',
+    input: { parentSessionId: 'sesion-que-no-existe', agents: [] },
+  });
+  assert.equal(fantasma.status, 404, fantasma.raw);
+  assert.match(String(fantasma.body.error), /Sesión padre no encontrada/);
+
+  await srv.request('DELETE', `/api/agent/sessions/${id}`);
+});
+
+test('GET /api/agent/sessions/:id/subagents expone los hijos del padre', async () => {
+  const creada = await srv.request('POST', '/api/agent/sessions', { goal: 'padre del panel', maxSteps: 3 });
+  assert.equal(creada.status, 200, creada.raw);
+  const id = creada.body.session.id;
+
+  // Sin hijos todavía: lista vacía, no 404 (el panel sondea desde el minuto uno).
+  const vacio = await srv.request('GET', `/api/agent/sessions/${id}/subagents`);
+  assert.equal(vacio.status, 200, vacio.raw);
+  assert.deepEqual(vacio.body.subagents, []);
+
+  const fantasma = await srv.request('GET', '/api/agent/sessions/sesion-que-no-existe/subagents');
+  assert.equal(fantasma.status, 404, fantasma.raw);
+  assert.match(String(fantasma.body.error), /sesión no encontrada/);
+
+  // Al borrar el padre, su endpoint deja de existir: no se muestran huérfanos.
+  const borrada = await srv.request('DELETE', `/api/agent/sessions/${id}`);
+  assert.equal(borrada.status, 200, borrada.raw);
+  const despues = await srv.request('GET', `/api/agent/sessions/${id}/subagents`);
+  assert.equal(despues.status, 404, despues.raw);
+});
+
+test('GET /api/agent/sessions/:id/events abre un SSE con el estado inicial', async () => {
+  const creada = await srv.request('POST', '/api/agent/sessions', { goal: 'padre del stream', maxSteps: 3 });
+  assert.equal(creada.status, 200, creada.raw);
+  const id = creada.body.session.id;
+
+  const fantasma = await srv.request('GET', '/api/agent/sessions/sesion-que-no-existe/events');
+  assert.equal(fantasma.status, 404, 'sin sesión no hay stream que abrir');
+
+  // SSE no termina nunca: se corta en cuanto llega el primer evento (el estado
+  // que ya había al conectar), que es justo lo que usa el panel al montarse.
+  const primerEvento = await new Promise<string>((resolve, reject) => {
+    const req = http.get(`${srv.baseUrl}/api/agent/sessions/${id}/events`, (res) => {
+      try {
+        assert.equal(String(res.headers['content-type']), 'text/event-stream');
+      } catch (e) { reject(e); return; }
+      let buf = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        buf += chunk;
+        if (buf.includes('\n\n')) { req.destroy(); resolve(buf); }
+      });
+    });
+    req.on('error', (e: any) => {
+      // Destruir el socket a propósito también emite error: ya hay respuesta.
+      if (String(e?.code) !== 'ECONNRESET') reject(e);
+    });
+    setTimeout(() => { req.destroy(); reject(new Error('el stream no mandó el estado inicial')); }, 10_000).unref();
+  });
+
+  assert.match(primerEvento, /event: subagents/);
+  assert.match(primerEvento, /"subagents":\[\]/);
+
+  await srv.request('DELETE', `/api/agent/sessions/${id}`);
+});
+
+test('el stream SSE se cierra cuando se borra la sesión padre', async () => {
+  const creada = await srv.request('POST', '/api/agent/sessions', { goal: 'padre que se borra', maxSteps: 2 });
+  assert.equal(creada.status, 200, creada.raw);
+  const id = creada.body.session.id;
+
+  const resultado = await new Promise<{ texto: string; termino: boolean }>((resolve, reject) => {
+    let borrando = false;
+    const req = http.get(`${srv.baseUrl}/api/agent/sessions/${id}/events`, (res) => {
+      let buf = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        buf += chunk;
+        // Con el stream ya abierto se borra el padre: el servidor tiene que
+        // avisar y cerrar en vez de dejar el socket abierto y mudo.
+        if (!borrando && buf.includes('event: subagents')) {
+          borrando = true;
+          void srv.request('DELETE', `/api/agent/sessions/${id}`);
+        }
+      });
+      res.on('end', () => resolve({ texto: buf, termino: true }));
+    });
+    req.on('error', reject);
+    setTimeout(() => {
+      req.destroy();
+      reject(new Error('el stream no se cerró tras borrar la sesión padre'));
+    }, 10_000).unref();
+  });
+
+  assert.equal(resultado.termino, true);
+  assert.match(resultado.texto, /event: gone/);
+});
+
+test('POST /api/worktrees valida y aplica permisos antes de crear nada', async () => {
+  // Crear un worktree hace `git worktree add`, copia .env y corre `npm install`:
+  // la ruta pasa por los mismos permisos que las tools. Los dos casos de abajo
+  // mueren antes de tocar git, así que no dejan worktrees ni ramas sueltas.
+  const sinProyecto = await srv.request('POST', '/api/worktrees', { threadId: 'th-sin-proyecto' });
+  assert.equal(sinProyecto.status, 400, `se esperaba 400, llegó ${sinProyecto.status}: ${sinProyecto.raw}`);
+  assert.equal(sinProyecto.body.success, false);
+
+  const fuera = await srv.request('POST', '/api/worktrees', {
+    threadId: 'th-fuera',
+    projectPath: path.join(os.tmpdir(), 'no-es-un-proyecto'),
+  });
+  assert.equal(fuera.status, 400, `una ruta fuera de los roots no puede gobernar un worktree: ${fuera.raw}`);
+  assert.match(String(fuera.body.error), /No existe|fuera de los proyectos|Path requerido/i);
 });

@@ -12,6 +12,8 @@ export type ToolId =
   | 'preview'
   | 'read_diagnostics'
   | 'task'
+  | 'spawn_agents'
+  | 'skill'
   | 'git.status'
   | 'git.diff'
   | 'git.log'
@@ -21,7 +23,9 @@ export type ToolId =
   | 'git.conflict'
   | 'code.run'
   | 'web.fetch'
-  | 'web.search';
+  | 'web.search'
+  | 'run_file_change_hooks'
+  | 'worktree.create';
 
 export interface ToolContext {
   cwd: string;
@@ -70,6 +74,8 @@ export interface ToolDefinition<Input = unknown, Output = unknown> {
   id: ToolId;
   description: string;
   danger: boolean;
+  /** Si true (default), la tool fuerza el siguiente paso del agente. Tools de solo lectura/consulta pueden marcar false. */
+  endsAgentStep?: boolean;
   schema?: unknown;
   requiresApproval: (input: Input, ctx: ToolContext) => boolean;
   run: (input: Input, ctx: ToolContext) => Promise<ToolResult<Output>>;

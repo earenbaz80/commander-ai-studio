@@ -40,15 +40,22 @@ const FILE_WRITE_TOOLS = new Set(['fs.write', 'fs.edit', 'git.commit']);
  * `browser` y `preview` también entran aquí: uno maneja un proceso externo y
  * el otro puede dejar un servidor corriendo. En modo plan/readonly no arrancan.
  *
- * `git.worktree`, `git.rebase`, `git.conflict` y `mcp.call` también entran
- * aquí: pueden mover ramas, cerrar un merge o llamar a un servidor externo.
- * Pero la clasificación es de la TOOL, no de cada llamada: `git.worktree
- * action=list` y `git.conflict` sin resolver sólo leen el repo. Esas variantes
- * pasan en plan y readonly vía `isReadOnlyCall` (agentTools.ts), el único punto
- * por el que pasan todas las tools: una tool nueva con variante de lectura hay
- * que marcarla también allí.
+ * `git.worktree` y `git.conflict` están aquí por lo que pueden llegar a hacer,
+ * no por todo lo que hacen: sus variantes de consulta (`action=list`, y
+ * `git.conflict` sin `resolve`/`stage`/`commit`/`abort`) sí pasan en plan y
+ * readonly. De eso se encarga `isReadOnlyCall` en `agentTools.ts`, el único
+ * punto por el que pasan todas las tools; añadir aquí una tool nueva con
+ * variante de lectura exige marcarla también allí.
+ *
+ * `run_file_change_hooks` corre el formateador con `--write`: entra por lo que
+ * hace al archivo, aunque se venda como «hooks». Whitelistearla sin esto la
+ * dejaba reescribiendo en modo plan.
+ *
+ * `worktree.create` crea una rama, copia `.env` y corre `npm install`; en plan
+ * y readonly no debe hacerlo. Su único punto de entrada es `POST /api/worktrees`,
+ * y es ese handler quien consulta `enforceTool` con esta lista.
  */
-const EXEC_TOOLS = new Set(['shell.run', 'shell.job', 'code.run', 'browser', 'preview', 'git.worktree', 'git.rebase', 'git.conflict', 'mcp.call']);
+const EXEC_TOOLS = new Set(['shell.run', 'shell.job', 'code.run', 'browser', 'preview', 'git.worktree', 'git.rebase', 'git.conflict', 'mcp.call', 'run_file_change_hooks', 'worktree.create']);
 
 // ── Coincidencia de globs ( ** , * , ? ) sobre rutas relativas ──
 
