@@ -30,7 +30,9 @@ export const SHELL_ALLOW_PREFIX = [
 ];
 
 export const AGENT_TOOLS = new Set([
-  'fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.grep', 'shell.run', 'shell.job',
+  'fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.grep',
+  'fs.propose.edit', 'fs.propose.write',
+  'shell.run', 'shell.job',
   'browser', 'preview',
   'read_diagnostics',
   'task',

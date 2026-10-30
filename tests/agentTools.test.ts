@@ -1023,6 +1023,121 @@ test('git.conflict resolve all theirs restaura el archivo borrado por nosotros',
   assert.equal((state.data as any).inMerge, true);
 });
 
+test('fs.propose.write devuelve el diff y no crea el archivo', async () => {
+  const dir = path.join(TEST_DIR, 'propose-write');
+  fs.mkdirSync(dir, { recursive: true });
+
+  const res = await executeAgentTool('fs.propose.write', {
+    root: dir,
+    path: 'nuevo.ts',
+    content: 'export const a = 1;\nexport const b = 2;\n',
+  });
+
+  assert.equal(res.ok, true, String(res.error));
+  const data = res.data as any;
+  assert.equal(data.changed, true);
+  assert.equal(data.exists, false, 'un archivo nuevo se declara como tal');
+  assert.equal(data.additions, 2);
+  assert.equal(data.deletions, 0);
+  assert.match(data.diff, /^--- \/dev\/null$/m, 'un archivo nuevo no tiene versión anterior');
+  assert.match(data.diff, /^\+\+\+ b\/nuevo\.ts$/m);
+  assert.equal(fs.existsSync(path.join(dir, 'nuevo.ts')), false, 'el dry-run no debe tocar disco');
+});
+
+test('fs.propose.edit muestra el cambio y deja el archivo intacto', async () => {
+  const dir = path.join(TEST_DIR, 'propose-edit');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, 'app.ts');
+  const original = 'const a = 1;\nconst b = 2;\nconst c = 3;\n';
+  fs.writeFileSync(file, original, 'utf8');
+
+  const res = await executeAgentTool('fs.propose.edit', {
+    root: dir,
+    path: 'app.ts',
+    oldString: 'const b = 2;',
+    newString: 'const b = 20;\nconst d = 4;',
+  });
+
+  assert.equal(res.ok, true, String(res.error));
+  const data = res.data as any;
+  assert.equal(data.changed, true);
+  assert.equal(data.exists, true);
+  assert.equal(data.additions, 2);
+  assert.equal(data.deletions, 1);
+  assert.match(data.diff, /^--- a\/app\.ts$/m);
+  assert.match(data.diff, /^-const b = 2;$/m);
+  assert.match(data.diff, /^\+const b = 20;$/m);
+  assert.equal(fs.readFileSync(file, 'utf8'), original, 'el archivo no se toca sin aprobación');
+});
+
+test('fs.propose.edit sin coincidencia no inventa un diff', async () => {
+  const dir = path.join(TEST_DIR, 'propose-sin-match');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'a.ts'), 'uno\n', 'utf8');
+
+  const res = await executeAgentTool('fs.propose.edit', {
+    root: dir,
+    path: 'a.ts',
+    oldString: 'no-existe',
+    newString: 'x',
+  });
+
+  assert.equal(res.ok, false);
+  assert.match(String(res.error), /oldString no encontrado/);
+});
+
+test('proponer el mismo contenido no se presenta como cambio', async () => {
+  const dir = path.join(TEST_DIR, 'propose-igual');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'igual.ts'), 'igual\n', 'utf8');
+
+  const res = await executeAgentTool('fs.propose.write', { root: dir, path: 'igual.ts', content: 'igual\n' });
+
+  assert.equal(res.ok, true, String(res.error));
+  const data = res.data as any;
+  assert.equal(data.changed, false);
+  assert.equal(data.diff, '', 'sin cambio no hay diff que revisar');
+  assert.match(String(data.hint), /Sin cambios/);
+});
+
+test('en plan y readonly se puede proponer, pero no aplicar', async () => {
+  const dir = path.join(TEST_DIR, 'propose-modos');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, 'x.ts');
+  fs.writeFileSync(file, 'viejo\n', 'utf8');
+
+  try {
+    for (const mode of ['plan', 'readonly'] as const) {
+      setPermissions(dir, { mode });
+
+      const propose = await executeAgentTool('fs.propose.edit', {
+        root: dir,
+        path: 'x.ts',
+        oldString: 'viejo',
+        newString: 'nuevo',
+      });
+      assert.equal(propose.ok, true, `${mode}: proponer es leer (${String(propose.error)})`);
+      assert.match(String((propose.data as any).diff), /^\+nuevo$/m);
+
+      const write = await executeAgentTool('fs.write', { root: dir, path: 'x.ts', content: 'otra cosa\n' });
+      assert.equal((write as any).status, 403, `${mode}: aplicar sigue bloqueado`);
+      assert.equal(fs.readFileSync(file, 'utf8'), 'viejo\n');
+    }
+  } finally {
+    setPermissions(dir, { mode: 'build' });
+  }
+});
+
+test('fs.propose.write no propone sobre un archivo de secretos', async () => {
+  const dir = path.join(TEST_DIR, 'propose-secretos');
+  fs.mkdirSync(dir, { recursive: true });
+
+  const res = await executeAgentTool('fs.propose.write', { root: dir, path: '.env', content: 'K=1\n' });
+
+  assert.equal(res.ok, false, 'proponer una escritura no es excusa para leer el secreto');
+  assert.equal((res as any).status, 403);
+});
+
 after(() => {
   if (fs.existsSync(TEST_DIR)) fs.rmSync(TEST_DIR, { recursive: true, force: true });
   try { removeRoot(gitRoot); } catch { /* ignore */ }

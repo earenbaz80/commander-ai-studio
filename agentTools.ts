@@ -17,6 +17,7 @@ import { snapshotPath } from './checkpoints';
 import { uid } from './src/agent/id';
 import { invalidateIndex } from './repoIndex';
 import { getPermissions, enforceTool, enforcePath } from './permissions';
+import { diffLines, toUnifiedDiff } from './src/utils/patch';
 import { executeTask, getSession } from './agentSession';
 import { listServerTools, callServerTool } from './src/mcp/client';
 import { runBrowserAction } from './browserSession';
@@ -395,6 +396,34 @@ function searchRootsFor(rootHint?: string): string[] {
 }
 
 /**
+ * Diff unificado de un cambio propuesto, calculado en memoria y sin escribir.
+ * Es el corazón de las tools `fs.propose.*`: el modelo ve el cambio exacto y el
+ * archivo queda intacto hasta que el usuario apruebe.
+ */
+function proposal(p: string, before: string, after: string, exists: boolean) {
+  const result = diffLines(before, after, 3);
+  if (result.hunks.length === 0) {
+    return {
+      path: p,
+      changed: false,
+      exists,
+      additions: 0,
+      deletions: 0,
+      diff: '',
+      hint: 'Sin cambios: el archivo ya tiene ese contenido.',
+    };
+  }
+  return {
+    path: p,
+    changed: true,
+    exists,
+    additions: result.additions,
+    deletions: result.deletions,
+    diff: toUnifiedDiff(p, result, { exists }),
+  };
+}
+
+/**
  * ¿La llamada sólo consulta, aunque la tool figure entre las que ejecutan?
  *
  * `EXEC_TOOLS` bloquea en plan/readonly todo lo que pueda modificar algo de
@@ -555,6 +584,42 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
     fs.writeFileSync(target, updated, 'utf8');
     try { invalidateIndex(rootAbs); } catch { /* ignore */ }
     return { ok: true, data: { path: p, replaced: count } };
+  }
+
+  // ── Dry-run: proponer un cambio sin tocar disco ──
+  //
+  // Estas tools sólo leen, así que funcionan incluso en modo plan (donde
+  // `fs.write`/`fs.edit` responden 403). Devuelven un diff unificado para que el
+  // modelo razone sobre el cambio exacto y el usuario decida si se aplica.
+  if (toolId === 'fs.propose.edit') {
+    const p = String(input.path || '').slice(0, 500);
+    const oldStr = String(input.oldString || '');
+    const newStr = String(input.newString || '');
+    if (!p || !oldStr) return { ok: false, error: 'path y oldString requeridos' };
+    if (isSensitivePath(p)) return { ok: false, error: SENSITIVE_READ_MESSAGE, status: 403 };
+    const pathErr = enforcePath(perms, p, 'read');
+    if (pathErr) return { ok: false, error: pathErr, status: 403 };
+    const target = agentSafePath(p, rootHint);
+    if (!fs.existsSync(target)) return { ok: false, error: `No existe: ${p}` };
+    const before = fs.readFileSync(target, 'utf8');
+    if (!before.includes(oldStr)) return { ok: false, error: 'oldString no encontrado en el archivo' };
+    const after = input.replaceAll
+      ? before.split(oldStr).join(newStr)
+      : before.replace(oldStr, () => newStr);
+    return { ok: true, data: proposal(p, before, after, true) };
+  }
+
+  if (toolId === 'fs.propose.write') {
+    const p = String(input.path || '').slice(0, 500);
+    const content = String(input.content || '').slice(0, 5000000);
+    if (!p) return { ok: false, error: 'path requerido' };
+    if (isSensitivePath(p)) return { ok: false, error: SENSITIVE_READ_MESSAGE, status: 403 };
+    const pathErr = enforcePath(perms, p, 'read');
+    if (pathErr) return { ok: false, error: pathErr, status: 403 };
+    const target = agentSafePath(p, rootHint);
+    const isFile = fs.existsSync(target) && !fs.statSync(target).isDirectory();
+    const before = isFile ? fs.readFileSync(target, 'utf8') : '';
+    return { ok: true, data: proposal(p, before, content, isFile) };
   }
 
   const roots = searchRootsFor(rootHint);

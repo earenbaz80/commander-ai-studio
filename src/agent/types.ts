@@ -4,6 +4,8 @@ export type ToolId =
   | 'fs.edit'
   | 'fs.glob'
   | 'fs.grep'
+  | 'fs.propose.write'
+  | 'fs.propose.edit'
   | 'shell.run'
   | 'shell.job'
   | 'browser'
