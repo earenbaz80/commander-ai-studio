@@ -1,14 +1,16 @@
 import type { Language } from '../i18n/translations';
+import { deText } from '../i18n/de';
 import React, { useMemo, useState, useEffect } from 'react';
 import { Send, Play, Square, Terminal, ListTodo, Plug, Activity, X, RefreshCw, RotateCcw, Clock, Users, Check } from 'lucide-react';
 import type { AgentState, AgentStep } from '../agent/types';
 import { loadMCPServers, saveMCPServers, mcpListTools, type MCPServerConfig } from '../agent/mcp';
 import { loadMetrics, metricsSummary } from '../agent/telemetry';
-import { loadSessions, deleteSession, type AgentSession } from '../agent/sessions';
+import { loadSessions, loadSessionsFromServer, deleteSession, type AgentSession } from '../agent/sessions';
 import { gitConflictState } from '../agent/tools/git';
 import PlanEditor, { type PlanItem } from './PlanEditor';
 import RollbackTimeline from './RollbackTimeline';
 import SubAgentPanel from './SubAgentPanel';
+import { ServerSubAgents } from './ServerSubAgents';
 
 interface AgentModeProps {
   cwd: string;
@@ -38,6 +40,9 @@ export const AgentMode: React.FC<AgentModeProps> = ({
   onPlanChange,
   lang,
 }) => {
+  // Los textos que aún estaban sólo en castellano se traducen con este par; el
+  // alemán sale del diccionario. El resto del panel ya usa ternarios es/de/en.
+  const t = (es: string, en: string) => (lang === 'es' ? es : lang === 'de' ? deText(en) : en);
   const [goal, setGoal] = useState('');
   const [toolId, setToolId] = useState('fs.read');
   const [toolInput, setToolInput] = useState('{"path":"README.md"}');
@@ -49,6 +54,19 @@ export const AgentMode: React.FC<AgentModeProps> = ({
   const [pluginId, setPluginId] = useState('');
   const [installingPlugin, setInstallingPlugin] = useState<string | null>(null);
   const [sessions, setSessions] = useState<AgentSession[]>(() => loadSessions());
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSessionsFromServer().then((remote) => {
+      if (cancelled || remote.length === 0) return;
+      const local = loadSessions();
+      const byId = new Map<string, AgentSession>();
+      for (const s of local) byId.set(s.id, s);
+      for (const s of remote) if (!byId.has(s.id)) byId.set(s.id, s);
+      setSessions(Array.from(byId.values()).sort((a, b) => b.ts - a.ts).slice(0, 20));
+    });
+    return () => { cancelled = true; };
+  }, []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const metrics = useMemo(() => metricsSummary(loadMetrics().slice(0, 100)), [state.steps.length]);
 
@@ -64,6 +82,26 @@ export const AgentMode: React.FC<AgentModeProps> = ({
   const [currentCheckpointIndex, setCurrentCheckpointIndex] = useState(0);
   const [subAgents, setSubAgents] = useState<Array<{id: string; name: string; role: string; status: 'idle' | 'running' | 'completed' | 'failed' | 'paused'; progress: number; currentTask: string; tasksCompleted: number; tasksTotal: number; startTime: number; endTime?: number; tokensUsed: number; tokensBudget: number; currentTool?: string; logs: Array<{id: string; timestamp: number; type: 'info' | 'success' | 'error' | 'warning' | 'tool' | 'thought'; message: string; tool?: string; duration?: number}>; color: string}>>([]);
   const [activePanel, setActivePanel] = useState<'plan' | 'timeline' | 'subagents' | 'mcp' | 'plugins' | 'conflict' | 'metrics' | 'sessions'>('plan');
+  const [autonomousGoal, setAutonomousGoal] = useState('');
+  const [autonomousStatus, setAutonomousStatus] = useState<string | null>(null);
+  const launchAutonomous = async () => {
+    const goal = autonomousGoal.trim();
+    if (!goal) return;
+    setAutonomousStatus(t('Planificando…', 'Planning…'));
+    try {
+      const threadId = `auto-${Date.now()}`;
+      await fetch('/api/threads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: threadId, projectPath: cwd, title: goal }) });
+      const res = await fetch(`/api/autonomous/${encodeURIComponent(threadId)}/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ goal }) });
+      const data = await res.json();
+      setAutonomousStatus(
+        data?.success
+          ? `${t('Campaña lanzada', 'Campaign launched')} (${data?.result?.completed ?? 0} ${t('tareas', 'tasks')})`
+          : (data?.error || 'Error'),
+      );
+    } catch (e: any) {
+      setAutonomousStatus(e?.message || 'Error');
+    }
+  };
   // `state` viene del orquestador como prop de solo lectura, así que la salida
   // del conflicto de merge se mantiene como estado local de la vista.
   const [conflictOutput, setConflictOutput] = useState<string>('');
@@ -173,11 +211,11 @@ export const AgentMode: React.FC<AgentModeProps> = ({
         setConflictMsg({
           ok: true,
           text: r.data?.kept
-            ? `${path}: lado ${side} conservado y preparado con git add`
-            : `${path}: borrado aceptado y preparado con git rm`,
+            ? `${path}: ${t('lado', 'side')} ${side} ${t('conservado y preparado con git add', 'kept and staged with git add')}`
+            : `${path}: ${t('borrado aceptado y preparado con git rm', 'deletion accepted and staged with git rm')}`,
         });
       } else {
-        setConflictMsg({ ok: false, text: String(r?.error || 'No se pudo resolver el conflicto') });
+        setConflictMsg({ ok: false, text: String(r?.error || t('No se pudo resolver el conflicto', 'Could not resolve the conflict')) });
       }
       await refreshMerge();
     } catch (e: any) {
@@ -198,11 +236,11 @@ export const AgentMode: React.FC<AgentModeProps> = ({
         const unstaged = (r.data?.unstaged || []) as Array<{ path: string; error: string }>;
         setConflictMsg({
           ok: true,
-          text: `${staged.length} archivo(s) marcados con git add`
-            + (unstaged.length ? `; pendientes: ${unstaged.map((s) => `${s.path} (${s.error})`).join(', ')}` : ''),
+          text: `${staged.length} ${t('archivo(s) marcados con git add', 'file(s) staged with git add')}`
+            + (unstaged.length ? `; ${t('pendientes', 'pending')}: ${unstaged.map((s) => `${s.path} (${s.error})`).join(', ')}` : ''),
         });
       } else {
-        setConflictMsg({ ok: false, text: String(r?.error || 'No se pudo cerrar el merge') });
+        setConflictMsg({ ok: false, text: String(r?.error || t('No se pudo cerrar el merge', 'Could not close the merge')) });
       }
       await refreshMerge();
     } catch (e: any) {
@@ -223,9 +261,9 @@ export const AgentMode: React.FC<AgentModeProps> = ({
     try {
       const r = await onRunTool('git.conflict', { all: true, commit: true });
       if (r?.ok) {
-        setConflictMsg({ ok: true, text: `Merge completado en ${r.data?.hash || 'HEAD'}` });
+        setConflictMsg({ ok: true, text: `${t('Merge completado en', 'Merge completed at')} ${r.data?.hash || 'HEAD'}` });
       } else {
-        setConflictMsg({ ok: false, text: String(r?.error || 'No se pudo completar el merge') });
+        setConflictMsg({ ok: false, text: String(r?.error || t('No se pudo completar el merge', 'Could not complete the merge')) });
       }
       await refreshMerge();
     } catch (e: any) {
@@ -245,11 +283,11 @@ export const AgentMode: React.FC<AgentModeProps> = ({
     try {
       const r = await onRunTool('git.conflict', { all: true, abort: true });
       if (r?.ok) {
-        setConflictMsg({ ok: true, text: 'Merge abortado: el árbol quedó como estaba antes del merge' });
+        setConflictMsg({ ok: true, text: t('Merge abortado: el árbol quedó como estaba antes del merge', 'Merge aborted: the tree is back to its pre-merge state') });
         setConflictOutput('');
         setConflictPath('');
       } else {
-        setConflictMsg({ ok: false, text: String(r?.error || 'No se pudo abortar el merge') });
+        setConflictMsg({ ok: false, text: String(r?.error || t('No se pudo abortar el merge', 'Could not abort the merge')) });
       }
       await refreshMerge();
     } catch (e: any) {
@@ -279,22 +317,22 @@ export const AgentMode: React.FC<AgentModeProps> = ({
           const skipped = (r.data?.skipped || []) as Array<{ path: string; error: string }>;
           setConflictMsg({
             ok: true,
-            text: `${files.length} archivo(s) resueltos como ${side}`
-              + (skipped.length ? `; omitidos: ${skipped.map((s) => s.path).join(', ')}` : '')
-              + ' (sin stagear)',
+            text: `${files.length} ${t('archivo(s) resueltos como', 'file(s) resolved as')} ${side}`
+              + (skipped.length ? `; ${t('omitidos', 'skipped')}: ${skipped.map((s) => s.path).join(', ')}` : '')
+              + ` ${t('(sin stagear)', '(unstaged)')}`,
           });
           setConflictOutput('');
           setConflictPath('');
         } else {
           setConflictMsg({
             ok: true,
-            text: `${r.data?.resolved ?? 0} bloque(s) resueltos como ${side} en ${r.data?.path || conflictPath} (sin stagear)`,
+            text: `${r.data?.resolved ?? 0} ${t('bloque(s) resueltos como', 'block(s) resolved as')} ${side} ${t('en', 'in')} ${r.data?.path || conflictPath} ${t('(sin stagear)', '(unstaged)')}`,
           });
           setConflictOutput('');
           setConflictPath('');
         }
       } else {
-        setConflictMsg({ ok: false, text: String(r?.error || 'No se pudo resolver el conflicto') });
+        setConflictMsg({ ok: false, text: String(r?.error || t('No se pudo resolver el conflicto', 'Could not resolve the conflict')) });
       }
       await refreshMerge();
     } catch (e: any) {
@@ -473,7 +511,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                   className="nc-button text-xs py-1 px-2 flex items-center gap-1"
                 >
                   <Send className="w-3 h-3" />
-                  <span>Run Tool</span>
+                  <span>{t('Ejecutar tool', 'Run Tool')}</span>
                 </button>
               </div>
             </div>
@@ -594,7 +632,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
               }`}
             >
               <ListTodo className="w-3.5 h-3.5" />
-              <span>{lang === 'es' ? 'SESESIONES' : lang === 'de' ? 'SITZUNGEN' : 'SESSIONS'}</span>
+              <span>{lang === 'es' ? 'SESIONES' : lang === 'de' ? 'SITZUNGEN' : 'SESSIONS'}</span>
             </button>
           </div>
 
@@ -607,6 +645,21 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                 lang={lang}
               />
             )}
+
+            <div className="mt-3 border border-cyan-700/40 rounded p-2">
+              <div className="text-xs text-cyan-300 mb-1">{t('Campaña autónoma (manager-LLM)', 'Autonomous campaign (manager-LLM)')}</div>
+              <textarea
+                value={autonomousGoal}
+                onChange={(e) => setAutonomousGoal(e.target.value)}
+                placeholder={t('Objetivo de la campaña…', 'Campaign goal…')}
+                className="w-full text-xs bg-black/40 border border-cyan-900/40 rounded p-1 text-cyan-100"
+                rows={2}
+              />
+              <div className="flex items-center gap-2 mt-1">
+                <button onClick={launchAutonomous} className="text-xs px-2 py-1 border border-cyan-500/50 rounded text-cyan-200 hover:bg-cyan-500/10">{t('Lanzar', 'Launch')}</button>
+                {autonomousStatus && <span className="text-xs text-cyan-400/70">{autonomousStatus}</span>}
+              </div>
+            </div>
 
             {activePanel === 'timeline' && (
               <RollbackTimeline
@@ -622,22 +675,28 @@ export const AgentMode: React.FC<AgentModeProps> = ({
             )}
 
             {activePanel === 'subagents' && (
-              <SubAgentPanel
-                subAgents={subAgents}
-                onAgentAction={handleAgentAction}
-                onCreateAgent={handleCreateAgent}
-                onDeleteAgent={handleDeleteAgent}
-                onViewLogs={handleViewLogs}
-                isRunning={state.running}
-                lang={lang}
-              />
+              <>
+                {/* Los que se crean a mano en la interfaz y los que corren de
+                    verdad en el servidor son dos cosas distintas: éstos últimos
+                    se consultan al endpoint mientras trabajan. */}
+                <ServerSubAgents lang={lang} />
+                <SubAgentPanel
+                  subAgents={subAgents}
+                  onAgentAction={handleAgentAction}
+                  onCreateAgent={handleCreateAgent}
+                  onDeleteAgent={handleDeleteAgent}
+                  onViewLogs={handleViewLogs}
+                  isRunning={state.running}
+                  lang={lang}
+                />
+              </>
             )}
 
             {activePanel === 'mcp' && (
               <div className="space-y-3">
                 <div className="flex items-center gap-1.5 text-[#ffff55] font-bold text-[11px]">
                   <Plug className="w-3.5 h-3.5" />
-                  <span>MCP SERVERS ({mcpServers.filter((s) => s.enabled).length}/{mcpServers.length})</span>
+                  <span>{t('SERVIDORES MCP', 'MCP SERVERS')} ({mcpServers.filter((s) => s.enabled).length}/{mcpServers.length})</span>
                 </div>
                 <div className="flex gap-1.5">
                   <input
@@ -683,18 +742,18 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                     <span className="flex-1 text-[10px] text-white truncate" title={s.url}>{s.url}</span>
                     <button
                       type="button"
-                      title="Listar tools"
+                      title={t('Listar tools', 'List tools')}
                       onClick={async () => {
                         try {
                           const tools = await mcpListTools(s.url, s.token);
-                          setMcpTools(`${s.url}: ${(tools.map((t) => t.name).join(', ') || 'sin tools').slice(0, 200)}`);
+                          setMcpTools(`${s.url}: ${(tools.map((x) => x.name).join(', ') || t('sin tools', 'no tools')).slice(0, 200)}`);
                         } catch (e: any) {
                           setMcpTools(`Error ${s.url}: ${e.message}`);
                         }
                       }}
                       className="text-[#00ffff] text-[10px] px-1"
                     >
-                      list
+                      {t('listar', 'list')}
                     </button>
                     <button
                       type="button"
@@ -704,7 +763,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                         saveMCPServers(next);
                       }}
                       className="text-red-400 text-[10px] px-1"
-                      title="Quitar servidor MCP"
+                      title={t('Quitar servidor MCP', 'Remove MCP server')}
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -727,7 +786,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                     value={pluginId}
                     onChange={(e) => setPluginId(e.target.value)}
                     className="flex-1 bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1 text-[10px] font-mono outline-none"
-                    placeholder="Plugin ID"
+                    placeholder={t('ID del plugin', 'Plugin ID')}
                   />
                   <button
                     type="button"
@@ -736,11 +795,11 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                     disabled={!!installingPlugin}
                   >
                     <Send className="w-3 h-3" />
-                    <span>Install</span>
+                    <span>{t('Instalar', 'Install')}</span>
                   </button>
                 </div>
                 {plugins.length === 0 ? (
-                  <div className="text-[10px] text-[#00ffff]/50">No hay plugins instalados.</div>
+                  <div className="text-[10px] text-[#00ffff]/50">{t('No hay plugins instalados.', 'No plugins installed.')}</div>
                 ) : (
                   plugins.slice(0, 5).map((p) => (
                     <div key={p.id} className="bg-[#0000aa]/40 border border-[#00ffff]/20 px-1.5 py-1">
@@ -750,7 +809,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                         type="button"
                         onClick={() => handleUninstallPlugin(p.id)}
                         className="text-red-400 text-[10px] px-1"
-                        title="Quitar">
+                        title={t('Quitar', 'Remove')}>
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -763,7 +822,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
               <div className="p-3 space-y-3">
                 <div className="flex items-center gap-1.5 text-[#ffff55] font-bold text-[10px]">
                   <RotateCcw className="w-3 h-3" />
-                  <span>RESOLUCIÓN DE CONFLICTOS</span>
+                  <span>{t('RESOLUCIÓN DE CONFLICTOS', 'CONFLICT RESOLUTION')}</span>
                 </div>
 
                 <div className="flex gap-2 flex-wrap items-center">
@@ -792,7 +851,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                   <div className="space-y-1 bg-black/30 border border-[#ffff55]/20 rounded p-2">
                     <p className="text-[10px] text-[#ffff55]">
                       {(mergeInfo.inMerge ? (lang === 'es' ? 'Merge en curso: ' : lang === 'de' ? 'Merge läuft: ' : 'Merge in progress: ')
-                        : (lang === 'es' ? 'Conflictos sin fusionar: ' : 'Unmerged: ')) + `${mergeInfo.total} archivo(s)`}
+                        : (lang === 'es' ? 'Conflictos sin fusionar: ' : lang === 'de' ? 'Nicht zusammengeführt: ' : 'Unmerged: ')) + `${mergeInfo.total} ${t('archivo(s)', 'file(s)')}`}
                     </p>
                     <ul className="text-[10px] text-white/70 font-mono space-y-0.5">
                       {mergeInfo.files.slice(0, 6).map((f) => (
@@ -804,7 +863,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                                 : (lang === 'es' ? 'borrado por ellos · ' : lang === 'de' ? 'von ihnen gelöscht · ' : 'deleted by them · '))
                               : f.kind === 'both-deleted'
                                 ? (lang === 'es' ? 'borrado en ambos lados · ' : lang === 'de' ? 'auf beiden Seiten gelöscht · ' : 'deleted on both sides · ')
-                                : f.ready ? '✓ ' : `${f.conflicts} bloque(s) · `}
+                                : f.ready ? '✓ ' : `${f.conflicts} ${t('bloque(s)', 'block(s)')} · `}
                             {f.path}
                           </span>
                           {(f.kind === 'modify-delete' || f.kind === 'both-deleted') && (
@@ -963,15 +1022,17 @@ export const AgentMode: React.FC<AgentModeProps> = ({
               <div className="space-y-3">
                 <div className="flex items-center gap-1.5 text-[#ffff55] font-bold text-[11px] pt-1">
                   <Activity className="w-3.5 h-3.5" />
-                  <span>TOOL METRICS</span>
+                  <span>{t('MÉTRICAS DE TOOLS', 'TOOL METRICS')}</span>
                 </div>
                 {Object.keys(metrics).length === 0 ? (
-                  <div className="text-[10px] text-[#00ffff]/50">Sin métricas aún.</div>
+                  <div className="text-[10px] text-[#00ffff]/50">{t('Sin métricas aún.', 'No metrics yet.')}</div>
                 ) : (
                   Object.entries(metrics).slice(0, 8).map(([k, v]) => (
                     <div key={k} className="flex justify-between text-[10px] text-white/80 font-mono">
                       <span className="text-[#00ffff]">{k}</span>
-                      <span>{v.calls} calls • {v.fails} fail • {v.avgMs}ms</span>
+                      <span>
+                        {v.calls} {t('llamadas', 'calls')} • {v.fails} {t('fallos', 'fails')} • {v.avgMs}ms
+                      </span>
                     </div>
                   ))
                 )}
@@ -982,27 +1043,29 @@ export const AgentMode: React.FC<AgentModeProps> = ({
               <div className="space-y-3">
                 <div className="flex items-center gap-1.5 text-[#ffff55] font-bold text-[11px] pt-1">
                   <ListTodo className="w-3.5 h-3.5" />
-                  <span>SESSIONS ({sessions.length})</span>
-                  <button type="button" onClick={() => setSessions(loadSessions())} className="ml-auto text-[#00ffff] text-[10px]" title="Refrescar sesiones"><RefreshCw className="w-3.5 h-3.5" /></button>
+                  <span>
+                    {lang === 'es' ? 'SESIONES' : lang === 'de' ? 'SITZUNGEN' : 'SESSIONS'} ({sessions.length})
+                  </span>
+                  <button type="button" onClick={() => { loadSessionsFromServer().then((r) => { const local = loadSessions(); const byId = new Map<string, AgentSession>(); for (const s of local) byId.set(s.id, s); for (const s of r) if (!byId.has(s.id)) byId.set(s.id, s); setSessions(Array.from(byId.values()).sort((a, b) => b.ts - a.ts).slice(0, 20)); }); }} className="ml-auto text-[#00ffff] text-[10px]" title={t('Refrescar sesiones', 'Refresh sessions')}><RefreshCw className="w-3.5 h-3.5" /></button>
                 </div>
                 {sessions.length === 0 ? (
-                  <div className="text-[10px] text-[#00ffff]/50">Sin sesiones guardadas.</div>
+                  <div className="text-[10px] text-[#00ffff]/50">{t('Sin sesiones guardadas.', 'No saved sessions.')}</div>
                 ) : (
                   sessions.slice(0, 10).map((s) => (
                     <div key={s.id} className="bg-[#0000aa]/40 border border-[#00ffff]/20 px-1.5 py-1 space-y-1">
                       <div className="text-[10px] text-white truncate" title={s.goal}>{s.goal}</div>
                       <div className="text-[9px] text-white/50">
-                        {new Date(s.ts).toLocaleString()} • {s.state.steps.length} steps
+                        {new Date(s.ts).toLocaleString()} • {s.state.steps.length} {t('pasos', 'steps')}
                         {/* `running` guardado en disco = la corrida murió sin llegar a pararse. */}
-                        {s.state.running && <span className="ml-1 text-[#ffff55] font-bold">• interrumpida</span>}
+                        {s.state.running && <span className="ml-1 text-[#ffff55] font-bold">• {t('interrumpida', 'interrupted')}</span>}
                       </div>
                       <div className="flex gap-1">
                         {onContinue && s.state.task && (
-                          <button type="button" onClick={() => onContinue(s)} className="text-[10px] px-1.5 py-0.5 border border-[#00ff66] text-[#00ff66] font-bold" title="Retomar desde el último paso guardado">Continuar</button>
+                          <button type="button" onClick={() => onContinue(s)} className="text-[10px] px-1.5 py-0.5 border border-[#00ff66] text-[#00ff66] font-bold" title={t('Retomar desde el último paso guardado', 'Resume from the last saved step')}>{t('Continuar', 'Resume')}</button>
                         )}
-                        {onRestore && <button type="button" onClick={() => onRestore(s)} className="text-[10px] px-1.5 py-0.5 bg-[#00ffff] text-black font-bold">Restore</button>}
-                        {onFork && <button type="button" onClick={() => onFork(s)} className="text-[10px] px-1.5 py-0.5 border border-[#ffff55] text-[#ffff55]">Fork</button>}
-                        <button type="button" onClick={() => { deleteSession(s.id); setSessions(loadSessions()); }} className="text-[10px] px-1 text-red-400" title="Eliminar sesión"><X className="w-3.5 h-3.5" /></button>
+                        {onRestore && <button type="button" onClick={() => onRestore(s)} className="text-[10px] px-1.5 py-0.5 bg-[#00ffff] text-black font-bold">{t('Restaurar', 'Restore')}</button>}
+                        {onFork && <button type="button" onClick={() => onFork(s)} className="text-[10px] px-1.5 py-0.5 border border-[#ffff55] text-[#ffff55]">{t('Bifurcar', 'Fork')}</button>}
+                        <button type="button" onClick={() => { deleteSession(s.id); setSessions(loadSessions()); }} className="text-[10px] px-1 text-red-400" title={t('Eliminar sesión', 'Delete session')}><X className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
                   ))

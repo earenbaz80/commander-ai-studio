@@ -1,7 +1,10 @@
 import React from 'react';
-import { X, Palette, Globe, Eye, EyeOff, Type, FolderOpen, Zap, Battery, BatteryCharging } from 'lucide-react';
+import { X, Palette, Globe, Eye, EyeOff, Type, FolderOpen, Zap, Battery, BatteryCharging, Timer } from 'lucide-react';
 import { ConsoleTheme } from './Header';
 import { Language } from '../i18n/translations';
+// El umbral lo consume el panel de subagentes; la clave y el aviso viven ahí
+// para que no haya dos copias del nombre que se puedan desincronizar.
+import { ATASCO_KEY, PREFERENCIAS_EVENT, normalizarUmbralAtasco } from './ServerSubAgents';
 
 export interface PreferencesModalProps {
   isOpen: boolean;
@@ -66,6 +69,42 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
       /* sin almacenamiento */
     }
   }, []);
+
+  // Minutos que debe llevar un subagente corriendo para marcarse como atasco.
+  // `atascoMin` es el valor vigente y `atascoDraft` lo que se está teclando:
+  // acotar en cada pulsación impedía escribir «10» (el «1» ya se guardaba).
+  const [atascoMin, setAtascoMin] = React.useState(5);
+  const [atascoDraft, setAtascoDraft] = React.useState('5');
+
+  React.useEffect(() => {
+    try {
+      const guardado = Number(localStorage.getItem(ATASCO_KEY));
+      if (Number.isFinite(guardado) && guardado > 0) {
+        const minutos = normalizarUmbralAtasco(guardado);
+        setAtascoMin(minutos);
+        setAtascoDraft(String(minutos));
+      }
+    } catch {
+      /* sin almacenamiento */
+    }
+  }, []);
+
+  // Se valida al salir del campo (o con Enter), no mientras se escribe.
+  const confirmarAtasco = () => {
+    const crudo = atascoDraft.trim();
+    // Campo vacío o no numérico: se restaura el valor vigente sin tocarlo.
+    const minutos = crudo === '' ? atascoMin : normalizarUmbralAtasco(Number(crudo));
+    setAtascoDraft(String(minutos));
+    if (minutos === atascoMin) return;
+    setAtascoMin(minutos);
+    try {
+      localStorage.setItem(ATASCO_KEY, String(minutos));
+      // El panel ya montado se entera sin esperar a recargar.
+      window.dispatchEvent(new Event(PREFERENCIAS_EVENT));
+    } catch {
+      /* sin almacenamiento */
+    }
+  };
 
   const handleSetFontScale = (scale: 'normal' | 'lg' | 'xl') => {
     setFontScale(scale);
@@ -183,6 +222,30 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                     {lang === 'es' ? 'Batería' : lang === 'de' ? 'Akku' : 'Battery'}: {Math.round(batteryInfo.level)}% {batteryInfo.charging ? '• ' + (lang === 'es' ? 'Cargando' : lang === 'de' ? 'Lädt' : 'Charging') : ''}
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Subagentes */}
+            <div className="border border-[#00ffff]/40 rounded bg-[#000066]/60">
+              <div className="px-2 py-1 border-b border-[#00ffff]/25 text-[11px] font-bold text-[#ffff55] uppercase">
+                {lang === 'es' ? 'Subagentes' : lang === 'de' ? 'Subagenten' : 'Subagents'}
+              </div>
+              <div className="py-1">
+                <MenuRow icon={<Timer className="w-4 h-4 text-[#00ffff]" />} label={lang === 'es' ? 'Aviso de atasco (min)' : lang === 'de' ? 'Hänger-Warnung (Min.)' : 'Stuck alert (min)'}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={120}
+                    value={atascoDraft}
+                    onChange={(e) => setAtascoDraft(e.target.value)}
+                    onBlur={confirmarAtasco}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur();
+                    }}
+                    className="bg-[#000044] border border-[#00ffff]/40 text-[#00ffff] text-[10px] px-1 py-0.5 rounded w-16 outline-none focus:border-[#ffff55]"
+                    data-testid="stuck-threshold-input"
+                  />
+                </MenuRow>
               </div>
             </div>
 
