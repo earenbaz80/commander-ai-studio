@@ -539,6 +539,23 @@ test('git.conflict resolve respeta el modo y los globs de escritura', async () =
   }
 });
 
+test('git.conflict en readonly deja consultar el merge y no modificarlo', async () => {
+  try {
+    setPermissions(gitRoot, { mode: 'readonly' });
+    // La consulta de estado es la que hace el panel al abrirse: leer no es tocar.
+    const state = await executeAgentTool('git.conflict', { root: gitRoot, all: true });
+    assert.equal(state.ok, true, String(state.error));
+    assert.equal(Array.isArray((state.data as any).files), true, 'debe devolver la lista de archivos');
+
+    // Cerrar el merge con `git add` sí modifica el índice: sigue bloqueado.
+    const stage = await executeAgentTool('git.conflict', { root: gitRoot, all: true, stage: true });
+    assert.equal(stage.ok, false, 'stage no puede correr en readonly');
+    assert.match(String(stage.error), /Sólo lectura/);
+  } finally {
+    setPermissions(gitRoot, { mode: 'build' });
+  }
+});
+
 test('git.conflict sólo pide aprobación cuando resuelve', () => {
   assert.equal(gitConflictTool.requiresApproval({ output: 'x' } as any, {} as any), false);
   assert.equal(gitConflictTool.requiresApproval({ output: 'x', resolve: 'ours' } as any, {} as any), true);

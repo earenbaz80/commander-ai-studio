@@ -39,8 +39,16 @@ const FILE_WRITE_TOOLS = new Set(['fs.write', 'fs.edit', 'git.commit']);
 /**
  * `browser` y `preview` también entran aquí: uno maneja un proceso externo y
  * el otro puede dejar un servidor corriendo. En modo plan/readonly no arrancan.
+ *
+ * `git.worktree`, `git.rebase`, `git.conflict` y `mcp.call` también entran
+ * aquí: pueden mover ramas, cerrar un merge o llamar a un servidor externo.
+ * Pero la clasificación es de la TOOL, no de cada llamada: `git.worktree
+ * action=list` y `git.conflict` sin resolver sólo leen el repo. Esas variantes
+ * pasan en plan y readonly vía `isReadOnlyCall` (agentTools.ts), el único punto
+ * por el que pasan todas las tools: una tool nueva con variante de lectura hay
+ * que marcarla también allí.
  */
-const EXEC_TOOLS = new Set(['shell.run', 'shell.job', 'code.run', 'browser', 'preview']);
+const EXEC_TOOLS = new Set(['shell.run', 'shell.job', 'code.run', 'browser', 'preview', 'git.worktree', 'git.rebase', 'git.conflict', 'mcp.call']);
 
 // ── Coincidencia de globs ( ** , * , ? ) sobre rutas relativas ──
 
@@ -81,15 +89,20 @@ export function isPathAllowed(globs: string[], relPath: string): boolean {
 /**
  * Valida una tool contra los permisos. Devuelve null si está permitida,
  * o un mensaje de error si se deniega.
+ *
+ * `readOnly` describe la LLAMADA, no la tool: una variante que sólo consulta
+ * (`git.worktree action=list`, `git.conflict` sin resolver) no choca con el
+ * modo plan/readonly. Las listas blanca y negra se siguen respetando: si el
+ * usuario denegó la tool, la consulta también queda fuera.
  */
-export function enforceTool(perms: Permissions, toolId: string): string | null {
+export function enforceTool(perms: Permissions, toolId: string, opts?: { readOnly?: boolean }): string | null {
   if (perms.allowedTools && !perms.allowedTools.includes(toolId)) {
     return `Tool deshabilitada por la configuración de permisos: ${toolId}`;
   }
   if (perms.deniedTools.includes(toolId)) {
     return `Tool denegada por la configuración de permisos: ${toolId}`;
   }
-  if (perms.mode !== 'build' && (FILE_WRITE_TOOLS.has(toolId) || EXEC_TOOLS.has(toolId))) {
+  if (!opts?.readOnly && perms.mode !== 'build' && (FILE_WRITE_TOOLS.has(toolId) || EXEC_TOOLS.has(toolId))) {
     const modo = perms.mode === 'plan' ? 'Plan' : 'Sólo lectura';
     return `Modo ${modo}: no se puede ejecutar ${toolId}. Analiza y propone, no hagas cambios.`;
   }
