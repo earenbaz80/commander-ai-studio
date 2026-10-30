@@ -96,15 +96,19 @@ const bootApp = async () => {
 const getChatInput = () =>
   screen.getAllByPlaceholderText('Escribe tu mensaje...')[0] as HTMLTextAreaElement;
 
-describe('App (integración)', () => {
+// Montar la app entera en jsdom cuesta segundos y, con la suite completa en
+// paralelo, el límite por defecto de 5 s se queda corto: el fallo se veía como un
+// `Test timed out`, no como un error de comportamiento. El margen es sólo para este
+// bloque, no es un sleep, y un cuelgue real sigue fallando.
+describe('App (integración)', { timeout: 20_000 }, () => {
   beforeEach(() => {
     localStorage.clear();
     // Onboarding ya visto: sin esto aparece el modal de bienvenida
     localStorage.setItem('ai_studio_onboarding_seen', '1');
-    // Estos tests cubren la ruta de Gemini; el default de pestañas nuevas es Pollinations.
-    localStorage.setItem('ai_studio_tabs_v1', JSON.stringify([{ id: 'tab-gemini', title: 'Sesión 1', selectedModel: 'gemini-2.5-flash' }]));
+    // Estos tests cubren la ruta de Gemini; la migración se marca vista para no tocar el modelo de la pestaña.
+    localStorage.setItem('ai_studio_tabs_v1', JSON.stringify([{ id: 'tab-gemini', title: 'Sesión 1', selectedModel: 'gemini-3.5-flash' }]));
     localStorage.setItem('ai_studio_active_tab', 'tab-gemini');
-    localStorage.setItem('ai_studio_default_model_v2', '1');
+    localStorage.setItem('ai_studio_default_model_v3', '1');
     notificationSpies.sendBrowserNotification.mockClear();
     notificationSpies.playRetroSuccessSound.mockClear();
   });
@@ -150,7 +154,7 @@ describe('App (integración)', () => {
     // El formato de Gemini envía el texto en contents[]
     const texts = (body.contents || []).map((c: any) => c.text).filter(Boolean);
     expect(texts).toContain('Hola IA');
-    expect(body.model).toBe('gemini-2.5-flash');
+    expect(body.model).toBe('gemini-3.5-flash');
     expect(body.systemInstruction).toBeTruthy();
   });
 
