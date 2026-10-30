@@ -52,6 +52,12 @@ export interface FloatingAssistantProps {
   selectedModel?: string;
   selectedProvider?: string;
   parameters?: ParameterConfig;
+  /** ID (path) del proyecto activo para scoping de memoria durable de Nono. */
+  projectId?: string | null;
+  /** Si true, Nono se renderiza como panel acoplado (no flotante). */
+  docked?: boolean;
+  /** Callback para alternar entre modo flotante y acoplado. */
+  onToggleDock?: () => void;
   /** Información del proyecto actual para sugerencias contextuales de Nono. */
   projectInfo?: {
     path?: string;
