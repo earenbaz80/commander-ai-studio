@@ -2,7 +2,7 @@ import { getCachedApiKey } from '../lib/apiKeys';
 import type { ChatMessage } from '../types/studio';
 import { AGENT_FUNCTION_DECLARATIONS } from './fnTools';
 import { toolDialectForModel, toOpenAITools, toAnthropicTools } from './providers';
-import { resolveEndpoint } from '../lib/aiProviders';
+import { clientCredentialsFor, resolveEndpoint } from '../lib/aiProviders';
 import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
 
 export interface LLMToolCall {
@@ -98,8 +98,7 @@ ${ctx.toolSchema}`;
         maxTokens: 2048,
         openrouterApiKey: getCachedApiKey('OPENROUTER_API_KEY') || undefined,
         ollamaHost: getCachedApiKey('OLLAMA_HOST') || undefined,
-        baseURL: getCachedApiKey('CUSTOM_BASE_URL') || undefined,
-        apiKey: getCachedApiKey('CUSTOM_API_KEY') || getCachedApiKey('OPENCODE_API_KEY') || undefined,
+        ...clientCredentialsFor(model, getCachedApiKey),
       }),
     });
 
@@ -122,8 +121,7 @@ ${ctx.toolSchema}`;
           maxTokens: 2048,
           openrouterApiKey: getCachedApiKey('OPENROUTER_API_KEY') || undefined,
           ollamaHost: getCachedApiKey('OLLAMA_HOST') || undefined,
-          baseURL: getCachedApiKey('CUSTOM_BASE_URL') || undefined,
-          apiKey: getCachedApiKey('CUSTOM_API_KEY') || getCachedApiKey('OPENCODE_API_KEY') || undefined,
+          ...clientCredentialsFor(model, getCachedApiKey),
         }),
       });
       if (!retry.ok) throw new Error(`LLM HTTP ${retry.status}`);
@@ -188,8 +186,7 @@ export async function callAgentLLMTools(
     maxTokens: 2048,
     openrouterApiKey: getCachedApiKey('OPENROUTER_API_KEY') || undefined,
     ollamaHost: getCachedApiKey('OLLAMA_HOST') || undefined,
-    baseURL: getCachedApiKey('CUSTOM_BASE_URL') || undefined,
-    apiKey: getCachedApiKey('CUSTOM_API_KEY') || getCachedApiKey('OPENCODE_API_KEY') || undefined,
+    ...clientCredentialsFor(model, getCachedApiKey),
   };
 
   if (dialect === 'gemini') {
