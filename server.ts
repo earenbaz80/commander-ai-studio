@@ -21,6 +21,7 @@ import { handleGeminiGenerate, handleGeminiStream, handleGeminiInteractions } fr
 import { handleAnthropicGenerate, handleAnthropicStream } from './anthropic';
 import { executeLocalHfModel } from './localModels';
 import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList, apiKeyMiddleware } from './apiKeys';
+import { isAllowedHost, allowedHostsFromEnv } from './hostGuard';
 import { loadConfig } from './src/config/index';
 import skillsRouter from './skills/api';
 import { forkSessionWorkspace, deleteSessionWorkspace, listSessions, createGitWorktree } from './sessionWorkspace';
@@ -37,6 +38,15 @@ const currentDir = typeof __dirname !== 'undefined' && __dirname
 
 const app = express();
 app.use(express.json({ limit: '20mb' }));
+
+// Anti DNS rebinding: un dominio ajeno que resuelve a loopback llega con ese
+// `Host` y, desde el navegador, hablaría con esta API sin autenticación. Sólo
+// pasan loopback, IP literal y lo que liste ALLOWED_HOSTS.
+const allowedHosts = allowedHostsFromEnv();
+app.use((req, res, next) => {
+  if (isAllowedHost(req.headers.host, allowedHosts)) return next();
+  return res.status(403).json({ success: false, error: 'Host no permitido' });
+});
 
 // Seguridad base sin nuevas deps: headers + CORS allowlist + rate-limit global
 app.use((_req, _res, next) => {

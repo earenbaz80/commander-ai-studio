@@ -46,7 +46,8 @@ function requestConCookie(
   method: string,
   path: string,
   body: unknown,
-  cookie: string
+  cookie: string,
+  extra: Record<string, string> = {}
 ): Promise<{ status: number; body: any; raw: string }> {
   return new Promise((resolve, reject) => {
     const url = new URL(path, srv.baseUrl);
@@ -60,7 +61,8 @@ function requestConCookie(
         agent: false,
         headers: {
           ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': String(payload.length) } : {}),
-          Cookie: cookie,
+          ...(cookie ? { Cookie: cookie } : {}),
+          ...extra,
         },
       },
       (res) => {
@@ -367,4 +369,20 @@ test('la clave y la base guardadas en el panel llegan al proxy de Freebuff', asy
   } finally {
     await new Promise<void>((r) => upstream.close(() => r()));
   }
+});
+
+test('un Host ajeno responde 403 (anti DNS rebinding)', async () => {
+  // Una página del atacante cuyo dominio resuelve a 127.0.0.1 manda su propio
+  // `Host`: es el único rastro que la delata, porque la IP de origen es loopback
+  // y las cookies de sesión no viajan. Sin este guard, la API local le contesta.
+  const rebinding = await requestConCookie('GET', '/api/health', undefined, '', { Host: 'evil.example' });
+  assert.equal(rebinding.status, 403, `se esperaba 403, llegó ${rebinding.status}: ${rebinding.raw}`);
+  assert.equal(rebinding.body.success, false);
+  assert.match(String(rebinding.body.error), /Host no permitido/);
+
+  const propio = await requestConCookie('GET', '/api/health', undefined, '', {
+    Host: `127.0.0.1:${new URL(srv.baseUrl).port}`,
+  });
+  assert.equal(propio.status, 200, `el Host real debe seguir pasando: ${propio.raw}`);
+  assert.equal(propio.body.status, 'ok');
 });
