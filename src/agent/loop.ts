@@ -10,6 +10,67 @@ import { loadMCPServers, mcpListTools, listRegistryServers, listRegistryServerTo
 import { TURN_CHARS, compactTurns, serializeResults } from './contextBudget';
 
 const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.grep', 'shell.run', 'shell.job', 'browser', 'preview', 'read_diagnostics', 'task', 'git.status', 'git.diff', 'git.log', 'git.commit', 'git.worktree', 'git.rebase', 'git.conflict', 'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list'];
+/**
+ * Huella estable de una toolCall: misma tool y mismos argumentos (el orden de
+ * las claves no cuenta).
+ */
+export function callSignature(tool: string, input: unknown): string {
+  const stable = (value: any): any => {
+    if (Array.isArray(value)) return value.map(stable);
+    if (value && typeof value === 'object') {
+      const sorted: Record<string, any> = {};
+      for (const key of Object.keys(value).sort()) sorted[key] = stable(value[key]);
+      return sorted;
+    }
+    return value;
+  };
+  return `${tool} ${JSON.stringify(stable(input ?? {}))}`;
+}
+
+/**
+ * Veces que se tolera repetir una llamada idéntica. A la tercera el bucle deja
+ * de ejecutarla: en `pipeline-agujereado` el modelo releyó el mismo fichero
+ * siete veces sin editar nunca, y cada relectura gastaba un paso más.
+ */
+export const BLOCK_AFTER_REPEATS = 3;
+
+/**
+ * Detector de llamadas repetidas.
+ *
+ * Un modelo que no encuentra lo que busca tiende a releer exactamente lo mismo
+ * una y otra vez: gasta pasos y no avanza. El bucle se lo dice en vez de dejarlo
+ * girar —y, a partir de la tercera, tampoco la ejecuta—. Una escritura limpia la
+ * cuenta: después de editar, volver a leer el mismo sitio es legítimo.
+ */
+export class RepeatGuard {
+  private counts = new Map<string, number>();
+
+  /**
+   * `true` cuando esta llamada idéntica ya se ejecutó `BLOCK_AFTER_REPEATS`
+   * veces: el resultado ya está en contexto y repetirla no aporta nada.
+   * Se consulta después de `track`, que es quien cuenta.
+   */
+  exhausted(call: { tool: string; input: unknown }): boolean {
+    return (this.counts.get(callSignature(call.tool, call.input)) ?? 0) >= BLOCK_AFTER_REPEATS;
+  }
+
+  /** Cuenta las llamadas y devuelve las que repiten una firma ya vista. */
+  track(calls: Array<{ tool: string; input: unknown }>): Array<{ tool: string; times: number }> {
+    const repeated: Array<{ tool: string; times: number }> = [];
+    for (const call of calls) {
+      const key = callSignature(call.tool, call.input);
+      const times = (this.counts.get(key) ?? 0) + 1;
+      this.counts.set(key, times);
+      if (times > 1) repeated.push({ tool: call.tool, times });
+    }
+    if (calls.some((call) => call.tool === 'fs.write' || call.tool === 'fs.edit')) this.reset();
+    return repeated;
+  }
+
+  reset(): void {
+    this.counts.clear();
+  }
+}
 
 /** Capa LLM inyectable: permite tests deterministas sin red ni API keys. */
 export interface AgentLLMClient {
@@ -32,6 +93,7 @@ export class AgentLoop {
   private mcpSchema = '';
   private turns: { role: string; text: string }[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private repeats = new RepeatGuard();
 
   constructor(orchestrator: AgentOrchestrator, model?: string, llmClient: AgentLLMClient = defaultAgentLLMClient) {
     this.orchestrator = orchestrator;
@@ -55,6 +117,7 @@ export class AgentLoop {
     this.task = task;
     this.running = true;
     this.turns = [];
+    this.repeats.reset();
     // Pre-vuelo ANTES de orchestrator.start() (que reinicia el log de steps).
     const { rules, mcpParts } = await this.prepare();
     this.orchestrator.start(task, task.plan);
@@ -80,6 +143,7 @@ export class AgentLoop {
     this.task = { ...task, maxSteps: (task.maxSteps ?? 40) + used };
     this.running = true;
     this.turns = [];
+    this.repeats.reset();
     const { rules, mcpParts } = await this.prepare();
     if (!this.orchestrator.resume()) {
       this.running = false;
@@ -173,6 +237,37 @@ export class AgentLoop {
     const max = this.task?.maxSteps ?? 0;
     const used = this.orchestrator.getState().steps.length;
     return Math.floor((max - used) / 2);
+  }
+
+  /**
+   * Deja fuera las llamadas que ya no aportan nada. A la tercera lectura
+   * idéntica se le dice al modelo que el resultado lo tiene arriba y que edite
+   * o termine, en vez de dejarlo gastar otro paso releyendo lo mismo.
+   */
+  private dropExhausted(calls: Array<{ tool: string; input: unknown }>) {
+    const blocked = calls.filter((call) => this.repeats.exhausted(call));
+    if (blocked.length === 0) return calls;
+    const tools = blocked.map((call) => call.tool).join(', ');
+    this.addThoughtCapped('Lectura repetida', `No se reejecutó ${tools}: el resultado ya está en contexto`);
+    this.pushTurn(
+      'user',
+      `BLOQUEADO: ya leíste exactamente eso (${tools}) y el resultado sigue en el historial. ` +
+        'Releerlo no añade nada: si te falta un dato, lee OTRO rango u otro fichero; ' +
+        'si ya lo sabes, haz la edición con fs.edit o termina con una respuesta.'
+    );
+    return calls.filter((call) => !this.repeats.exhausted(call));
+  }
+
+  /** Aviso al modelo: repetir la misma lectura no aporta y gasta pasos. */
+  private warnRepeats(repeated: Array<{ tool: string; times: number }>) {
+    if (repeated.length === 0) return;
+    const detail = repeated.map((item) => `${item.tool} (${item.times}ª vez)`).join(', ');
+    this.addThoughtCapped('Llamada repetida', `Repitió una llamada idéntica: ${detail}`);
+    this.pushTurn(
+      'user',
+      `AVISO: repetiste exactamente la misma tool con los mismos argumentos (${detail}). ` +
+        'Ya tienes ese resultado: no vuelvas a leerlo, usa lo que sabes y da el siguiente paso.'
+    );
   }
 
   /** addThought que nunca rompe el invariante steps.length <= maxSteps. */
@@ -298,7 +393,9 @@ export class AgentLoop {
     }
 
     this.pushTurn('model', `${native.thought || ''}\nCalls: ${executable.map((m) => m.tool).join(', ')}`.slice(0, 2000));
-    const results = await this.runParallel(executable);
+    const repeated = this.repeats.track(executable);
+    const results = await this.runParallel(this.dropExhausted(executable));
+    this.warnRepeats(repeated.filter((item) => item.times < BLOCK_AFTER_REPEATS));
     const fails = results.filter((r) => !r.ok);
     this.pushTurn('user', `Resultados:\n${serializeResults(results)}`);
     if (fails.length > 0) {
@@ -369,8 +466,10 @@ export class AgentLoop {
     }
 
     if (executable.length > 0) {
-      const results = await this.runParallel(executable);
+      const repeated = this.repeats.track(executable);
+      const results = await this.runParallel(this.dropExhausted(executable));
       this.pushTurn('user', `Resultados:\n${serializeResults(results)}`);
+      this.warnRepeats(repeated.filter((item) => item.times < BLOCK_AFTER_REPEATS));
       const fails = results.filter((r) => !r.ok);
       if (fails.length > 0) {
         this.addThoughtCapped('Tool falló', fails.map((f) => `${f.tool} error: ${f.error}`).join('\n').slice(0, 1000));

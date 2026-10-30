@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AgentLoop, type AgentLLMClient } from '../src/agent/loop.js';
+import { AgentLoop, RepeatGuard, callSignature, type AgentLLMClient } from '../src/agent/loop.js';
 import { AgentOrchestrator } from '../src/agent/orchestrator.js';
 import type { AgentTask, AgentStep, AgentState } from '../src/agent/types.js';
 import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from '../src/agent/fnTools.js';
@@ -227,6 +227,66 @@ test('AgentLoop aplica update_plan en la vía nativa y no lo toma por respuesta 
   assert.equal(state.running, true, 'un turno que sólo actualiza el plan no termina la tarea');
   assert.ok(!steps.some((s) => s.title === 'Finalizado'), 'no debe marcar Finalizado');
   loop.stop();
+});
+
+// ── Llamadas repetidas ────────────────────────────────────────────────
+// Un modelo que no encuentra lo que busca tiende a releer exactamente lo
+// mismo. El bucle se lo dice en vez de dejarlo gastar pasos.
+
+async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return predicate();
+}
+
+test('la huella de una llamada no depende del orden de las claves', () => {
+  assert.equal(
+    callSignature('fs.read', { path: 'a.ts', limit: 10 }),
+    callSignature('fs.read', { limit: 10, path: 'a.ts' })
+  );
+  assert.notEqual(callSignature('fs.read', { path: 'a.ts' }), callSignature('fs.read', { path: 'b.ts' }));
+  assert.notEqual(callSignature('fs.read', { path: 'a.ts' }), callSignature('fs.grep', { path: 'a.ts' }));
+});
+
+test('RepeatGuard avisa a partir de la segunda llamada idéntica y perdona tras editar', () => {
+  const guard = new RepeatGuard();
+  const read = { tool: 'fs.read', input: { path: 'src/a.ts' } };
+
+  assert.deepEqual(guard.track([read]), [], 'la primera vez no hay nada que avisar');
+  assert.deepEqual(guard.track([{ ...read, input: { path: 'src/a.ts' } }]), [{ tool: 'fs.read', times: 2 }]);
+  assert.deepEqual(guard.track([read]), [{ tool: 'fs.read', times: 3 }], 'sigue contando mientras insista');
+  assert.deepEqual(guard.track([{ tool: 'fs.read', input: { path: 'src/b.ts' } }]), [], 'otra ruta no repite');
+
+  // Una edición cambia el estado: releer el mismo sitio deja de ser un bucle.
+  assert.deepEqual(guard.track([{ tool: 'fs.edit', input: { path: 'src/a.ts', oldString: 'x', newString: 'y' } }]), []);
+  assert.deepEqual(guard.track([read]), [], 'tras editar, la misma lectura es legítima');
+});
+
+test('AgentLoop registra un aviso cuando el modelo repite la misma llamada', async () => {
+  const { orchestrator, steps } = createMockOrchestrator();
+  let turns = 0;
+  const client: AgentLLMClient = {
+    callJson: async () => ({ finish: true, answer: 'no debería usarse' }),
+    callTools: async () => {
+      turns += 1;
+      if (turns > 3) return { thought: 'listo', calls: [] };
+      return { thought: 'leo lo mismo', calls: [{ name: 'fs_read', args: { path: 'package.json' } }] };
+    },
+  };
+  const loop = new AgentLoop(orchestrator, 'gemini-2.0-flash', client);
+
+  await loop.start({ id: 'rep-1', goal: 'Test goal', cwd: '.', maxSteps: 20 });
+  try {
+    const warned = await waitFor(() => steps.some((step) => step.title === 'Llamada repetida'));
+    assert.ok(warned, 'el bucle debe avisar de la relectura en vez de dejarla pasar');
+    const step = steps.find((s) => s.title === 'Llamada repetida');
+    assert.match(String(step?.content), /fs\.read/);
+  } finally {
+    loop.stop();
+  }
 });
 
 test('normalizePlan marca por id sin repetir el texto y descarta basura', () => {
