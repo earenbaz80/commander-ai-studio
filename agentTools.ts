@@ -303,6 +303,90 @@ export function checkShellSegments(
   return { ok: true, segments: parsed.segments, command: String(command).trim() };
 }
 
+/** Caracteres que hay que neutralizar para que el glob sea un literal. */
+const BACKSLASH = String.fromCharCode(92);
+const REGEX_SPECIAL = new Set(['.', '+', '^', '$', '{', '}', '(', ')', '|', '[', ']', BACKSLASH]);
+
+/** Rutas siempre en POSIX, también en Windows. */
+function normalizeSlashes(value: string): string {
+  return value.split(BACKSLASH).join('/');
+}
+
+/**
+ * Convierte un patrón glob en regex sobre rutas POSIX relativas.
+ *
+ * El doble asterisco cruza directorios, el simple se queda en un segmento y
+ * `?` es un carácter. Sin esto el patrón se comparaba como subcadena contra la
+ * ruta del sistema, que en Windows usa otro separador: un patrón con doble
+ * asterisco no encontraba nada y el modelo se quedaba buscando un fichero que
+ * sí estaba en su workspace.
+ */
+function globToRegExp(pattern: string): RegExp {
+  const posix = normalizeSlashes(pattern);
+  let source = '';
+  for (let i = 0; i < posix.length; i++) {
+    const ch = posix[i];
+    if (ch === '*') {
+      if (posix[i + 1] === '*') {
+        i += 1;
+        if (posix[i + 1] === '/') {
+          i += 1;
+          source += '(?:.*/)?';
+        } else {
+          source += '.*';
+        }
+      } else {
+        source += '[^/]*';
+      }
+      continue;
+    }
+    if (ch === '?') {
+      source += '[^/]';
+      continue;
+    }
+    source += REGEX_SPECIAL.has(ch) ? BACKSLASH + ch : ch;
+  }
+  return new RegExp(`^${source}$`);
+}
+
+/** `true` si la ruta relativa (POSIX) casa con el patrón. */
+function matchesGlob(rel: string, pattern: string): boolean {
+  const candidate = normalizeSlashes(rel);
+  // Un patrón sin comodines sigue siendo una búsqueda por subcadena: así
+  // `shellCommand.ts` encuentra `src/agent/shellCommand.ts`, como antes.
+  if (!/[*?]/.test(pattern)) return candidate.includes(pattern);
+  return globToRegExp(pattern).test(candidate);
+}
+
+/**
+ * Raíces que recorren `fs.glob` y `fs.grep`.
+ *
+ * El `root` de la petición es el workspace donde el agente está trabajando, así
+ * que manda si se puede resolver — es lo que ya hacen `fs.read` y `fs.edit`.
+ * Antes sólo se buscaba entre los roots REGISTRADOS y, al no encontrar el
+ * workspace, se recaía en todos: un workspace temporal (evaluaciones, sesiones
+ * con root explícito) acababa buscando en el repo real, y el modelo recibía
+ * rutas que no existían en su workspace. Se quedaba dando vueltas sin editar.
+ */
+function searchRootsFor(rootHint?: string): string[] {
+  if (rootHint) {
+    try {
+      return [resolveProjectPath('.', rootHint).abs];
+    } catch {
+      /* pista no resoluble: se intenta por nombre entre los roots registrados */
+    }
+    const normalize = (value: string) => {
+      let text = normalizeSlashes(value).toLowerCase();
+      while (text.endsWith('/')) text = text.slice(0, -1);
+      return text;
+    };
+    const hint = normalize(rootHint);
+    const matched = listRoots().filter((root) => normalize(root).endsWith(hint));
+    if (matched.length > 0) return matched;
+  }
+  return listRoots();
+}
+
 /**
  * ¿La llamada sólo consulta, aunque la tool figure entre las que ejecutan?
  *
@@ -452,9 +536,7 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
     return { ok: true, data: { path: p, replaced: count } };
   }
 
-  // Roots a recorrer: el proyecto activo primero; todos si no se indica.
-  const searchRoots = (rootHint ? listRoots().filter((r) => r.replace(/\\/g, '/').toLowerCase().endsWith(rootHint.replace(/\\/g, '/').toLowerCase().replace(/\/$/, '')) ) : listRoots());
-  const roots = searchRoots.length ? searchRoots : listRoots();
+  const roots = searchRootsFor(rootHint);
 
   if (toolId === 'fs.glob') {
     const pattern = String(input.pattern || '').slice(0, 500);
@@ -469,8 +551,9 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
             if (!e.name.startsWith('.') && !SKIP_DIRS.has(e.name)) walk(full, root);
           } else {
             const rel = path.relative(root, full);
-            if (rel.includes(pattern) || pattern.includes('*') && rel.includes(pattern.replace('**', '').replace('*', ''))) {
-              files.push(rel);
+            if (matchesGlob(rel, pattern)) {
+              // Siempre en POSIX: el modelo pide rutas con `/`, también en Windows.
+              files.push(rel.split(path.sep).join('/'));
             }
           }
         }
