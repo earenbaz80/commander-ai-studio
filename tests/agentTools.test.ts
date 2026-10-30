@@ -115,6 +115,40 @@ test('fs.grep encuentra texto en archivos', async () => {
   assert.ok(res.body.data.matches.length > 0);
 });
 
+test('fs.glob y fs.grep buscan en el root de la petición, no en el repo', async () => {
+  const dir = path.join(TEST_DIR, 'root-propio');
+  fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'src', 'solo-aqui.ts'), 'export const MARCA_ROOT_PROPIO = 1;\n', 'utf8');
+
+  const glob = await executeAgentTool('fs.glob', { pattern: 'solo-aqui.ts', root: dir });
+  assert.equal(glob.ok, true, String(glob.error));
+  const globData = glob.data as any;
+  assert.deepEqual(
+    globData.files.map((file: string) => file.replace(/\\/g, '/')),
+    ['src/solo-aqui.ts'],
+    'glob no debe devolver ficheros del repo real'
+  );
+  assert.deepEqual(
+    globData.roots.map((root: string) => root.replace(/\\/g, '/').toLowerCase()),
+    [path.resolve(dir).replace(/\\/g, '/').toLowerCase()],
+    'la búsqueda debe reportar el root pedido'
+  );
+
+  // `**/` tiene que cruzar directorios también en Windows, donde la ruta del
+  // sistema lleva `\` y la comparación por subcadena no casaba nunca.
+  const deep = await executeAgentTool('fs.glob', { pattern: '**/solo-aqui.ts', root: dir });
+  assert.deepEqual((deep.data as any).files, ['src/solo-aqui.ts'], 'el patrón **/ debe cruzar directorios');
+
+  const nada = await executeAgentTool('fs.glob', { pattern: '**/no-existe.ts', root: dir });
+  assert.deepEqual((nada.data as any).files, [], 'un patrón sin coincidencias no debe inventarlas');
+
+  const grep = await executeAgentTool('fs.grep', { pattern: 'MARCA_ROOT_PROPIO', root: dir });
+  assert.equal(grep.ok, true, String(grep.error));
+  const matches = (grep.data as any).matches;
+  assert.equal(matches.length, 1, `grep no debe ver el repo real: ${JSON.stringify(matches).slice(0, 200)}`);
+  assert.match(String(matches[0].file).replace(/\\/g, '/'), /solo-aqui\.ts$/);
+});
+
 // --- fs.read por ventana --------------------------------------------------
 
 test('fs.read con offset/limit devuelve solo la ventana, con sus metadatos', async () => {
