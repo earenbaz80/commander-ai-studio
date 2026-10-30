@@ -106,3 +106,60 @@ describe('runAgent (streaming)', () => {
     expect(types).not.toContain('chunk');
   });
 });
+
+describe('runAgent con Freebuff', () => {
+  test('va al proxy y ejecuta los toolCalls que devuelve', async () => {
+    const fetchMock = vi
+      .fn()
+      // El proxy es quien habla con el proveedor: recibe y devuelve `toolCalls`.
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ text: 'Leo el archivo', toolCalls: [{ name: 'read_file', args: { path: 'a.ts' } }] }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, data: { content: 'x' } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ text: 'Listo', toolCalls: [] }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await runAgent({
+      serverUrl: 'http://127.0.0.1:3280',
+      task: 'demo',
+      cwd: '.',
+      model: 'freebuff/gpt-6-luna',
+      // Freebuff no expone SSE: pedir stream no debe abrir una conexión inútil.
+      stream: true,
+      maxSteps: 5,
+    });
+
+    expect(result.answer).toBe('Listo');
+    expect(result.steps).toBe(2);
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(urls[0]).toBe('http://127.0.0.1:3280/api/freebuff/generate');
+    expect(urls[1]).toBe('http://127.0.0.1:3280/api/agent/run-tool');
+    expect(urls.some((u) => u.includes('/stream'))).toBe(false);
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(body.model).toBe('freebuff/gpt-6-luna');
+    expect(body.tools[0].type).toBe('function');
+  });
+
+  test('sin tool-calls no sale a la red y dice por qué', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const errors: string[] = [];
+    const result = await runAgent({
+      serverUrl: 'http://127.0.0.1:3280',
+      task: 'demo',
+      cwd: '.',
+      model: 'freebuff/qwen-chat-7b',
+      maxSteps: 5,
+      onEvent: (e) => {
+        if (e.type === 'error') errors.push(e.text);
+      },
+    });
+
+    expect(result.answer).toBe('');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(errors.join('\n')).toMatch(/no soporta function calling nativo/);
+  });
+});
