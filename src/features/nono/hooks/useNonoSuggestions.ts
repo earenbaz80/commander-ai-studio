@@ -9,6 +9,12 @@ interface UseNonoSuggestionsOptions {
   projectInfo?: FloatingAssistantProps['projectInfo'];
   suggestionConfig?: FloatingAssistantProps['suggestionConfig'];
   isOpen: boolean;
+  /**
+   * Bandera de sueño, leída en el momento de decidir. Va como ref y no como
+   * booleano para que una sugerencia no despierte a Nono en el mismo tick en que
+   * se durmió, antes de que React re-renderice.
+   */
+  isAsleepRef?: { current: boolean };
   setExpression: Dispatch<SetStateAction<NonoExpression>>;
 }
 
@@ -43,6 +49,7 @@ export function useNonoSuggestions({
   projectInfo,
   suggestionConfig,
   isOpen,
+  isAsleepRef,
   setExpression,
 }: UseNonoSuggestionsOptions): UseNonoSuggestionsReturn {
   const [hoverPhrase, setHoverPhrase] = useState('');
@@ -161,6 +168,7 @@ export function useNonoSuggestions({
     if (!projectInfo || isOpen || isWatchingChat) return;
     
     const showSuggestion = () => {
+      if (isAsleepRef?.current) return; // dormido: no lo despertamos con una sugerencia
       const suggestions = generateProjectSuggestions(projectInfo, lang, suggestionConfig);
       if (suggestions.length > 0) {
         const suggestion = suggestions[Math.floor(Math.random() * suggestions.length)];
@@ -171,7 +179,8 @@ export function useNonoSuggestions({
         setTimeout(() => {
           setShowProjectSuggestion(false);
           setProjectSuggestion('');
-          setExpression('neutral');
+          // Si mientras tanto se durmió, la limpieza de la sugerencia no lo despierta.
+          setExpression((prev) => (prev === 'sleepy' ? prev : 'neutral'));
         }, 5000);
       }
     };
