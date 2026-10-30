@@ -17,6 +17,8 @@ interface AgentModeProps {
   state: AgentState;
   onRunTool: (toolId: string, input: unknown) => Promise<any>;
   onRestore?: (s: AgentSession) => void;
+  /** Retoma una sesión interrumpida desde el plan y los pasos guardados. */
+  onContinue?: (s: AgentSession) => void;
   onFork?: (s: AgentSession) => void;
   onRollbackRun?: () => Promise<{ ok: boolean; error?: string; restored?: number; deleted?: number; skipped?: number }>;
   onPlanChange?: (plan: Array<{ id: string; text: string; done: boolean }>) => void;
@@ -30,6 +32,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
   state,
   onRunTool,
   onRestore,
+  onContinue,
   onFork,
   onRollbackRun,
   onPlanChange,
@@ -988,8 +991,15 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                   sessions.slice(0, 10).map((s) => (
                     <div key={s.id} className="bg-[#0000aa]/40 border border-[#00ffff]/20 px-1.5 py-1 space-y-1">
                       <div className="text-[10px] text-white truncate" title={s.goal}>{s.goal}</div>
-                      <div className="text-[9px] text-white/50">{new Date(s.ts).toLocaleString()} • {s.state.steps.length} steps</div>
+                      <div className="text-[9px] text-white/50">
+                        {new Date(s.ts).toLocaleString()} • {s.state.steps.length} steps
+                        {/* `running` guardado en disco = la corrida murió sin llegar a pararse. */}
+                        {s.state.running && <span className="ml-1 text-[#ffff55] font-bold">• interrumpida</span>}
+                      </div>
                       <div className="flex gap-1">
+                        {onContinue && s.state.task && (
+                          <button type="button" onClick={() => onContinue(s)} className="text-[10px] px-1.5 py-0.5 border border-[#00ff66] text-[#00ff66] font-bold" title="Retomar desde el último paso guardado">Continuar</button>
+                        )}
                         {onRestore && <button type="button" onClick={() => onRestore(s)} className="text-[10px] px-1.5 py-0.5 bg-[#00ffff] text-black font-bold">Restore</button>}
                         {onFork && <button type="button" onClick={() => onFork(s)} className="text-[10px] px-1.5 py-0.5 border border-[#ffff55] text-[#ffff55]">Fork</button>}
                         <button type="button" onClick={() => { deleteSession(s.id); setSessions(loadSessions()); }} className="text-[10px] px-1 text-red-400" title="Eliminar sesión"><X className="w-3.5 h-3.5" /></button>

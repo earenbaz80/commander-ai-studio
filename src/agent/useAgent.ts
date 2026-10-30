@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, useEffect } from 'react';
 import { AgentOrchestrator } from './orchestrator';
 import { AgentLoop } from './loop';
 import { uid } from './id';
-import { saveSession } from './sessions';
+import { saveSession, saveSessionThrottled, type AgentSession } from './sessions';
 import { recordMetric } from './telemetry';
 import type { AgentState, ApprovalRequest, ApprovalResult } from './types';
 
@@ -14,6 +14,18 @@ export function useAgent(cwd: string, model?: string) {
   const resolver = useRef<((v: ApprovalResult) => void) | null>(null);
   const orchestratorRef = useRef<AgentOrchestrator | null>(null);
 
+  /**
+   * Autoguardado del avance.
+   *
+   * Antes sólo se guardaba al pulsar «parar», así que una recarga o un cierre
+   * de la app a mitad de corrida se llevaba por delante todo el trabajo. Ahora
+   * cada paso deja el estado en disco (limitado a una escritura por segundo).
+   */
+  const autosave = (s: AgentState) => {
+    if (!s.task) return;
+    saveSessionThrottled({ id: s.task.id, goal: s.task.goal, ts: Date.now(), state: s });
+  };
+
   // Initialize orchestrator once using useRef pattern to avoid circular deps in useMemo
   if (!orchestratorRef.current) {
     orchestratorRef.current = new AgentOrchestrator({
@@ -22,6 +34,7 @@ export function useAgent(cwd: string, model?: string) {
         const orch = orchestratorRef.current;
         if (orch) {
           setState({ ...orch.getState() });
+          autosave(orch.getState());
           try {
             if (step.type === 'tool_result') {
               recordMetric({
@@ -37,9 +50,12 @@ export function useAgent(cwd: string, model?: string) {
       },
       onPlanChange: () => {
         const orch = orchestratorRef.current;
-        if (orch) setState({ ...orch.getState() });
+        if (orch) {
+          setState({ ...orch.getState() });
+          autosave(orch.getState());
+        }
       },
-      onStateChange: (s) => setState(s),
+      onStateChange: (s) => { setState(s); autosave(s); },
       approve: async (req) => {
         if (!req.danger) return { approved: true };
         setPendingApproval(req);
@@ -70,6 +86,18 @@ export function useAgent(cwd: string, model?: string) {
     orchestrator.restoreState(s.state);
     setState({ ...orchestrator.getState() });
   };
+  /**
+   * Continúa una sesión interrumpida: la restaura y vuelve a poner el bucle en
+   * marcha desde el plan y los pasos que quedaron guardados.
+   */
+  const continueSession = (s: AgentSession) => {
+    const task = s.state?.task;
+    if (!task) return false;
+    orchestrator.restoreState(s.state);
+    setState({ ...orchestrator.getState() });
+    void loop.resume({ ...task, cwd: task.cwd || cwd });
+    return true;
+  };
   const forkSession = (s: import('./sessions').AgentSession) => {
     const copy = JSON.parse(JSON.stringify(s.state)) as AgentState;
     copy.task = s.state.task ? { ...s.state.task, id: uid('task') } : null;
@@ -99,5 +127,5 @@ export function useAgent(cwd: string, model?: string) {
     setState({ ...orchestrator.getState() });
   };
 
-  return { state, startTask, stop, runTool, pendingApproval, resolveApproval, rollbackRun, restoreSession, forkSession, setPlan };
+  return { state, startTask, stop, runTool, pendingApproval, resolveApproval, rollbackRun, restoreSession, continueSession, forkSession, setPlan };
 }

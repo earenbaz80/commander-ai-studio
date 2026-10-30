@@ -244,3 +244,54 @@ test('normalizePlan marca por id sin repetir el texto y descarta basura', () => 
     'el plan se recorta para no inflar el prompt'
   );
 });
+
+// ── Reanudar una corrida interrumpida ──
+
+/** Estado de una corrida que se quedó a medias, tal como lo deja el autoguardado. */
+const interruptedState = (maxSteps = 40) => ({
+  task: { id: 'resume-1', goal: 'seguir con la tarea', cwd: '.', maxSteps },
+  plan: [{ id: 'p1', text: 'leer package.json', done: false }],
+  steps: [
+    { id: 's1', type: 'thought' as const, title: 'Inicio', content: 'objetivo', status: 'completed' as const, ts: 1 },
+    { id: 's2', type: 'tool_result' as const, toolId: 'fs.read', title: 'Leer', content: 'ok', status: 'completed' as const, ts: 2 },
+  ],
+  thinking: false,
+  running: false,
+});
+
+test('AgentOrchestrator.resume conserva los pasos y el plan', () => {
+  const { orchestrator } = createMockOrchestrator();
+  orchestrator.restoreState(interruptedState());
+
+  assert.equal(orchestrator.resume(), true);
+  const s = orchestrator.getState();
+  assert.equal(s.running, true);
+  assert.equal(s.thinking, true);
+  assert.equal(s.steps.length, 2, 'los pasos guardados no se borran');
+  assert.deepEqual(s.plan.map((p) => p.id), ['p1'], 'el plan se mantiene');
+});
+
+test('AgentOrchestrator.resume sin tarea no arranca nada', () => {
+  const { orchestrator } = createMockOrchestrator();
+
+  assert.equal(orchestrator.resume(), false);
+  assert.equal(orchestrator.getState().running, false);
+});
+
+test('AgentLoop.resume retoma la corrida sin borrar el log previo', async () => {
+  const { loop, orchestrator, getState } = createLoop('gemini-2.0-flash');
+  orchestrator.restoreState(interruptedState(2));
+
+  await loop.resume({ id: 'resume-1', goal: 'seguir con la tarea', cwd: '.', maxSteps: 2 });
+
+  const s = getState();
+  assert.equal(s.steps[0].id, 's1', 'el último avance sigue en su sitio');
+  assert.ok(s.steps.length > 2, `debe seguir avanzando (pasos: ${s.steps.length})`);
+  assert.ok(
+    s.steps.some((x) => x.title === 'Continuación'),
+    'deja constancia en el log de que es una continuación'
+  );
+  // Con maxSteps=2 y dos pasos ya usados, sin presupuesto nuevo moriría al instante.
+  assert.ok(s.steps.length > s.task!.maxSteps - 2, 'renueva el presupuesto de pasos');
+  loop.stop();
+});
