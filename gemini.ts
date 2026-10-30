@@ -221,6 +221,11 @@ export async function handleGeminiGenerate(req: Request, res: Response) {
     return res.json({
       success: true,
       text: textOutput,
+      // Qué modelo contestó de verdad: el cliente no tiene que deducirlo del
+      // texto ni de un aviso con emojis.
+      model: fallbackUsed ? fallbackModelName : activeModel,
+      requestedModel: activeModel,
+      fallback: fallbackUsed ? { from: activeModel, to: fallbackModelName } : null,
       groundingSources,
       webSearchQueries,
       functionCalls,
