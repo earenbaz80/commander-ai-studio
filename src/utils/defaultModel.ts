@@ -1,14 +1,15 @@
 /**
  * Modelo por defecto y migración única para usuarios existentes.
- * Solo se reemplazan los defaults antiguos de Gemini: cualquier otro modelo elegido se conserva.
+ * Solo se reemplazan los defaults antiguos (Gemini retirados y Pollinations, que respondía 404):
+ * cualquier otro modelo elegido se conserva.
  */
 
-export const DEFAULT_MODEL = 'pollinations/openai';
+export const DEFAULT_MODEL = 'gemini-3.5-flash';
 
 const SELECTED_MODEL_KEY = 'ai_studio_selected_model';
 const TABS_KEY = 'ai_studio_tabs_v1';
-const MIGRATION_KEY = 'ai_studio_default_model_v2';
-const LEGACY_DEFAULTS = new Set(['gemini-2.0-flash', 'gemini-2.5-flash']);
+const MIGRATION_KEY = 'ai_studio_default_model_v3';
+const LEGACY_DEFAULTS = new Set(['gemini-2.0-flash', 'gemini-2.5-flash', 'pollinations/openai']);
 
 /** Idempotente: se ejecuta una sola vez por navegador (flag en localStorage). */
 export function runDefaultModelMigration(): void {
