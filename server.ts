@@ -2106,9 +2106,14 @@ app.get('/api/system/info', (_req, res) => {
 const PORT = Number(process.env.PORT || loadConfig().server?.port || 3280);
 const HOST = '127.0.0.1';
 const server = app.listen(PORT, HOST, () => {
-    console.log(`🚀 Commander AI Studio server running on port ${PORT}`);
-    console.log(`   Health: http://${HOST}:${PORT}/api/health`);
-    console.log(`   API Proxy: http://${HOST}:${PORT}/api/providers -> registered routes`);
+    // Con PORT=0 (puerto efímero) el SO elige cuál: hay que anunciar el real,
+    // no el 0 pedido, o quien lo lea del log —la suite de tests, sin ir más
+    // lejos— acaba haciendo peticiones al puerto equivocado.
+    const addr = server.address();
+    const port = typeof addr === 'object' && addr ? addr.port : PORT;
+    console.log(`🚀 Commander AI Studio server running on port ${port}`);
+    console.log(`   Health: http://${HOST}:${port}/api/health`);
+    console.log(`   API Proxy: http://${HOST}:${port}/api/providers -> registered routes`);
   });
 
   server.on('error', (err) => {
