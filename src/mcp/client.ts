@@ -30,6 +30,23 @@ export interface StdioMcpResult {
 }
 
 /**
+ * Sustituye `${VAR}` por su valor del entorno (que incluye lo cargado de `.env`).
+ *
+ * La configuración se versiona, así que la credencial de un servidor MCP no
+ * puede vivir en su bloque `env`: se guarda `"GEMINI_API_KEY":
+ * "${PIXELFORGE_GEMINI_API_KEY}"` y el valor real queda en `.env`. La
+ * indirección hace falta —y no basta con heredar `GEMINI_API_KEY`— cuando la
+ * app ya usa ese mismo nombre para su propia credencial: el servidor recibiría
+ * la de la app en vez de la suya.
+ *
+ * Una referencia sin valor se deja tal cual: en el error del servidor se ve qué
+ * variable falta, mientras que un valor vacío parecería una clave inválida.
+ */
+export function expandEnvValue(value: string, env: NodeJS.ProcessEnv = process.env): string {
+  return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (whole, name: string) => env[name] ?? whole);
+}
+
+/**
  * Cita una pieza para `cmd.exe`.
  *
  * Sólo se usa cuando hay que pasar por el shell (`.cmd`/`.bat`): dentro de unas
@@ -75,6 +92,16 @@ export function spawnSpec(
   return { command: quoteForCmd(command), args: args.map(quoteForCmd), shell: true };
 }
 
+/** Aplica `expandEnvValue` a un bloque `env` completo, sin mutar el original. */
+export function resolveServerEnv(
+  cfgEnv: Record<string, string> | undefined,
+  env: NodeJS.ProcessEnv = process.env
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(cfgEnv || {})) out[name] = expandEnvValue(value, env);
+  return out;
+}
+
 /**
  * Ejecuta una petición JSON-RPC contra un servidor MCP local por nombre.
  * @param name Nombre del servidor en tools.mcp.servers.
@@ -116,7 +143,7 @@ export function stdioMcpRequest(
     try {
       const spec = spawnSpec(cfg);
       child = spawn(spec.command, spec.args, {
-        env: { ...process.env, ...(cfg.env || {}) },
+        env: { ...process.env, ...resolveServerEnv(cfg.env) },
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
         shell: spec.shell,

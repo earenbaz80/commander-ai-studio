@@ -99,6 +99,68 @@ describe('MCP stdio client', () => {
   });
 
   /**
+   * El `env` de un servidor del registro se versiona, así que una credencial no
+   * puede ir ahí: se guarda `${VAR}` y el valor viaja por el entorno. Esto
+   * comprueba que el hijo recibe el valor resuelto, no el literal, y que los
+   * valores escritos a mano siguen pasando tal cual.
+   */
+  it('el env del servidor resuelve ${VAR} contra el entorno del proceso', async () => {
+    const NAME = 'MCP_TEST_SECRET_KEY';
+    const valor = 'clave-del-entorno-para-el-hijo-1234';
+    const previo = process.env[NAME];
+    process.env[NAME] = valor;
+    try {
+      writeConfig({
+        tools: {
+          mcp: {
+            enabled: true,
+            servers: {
+              envtest: {
+                command: process.execPath,
+                args: [path.join(tmpDir, 'fakeServer.mjs')],
+                env: { GEMINI_API_KEY: '${' + NAME + '}', OTRA_CLAVE: 'valor-literal' },
+              },
+            },
+          },
+        },
+      } as any);
+      resetConfig();
+
+      const resuelto = await callServerTool('envtest', 'env', { name: 'GEMINI_API_KEY' });
+      expect(resuelto.ok).toBe(true);
+      expect(JSON.stringify(resuelto.data)).toContain(valor);
+
+      const literal = await callServerTool('envtest', 'env', { name: 'OTRA_CLAVE' });
+      expect(JSON.stringify(literal.data)).toContain('valor-literal');
+    } finally {
+      if (previo === undefined) delete process.env[NAME];
+      else process.env[NAME] = previo;
+    }
+  });
+
+  it('una referencia sin valor en el entorno se deja literal, no vacía', async () => {
+    writeConfig({
+      tools: {
+        mcp: {
+          enabled: true,
+          servers: {
+            sinvalor: {
+              command: process.execPath,
+              args: [path.join(tmpDir, 'fakeServer.mjs')],
+              env: { GEMINI_API_KEY: '${MCP_VAR_QUE_NO_EXISTE}' },
+            },
+          },
+        },
+      },
+    } as any);
+    resetConfig();
+
+    const r = await callServerTool('sinvalor', 'env', { name: 'GEMINI_API_KEY' });
+    expect(r.ok).toBe(true);
+    expect(JSON.stringify(r.data)).toContain('${MCP_VAR_QUE_NO_EXISTE}');
+  });
+
+  /**
    * El caso real: en Windows el intérprete está en `C:\Program Files\…` y los
    * servidores del registro viven bajo `C:\Users\<nombre con espacios>\…`. Con
    * el spawn anterior (`shell: true` sin comillas en los args) la ruta se
