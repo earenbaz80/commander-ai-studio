@@ -41,3 +41,29 @@ export const GEMINI_FALLBACK_MODELS = [
 export const GEMINI_MODEL_CHAIN = Array.from(
   new Set([GEMINI_DEFAULT_MODEL, GEMINI_PRO_MODEL, ...GEMINI_FALLBACK_MODELS])
 );
+
+/** Tope de modelos en una cadena explícita: más que esto es una lista de deseos. */
+export const MAX_FALLBACK_MODELS = 5;
+
+/**
+ * Normaliza la cadena de respaldo que pide el cliente.
+ *
+ * `null` = no pidió nada y se usa la de por defecto. Un array —incluso vacío—
+ * es una decisión explícita: vacío significa "sin respaldo", fallar en voz
+ * alta, en vez de cambiar de modelo a espaldas de quien llama.
+ */
+export function normalizeFallbackChain(input: unknown): string[] | null {
+  if (input === undefined || input === null) return null;
+  if (!Array.isArray(input)) return null;
+  const seen = new Set<string>();
+  const chain: string[] = [];
+  for (const item of input) {
+    if (typeof item !== 'string') continue;
+    const id = item.trim();
+    if (!id || id.length > 80 || seen.has(id)) continue;
+    seen.add(id);
+    chain.push(id);
+    if (chain.length >= MAX_FALLBACK_MODELS) break;
+  }
+  return chain;
+}
