@@ -365,23 +365,10 @@ export class AgentOrchestrator {
   }
 
   private async decomposePlanItem(item: any): Promise<any[]> {
-    const prompt = `Descompon esta tarea en subtareas ejecutables:\nTarea: ${item.text}\n\nDevuelve JSON con subtareas:\n[\n  {\n    "id": "sub_1",\n    "title": "Título breve",\n    "description": "Descripción detallada",\n    "role": "researcher|coder|reviewer|planner",\n    "estimatedTokens": 2000,\n    "dependsOn": [],\n    "priority": 1\n  }\n]`;
-
-    try {
-      const response = await fetch('/api/decompose', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt })
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        return data.subtasks || this.fallbackDecomposition(item);
-      }
-    } catch {
-      // Fallback to simple decomposition
-    }
-    
+    // Sin llamada de red: `/api/decompose` no lo monta el servidor y la única
+    // ruta que lo pedía (`executePlan`) no tiene llamadores, así que el fetch
+    // siempre fallaba y se caía aquí. La descomposición local queda como camino
+    // único en vez de un catch que siempre se toma.
     return this.fallbackDecomposition(item);
   }
 

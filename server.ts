@@ -7,13 +7,13 @@ import { createHash } from 'crypto';
 import { spawn, execFileSync } from 'child_process';
 import { GoogleGenAI } from '@google/genai';
 import JSZip from 'jszip';
-import { handleAgentRunTool } from './agentTools';
+import { executeAgentTool, handleAgentRunTool } from './agentTools';
 import * as persistence from './persistence';
 import * as worktrees from './worktrees';
 import { runAutonomousCampaign, planCampaign } from './autonomousRun';
 import { setServerBaseUrl } from './serverRuntime';
 import { addRoot, listRoots, removeRoot, removableRoots, resolveProjectPath } from './projects';
-import { enforceTool, getPermissions } from './permissions';
+import { enforceTool, getPermissions, setPermissions } from './permissions';
 // `listSessions` ya lo exporta `sessionWorkspace` (sesiones de UI): se aliasa.
 import { createSession, getSession, listSessions as listAgentSessions, removeSession } from './agentSession';
 import { clearSubAgents, listSubAgents, subscribeSubAgents } from './subAgents';
@@ -566,6 +566,47 @@ app.post('/api/nono/observations', (req, res) => {
     const b = req.body || {};
     const id = persistence.saveNonoObservation(b.projectId ?? null, String(b.kind || 'note'), String(b.content || ''), b.ts);
     res.json({ success: true, id });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+
+// ── Permisos del agente (por proyecto) ──
+// `permissions.ts` ya guardaba y aplicaba esta configuración en cada tool; lo
+// que faltaba era el camino del panel. El modal leía y guardaba en
+// `/api/permissions`, que no existía: el GET se tragaba el 404 en un catch
+// «best-effort» y el PUT no guardaba nada, así que la lista blanca, los globs y
+// el toggle de modo parecían aplicarse y se perdían al recargar.
+/** Root canónico del panel: el que manda el cliente, o el cwd si no lo precisa. */
+function permissionsRoot(input: unknown): string {
+  const hint = String(input || '').trim();
+  if (!hint) return process.cwd();
+  return resolveProjectPath('.', hint).abs;
+}
+
+app.get('/api/permissions', (req, res) => {
+  try {
+    const root = permissionsRoot(req.query.root);
+    res.json({ success: true, root, permissions: getPermissions(root) });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+
+app.put('/api/permissions', (req, res) => {
+  try {
+    const body = req.body || {};
+    const root = permissionsRoot(body.root);
+    const current = getPermissions(root);
+    const patch = (body.permissions || {}) as Record<string, any>;
+    // Fusión por campo: el toggle de modo manda sólo `{ mode }` y el modal manda
+    // tools y globs. Guardar el patch tal cual borraba lo que el otro no envía.
+    const next = {
+      mode: patch.mode ?? current.mode,
+      allowedTools: 'allowedTools' in patch ? patch.allowedTools : current.allowedTools,
+      deniedTools: 'deniedTools' in patch ? patch.deniedTools : current.deniedTools,
+      files: {
+        read: patch.files?.read ?? current.files.read,
+        write: patch.files?.write ?? current.files.write,
+      },
+    };
+    res.json({ success: true, root, permissions: setPermissions(root, next) });
   } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
 });
 
@@ -1604,6 +1645,70 @@ app.post('/api/hf/download-local', async (req, res) => {
 });
 
 // ==================== WEB SEARCH (para Extensions Manager) ====================
+// ── Búsqueda de código del proyecto ──
+// Panel Search, Workbench y las menciones `@` del chat. Delegan en `fs.glob` y
+// `fs.grep` en vez de repetir un recorrido: así respetan los roots registrados,
+// los mismos directorios ignorados y el filtro de ficheros de secretos.
+/** Consulta acotada: el recorrido es síncrono y esto lo llaman con cada tecla. */
+function searchQuery(value: unknown): string {
+  return String(value || '').trim().slice(0, 200);
+}
+
+function searchRoot(value: unknown): string | undefined {
+  const root = String(value || '').trim();
+  return root ? root.slice(0, 1024) : undefined;
+}
+
+/** Ranking del picker `@`: el nombre del fichero manda sobre el resto de la ruta. */
+function fileMatchScore(relPath: string, query: string): number {
+  const rel = relPath.toLowerCase();
+  const q = query.toLowerCase();
+  const base = rel.slice(rel.lastIndexOf('/') + 1);
+  if (base === q) return 3;
+  if (base.startsWith(q)) return 2;
+  return rel.includes(q) ? 1 : 0;
+}
+
+app.get('/api/search/files', async (req, res) => {
+  try {
+    const q = searchQuery(req.query.q);
+    if (!q) return res.json({ success: true, files: [] });
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const r = await executeAgentTool('fs.glob', { pattern: q, root: searchRoot(req.query.root) });
+    if (!r.ok) return res.status(r.status || 400).json({ success: false, error: r.error, files: [] });
+    const files = ((r.data?.files || []) as string[])
+      .map((file) => ({ path: file, score: fileMatchScore(file, q) }))
+      .sort((a, b) => b.score - a.score || a.path.length - b.path.length)
+      .slice(0, limit);
+    res.json({ success: true, files });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message, files: [] }); }
+});
+
+app.get('/api/search/code', async (req, res) => {
+  try {
+    const q = searchQuery(req.query.q);
+    if (!q) return res.json({ success: true, results: [], semantic: false });
+    const limit = Math.min(Math.max(Number(req.query.limit) || 40, 1), 100);
+    const r = await executeAgentTool('fs.grep', { pattern: q, root: searchRoot(req.query.root) });
+    if (!r.ok) return res.status(r.status || 400).json({ success: false, error: r.error, results: [], semantic: false });
+    // Agrupado por fichero, que es como lo pinta el panel. `semantic` va en
+    // false porque no hay embeddings: el badge de la UI sólo sale con true.
+    const byFile = new Map<string, { line: number; text: string }[]>();
+    for (const match of ((r.data?.matches || []) as any[])) {
+      // `fs.grep` devuelve la ruta con el separador del sistema y `fs.glob` en
+      // POSIX; el panel pinta las dos y agrupa por ruta, así que se normaliza
+      // aquí para que ambos endpoints hablen igual (también en Windows).
+      const file = String(match.file).replace(/\\/g, '/');
+      const list = byFile.get(file) || [];
+      if (list.length >= 20) continue;
+      list.push({ line: Number(match.line) || 0, text: String(match.text || '').slice(0, 200) });
+      byFile.set(file, list);
+    }
+    const results = [...byFile].slice(0, limit).map(([file, matches]) => ({ path: file, score: matches.length, matches }));
+    res.json({ success: true, results, semantic: false });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message, results: [], semantic: false }); }
+});
+
 app.get('/api/search/web', async (req, res) => {
   const q = String(req.query.q || '').slice(0, 300);
   if (!q) return res.status(400).json({ success: false, error: 'query requerida' });
@@ -1980,6 +2085,26 @@ app.post('/api/local-models/download-runtime', async (req, res) => {
 // ==================== OLLAMA HEALTH ====================
 // ==================== OLLAMA HEALTH ====================
 // ==================== OLLAMA HEALTH ====================
+// Catálogo de modelos de Ollama para el modal Local LLM. `/api/ollama/health`
+// dice si el servidor responde; esto devuelve lo que ese modal pinta.
+app.get('/api/ollama/models', async (req, res) => {
+  const host = String(req.query.host || process.env.OLLAMA_HOST || 'http://localhost:11434');
+  try {
+    const response = await fetch(`${host}/api/tags`, {
+      method: 'GET',
+      headers: { 'User-Agent': 'CommanderAIStudio/2.5' },
+      signal: AbortSignal.timeout(4000),
+    });
+    const data = response.ok ? await response.json().catch(() => ({})) : {};
+    const models = Array.isArray(data?.models)
+      ? data.models.map((m: any) => (typeof m === 'string' ? m : (m?.name || m?.model))).filter(Boolean)
+      : [];
+    res.json({ success: response.ok, models, host, error: response.ok ? undefined : ('HTTP ' + response.status) });
+  } catch (error: any) {
+    res.json({ success: false, models: [], host, error: error?.message || 'unreachable' });
+  }
+});
+
 app.get('/api/ollama/health', async (req, res) => {
   const host = String(req.query.host || process.env.OLLAMA_HOST || 'http://localhost:11434');
   try {
@@ -2254,6 +2379,56 @@ app.post('/api/ollama/generate', async (req, res) => {
 });
 
 // OpenRouter generate endpoint
+// xAI Grok. `aiProviders` declara este endpoint para los ids `grok*`, pero no
+// había handler: el modelo elegido recibía el `index.html` de la SPA en vez de
+// una respuesta. Mismo contrato que OpenRouter; la clave sale del cuerpo o de
+// `XAI_API_KEY` (el cliente no la manda: `clientCredentialsFor` sólo viaja con
+// ids `custom/`).
+app.post('/api/xai/generate', async (req, res) => {
+  try {
+    const { prompt, model = 'grok-beta', systemInstruction = '', temperature = 0.7, maxTokens = 2048, apiKey } = req.body || {};
+    const key = apiKey || process.env.XAI_API_KEY;
+    if (!key) return res.json({ ok: false, error: 'XAI_API_KEY requerida' });
+
+    const response = await fetch('https://api.x.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
+          { role: 'user', content: prompt },
+        ],
+        temperature,
+        max_tokens: maxTokens,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `xAI HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content || '';
+    return res.json({
+      success: true,
+      text,
+      metrics: {
+        promptTokens: data.usage?.prompt_tokens || 0,
+        responseTokens: data.usage?.completion_tokens || 0,
+        totalTokens: data.usage?.total_tokens || 0,
+        latencyMs: 0,
+      },
+    });
+  } catch (error: any) {
+    return res.json({ ok: false, error: error.message || 'xAI generate falló' });
+  }
+});
+
 app.post('/api/openrouter/generate', async (req, res) => {
   try {
     const { prompt, model = 'openai/gpt-4o-mini', systemInstruction = '', temperature = 0.7, maxTokens = 2048, apiKey } = req.body;
@@ -2324,6 +2499,34 @@ app.post('/api/pollinations/generate', async (req, res) => {
 });
 
 // Custom endpoint (OpenAI-compatible)
+// Catálogo de un endpoint OpenAI-compatible (`${baseURL}/models`): lo usan el
+// botón de probar del proveedor Custom y el modal Local LLM. Las claves se
+// resuelven como en `/api/custom/generate`: la del cuerpo manda, si no la del
+// entorno.
+app.post('/api/custom/models', async (req, res) => {
+  const { baseURL, apiKey } = req.body || {};
+  const url = String(baseURL || process.env.CUSTOM_BASE_URL || '').replace(/\/+$/, '');
+  const key = apiKey || process.env.CUSTOM_API_KEY || process.env.OPENCODE_API_KEY;
+  if (!url) return res.json({ success: false, models: [], error: 'CUSTOM_BASE_URL requerido' });
+  try {
+    const response = await fetch(`${url}/models`, {
+      method: 'GET',
+      headers: {
+        ...(key ? { Authorization: `Bearer ${key}` } : {}),
+        'Content-Type': 'application/json',
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) return res.json({ success: false, models: [], error: `HTTP ${response.status}` });
+    const data = await response.json().catch(() => ({}));
+    const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.models) ? data.models : [];
+    const models = list.map((m: any) => (typeof m === 'string' ? m : (m?.id || m?.name))).filter(Boolean);
+    res.json({ success: true, models });
+  } catch (error: any) {
+    res.json({ success: false, models: [], error: error?.message || 'unreachable' });
+  }
+});
+
 app.post('/api/custom/generate', async (req, res) => {
   try {
     const { prompt, model, systemInstruction = '', temperature = 0.7, maxTokens = 2048, baseURL, apiKey } = req.body;
