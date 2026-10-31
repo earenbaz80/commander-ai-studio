@@ -3,8 +3,10 @@
  *
  * Motivo: `writeConfig` llegó a fusionar las variables de entorno al guardar,
  * así que una clave podía acabar escrita en `commander.json`. Esta prueba cierra
- * la puerta: toma las claves reales del entorno y de `.env` (que están ignorados
- * por git) y busca su valor literal en los ficheros que sí se versionan.
+ * la puerta: toma las claves reales del entorno, de `.env` (ignorados por git) y
+ * de los bloques `env` de la configuración —para que una clave que sólo vive ahí
+ * también se busque— y busca su valor literal en los ficheros que sí se
+ * versionan.
  *
  * También revisa el historial: un valor borrado del árbol sigue en los blobs
  * antiguos, y sigue siendo una fuga mientras la clave esté viva.
@@ -48,6 +50,9 @@ const FALLBACK_FILES = ['commander.json', '.env.example', 'package.json', 'READM
 /** Ficheros de entorno locales (ignorados por git) de los que se leen las claves. */
 const LOCAL_ENV_FILES = ['.env', '.env.local', '.env.production', '.env.development'];
 
+/** Configuración versionada de la app: puede ser ella misma la que guarde la fuga. */
+const CONFIG_FILE = 'commander.json';
+
 /** Extrae `CLAVE=valor` de un fichero .env sin interpretar el resto de la sintaxis. */
 export function parseEnvFile(text: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -73,18 +78,72 @@ function isRealSecret(value: string): boolean {
   return value.length >= MIN_SECRET_LENGTH && !PLACEHOLDER.test(value);
 }
 
-/** Credenciales conocidas: del entorno del proceso y de los `.env` locales. */
+/** Lee un fichero del repo, o `null` si no existe o no se puede abrir. */
+function readRepoFile(file: string): string | null {
+  const path = join(ROOT, file);
+  if (!existsSync(path)) return null;
+  try {
+    return readFileSync(path, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Credenciales escritas en los bloques `env` de la configuración de la app.
+ *
+ * Hacen falta: `writeConfig` llegó a fusionar el entorno al guardar, así que la
+ * propia configuración puede ser el sitio donde vive la fuga. Y una clave que
+ * está *sólo* ahí —el `env` de un servidor MCP, por ejemplo— no aparece en el
+ * entorno ni en ningún `.env`, de modo que sin esto no se busca en ningún lado
+ * y la guardia pasa sin verla.
+ *
+ * Sólo cuentan los bloques `env`: fuera de ellos las claves del JSON son
+ * `apiKey`, `baseUrl`… que no siguen la convención de variable de entorno.
+ */
+export function collectConfigSecrets(text: string | null): Array<[string, string]> {
+  if (!text) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return []; // configuración a medio escribir: no es asunto de esta guardia
+  }
+
+  const found: Array<[string, string]> = [];
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item);
+      return;
+    }
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      if (/^env$/i.test(key) && value && typeof value === 'object' && !Array.isArray(value)) {
+        for (const [name, raw] of Object.entries(value as Record<string, unknown>)) {
+          if (typeof raw !== 'string' || !SECRET_NAME.test(name) || !isRealSecret(raw)) continue;
+          found.push([name, raw]);
+        }
+        continue;
+      }
+      visit(value);
+    }
+  };
+  visit(parsed);
+  return found;
+}
+
+/**
+ * Credenciales conocidas: del entorno del proceso, de los `.env` locales y de
+ * los bloques `env` de la configuración.
+ *
+ * El entorno manda por nombre. Si la configuración trae *otro* valor para el
+ * mismo nombre, también se busca: se guarda como `<NOMBRE> (commander.json)`
+ * para que el fallo diga de dónde salió el valor que se encontró.
+ */
 export function collectSecrets(
   env: NodeJS.ProcessEnv = process.env,
-  readEnvFile: (file: string) => string | null = (file) => {
-    const path = join(ROOT, file);
-    if (!existsSync(path)) return null;
-    try {
-      return readFileSync(path, 'utf8');
-    } catch {
-      return null;
-    }
-  }
+  readEnvFile: (file: string) => string | null = readRepoFile,
+  readConfigFile: (file: string) => string | null = readRepoFile
 ): Map<string, string> {
   const secrets = new Map<string, string>();
 
@@ -100,6 +159,16 @@ export function collectSecrets(
       if (!SECRET_NAME.test(name) || !isRealSecret(value)) continue;
       if (!secrets.has(name)) secrets.set(name, value);
     }
+  }
+
+  for (const [name, value] of collectConfigSecrets(readConfigFile(CONFIG_FILE))) {
+    if (secrets.get(name) === value) continue;
+    if (!secrets.has(name)) {
+      secrets.set(name, value);
+      continue;
+    }
+    const alias = `${name} (commander.json)`;
+    if (!secrets.has(alias)) secrets.set(alias, value);
   }
 
   return secrets;
@@ -247,11 +316,26 @@ function commitsForBlob(sha: string, cwd: string = ROOT): string[] {
   }
 }
 
+/**
+ * Nombre de la variable tal como se muestra.
+ *
+ * El valor tomado de la config lleva sufijo para no confundirse con el del
+ * entorno, pero si la fuga está en el propio `commander.json` el sufijo sobra:
+ * `commander.json ← GEMINI_API_KEY (commander.json)` no añade nada.
+ */
+function displayName(leak: Leak): string {
+  const suffix = ` (${CONFIG_FILE})`;
+  if (leak.file === CONFIG_FILE && leak.secretName.endsWith(suffix)) {
+    return leak.secretName.slice(0, -suffix.length);
+  }
+  return leak.secretName;
+}
+
 /** Formatea las fugas sin repetir jamás el valor de la credencial. */
 export function formatLeaks(leaks: Leak[], resolve: (file: string) => string[] = () => []): string {
   const shown = leaks.slice(0, MAX_REPORTED).map((leak) => {
     const commits = resolve(leak.file);
-    return `  ${leak.file} \u2190 ${leak.secretName}${commits.length ? ` (commits: ${commits.join(', ')})` : ''}`;
+    return `  ${leak.file} \u2190 ${displayName(leak)}${commits.length ? ` (commits: ${commits.join(', ')})` : ''}`;
   });
   if (leaks.length > MAX_REPORTED) shown.push(`  \u2026 y ${leaks.length - MAX_REPORTED} m\u00e1s`);
   return shown.join('\n');
@@ -260,11 +344,11 @@ export function formatLeaks(leaks: Leak[], resolve: (file: string) => string[] =
 /** Empareja una etiqueta de historial (`ruta @ sha`) con su blob. */
 const HISTORY_LABEL = /^(.*) @ ([0-9a-f]{7,})$/;
 
-test('ningún fichero versionado contiene una API key del entorno ni de .env', () => {
+test('ningún fichero versionado contiene una credencial conocida', () => {
   const secrets = collectSecrets();
   if (secrets.size === 0) {
     // Sin credenciales locales no hay nada que comparar; no es un fallo.
-    console.log('[env-leak-guard] sin credenciales en el entorno ni en .env: nada que comprobar');
+    console.log('[env-leak-guard] sin credenciales en el entorno, los .env ni la config: nada que comprobar');
     return;
   }
 
@@ -286,10 +370,10 @@ test('ningún fichero versionado contiene una API key del entorno ni de .env', (
   );
 });
 
-test('ningún blob del historial de git contiene una API key del entorno ni de .env', () => {
+test('ningún blob del historial de git contiene una credencial conocida', () => {
   const secrets = collectSecrets();
   if (secrets.size === 0) {
-    console.log('[env-leak-guard] sin credenciales en el entorno ni en .env: historial sin comparar');
+    console.log('[env-leak-guard] sin credenciales en el entorno, los .env ni la config: historial sin comparar');
     return;
   }
 
@@ -412,6 +496,7 @@ test('collectSecrets encuentra claves reales y descarta rellenos, valores cortos
       GEMINI_MODEL: 'un-valor-larguisimo-que-no-es-credencial',
       SIN_VALOR_API_KEY: '',
     } as NodeJS.ProcessEnv,
+    () => null,
     () => null
   );
 
@@ -430,12 +515,73 @@ test('collectSecrets lee los .env locales y no deja que el fichero pise al entor
 
   const secrets = collectSecrets(
     { OPENROUTER_API_KEY: 'clave-del-entorno-zzzzzz' } as NodeJS.ProcessEnv,
-    (file) => (file === '.env' ? envFile : null)
+    (file) => (file === '.env' ? envFile : null),
+    () => null
   );
 
   assert.equal(secrets.get('OPENROUTER_API_KEY'), 'clave-del-entorno-zzzzzz', 'el entorno manda');
   assert.equal(secrets.get('OTRA_API_KEY'), 'clave-de-fichero-999', 'lo que sólo está en el .env también cuenta');
   assert.ok(!secrets.has('XAI_API_KEY'), 'el relleno del .env tampoco entra');
+});
+
+test('collectSecrets toma también las claves de los bloques env de commander.json', () => {
+  // El caso real: la clave de un servidor MCP vive en su `env`, no en el entorno
+  // de la app. Sin esta fuente, la guardia no tenía con qué compararla.
+  const config = JSON.stringify({
+    mcpServers: {
+      pixelforge: { command: 'node', env: { GEMINI_API_KEY: 'clave-que-vive-en-la-config-1234', REA_DEBUG: '1' } },
+      otro: { env: { OTRA_ACCESS_TOKEN: 'token-de-config-abcdefghij', SHORT_API_KEY: 'corta' } },
+    },
+    providers: { google: { apiKey: 'fuera-de-un-bloque-env-no-cuenta' } },
+  });
+
+  const secrets = collectSecrets({} as NodeJS.ProcessEnv, () => null, () => config);
+
+  assert.deepEqual(
+    [...secrets.keys()].sort(),
+    ['GEMINI_API_KEY', 'OTRA_ACCESS_TOKEN'],
+    'sólo lo que parece credencial dentro de un bloque env'
+  );
+  assert.equal(secrets.get('GEMINI_API_KEY'), 'clave-que-vive-en-la-config-1234');
+});
+
+test('una clave que sólo existe en la config se señala como fuga de ese mismo fichero', () => {
+  // Recorrido completo: el candidato sale de la configuración y se encuentra en
+  // el documento versionado, que es justo la fuga que la guardia tiene que ver.
+  const config = JSON.stringify({ mcpServers: { m: { env: { GEMINI_API_KEY: 'clave-solo-en-la-config-9876' } } } });
+  const secrets = collectSecrets({} as NodeJS.ProcessEnv, () => null, () => config);
+
+  assert.deepEqual(findLeaks([['commander.json', config]], secrets), [
+    { file: 'commander.json', secretName: 'GEMINI_API_KEY' },
+  ]);
+});
+
+test('si el entorno y la config traen valores distintos, se buscan los dos', () => {
+  const config = JSON.stringify({ env: { GEMINI_API_KEY: 'valor-que-solo-esta-en-la-config' } });
+  const secrets = collectSecrets(
+    { GEMINI_API_KEY: 'valor-del-entorno-123456' } as NodeJS.ProcessEnv,
+    () => null,
+    () => config
+  );
+
+  assert.equal(secrets.get('GEMINI_API_KEY'), 'valor-del-entorno-123456', 'el entorno conserva el nombre');
+  assert.equal(
+    secrets.get('GEMINI_API_KEY (commander.json)'),
+    'valor-que-solo-esta-en-la-config',
+    'el valor de la config también se busca, con un nombre que diga de dónde salió'
+  );
+});
+
+test('collectConfigSecrets ignora JSON roto, ficheros ausentes y valores de relleno', () => {
+  assert.deepEqual(collectConfigSecrets(null), [], 'sin fichero no hay nada que sacar');
+  assert.deepEqual(collectConfigSecrets('{ roto'), [], 'una config a medio escribir no rompe la guardia');
+  assert.deepEqual(
+    collectConfigSecrets(
+      JSON.stringify({ env: { XAI_API_KEY: 'your-key-here', GEMINI_API_KEY: '${GEMINI_API_KEY}', OTRO: 'x'.repeat(40) } })
+    ),
+    [],
+    'ni relleno, ni interpolaciones, ni nombres que no son credenciales'
+  );
 });
 
 test('la guardia lee del disco y detecta la fuga, saltando binarios y ficheros enormes', () => {

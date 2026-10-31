@@ -51,7 +51,7 @@ Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos
 
 `npm run test:node` incluye `tests/envLeakGuard.test.ts`: falla si una credencial real aparece escrita en un fichero versionado.
 
-- **Origen de las claves**: variables del proceso y `.env`/`.env.local`/`.env.production`/`.env.development` (ignorados por git). Sólo nombres `*_API_KEY`, `*_API_TOKEN`, `*_ACCESS_TOKEN`, `*_TOKEN`, `*_SECRET`, de 12+ caracteres y sin pinta de relleno (`your…`, `changeme`, `<…>`, `${…}`).
+- **Origen de las claves**: variables del proceso, `.env`/`.env.local`/`.env.production`/`.env.development` (ignorados por git) y los valores con nombre de credencial de los bloques `env` de `commander.json` — una clave que vive sólo en el `env` de un servidor MCP no está en ningún otro sitio, así que sin esa fuente no se buscaría. Sólo nombres `*_API_KEY`, `*_API_TOKEN`, `*_ACCESS_TOKEN`, `*_TOKEN`, `*_SECRET`, de 12+ caracteres y sin pinta de relleno (`your…`, `changeme`, `<…>`, `${…}`).
 - **Qué revisa**: los ficheros de `git ls-files` y **todos los blobs del historial** (`git rev-list --objects --all` + `cat-file --batch`), saltando binarios y los de más de 2 MB. Sin git usa una lista de reserva (`commander.json`, `.env.example`, `package.json`, `README.md`) y lo dice en el mensaje.
 - **Historial**: una clave borrada del árbol sigue en los commits antiguos. El fallo indica `ruta @ blob` y los commits que tocaron ese blob. Rotar la credencial es obligatorio: reescribir el historial no la vuelve secreta.
 - **Qué imprime**: sólo `fichero ← VARIABLE`; nunca el valor, para que el propio error no sea otra fuga.
