@@ -15,6 +15,21 @@
         "rea": {
           "command": "rea",
           "args": ["--mcp"]
+        },
+        "context7": {
+          "command": "npx",
+          "args": ["-y", "@upstash/context7-mcp"]
+        },
+        "chrome-devtools": {
+          "command": "npx",
+          "args": ["-y", "chrome-devtools-mcp@latest", "--no-usage-statistics"]
+        },
+        "pixelforge": {
+          "command": "npx",
+          "args": ["-y", "pixelforge-mcp"],
+          "env": {
+            "GEMINI_API_KEY": "${PIXELFORGE_GEMINI_API_KEY}"
+          }
         }
       }
     }
