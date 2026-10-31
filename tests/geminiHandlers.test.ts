@@ -130,9 +130,12 @@ const GEMINI_ID_LITERAL = /gemini-\d+(?:\.\d+)?(?:-[a-z0-9]+)+/;
  *  - el módulo que los define,
  *  - la migración de defaults antiguos (apunta a ids de los que se sale),
  *  - los catálogos y plantillas de `src/data` (son listas para mostrar),
- *  - `scripts` (harness de desarrollo) y los propios tests.
+ *  - `scripts` y `evals` (harness de desarrollo: fabrican proyectos de prueba y
+ *    sondean modelos contra la API real, así que un id muerto ahí se ve en la
+ *    primera ejecución en vez de quedarse años en la app),
+ *  - los propios tests.
  */
-const LITERAL_ID_ALLOWED = ['src/config/geminiModels.ts', 'src/utils/defaultModel.ts', 'src/data', 'scripts', 'tests'];
+const LITERAL_ID_ALLOWED = ['src/config/geminiModels.ts', 'src/utils/defaultModel.ts', 'src/data', 'scripts', 'evals', 'tests'];
 // `release-packager` es una copia empaquetada y gitignored de la app: no cuenta.
 const SCAN_SKIP = ['node_modules', 'dist', '.git', 'release', 'release-packager', 'staging'];
 
