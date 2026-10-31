@@ -7,7 +7,49 @@ import {
   handleApiKeysList,
   apiKeyMiddleware,
   getApiKey,
+  VALID_KEYS,
 } from '../apiKeys.js';
+import { CLIENT_VALID_KEYS } from '../src/lib/apiKeys.js';
+
+/**
+ * Las dos allowlists son espejos: el servidor decide qué cookie se emite y el
+ * cliente qué keys se piden. Si divergen, la key se pierde en silencio.
+ */
+test('apiKeys: la allowlist del servidor y la del cliente son la misma', () => {
+  const servidor = new Set(VALID_KEYS);
+  const cliente = new Set(CLIENT_VALID_KEYS);
+  // El orden no cuenta y un 12-vs-12 en un deepEqual tampoco dice nada útil: se
+  // comparan las diferencias en las dos direcciones para que el fallo nombre el
+  // proveedor que quedó a medias, que es el caso real (añadir Gemini 4 o Grok a
+  // una lista y olvidar la otra).
+  const soloServidor = [...servidor].filter((k) => !cliente.has(k)).sort();
+  const soloCliente = [...cliente].filter((k) => !servidor.has(k)).sort();
+
+  assert.deepEqual(
+    soloServidor,
+    [],
+    `añadidas sólo a VALID_KEYS (servidor) y el panel nunca las pide: ${soloServidor.join(', ')}`
+  );
+  assert.deepEqual(
+    soloCliente,
+    [],
+    `añadidas sólo a CLIENT_VALID_KEYS (cliente) y el servidor las rechaza con 400: ${soloCliente.join(', ')}`
+  );
+  assert.equal(
+    cliente.size,
+    CLIENT_VALID_KEYS.length,
+    'la lista del cliente no debe repetir keys'
+  );
+});
+
+test('apiKeys: Freebuff viaja en las dos allowlists', () => {
+  // Se nombran explícitamente: si alguien recorta la lista, el mensaje dice qué
+  // se perdió en vez de sólo «los conjuntos difieren».
+  for (const name of ['FREEBUFF_API_KEY', 'FREEBUFF_BASE_URL']) {
+    assert.ok(VALID_KEYS.has(name), `${name} falta en la allowlist del servidor`);
+    assert.ok(CLIENT_VALID_KEYS.includes(name), `${name} falta en la allowlist del cliente`);
+  }
+});
 
 function mockRes() {
   const res: any = {

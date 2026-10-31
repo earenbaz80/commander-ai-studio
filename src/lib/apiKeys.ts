@@ -6,7 +6,14 @@ const API_KEYS_ENDPOINT = '/api/keys';
 
 const KEY_CACHE: Record<string, string> = {};
 
-const CLIENT_VALID_KEYS = [
+/**
+ * Allowlist del cliente: las keys que el panel carga y guarda por cookie.
+ *
+ * Espejo de `VALID_KEYS` en `apiKeys.ts` (servidor). Una lista más corta deja
+ * keys del panel sin precargar; una más larga manda un POST que el servidor
+ * rechaza con 400. `tests/apiKeys.test.ts` comprueba que no divergen.
+ */
+export const CLIENT_VALID_KEYS: readonly string[] = [
   'GEMINI_API_KEY',
   'ANTHROPIC_API_KEY',
   'XAI_API_KEY',
