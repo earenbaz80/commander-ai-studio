@@ -4,7 +4,13 @@ import crypto from 'crypto';
 const COOKIE_PREFIX = 'ai_studio_';
 const COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 días
 
-const VALID_KEYS = new Set([
+/**
+ * Allowlist del servidor: lo único que `/api/keys` acepta guardar, leer o borrar.
+ * Tiene que ser la misma que `CLIENT_VALID_KEYS` en `src/lib/apiKeys.ts`: si una
+ * key sólo existe aquí, el panel no la pide; si sólo existe allí, se guarda una
+ * cookie que ningún handler lee. `tests/apiKeys.test.ts` las cruza.
+ */
+export const VALID_KEYS: ReadonlySet<string> = new Set([
   'GEMINI_API_KEY',
   'ANTHROPIC_API_KEY',
   'XAI_API_KEY',
