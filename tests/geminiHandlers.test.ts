@@ -3,7 +3,14 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { handleGeminiGenerate, handleGeminiStream, GEMINI_KEY_REQUIRED } from '../gemini.js';
-import { GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODELS, GEMINI_MODEL_CHAIN, GEMINI_PRO_MODEL } from '../src/config/geminiModels.js';
+import {
+  GEMINI_DEFAULT_MODEL,
+  GEMINI_FALLBACK_MODELS,
+  GEMINI_MODEL_CHAIN,
+  GEMINI_PRO_MODEL,
+  MAX_FALLBACK_MODELS,
+  normalizeFallbackChain,
+} from '../src/config/geminiModels.js';
 
 function mockReq(body: any) {
   return {
@@ -205,4 +212,14 @@ test('gemini/stream sin API key emite un evento SSE de error claro y cierra', as
     assert.match(payload, /MISSING_API_KEY/);
     assert.equal(res.ended, true);
   });
+});
+
+test('la cadena explícita se normaliza y una lista vacía es una decisión', () => {
+  assert.equal(normalizeFallbackChain(undefined), null, 'no pedir nada = usar la de por defecto');
+  assert.equal(normalizeFallbackChain(null), null);
+  assert.equal(normalizeFallbackChain('gemini-x'), null, 'un tipo raro no rompe la cadena por defecto');
+  assert.deepEqual(normalizeFallbackChain([]), [], 'lista vacía = sin respaldo');
+  assert.deepEqual(normalizeFallbackChain([' a ', 'a', 'b', 3, '', null]), ['a', 'b'], 'dedupe y descarta basura');
+  const longChain = normalizeFallbackChain(Array.from({ length: 10 }, (_, i) => `m${i}`)) ?? [];
+  assert.equal(longChain.length, MAX_FALLBACK_MODELS, 'la cadena se recorta: no es una lista de deseos');
 });
