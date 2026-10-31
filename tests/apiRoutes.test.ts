@@ -43,27 +43,19 @@ const SERVER_FILES = ['server.ts', 'src/mcp/index.ts', 'skills/api.ts', 'preview
 /**
  * Rutas que el cliente llama y el servidor no monta **hoy**.
  *
- * Están aquí para que la suite pueda estar verde mientras se decide qué hacer
- * con cada una, pero no para olvidarlas: el test exige que sigan sin montarse
- * —si alguien las conecta, hay que borrar la entrada— y que alguien las siga
- * llamando. Con `COMMANDER_API_ROUTES_STRICT=1` la lista deja de valer y el
- * test falla también por éstas.
+ * Está vacía, y no porque se haya dejado de mirar: las siete que había se
+ * decidieron una por una. Seis se cablearon —las dos de búsqueda, los dos
+ * catálogos de modelos, los permisos y el proxy de xAI— y `/api/decompose` era
+ * código muerto (`executePlan`, su único llamador, no lo invoca nadie), así que
+ * la llamada se borró del orquestador.
+ *
+ * El mecanismo se queda: una ruta nueva sin montar vuelve a aparecer en cuanto
+ * alguien escriba un `fetch` y aún no exista su handler, y aquí es donde se
+ * documenta mientras se decide. El test exige que cada entrada siga sin
+ * montarse y que alguien la siga llamando; con `COMMANDER_API_ROUTES_STRICT=1`
+ * la lista deja de valer y el test falla también por éstas.
  */
-const PENDIENTES: Record<string, string> = {
-  '/api/search/files':
-    'lo llama la búsqueda de código (utils/codeSearchApi) desde el panel Workbench y el autocompletado @ del chat',
-  '/api/search/code':
-    'lo llama el panel Search (components/panel/CodeSearchView) a través de utils/codeSearchApi',
-  '/api/ollama/models':
-    'lo llama el modal Local LLM (utils/localLlmApi) para listar los modelos de un servidor Ollama',
-  '/api/custom/models':
-    'lo llama el modal Local LLM y el botón de probar del proveedor Custom (ProviderManager)',
-  '/api/permissions':
-    'lo llama PermissionsModal en GET y PUT; el GET se traga el fallo en un catch «best-effort»',
-  '/api/decompose': 'lo llama el orquestador del agente al descomponer una tarea',
-  '/api/xai/generate':
-    'es el defaultEndpoint que declara aiProviders para los modelos grok; ninguna ruta lo sirve',
-};
+const PENDIENTES: Record<string, string> = {};
 
 interface ClientPath {
   path: string;
