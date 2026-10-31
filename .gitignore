@@ -30,6 +30,7 @@ target/
 
 # Tests temporales
 tests/tmp/
+tests/tmp-evals/
 
 # Registro local de proyectos del agente (permisos por máquina)
 .agent-roots.json
