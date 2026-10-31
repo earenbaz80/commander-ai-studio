@@ -42,6 +42,9 @@ staging/
 playwright-report/
 test-results/
 
+# Capturas locales de revisión visual (se regeneran, no son fuente)
+screenshots/
+
 # Modelos locales descargados (pesan GB, se re-descargan)
 local_models/
 
