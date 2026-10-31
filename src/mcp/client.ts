@@ -11,6 +11,7 @@
  * haría falta mantener el proceso vivo.
  */
 import { spawn } from 'child_process';
+import { existsSync } from 'fs';
 import { getToolsConfig } from '../config/index.js';
 
 interface JsonRpcMsg {
@@ -26,6 +27,52 @@ export interface StdioMcpResult {
   ok: boolean;
   data?: any;
   error?: string;
+}
+
+/**
+ * Cita una pieza para `cmd.exe`.
+ *
+ * Sólo se usa cuando hay que pasar por el shell (`.cmd`/`.bat`): dentro de unas
+ * comillas cmd no interpreta `& | < > ^ ( )`, así que basta con entrecomillar
+ * lo que tenga espacios o metacaracteres. Las comillas literales se escapan con
+ * `\"`, que es lo que esperan los programas de consola de Windows.
+ */
+export function quoteForCmd(value: string): string {
+  if (value === '') return '""';
+  if (!/[\s"&|<>^()]/.test(value)) return value;
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * Cómo lanzar el servidor MCP: comando, args y si hace falta shell.
+ *
+ * En Windows `shell: true` concatena comando y argumentos en una línea de
+ * cmd.exe **sin entrecomillar** —node lo avisa con DEP0190—, así que cualquier
+ * ruta con espacios se partía: el `index.js` de pixelforge, que vive bajo
+ * `C:\Users\<nombre con espacios>\AppData\…`, le llegaba a node como
+ * `C:\Users\Edel` y el servidor moría con `Cannot find module` antes de hablar
+ * el protocolo. Le pasaba a todo el registro, porque todas sus rutas cuelgan de
+ * un directorio de usuario con espacios.
+ *
+ * La regla es no usar shell cuando se pueda. Un ejecutable se lanza directo y
+ * Node entrecomilla por su cuenta cada argumento, espacios incluidos; el shell
+ * sólo es obligatorio para `.cmd`/`.bat` —Node se niega a ejecutarlos sin él— y
+ * para un nombre suelto, que puede ser un shim de esos en el PATH (`npx`,
+ * `rea`). En ese caso se cita a mano porque cmd no lo hace.
+ */
+export function spawnSpec(
+  cfg: { command: string; args?: string[] },
+  platform: NodeJS.Platform = process.platform
+): { command: string; args: string[]; shell: boolean } {
+  const command = String(cfg.command || '').trim();
+  const args = [...(cfg.args || [])];
+  if (platform !== 'win32') return { command, args, shell: false };
+
+  const isBatch = /\.(cmd|bat)$/i.test(command);
+  const isBareName = !/\.[a-z0-9]+$/i.test(command) && !existsSync(command);
+  if (!isBatch && !isBareName) return { command, args, shell: false };
+
+  return { command: quoteForCmd(command), args: args.map(quoteForCmd), shell: true };
 }
 
 /**
@@ -67,10 +114,12 @@ export function stdioMcpRequest(
     }
 
     try {
-      child = spawn(cfg.command, cfg.args || [], {
+      const spec = spawnSpec(cfg);
+      child = spawn(spec.command, spec.args, {
         env: { ...process.env, ...(cfg.env || {}) },
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
+        shell: spec.shell,
       });
     } catch (e) {
       clearTimeout(timer);
@@ -138,7 +187,9 @@ export function stdioMcpRequest(
           capabilities: {},
           clientInfo: { name: 'commander-ai-studio', version: '1.0.0' },
         });
+        await new Promise((r) => setTimeout(r, 100));
         child.stdin?.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+        await new Promise((r) => setTimeout(r, 100));
         const r = await request(method, params ?? {});
         if (r.error) {
           finish({ ok: false, error: JSON.stringify(r.error).slice(0, 1000) });
