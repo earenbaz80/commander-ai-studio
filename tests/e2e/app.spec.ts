@@ -187,17 +187,6 @@ test.describe('Commander AI Studio - Agent Mode', () => {
   });
 
   test('debe permitir ejecutar una tool manualmente', async ({ page }) => {
-    // En <640px el panel de agente apila sus dos columnas y la del consola se
-    // queda con altura 0: la de la derecha (`lg:h-full`/`shrink-0`) se lleva
-    // todo el alto. La fila de la tool sigue en el DOM pero ni se ve ni recibe
-    // clics —Playwright la reporta como «intercepts pointer events»—. Es un
-    // problema de layout del panel, no de este test, así que en ese ancho no
-    // hay nada que medir aquí.
-    test.skip(
-      (page.viewportSize()?.width ?? 1024) < 640,
-      'el consola de agente queda con altura 0 en viewports <640px'
-    );
-
     // Seleccionar fs.read
     const toolInput = page.locator('input[list="agent-tools"]');
     await toolInput.fill('fs.read');

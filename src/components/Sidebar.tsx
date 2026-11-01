@@ -92,7 +92,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside 
-      className={isSidebarOpen ? 'w-56 lg:w-64 shrink-0 h-full nc-panel p-3 flex flex-col gap-3 border-r-2 border-[#00ffff] overflow-y-auto select-none min-h-0' : 'hidden'}
+      className={isSidebarOpen ? 'w-56 lg:w-64 max-w-[45vw] shrink-0 h-full nc-panel p-3 flex flex-col gap-3 border-r-2 border-[#00ffff] overflow-y-auto select-none min-h-0' : 'hidden'}
       aria-label={lang === 'es' ? 'Navegación principal' : lang === 'de' ? 'Hauptnavigation' : 'Main navigation'}
     >
       <div className="flex flex-col gap-2.5 shrink-0">
