@@ -13,6 +13,13 @@ import { test, expect, type Page } from '@playwright/test';
  * - Chat flow
  */
 
+/**
+ * Por debajo de 640px (el `sm` de Tailwind) el sidebar arranca colapsado: en un
+ * teléfono se lleva un tercio de la pantalla. Las pruebas que lo dan por abierto
+ * tienen que abrirlo primero.
+ */
+const esMovil = (page: Page) => (page.viewportSize()?.width ?? 1024) < 640;
+
 test.describe('Commander AI Studio - Core', () => {
   test.setTimeout(60000);
   test.beforeEach(async ({ page }) => {
@@ -34,12 +41,23 @@ test.describe('Commander AI Studio - Core', () => {
 
   test('debe mostrar la sidebar por defecto', async ({ page }) => {
     const sidebar = page.locator('aside[aria-label="Navegación principal"]');
+    if (esMovil(page)) {
+      await expect(sidebar).not.toBeVisible();
+      // Y se abre desde el header, que es lo que queda a mano en un teléfono.
+      await page.locator('button[data-tooltip="Alternar Barra Lateral"]').click();
+    }
     await expect(sidebar).toBeVisible();
   });
 
   test('debe alternar la sidebar con Ctrl+B', async ({ page }) => {
     const sidebar = page.locator('aside[aria-label="Navegación principal"]');
-    
+
+    // En móvil arranca colapsada, así que el primer Ctrl+B abre en vez de cerrar.
+    if (esMovil(page)) {
+      await page.keyboard.press('Control+B');
+      await expect(sidebar).toBeVisible();
+    }
+
     // Ocultar
     await page.keyboard.press('Control+B');
     await expect(sidebar).not.toBeVisible();
