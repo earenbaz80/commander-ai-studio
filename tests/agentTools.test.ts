@@ -1165,6 +1165,29 @@ test('skill sigue encontrando el catálogo propio cuando el proyecto no lo tiene
   assert.match(String((res.data as any).path).replace(/\\/g, '/'), /skills\/ponytail\/SKILL\.md$/);
 });
 
+test('skill acepta un SKILL.md guardado con CRLF, como en un checkout de Windows', async () => {
+  // El repo no fija `eol` en `.gitattributes`, así que en un checkout de Windows
+  // con `core.autocrlf=true` los SKILL.md llegan con CRLF. Si el front-matter
+  // exigía `\n` limpio, el catálogo del propio repo dejaba de leerse justo en
+  // esa máquina (y sólo en esa: en una con `autocrlf=false` pasaba).
+  const dir = path.join(TEST_DIR, 'skill-crlf');
+  fs.mkdirSync(path.join(dir, 'skills', 'crlf'), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'skills', 'crlf', 'SKILL.md'),
+    '---\r\ndescription: Skill con saltos de Windows\r\n---\r\n\r\n# Crlf\r\n',
+    'utf8'
+  );
+
+  const res = await executeAgentTool('skill', { root: dir, name: 'crlf' });
+
+  assert.equal(res.ok, true, String(res.error));
+  const data = res.data as any;
+  assert.equal(data.description, 'Skill con saltos de Windows');
+  // El contenido se devuelve tal cual se leyó: normalizar para interpretarlo no
+  // puede reescribir el fichero ni el texto que ve quien lo consume.
+  assert.match(data.content, /\r\n/);
+});
+
 test('skill rechaza nombres con traversal y SKILL.md sin front-matter', async () => {
   const traversal = await executeAgentTool('skill', { root: TEST_DIR, name: '../../package' });
   assert.equal(traversal.ok, false);

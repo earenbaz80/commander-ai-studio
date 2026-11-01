@@ -1546,8 +1546,11 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
     }
     if (!found) return { ok: false, error: `Skill no encontrada: ${name}`, status: 404 };
     const raw = fs.readFileSync(found, 'utf8');
-    // Validar front-matter YAML
-    const fmMatch = raw.match(/^---\n([\s\S]*?)\n---/);
+    // Validar front-matter YAML sobre una copia con saltos normalizados: un
+    // checkout de Windows con `core.autocrlf=true` (o un editor que guarde CRLF)
+    // entrega `---\r\n`, y el front-matter es exactamente el mismo. Sin esto, el
+    // catálogo de skills del propio repo sólo se leía en máquinas con LF.
+    const fmMatch = raw.replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n---/);
     if (!fmMatch) return { ok: false, error: 'SKILL.md sin front-matter YAML', status: 400 };
     const descMatch = fmMatch[1].match(/^description:\s*(.+)$/m);
     const desc = descMatch ? descMatch[1].trim() : '';
