@@ -36,7 +36,11 @@ test.describe('Commander AI Studio - Core', () => {
   test('debe cargar la aplicación y mostrar el header', async ({ page }) => {
     const header = page.locator('header');
     await expect(header).toBeVisible();
-    await expect(page.locator('h1.commander-title')).toBeVisible();
+    // Se ancla a la clase y no al tag: el título del estado vacío ya no se
+    // escribe a mano sino que lo pinta `EmptyState`, y ahí es un `<h2>` con la
+    // misma clase. Lo que importa es que la clase está (es la que la hoja de
+    // estilos usa para el efecto 3D), no qué etiqueta la lleva.
+    await expect(page.locator('.commander-title')).toBeVisible();
   });
 
   test('debe mostrar la sidebar por defecto', async ({ page }) => {
