@@ -91,7 +91,7 @@ export const UIConfigSchema = z.object({
   rightPanelWidth: z.number().int().min(280).max(900).default(380),
 });
 
-export const ShortcutsConfigSchema = z.record(z.string()).default({
+export const ShortcutsConfigSchema = z.record(z.string(), z.string()).default({
   palette: 'Ctrl+K',
   workspaceSymbol: 'Ctrl+P',
   inspector: 'Ctrl+,',
@@ -126,26 +126,30 @@ export const ServerConfigSchema = z.object({
 
 export const CommanderConfigSchema = z.object({
   version: z.number().int().default(1),
-  providers: ProviderConfigSchema.default({}),
-  tools: ToolsConfigSchema.default({}),
-  ui: UIConfigSchema.default({}),
+  // Zod 4 exige en `.default()` el valor ya parseado, así que `{}` no vale para
+  // un objeto con defaults internos. `.prefault()` aplica el valor antes de
+  // validar, que es el comportamiento que tenía Zod 3: `{}` entra, los defaults
+  // de cada campo lo completan.
+  providers: ProviderConfigSchema.prefault({}),
+  tools: ToolsConfigSchema.prefault({}),
+  ui: UIConfigSchema.prefault({}),
   shortcuts: ShortcutsConfigSchema,
-  agent: AgentConfigSchema.default({}),
-  server: ServerConfigSchema.default({}),
+  agent: AgentConfigSchema.prefault({}),
+  server: ServerConfigSchema.prefault({}),
   projects: z.object({
     allowList: z.array(z.string()).default([]),
     autoAddCwd: z.boolean().default(true),
-  }).default({}),
+  }).prefault({}),
   telemetry: z.object({
     enabled: z.boolean().default(false),
     endpoint: z.string().url().optional(),
     anonymousId: z.string().optional(),
-  }).default({}),
+  }).prefault({}),
   experimental: z.object({
     streamingParser: z.boolean().default(false),
     wasmSandbox: z.boolean().default(false),
     multiAgent: z.boolean().default(false),
-  }).default({}),
+  }).prefault({}),
 });
 
 export type CommanderConfig = z.infer<typeof CommanderConfigSchema>;
