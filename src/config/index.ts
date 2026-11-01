@@ -182,6 +182,45 @@ export function resetConfig(): void {
   configPathCache = null;
 }
 
+/**
+ * Cadena de respaldo configurada (`providers.google.fallbackModels`).
+ *
+ * Devuelve `[]` si se guardó vacía —significa «sin respaldo», una decisión— y
+ * `null` sólo si la config no la trae (o no se puede leer), que es cuando toca
+ * usar la de por defecto. Esa distinción es la misma que hace la petición con
+ * `fallbackModels`, para que config y petición se comporten igual.
+ */
+export function getGoogleFallbackModels(): string[] | null {
+  const chain = getConfig().providers?.google?.fallbackModels;
+  return Array.isArray(chain) ? chain : null;
+}
+
+/**
+ * Guarda la cadena de respaldo sin tocar el resto del fichero.
+ *
+ * Igual que `setGoogleToolsMemoryTtlMinutes`: lee el fichero real en vez de la
+ * config fusionada, para no acabar escribiendo en `commander.json` una API key
+ * que sólo venía del entorno.
+ */
+export function setGoogleFallbackModels(models: string[]): string {
+  const projectConfig = findConfigFile() || path.join(process.cwd(), 'commander.json');
+  const raw = fs.existsSync(projectConfig) ? loadConfigFile(projectConfig) : {};
+  const rawProviders = (raw.providers || {}) as Record<string, unknown>;
+  const rawGoogle = (rawProviders.google || {}) as Record<string, unknown>;
+  const providers = {
+    ...rawProviders,
+    google: { ...rawGoogle, fallbackModels: models },
+  };
+
+  const validated = CommanderConfigSchema.parse({ ...raw, providers });
+  fs.writeFileSync(projectConfig, JSON.stringify(validated, null, 2), 'utf-8');
+  // Igual que en `writeConfig`: al releer, el entorno vuelve a entrar.
+  configCache = null;
+  configPathCache = projectConfig;
+
+  return projectConfig;
+}
+
 export function getProviderConfig(): ProviderConfig {
   return getConfig().providers;
 }

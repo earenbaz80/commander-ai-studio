@@ -1,10 +1,19 @@
 import { z } from 'zod';
-import { GEMINI_DEFAULT_MODEL } from './geminiModels';
+import { GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODELS, MAX_FALLBACK_MODELS } from './geminiModels';
 
 export const ProviderConfigSchema = z.object({
   google: z.object({
     apiKey: z.string().optional(),
     defaultModel: z.string().default(GEMINI_DEFAULT_MODEL),
+    // Cuánto se recuerda que una key no admite grounding / code execution.
+    toolsMemoryTtlMinutes: z.number().int().min(1).max(24 * 60).default(30),
+    // Cadena de respaldo que usa el servidor cuando la petición no trae la suya.
+    // Un array vacío es una decisión explícita («sin respaldo»), no un hueco:
+    // el default sólo se aplica cuando la clave falta por completo.
+    fallbackModels: z
+      .array(z.string().trim().min(1).max(80))
+      .max(MAX_FALLBACK_MODELS)
+      .default([...GEMINI_FALLBACK_MODELS]),
   }).optional(),
   anthropic: z.object({
     apiKey: z.string().optional(),
