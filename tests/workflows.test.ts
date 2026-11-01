@@ -22,7 +22,17 @@ import path from 'node:path';
 const WATCH = '.github/workflows/audit-watch.yml';
 const CI = '.github/workflows/tests.yml';
 
-const leer = (rel: string): string => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
+/**
+ * Lee texto del repo con los saltos de línea normalizados.
+ *
+ * Estas pruebas fijan la estructura de los workflows con expresiones que cruzan
+ * líneas (de `workflow_dispatch:` a `inputs:`). Un checkout con
+ * `core.autocrlf=true` —el de Windows por defecto— entrega saltos CRLF, así que
+ * sin normalizar el mismo YAML pasaba o fallaba según la configuración de git de
+ * quien corriera la suite.
+ */
+const leer = (rel: string): string =>
+  fs.readFileSync(path.join(process.cwd(), rel), 'utf8').replace(/\r\n/g, '\n');
 
 /** Cuerpo de un job de primer nivel, sin la línea del nombre. */
 function jobDe(yml: string, nombre: string): string {
