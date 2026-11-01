@@ -8,7 +8,16 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { loadConfig, writeConfig, getAgentConfig, CommanderConfigSchema, resetConfig } from '../../src/config/index';
+import {
+  loadConfig,
+  writeConfig,
+  getAgentConfig,
+  CommanderConfigSchema,
+  resetConfig,
+  getGoogleFallbackModels,
+  setGoogleFallbackModels,
+} from '../../src/config/index';
+import { GEMINI_FALLBACK_MODELS, MAX_FALLBACK_MODELS } from '../../src/config/geminiModels';
 
 let tmpDir: string;
 let originalCwd: string;
@@ -73,6 +82,66 @@ describe('Config System', () => {
       ui: { theme: 'invalid-theme' },
     });
 
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('Cadena de respaldo guardada', () => {
+  it('sin cadena en la config devuelve null; el servidor cae entonces a la de fábrica', () => {
+    resetConfig();
+    expect(getGoogleFallbackModels()).toBeNull();
+  });
+
+  it('si existe providers.google pero no la cadena, el esquema rellena la de fábrica', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'commander.json'),
+      JSON.stringify({ providers: { google: { defaultModel: 'gemini-3.5-flash' } } })
+    );
+    resetConfig();
+    expect(getGoogleFallbackModels()).toEqual(GEMINI_FALLBACK_MODELS);
+  });
+
+  it('guarda la cadena sin tocar el resto del fichero', () => {
+    const file = path.join(tmpDir, 'commander.json');
+    fs.writeFileSync(file, JSON.stringify({ providers: { google: { toolsMemoryTtlMinutes: 30 } }, agent: { maxSteps: 50 } }));
+    resetConfig();
+
+    const saved = setGoogleFallbackModels(['gemini-3.5-flash-lite', 'gemini-3.6-flash']);
+    const parsed = JSON.parse(fs.readFileSync(saved, 'utf8'));
+
+    expect(parsed.providers.google.fallbackModels).toEqual(['gemini-3.5-flash-lite', 'gemini-3.6-flash']);
+    expect(parsed.providers.google.toolsMemoryTtlMinutes).toBe(30);
+    expect(parsed.agent.maxSteps).toBe(50);
+
+    resetConfig();
+    expect(getGoogleFallbackModels()).toEqual(['gemini-3.5-flash-lite', 'gemini-3.6-flash']);
+  });
+
+  it('una cadena vacía se guarda y se lee como decisión, no como hueco', () => {
+    setGoogleFallbackModels([]);
+    resetConfig();
+    expect(getGoogleFallbackModels()).toEqual([]);
+  });
+
+  it('no escribe en el fichero las API keys que sólo vienen del entorno', () => {
+    const file = path.join(tmpDir, 'commander.json');
+    fs.writeFileSync(file, JSON.stringify({ providers: {} }));
+    resetConfig();
+
+    const previous = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = 'clave-solo-del-entorno-respaldo';
+    try {
+      const raw = fs.readFileSync(setGoogleFallbackModels(['gemini-3.6-flash']), 'utf8');
+      expect(raw).not.toContain('clave-solo-del-entorno-respaldo');
+    } finally {
+      if (previous === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = previous;
+    }
+  });
+
+  it('el esquema rechaza más modelos de los que admite la cadena', () => {
+    const tooLong = Array.from({ length: MAX_FALLBACK_MODELS + 1 }, (_, i) => `gemini-m${i}`);
+    const result = CommanderConfigSchema.safeParse({ providers: { google: { fallbackModels: tooLong } } });
     expect(result.success).toBe(false);
   });
 });
