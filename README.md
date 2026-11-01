@@ -7,7 +7,7 @@ Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos
 1. `npm install`
 2. Copia `.env.example` a `.env` y define `GEMINI_API_KEY`
 3. `npm run dev` → http://localhost:3000
-4. Checks: `npm run lint`, `npm test` (vitest, UI), `npm run test:node` ([suite node y server compartido](#suite-de-tests-node))
+4. Checks: `npm run lint`, `npm test` ([suite Vitest](#suite-de-tests-vitest)), `npm run test:node` ([suite node y server compartido](#suite-de-tests-node))
 
 ## Modo Agente
 
@@ -36,9 +36,30 @@ Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos
 - Debug `listModels` 403 en prod. Export ZIP con escape HTML y filename sanitizado.
 - `firestore.rules`: `/users` self-only, `likesCount` solo ±1, likes no públicos. Check: `npm run test:rules`.
 
+## Suite de tests (Vitest)
+
+`npm test` corre los dos proyectos de `vitest.config.ts`, y cada uno se puede lanzar solo:
+
+- **`ui`** — `tests/ui/**` (28 ficheros) con jsdom y `tests/ui/setup.ts`: los polyfills que jsdom no trae (ResizeObserver, IntersectionObserver, `matchMedia`, `scrollIntoView`, Web Speech) y los matchers de `@testing-library/jest-dom`.
+- **`node`** — `tests/unit/**` y `tests/mcp/**` (11 ficheros) con entorno `node` y `tests/unit/setup.ts`, que **no** carga nada de DOM: esta suite es lógica pura y no lo necesita. Ese setup sólo blinda el estado que comparten por correr en un proceso real: devuelve el cwd a la raíz si un test que hizo `process.chdir` falla antes de restaurarlo, y desactiva fake timers que hayan quedado activos.
+
+  La separación la vigila `tests/unit/noDom.test.ts`: comprueba que en esa suite no existe `window` ni `document`, escanea las dos carpetas buscando APIs del DOM o imports de `@testing-library`/`jsdom`, y sigue los imports de forma transitiva (relativos y `@/`) hasta lo que cada test carga de `src/`, porque el caso realista es que el test esté limpio y el DOM entre por un helper. Ignora comentarios, imports de sólo tipo (se borran al compilar) y los usos ya cubiertos por una guarda de entorno: `typeof window !== 'undefined' && …` en la misma línea, y el `if (typeof window === 'undefined') return;` o `if (typeof window !== 'undefined') { … }` de más arriba (también con la condición partida en varias líneas), pero **sólo dentro de su bloque** (todo el fichero si está en el nivel superior). Una guarda en otra función no exime, una guarda guardada en una variable (`const enNode = typeof window === 'undefined'`) tampoco —no se puede saber si luego se comprueba—, y un `if (...) { … }` deja de cubrir al cerrar su bloque. Cuando falla dice fichero, línea, API y la cadena de imports que llevó hasta ahí, así que la respuesta es mover el test a `tests/ui` o partir el módulo, no añadir polyfills.
+
+  El guard vigila también su propio coste, porque ya se degradó dos veces: resolver los imports con `existsSync`/`statSync` por candidato (~1.200 llamadas, ~450 ms) y recorrer el repo entero (`src-tauri/target` son miles de artefactos, 1,4 s). Ahora los directorios se listan una vez, cada fichero se lee una sola vez y el grafo en frío tiene presupuesto de 1 s con una medición de ~90 ms. Las tres cosas fallan la suite: más lecturas que ficheros, más directorios listados que ficheros alcanzados, o pasarse del presupuesto.
+
+```bash
+npm test                                   # los dos proyectos
+npx vitest run --project node              # sólo lógica (~5 s)
+npx vitest run --project ui                # sólo UI (~20 s)
+npx vitest run tests/unit/config.test.ts   # un fichero
+```
+
+- **`pool: 'vmForks'`.** El entorno se instancia una vez por worker en vez de una por fichero: la suite completa pasó de ~149 s a ~30 s en esta máquina y el aviso «jsdom was created 38 times» desaparece. El aislamiento se mantiene, porque cada fichero sigue corriendo en su propio contexto de VM. No cambiar a `vmThreads`, que también reutiliza el entorno: los tests de MCP hacen `process.chdir`, y eso no existe dentro de un worker thread.
+- **Entorno por suite, no por fichero.** Un mock global de la UI o un polyfill de jsdom no puede tapar un fallo de la lógica, y viceversa.
+
 ## Suite de tests (node)
 
-`npm test` (vitest, UI) va aparte: `npm run test:node` corre los `tests/*.test.ts` con el runner de Node. Un solo archivo también: `npm run test:node -- tests/persistence.test.ts`.
+La de arriba va aparte: `npm run test:node` corre los `tests/*.test.ts` de la raíz con el runner de Node. Un solo archivo también: `npm run test:node -- tests/persistence.test.ts`.
 
 `node --test` abre **cada archivo en su propio proceso**, así que un server compartido en memoria no serviría de nada. Lo resuelve `scripts/test-node.ts`: abre un canal de control en loopback y compila `server.ts` **la primera vez que algún archivo pide la URL**, nunca antes. Un archivo que no toca HTTP no paga el arranque (`ningún archivo usó HTTP: no se arrancó el server`); los que sí, reutilizan el mismo y no lo matan, porque no es suyo. Al acabar la suite se para el server y se borra la base temporal.
 
