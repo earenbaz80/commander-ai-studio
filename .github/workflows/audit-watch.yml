@@ -1,0 +1,177 @@
+name: Audit watch
+
+# El gate de cada PR sólo mira dependencias de producción porque hoy hay un
+# aviso de minimatch que no se puede quitar sin romper el empaquetado de
+# Electron. Este job programado vigila que eso siga siendo cierto: falla si
+# aparece un advisory nuevo o si la cadena de ESLint/Electron ya admite la
+# versión parcheada. En verde significa «sigue bloqueado, nada que hacer».
+#
+# Cuando hay algo que hacer, además de quedar en rojo deja un issue con el
+# informe (tablas incluidas): el run se pierde entre los semanales, el issue se
+# puede asignar. Y cuando una corrida vuelve a verde con veredicto completo,
+# comenta el motivo en ese issue y lo cierra: el aviso no se queda colgado.
+#
+# `workflow_dispatch` con `self_test` cambia de modo: no audita nada y sólo
+# ejercita el camino de `gh` (crear, comentar, cerrar y verificar), con el mismo
+# token y los mismos permisos que la corrida real. Es la única forma de validar
+# contra GitHub lo que aquí no se puede ejecutar.
+on:
+  schedule:
+    # Lunes 06:00 UTC: para una cadena de tooling, una vez por semana sobra.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      self_test:
+        description: 'Probar el camino de gh (abre y cierra un issue de mentira) en vez de auditar'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  # Sólo con `self_test` marcado. Sin checkout ni npm: lo que se prueba es `gh`
+  # con el token y los permisos del workflow, así que nada más puede hacerlo
+  # fallar por un motivo distinto al que se quiere medir.
+  self-test:
+    name: Prueba del camino gh
+    if: ${{ inputs.self_test == true }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Abrir, comentar y cerrar un issue de prueba
+        env:
+          GH_TOKEN: ${{ github.token }}
+          URL_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # El título no empieza por `audit-watch:` a propósito: así una corrida
+          # real nunca toma este issue por el suyo y le comenta el informe.
+          CUERPO="$RUNNER_TEMP/audit-self-test.md"
+          cat > "$CUERPO" <<'MD'
+          Prueba de humo del camino `gh` del vigilante. Este issue lo crea, comenta
+          y cierra la propia corrida que lo lanza (`workflow_dispatch` con `self_test`),
+          así que si lo estás leyendo abierto es que la prueba se quedó a medias.
+
+          - [x] `gh issue create --title … --body-file …`
+          - [x] `gh issue comment … --body-file …`
+          - [x] `gh issue close … --reason completed`
+          - [x] el estado leído después de cerrar es `CLOSED`
+          MD
+          printf '\nCorrida: %s\n' "$URL_RUN" >> "$CUERPO"
+
+          URL=$(gh issue create \
+            --title "[self-test] audit-watch — verificación de gh" \
+            --body-file "$CUERPO")
+          NUMERO="${URL##*/}"
+          case "$NUMERO" in
+            '' | *[!0-9]*)
+              echo "::error::gh issue create no devolvió un número de issue: $URL"
+              exit 1
+              ;;
+          esac
+          echo "issue de prueba: $URL"
+
+          # Mismos argumentos que el camino real de comentar y cerrar.
+          gh issue comment "$NUMERO" --body-file "$CUERPO"
+          gh issue close "$NUMERO" --reason completed
+
+          # Salir 0 al cerrar no prueba que cerró: se lee el estado.
+          ESTADO=$(gh issue view "$NUMERO" --json state --jq .state)
+          if [ "$ESTADO" != 'CLOSED' ]; then
+            echo "::error::el issue de prueba #$NUMERO quedó en estado $ESTADO tras cerrarlo"
+            exit 1
+          fi
+          echo "::notice::Camino gh verificado: #$NUMERO creado, comentado y cerrado."
+
+          # Limpieza best-effort: borrar un issue pide permiso de administración,
+          # que el token del workflow puede no tener. Que quede cerrado no
+          # invalida la prueba, así que no se falla por esto.
+          if gh issue delete "$NUMERO" --yes; then
+            echo "::notice::Issue de prueba #$NUMERO borrado: no queda rastro."
+          else
+            echo "::notice::El issue de prueba #$NUMERO queda cerrado; bórralo a mano si molesta."
+          fi
+
+  full-audit:
+    name: Audit completo y cadena
+    # En modo prueba no se audita: son dos trabajos distintos, no dos pasos del
+    # mismo, para que un fallo del self-test no ensucie el gate semanal.
+    if: ${{ inputs.self_test != true }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Sólo aporta `tsx` y el árbol para `npm audit`: no se construye nada.
+      - run: npm ci --ignore-scripts
+
+      # `continue-on-error`: quedar en rojo es la señal, pero no debe impedir
+      # que se publique el informe antes de cerrar el run.
+      - name: Vigilar audit completo
+        id: watch
+        continue-on-error: true
+        env:
+          AUDIT_WATCH_ISSUE_DIR: ${{ runner.temp }}/audit-watch
+        run: npx tsx scripts/audit-watch.ts
+
+      # Un solo issue abierto: si ya lo hay, la corrida comenta ahí en vez de
+      # crear uno nuevo cada semana. El prefijo `audit-watch:` del título es el
+      # ancla de esa búsqueda (no hace falta que exista ninguna label).
+      - name: Abrir o actualizar el issue con el informe
+        if: steps.watch.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIR: ${{ runner.temp }}/audit-watch
+        run: |
+          set -euo pipefail
+          if [ ! -f "$DIR/issue.md" ]; then
+            echo "::notice::El vigilante falló sin informe accionable (probablemente el registry); no se abre issue."
+            exit 0
+          fi
+          # Filtro local por prefijo en vez de `--search`: la sintaxis de búsqueda
+          # de GitHub parte el título por `-` y `:` y no vale la pena depender de ella.
+          NUMERO=$(gh issue list --state open --limit 200 --json number,title \
+            --jq '[.[] | select(.title | startswith("audit-watch:"))][0].number // empty')
+          if [ -n "$NUMERO" ]; then
+            gh issue comment "$NUMERO" --body-file "$DIR/issue.md"
+          else
+            gh issue create --title "$(cat "$DIR/issue.title")" --body-file "$DIR/issue.md"
+          fi
+
+      # Camino de vuelta: si la corrida vuelve a verde con veredicto completo, el
+      # motivo del issue dejó de existir y se cierra solo. El disparador es
+      # `cierre.md`, que el script sólo escribe cuando midió la cadena entera:
+      # un registry parcial o un `--offline` no cierran nada, porque no saben si
+      # el aviso sigue vivo.
+      - name: Cerrar el issue si la situación volvió a la esperada
+        if: steps.watch.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIR: ${{ runner.temp }}/audit-watch
+        run: |
+          set -euo pipefail
+          if [ ! -f "$DIR/cierre.md" ]; then
+            echo "::notice::Sin veredicto completo (offline o consultas fallidas): no se cierra ningún issue."
+            exit 0
+          fi
+          NUMERO=$(gh issue list --state open --limit 200 --json number,title \
+            --jq '[.[] | select(.title | startswith("audit-watch:"))][0].number // empty')
+          if [ -z "$NUMERO" ]; then
+            echo "::notice::No hay issue de audit-watch abierto: nada que cerrar."
+            exit 0
+          fi
+          gh issue comment "$NUMERO" --body-file "$DIR/cierre.md"
+          gh issue close "$NUMERO" --reason completed
+
+      # Se pierde el rojo si el issue es lo único que queda: GitHub avisa del
+      # run fallido y `gh run list` sigue diciendo la verdad.
+      - name: Cerrar en rojo si hubo algo que hacer
+        if: steps.watch.outcome == 'failure'
+        run: |
+          echo "::error::El audit completo necesita revisión: el issue abierto tiene el informe." >&2
+          exit 1
