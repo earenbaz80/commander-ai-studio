@@ -27,6 +27,16 @@ jobs:
       - name: Índice de git sano
         run: npm run check:index
 
+      # Gate de seguridad sobre lo que de verdad se empaqueta y se sirve.
+      # Se omite dev a propósito: la cadena de tooling (ESLint, electron-builder)
+      # arrastra un aviso de minimatch que sólo se parchea en la 11, y esa major
+      # rompe glob@7 dentro del empaquetador de Electron. El audit completo no
+      # puede estar en cero sin publicar una app vacía; el detalle está en
+      # README § Dependencias y auditoría.
+      # El script reintenta una vez si el fallo es de red y nunca si hay avisos.
+      - name: Auditoría de dependencias (producción)
+        run: npx tsx scripts/audit-prod.ts
+
       - name: Lint (ESLint)
         run: npm run lint
 
