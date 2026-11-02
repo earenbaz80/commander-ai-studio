@@ -210,6 +210,12 @@ export function updateThread(id: string, patch: Partial<{ title: string; status:
   d.prepare(`UPDATE threads SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
 }
 
+/** Marca actividad: el sidebar ordena por updated_at y agregar un mensaje la cambia. */
+export function touchThread(id: string): void {
+  const d = getDb();
+  d.prepare('UPDATE threads SET updated_at = ? WHERE id = ?').run(Date.now(), id);
+}
+
 export interface AppendMessageInput {
   threadId: string;
   requestId?: string;
