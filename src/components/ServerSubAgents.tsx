@@ -272,6 +272,9 @@ export function ServerSubAgents({ lang = 'es' }: { lang?: Language }) {
   const terminados = rows.length - corriendo;
   // Un fallo no debe verse como avance limpio: la barra se tiñe en cuanto hay uno.
   const fallidos = rows.filter((r) => r.status === 'failed').length;
+  // Cancelar a mano también deja de correr, pero no es lo mismo que acabar bien:
+  // sin nombrarlos, una tanda cortada se resume igual que una que salió sola.
+  const cancelados = rows.filter((r) => r.status === 'cancelled').length;
   // Sin filas no hay progreso que calcular (evita 0/0).
   const porcentaje = rows.length > 0 ? Math.round((terminados / rows.length) * 100) : 0;
   // Con el stream caído lo que se ve puede estar desfasado: se atenúa en vez
@@ -307,7 +310,7 @@ export function ServerSubAgents({ lang = 'es' }: { lang?: Language }) {
           <span className="text-cyan-500/70" data-testid="subagents-progress">
             {rows.length === 0
               ? `0 ${t('terminados', 'finished')}`
-              : `${corriendo > 0 ? `${corriendo} ${t('corriendo', 'running')} · ` : ''}${terminados}/${rows.length} ${t('terminados', 'finished')} · ${porcentaje} %`}
+              : `${corriendo > 0 ? `${corriendo} ${t('corriendo', 'running')} · ` : ''}${terminados}/${rows.length} ${t('terminados', 'finished')}${cancelados > 0 ? ` · ${cancelados} ${t('cancelados', 'cancelled')}` : ''} · ${porcentaje} %`}
           </span>
           {(fallidos > 0 || soloFallidos) && (
             <button
@@ -341,9 +344,10 @@ export function ServerSubAgents({ lang = 'es' }: { lang?: Language }) {
           data-testid="subagents-progress-bar"
         >
           <div
-            className={`h-full transition-[width] duration-300 ${fallidos > 0 ? 'bg-red-400' : 'bg-[#00ffff]'}`}
+            className={`h-full transition-[width] duration-300 ${fallidos > 0 ? 'bg-red-400' : cancelados > 0 ? 'bg-[#ffff55]' : 'bg-[#00ffff]'}`}
             style={{ width: `${porcentaje}%` }}
             data-failed={fallidos > 0 ? 'true' : undefined}
+            data-cancelled={cancelados > 0 ? 'true' : undefined}
             data-testid="subagents-progress-fill"
           />
         </div>

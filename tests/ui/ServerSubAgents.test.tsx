@@ -701,4 +701,33 @@ describe('ServerSubAgents', () => {
     // Cuenta como terminado para el progreso: ya no corre, pero tampoco falló.
     expect(screen.getByTestId('subagents-progress')).toHaveTextContent('1/1');
   });
+
+  test('el resumen nombra los cancelados en vez de darlos por buen fin', () => {
+    render(<ServerSubAgents />);
+
+    act(() => setSubAgentsSession('sess-1'));
+    act(() => FakeEventSource.instances[0].emit('subagents', {
+      subagents: [
+        fila('s1', 'a', 'cancelled', { error: 'Cancelado por el usuario' }),
+        fila('s2', 'b', 'cancelled', { error: 'Cancelado por el usuario' }),
+      ],
+    }));
+
+    // Cortar la tanda sigue contando como resuelto, pero se dice: sin el «2
+    // cancelados», «2/2 terminados · 100 %» se lee como que salió bien.
+    expect(screen.getByTestId('subagents-progress')).toHaveTextContent('2/2 terminados · 2 cancelados · 100 %');
+    const relleno = screen.getByTestId('subagents-progress-fill');
+    expect(relleno).toHaveAttribute('data-cancelled', 'true');
+    expect(relleno).not.toHaveAttribute('data-failed');
+    expect(relleno).toHaveClass('bg-[#ffff55]');
+
+    // Un fallo manda sobre la cancelación: el ámbar no puede tapar un error.
+    act(() => FakeEventSource.instances[0].emit('subagents', {
+      subagents: [
+        fila('s1', 'a', 'cancelled', { error: 'Cancelado por el usuario' }),
+        fila('s2', 'b', 'failed', { error: 'sin cuota' }),
+      ],
+    }));
+    expect(screen.getByTestId('subagents-progress-fill')).toHaveClass('bg-red-400');
+  });
 });
