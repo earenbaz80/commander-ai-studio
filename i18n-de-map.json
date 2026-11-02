@@ -521,7 +521,7 @@
   "What is Commander AI Studio?": "Was ist Commander AI Studio?",
   "Commander AI Studio is an enterprise-grade prompt engineering, multimodal testing, and native code export environment for Windows, Android, iOS, macOS and Linux. Its UI reimagines the legendary Norton Commander DOS console with a navy, cyan and yellow aesthetic.": "Commander AI Studio ist eine professionelle Umgebung für Prompt-Engineering, multimodale Tests und den Export nativen Codes für Windows, Android, iOS, macOS und Linux. Die Oberfläche interpretiert die legendäre DOS-Konsole Norton Commander neu, in Marineblau, Cyan und Gelb.",
   "Multi-model engine": "Multi-Modell-Engine",
-  "Gemini, Claude, xAI Grok and local Hugging Face models. Switch models from the chat selector.": "Gemini, Claude, xAI Grok und lokale Hugging-Face-Modelle. Wechsle das Modell über die Auswahl im Chat.",
+  "Gemini, OpenRouter, Ollama and local Hugging Face models. Switch models from the chat selector.": "Gemini, OpenRouter, Ollama und lokale Hugging-Face-Modelle. Wechsle das Modell über die Auswahl im Chat.",
   "Multimodal & Live Voice": "Multimodal & Live-Sprache",
   "Attach images and audio, count live tokens, and use real-time speech synthesis/recognition.": "Bilder und Audio anhängen, Live-Token zählen und Sprachsynthese bzw. -erkennung in Echtzeit nutzen.",
   "Nono, your assistant": "Nono, dein Assistent",
