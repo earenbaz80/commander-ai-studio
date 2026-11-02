@@ -38,12 +38,21 @@ export const GEMINI_PRO_MODEL = 'gemini-3.1-pro-preview';
  * midió 0,46 s dos veces seguidas después. Un solo timeout no demuestra que un
  * modelo esté muerto — el que sí tarda siempre es `gemma-4-31b-it` (15 s), y
  * por eso no está aquí. El alias `-latest` sigue fuera porque caduca sin avisar.
+ *
+ * `gemma-4-26b-a4b-it` cierra la cadena y es el único que no es un Gemini. Vive
+ * en el mismo endpoint pero su cuota es otra: ese mismo día, con los dos lite en
+ * 429 y timeout a la vez, contestó en 0,6-0,9 s — también con las tools que
+ * manda el chat, aunque las ignora, así que su respuesta sale sin grounding ni
+ * ejecución de código. Como último recurso, eso es mejor que un 503. Es el mismo
+ * pesos abiertos que corre el puente local, no un id de Google: si algún día
+ * falta, la cadena falla exactamente igual que antes.
  */
 export const GEMINI_FALLBACK_MODELS = [
   'gemini-3.5-flash',
   'gemini-3.6-flash',
   'gemini-3.5-flash-lite',
   'gemini-3.1-flash-lite',
+  'gemma-4-26b-a4b-it',
 ];
 
 /**

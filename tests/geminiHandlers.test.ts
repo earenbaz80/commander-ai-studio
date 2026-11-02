@@ -233,9 +233,15 @@ test('sin cadena explícita se sigue usando la de por defecto', async () => {
 
 test('la cadena de respaldo de Gemini no reintenta ids retirados', () => {
   assert.ok(GEMINI_FALLBACK_MODELS.length > 0, 'debe haber al menos un respaldo');
+  assert.ok(
+    GEMINI_FALLBACK_MODELS.length <= MAX_FALLBACK_MODELS,
+    'la cadena de fábrica no puede pasarse del tope que aplica el editor del panel'
+  );
   for (const id of GEMINI_FALLBACK_MODELS) {
     assert.ok(typeof id === 'string' && id.length > 0, 'cada respaldo es un id no vacío');
-    assert.ok(id.startsWith('gemini-'), `id inesperado en la cadena: ${id}`);
+    // El último recurso es `gemma-4-26b-a4b-it`: mismo endpoint, cuota aparte,
+    // sin grounding. El resto de la cadena tiene que seguir siendo Gemini.
+    assert.match(id, /^(?:gemini|gemma)-/, `id inesperado en la cadena: ${id}`);
     assert.ok(!RETIRED_GEMINI_MODELS.includes(id), `${id} ya no existe en la API`);
   }
   // La cuota se agota por modelo, no por cuenta: con los grandes en 429 el
