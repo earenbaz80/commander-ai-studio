@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ParallelLaunch, MAX_PARALELOS } from '../../src/components/ParallelLaunch';
 import { setSubAgentsSession } from '../../src/agent/subAgentsStream';
 
@@ -132,5 +132,44 @@ describe('ParallelLaunch', () => {
     rellenar(['uno', 'dos']);
     expect(screen.getByTestId('parallel-run')).toBeDisabled();
     expect(screen.getByTestId('parallel-blocked')).toBeInTheDocument();
+  });
+
+  test('cancelar la tanda avisa al servidor sin esperar a que los hijos acaben', async () => {
+    const llamadas: string[] = [];
+    let soltarLanzamiento: ((v: any) => void) | null = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        llamadas.push(String(url));
+        if (String(url).includes('/cancel')) {
+          return { ok: true, status: 200, json: async () => ({ success: true, cancelled: 2 }) } as any;
+        }
+        if (String(url) === '/api/agent/sessions') {
+          return { ok: true, status: 200, json: async () => ({ session: { id: 'sess-7' } }) } as any;
+        }
+        // El lanzamiento se queda en el aire: es lo que pasa mientras corren.
+        return await new Promise<any>((resolve) => { soltarLanzamiento = resolve; });
+      }),
+    );
+
+    render(<ParallelLaunch cwd="/tmp/proyecto" />);
+    rellenar(['uno', 'dos']);
+    fireEvent.click(screen.getByTestId('parallel-run'));
+
+    fireEvent.click(await screen.findByTestId('parallel-cancel'));
+
+    await waitFor(() => expect(llamadas).toContain('/api/agent/sessions/sess-7/cancel'));
+    await waitFor(() => expect(screen.getByTestId('parallel-status').textContent).toContain('cancelados'));
+
+    // Al volver el `spawn_agents` cortado, el aviso sigue hablando de la
+    // cancelación en vez de decir que la tanda terminó sola.
+    await act(async () => {
+      soltarLanzamiento?.({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, data: { spawned: 2, results: [{ cancelled: true }, { cancelled: true }] } }),
+      });
+    });
+    expect(screen.getByTestId('parallel-status').textContent).toContain('cancelados');
   });
 });

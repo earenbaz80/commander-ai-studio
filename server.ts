@@ -15,8 +15,8 @@ import { setServerBaseUrl } from './serverRuntime';
 import { addRoot, listRoots, removeRoot, removableRoots, resolveProjectPath } from './projects';
 import { enforceTool, getPermissions, setPermissions } from './permissions';
 // `listSessions` ya lo exporta `sessionWorkspace` (sesiones de UI): se aliasa.
-import { createSession, getSession, listSessions as listAgentSessions, removeSession } from './agentSession';
-import { clearSubAgents, listSubAgents, subscribeSubAgents } from './subAgents';
+import { createSession, getSession, listSessions as listAgentSessions, removeSession, stopSession } from './agentSession';
+import { cancelSubAgents, clearSubAgents, listSubAgents, subscribeSubAgents } from './subAgents';
 import {
   handleGeminiGenerate,
   handleGeminiStream,
@@ -408,6 +408,22 @@ app.delete('/api/agent/sessions/:id', (req, res) => {
     // Los subagentes de una sesión borrada ya no se pueden mostrar.
     clearSubAgents(id);
     res.json({ success: true });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+
+// Cancelar la tanda en curso («parar» de verdad).
+//
+// Marcar la fila como cancelada sólo cambiaría lo que se ve: cada hijo seguiría
+// en su bucle, gastando tokens y escribiendo archivos. Primero se marcan —así el
+// cierre de cada hijo, que llega después, no pisa el estado— y luego se paran:
+// `stopSession` corta también la petición al proveedor que esté en vuelo.
+app.post('/api/agent/sessions/:id/cancel', (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!getSession(id)) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    const ids = cancelSubAgents(id);
+    const cancelados = ids.filter((sid) => stopSession(sid)).length;
+    res.json({ success: true, cancelled: cancelados, ids });
   } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
 });
 

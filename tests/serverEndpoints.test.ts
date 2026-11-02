@@ -324,6 +324,25 @@ test('POST /api/agent/run-tool niega fs.read y fs.grep sobre archivos de secreto
   assert.ok((busqueda.body.data.matches as any[]).length > 0, 'grep debe encontrar el campo de package.json');
 });
 
+test('POST /api/agent/sessions/:id/cancel para los hijos y dice cuántos paró', async () => {
+  const creada = await srv.request('POST', '/api/agent/sessions', { goal: 'padre cancelable', maxSteps: 3 });
+  assert.equal(creada.status, 200, creada.raw);
+  const id = creada.body.session.id;
+
+  // Sin hijos en marcha no hay nada que cancelar, y eso no es un error: el
+  // botón puede pulsarse cuando la tanda ya acabó sola.
+  const vacio = await srv.request('POST', `/api/agent/sessions/${id}/cancel`, {});
+  assert.equal(vacio.status, 200, vacio.raw);
+  assert.equal(vacio.body.cancelled, 0);
+  assert.deepEqual(vacio.body.ids, []);
+
+  const fantasma = await srv.request('POST', '/api/agent/sessions/sesion-que-no-existe/cancel', {});
+  assert.equal(fantasma.status, 404, 'una sesión que no existe no se cancela a ciegas');
+  assert.match(String(fantasma.body.error), /sesión no encontrada/);
+
+  await srv.request('DELETE', `/api/agent/sessions/${id}`);
+});
+
 test('GET /api/agent/sessions/:id/subagents expone los hijos del padre', async () => {
   const creada = await srv.request('POST', '/api/agent/sessions', { goal: 'padre del panel', maxSteps: 3 });
   assert.equal(creada.status, 200, creada.raw);

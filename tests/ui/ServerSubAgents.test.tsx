@@ -43,7 +43,7 @@ class FakeEventSource {
   }
 }
 
-const fila = (id: string, goal: string, status: 'running' | 'completed' | 'failed', extra: Record<string, unknown> = {}) => ({
+const fila = (id: string, goal: string, status: 'running' | 'completed' | 'failed' | 'cancelled', extra: Record<string, unknown> = {}) => ({
   id, parentSessionId: 'sess-1', goal, model: 'm', status, startedAt: 1, endedAt: 2, steps: 0, ...extra,
 });
 
@@ -684,5 +684,21 @@ describe('ServerSubAgents', () => {
     } finally {
       (globalThis as any).fetch = fetchOriginal;
     }
+  });
+
+  test('un subagente cancelado se ve como cancelado, no como fallo', () => {
+    render(<ServerSubAgents />);
+
+    act(() => setSubAgentsSession('sess-1'));
+    act(() => FakeEventSource.instances[0].emit('subagents', {
+      subagents: [fila('s1', 'probar', 'cancelled', { error: 'Cancelado por el usuario' })],
+    }));
+
+    const li = screen.getByText('probar').closest('li') as HTMLElement;
+    expect(li.getAttribute('data-status')).toBe('cancelled');
+    expect(within(li).getByText('cancelado')).toBeInTheDocument();
+    expect(within(li).queryByText('falló')).not.toBeInTheDocument();
+    // Cuenta como terminado para el progreso: ya no corre, pero tampoco falló.
+    expect(screen.getByTestId('subagents-progress')).toHaveTextContent('1/1');
   });
 });

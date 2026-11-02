@@ -27,7 +27,7 @@ export interface SubAgentRow {
   id: string;
   goal: string;
   model: string;
-  status: 'running' | 'completed' | 'failed';
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
   startedAt: number;
   endedAt?: number;
   answer?: string;

@@ -10,7 +10,7 @@
  * No ejecuta nada ni habla con el LLM: sólo anota lo que `executeTask` ya sabe.
  */
 
-export type SubAgentStatus = 'running' | 'completed' | 'failed';
+export type SubAgentStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface SubAgentRecord {
   id: string;
@@ -106,16 +106,39 @@ export function startSubAgent(input: { id: string; parentSessionId: string; goal
 /** Cierra un subagente con su resultado. Idempotente: el primero gana. */
 export function finishSubAgent(
   id: string,
-  patch: { ok: boolean; answer?: string; error?: string; steps?: number }
+  patch: { ok: boolean; answer?: string; error?: string; steps?: number; cancelled?: boolean }
 ): void {
   const record = records.get(id);
   if (!record || record.status !== 'running') return;
-  record.status = patch.ok ? 'completed' : 'failed';
+  record.status = patch.cancelled ? 'cancelled' : patch.ok ? 'completed' : 'failed';
   record.endedAt = Date.now();
   record.answer = patch.ok ? patch.answer : undefined;
   record.error = patch.ok ? undefined : patch.error;
   if (typeof patch.steps === 'number') record.steps = patch.steps;
   notify(record.parentSessionId);
+}
+
+/**
+ * Marca como cancelados los hijos que sigan corriendo y devuelve sus ids.
+ *
+ * El registro se toca ANTES de pararlos: el cierre de cada hijo llega después
+ * (con `ok:false`) y `finishSubAgent` ya no reescribe un estado terminado, así
+ * que el panel no cambia de «cancelado» a «falló» a mitad de la cancelación.
+ *
+ * Quien llama es quien tiene las sesiones a mano (`stopSession`), porque este
+ * módulo sólo anota lo que pasa y no ejecuta nada.
+ */
+export function cancelSubAgents(parentSessionId: string): string[] {
+  const ids: string[] = [];
+  for (const r of records.values()) {
+    if (r.parentSessionId !== parentSessionId || r.status !== 'running') continue;
+    r.status = 'cancelled';
+    r.endedAt = Date.now();
+    r.error = 'Cancelado por el usuario';
+    ids.push(r.id);
+  }
+  if (ids.length > 0) notify(parentSessionId);
+  return ids;
 }
 
 /** Subagentes de una sesión padre, del más reciente al más antiguo. */

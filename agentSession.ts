@@ -104,6 +104,7 @@ const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.grep', '
 async function callLlmNative(
   cfg: SessionConfig,
   ctx: { goal: string; cwd: string; plan: AgentPlanItem[]; recentSteps: any[]; toolSchema: string; agentsMd: string; turns: { role: string; text: string }[]; systemExtra?: string }
+  , signal?: AbortSignal
 ): Promise<{ thought: string; calls: { name: string; args: any }[] }> {
   const model = cfg.model || GEMINI_DEFAULT_MODEL;
   const dialect = toolDialectForModel(model);
@@ -137,6 +138,7 @@ async function callLlmNative(
 
   const res = await fetch(`${getServerBaseUrl()}${route}`, {
     method: 'POST',
+    signal,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
@@ -153,6 +155,7 @@ async function callLlmNative(
 async function callLlmJson(
   cfg: SessionConfig,
   ctx: { goal: string; cwd: string; plan: AgentPlanItem[]; recentSteps: any[]; toolSchema: string; agentsMd: string; history: { role: string; content: string }[] }
+  , signal?: AbortSignal
 ): Promise<{ thought?: string; plan?: { id: string; text: string; done: boolean }[]; toolCalls?: { id: string; tool: string; input: unknown }[]; answer?: string; finish?: boolean }> {
   const model = cfg.model || GEMINI_DEFAULT_MODEL;
   const system = `Eres un agente autónomo pragmático para ingeniería de código.
@@ -216,6 +219,7 @@ ${ctx.toolSchema}`;
 
   const res = await fetch(`${getServerBaseUrl()}${route}`, {
     method: 'POST',
+    signal,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
@@ -228,6 +232,7 @@ ${ctx.toolSchema}`;
   } catch {
     const retry = await fetch(`${getServerBaseUrl()}${route}`, {
       method: 'POST',
+      signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: model.startsWith('custom/') ? (cfg.keys?.CUSTOM_MODEL || model) : model,
@@ -265,6 +270,14 @@ export class AgentSession {
   private listeners = new Set<(evt: AgentEvent) => void>();
   private running = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Aborta la petición al proveedor que esté en vuelo. Sin esto `stop()` sólo
+   * se notaba al volver de la llamada: decenas de segundos gastando tokens
+   * después de haber pulsado «cancelar».
+   */
+  private abortCtrl = new AbortController();
+  /** Quién cortó: el usuario (cancelación) o el límite de tiempo (fallo). */
+  private stopReason: 'user' | 'timeout' | null = null;
 
   constructor(cfg: SessionConfig) {
     this.id = uid('sess');
@@ -278,6 +291,7 @@ export class AgentSession {
   getGoal(): string { return this.cfg.goal; }
   getModel(): string { return this.cfg.model || GEMINI_DEFAULT_MODEL; }
   getConfig(): SessionConfig { return this.cfg; }
+  getStopReason(): 'user' | 'timeout' | null { return this.stopReason; }
   setMode(mode: 'build' | 'plan' | 'readonly') { this.cfg.mode = mode; }
   setAllowedTools(tools: string[] | null) { this.cfg.allowedTools = tools; }
 
@@ -317,6 +331,8 @@ export class AgentSession {
       this.addStep({ type: 'thought', title: 'Inicio', content: `Objetivo: ${this.cfg.goal}\nCWD: ${this.cfg.cwd}`, status: 'completed' });
       await this.step();
     } catch (e: any) {
+      // Cortado a mitad (cancelación o timeout): el aborto no es un fallo propio.
+      if (this.stopReason) return;
       this.fail(e?.message || String(e));
     }
   }
@@ -350,9 +366,11 @@ export class AgentSession {
     this.emit({ type: 'error', error: msg });
   }
 
-  stop() {
+  stop(reason: 'user' | 'timeout' = 'user') {
+    this.stopReason = reason;
     this.running = false;
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+    try { this.abortCtrl.abort(); } catch { /* ya abortado */ }
     if (this.status === 'running') this.status = 'stopped';
     this.emit({ type: 'status', status: this.status });
   }
@@ -394,6 +412,7 @@ export class AgentSession {
         await this.stepJson(recentSteps);
       }
     } catch (e: any) {
+      if (this.stopReason) return;
       this.addStep({ type: 'thought', title: 'Error', content: e?.message || String(e), status: 'failed' });
       this.fail(e?.message || 'Error en el paso');
       return;
@@ -410,8 +429,11 @@ export class AgentSession {
       native = await callLlmNative(this.cfg, {
         goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
         toolSchema: this.toolSchema(), agentsMd: this.agentsMd, turns: this.turns,
-      });
+      }, this.abortCtrl.signal);
     } catch (e: any) {
+      // Abortado: reintentar en modo JSON volvería a pedirle al proveedor justo
+      // lo que el usuario acaba de cancelar.
+      if (this.stopReason) return;
       this.addStep({ type: 'thought', title: 'Tool-use falló', content: `${e?.message || e}. Reintentando en modo JSON.`, status: 'failed' });
       return this.stepJson(recentSteps);
     }
@@ -472,7 +494,7 @@ export class AgentSession {
     const llmRes = await callLlmJson(this.cfg, {
       goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
       toolSchema: this.toolSchema(), agentsMd: this.agentsMd, history: [],
-    });
+    }, this.abortCtrl.signal);
 
     if (llmRes.plan && llmRes.plan.length > 0) {
       const p = llmRes.plan.map((x) => ({ id: x.id || uid('plan'), text: x.text, done: x.done ?? false }));
@@ -599,12 +621,12 @@ export async function executeTask(
   if (resolvedMode) session.setMode(resolvedMode);
   if (resolvedAllowed) session.setAllowedTools(resolvedAllowed);
 
-  const resultPromise = new Promise<{ ok: boolean; answer?: string; error?: string }>((resolve) => {
+  const resultPromise = new Promise<{ ok: boolean; answer?: string; error?: string; cancelled?: boolean }>((resolve) => {
     // El timeout se cancela al resolver: si quedaba armado, el temporizador de
     // 120 s mantenía vivo el proceso del servidor (y cualquier runner de tests)
     // aunque el subagente hubiera terminado en milisegundos.
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const done = (r: { ok: boolean; answer?: string; error?: string }) => {
+    const done = (r: { ok: boolean; answer?: string; error?: string; cancelled?: boolean }) => {
       if (timer) { clearTimeout(timer); timer = null; }
       resolve(r);
     };
@@ -615,6 +637,17 @@ export async function executeTask(
       } else if (evt.type === 'error') {
         cleanup();
         done({ ok: false, error: evt.error });
+      } else if (evt.type === 'status' && evt.status === 'stopped') {
+        // Cancelado (o cortado por el timeout de abajo). Sin esta rama la
+        // promesa no se resolvía hasta el límite de 120 s: el hijo ya no
+        // trabajaba, pero el `spawn_agents` seguía esperando y la UI también.
+        cleanup();
+        const porTimeout = session.getStopReason() === 'timeout';
+        done({
+          ok: false,
+          cancelled: !porTimeout,
+          error: porTimeout ? 'Subagente excedió tiempo límite' : 'Cancelado',
+        });
       } else if (evt.type === 'status' && evt.status === 'done') {
         // Si no hubo 'finish' explícito, busca la última respuesta
         const steps = session.getSteps();
@@ -626,7 +659,7 @@ export async function executeTask(
     // Timeout de seguridad
     timer = setTimeout(() => {
       cleanup();
-      session.stop();
+      session.stop('timeout');
       done({ ok: false, error: 'Subagente excedió tiempo límite' });
     }, 120_000);
   });
@@ -639,7 +672,13 @@ export async function executeTask(
   void session.start();
   try {
     const result = await resultPromise;
-    finishSubAgent(session.id, { ok: result.ok, answer: result.answer, error: result.error, steps: session.getSteps().length });
+    finishSubAgent(session.id, {
+      ok: result.ok,
+      answer: result.answer,
+      error: result.error,
+      steps: session.getSteps().length,
+      cancelled: result.cancelled,
+    });
     return result;
   } finally {
     // El hijo es efímero: si se quedara en el registro, cada subagente dejaría

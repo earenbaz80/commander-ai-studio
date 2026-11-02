@@ -1513,6 +1513,7 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
     const out = results.map((r, i) => ({
       index: i,
       ok: r.status === 'fulfilled' ? (r.value as any).ok : false,
+      cancelled: r.status === 'fulfilled' ? (r.value as any).cancelled : undefined,
       answer: r.status === 'fulfilled' ? (r.value as any).answer : undefined,
       error: r.status === 'rejected' ? String(r.reason) : (r.status === 'fulfilled' ? (r.value as any).error : undefined),
     }));
