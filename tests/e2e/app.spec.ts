@@ -13,6 +13,32 @@ import { test, expect, type Page } from '@playwright/test';
  * - Chat flow
  */
 
+/**
+ * Por debajo de 640px (el `sm` de Tailwind) el sidebar arranca colapsado: en un
+ * teléfono se lleva un tercio de la pantalla. Las pruebas que lo dan por abierto
+ * tienen que abrirlo primero.
+ */
+const esMovil = (page: Page) => (page.viewportSize()?.width ?? 1024) < 640;
+
+/**
+ * La suite no sale de localhost. La app pide recursos a terceros al arrancar
+ * (el iframe de auth de Firebase, fuentes) y si uno de esos hosts se atasca en
+ * el runner, `page.goto` espera al evento `load` —que incluye los iframes—
+ * hasta agotar el presupuesto del test. Eso salía como
+ * `Tearing down "context" exceeded the test timeout` y marcaba flaky una prueba
+ * que había pasado. Abortarlos no cuesta arranque (medido: 4,2 s frente a 4,5 s)
+ * y deja la suite sin dependencia de red.
+ */
+test.beforeEach(async ({ context }) => {
+  await context.route('**/*', (route) => {
+    const url = route.request().url();
+    if (url.startsWith('http://localhost:4173') || url.startsWith('data:') || url.startsWith('blob:')) {
+      return route.continue();
+    }
+    return route.abort();
+  });
+});
+
 test.describe('Commander AI Studio - Core', () => {
   test.setTimeout(60000);
   test.beforeEach(async ({ page }) => {
@@ -29,17 +55,32 @@ test.describe('Commander AI Studio - Core', () => {
   test('debe cargar la aplicación y mostrar el header', async ({ page }) => {
     const header = page.locator('header');
     await expect(header).toBeVisible();
-    await expect(page.locator('h1.commander-title')).toBeVisible();
+    // Se ancla a la clase y no al tag: el título del estado vacío ya no se
+    // escribe a mano sino que lo pinta `EmptyState`, y ahí es un `<h2>` con la
+    // misma clase. Lo que importa es que la clase está (es la que la hoja de
+    // estilos usa para el efecto 3D), no qué etiqueta la lleva.
+    await expect(page.locator('.commander-title')).toBeVisible();
   });
 
   test('debe mostrar la sidebar por defecto', async ({ page }) => {
     const sidebar = page.locator('aside[aria-label="Navegación principal"]');
+    if (esMovil(page)) {
+      await expect(sidebar).not.toBeVisible();
+      // Y se abre desde el header, que es lo que queda a mano en un teléfono.
+      await page.locator('button[data-tooltip="Alternar Barra Lateral"]').click();
+    }
     await expect(sidebar).toBeVisible();
   });
 
   test('debe alternar la sidebar con Ctrl+B', async ({ page }) => {
     const sidebar = page.locator('aside[aria-label="Navegación principal"]');
-    
+
+    // En móvil arranca colapsada, así que el primer Ctrl+B abre en vez de cerrar.
+    if (esMovil(page)) {
+      await page.keyboard.press('Control+B');
+      await expect(sidebar).toBeVisible();
+    }
+
     // Ocultar
     await page.keyboard.press('Control+B');
     await expect(sidebar).not.toBeVisible();
@@ -135,8 +176,13 @@ test.describe('Commander AI Studio - Chat', () => {
     await input.fill('Hola, ¿cómo estás?');
     await input.press('Enter');
     
-    // El mensaje del usuario debe aparecer
-    await expect(page.locator('text=Hola, ¿cómo estás?')).toBeVisible();
+    // El mensaje del usuario debe aparecer. `text=` resuelve a dos nodos: el
+    // mismo texto encabeza la pestaña de sesión del sidebar (un <span>) y el
+    // burbuja del chat es un <p>. Se ancla al burbuja para que el modo estricto
+    // de Playwright siga valiendo como señal en vez de saltarlo con `.first()`.
+    const userBubble = page.locator('p').filter({ hasText: 'Hola, ¿cómo estás?' });
+    await expect(userBubble).toHaveCount(1);
+    await expect(userBubble).toBeVisible();
     
     // Esperar respuesta (puede tardar si no hay API key)
     await page.waitForTimeout(2000);
@@ -189,7 +235,10 @@ test.describe('Commander AI Studio - Agent Mode', () => {
     const jsonInput = page.locator('input[placeholder=\'{"path":"README.md"}\']');
     await jsonInput.fill('{"path":"package.json"}');
     
-    const runBtn = page.locator('button:has-text("Run Tool")');
+    // La etiqueta depende del idioma: el español (`Ejecutar tool`) es el de
+    // fábrica. Con la cadena inglesa el locator no encontraba nada y el clic se
+    // quedaba esperando hasta agotar el timeout del test.
+    const runBtn = page.getByRole('button', { name: /Ejecutar tool|Run Tool/ });
     await runBtn.click();
     
     // Debe aparecer un step en el log
@@ -221,7 +270,13 @@ test.describe('Commander AI Studio - Workbench', () => {
   test('debe mostrar el árbol de archivos por defecto', async ({ page }) => {
     const workbench = page.locator('aside[aria-label="Workbench"]');
     await expect(workbench).toBeVisible();
-    await expect(workbench.locator('text=Archivos').first()).toBeVisible();
+    // En móvil la etiqueta de la pestaña vive en un <span class="hidden sm:inline">:
+    // la pestaña está, el texto no se ve. Se ancla al botón por su tooltip, que
+    // se renderiza igual en cualquier ancho.
+    const filesTab = workbench.locator(
+      'button:is([title="Árbol de archivos del proyecto"], [title="Project file tree"], [title="Dateibaum des Projekts"])'
+    );
+    await expect(filesTab).toBeVisible();
   });
 
   test('debe cambiar a la vista Terminal', async ({ page }) => {
