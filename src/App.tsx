@@ -24,7 +24,13 @@ import { RightPanel } from './components/RightPanel';
 import { ChatPlayground } from './components/ChatPlayground';
 import { FreeformPlayground } from './components/FreeformPlayground';
 import { StructuredPlayground } from './components/StructuredPlayground';
-import { ComposerPlayground } from './components/ComposerPlayground';
+// El composer era la única vista que quedaba en el arranque y arrastraba jszip
+// (~95 kB) consigo: pasa a diferida como el resto y se descarga la primera vez
+// que se entra al modo. Ojo: los demás ficheros importan de aquí el tipo
+// `ProjectFile`, que es sólo un tipo y no entra en el bundle.
+const ComposerPlayground = React.lazy(() =>
+  import('./components/ComposerPlayground').then((m) => ({ default: m.ComposerPlayground }))
+);
 // Vistas pesadas y modales bajo demanda: no forman parte del primer pintado.
 // Cada una vive en su propio chunk y se descarga al abrirse por primera vez.
 const HuggingFacePlayground = React.lazy(() =>
@@ -1172,12 +1178,14 @@ export default function App() {
           )}
 
           {mode === 'composer' && (
-            <ComposerPlayground
-              parameters={parameters}
-              setParameters={setParameters}
-              selectedModel={selectedModel}
-              lang={lang as any}
-            />
+            <React.Suspense fallback={<LazyFallback lang={lang} />}>
+              <ComposerPlayground
+                parameters={parameters}
+                setParameters={setParameters}
+                selectedModel={selectedModel}
+                lang={lang as any}
+              />
+            </React.Suspense>
           )}
 
           {mode === 'compare' && (
