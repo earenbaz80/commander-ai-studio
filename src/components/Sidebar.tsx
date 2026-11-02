@@ -43,7 +43,7 @@ function plainSnippet(raw: string): string {
     if (typeof parsed === 'string') text = parsed;
     else if (parsed && typeof parsed === 'object') text = parsed.text || parsed.content || raw;
   } catch { /* no era JSON */ }
-  return String(text).replace(/<[^>]+>/g, '').replace(/s+/g, ' ').trim();
+  return String(text).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 }
 
 interface SidebarProps {
@@ -357,6 +357,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     key={`${hit.thread_id}-${hit.seq}`}
                     type="button"
                     onClick={() => onOpenSearchResult?.(hit)}
+                    // Sin etiqueta el botón no anuncia nada útil; el nombre calculado
+                    // desde los spans tampoco incluía el fragmento.
+                    aria-label={plainSnippet(hit.snippet)}
                     className="w-full text-left px-2 py-1 text-[10px] text-white hover:bg-[#0000aa] transition-colors border-b border-[#00ffff]/10 last:border-b-0"
                     title={plainSnippet(hit.snippet)}
                   >
