@@ -40,12 +40,16 @@ export const GEMINI_PRO_MODEL = 'gemini-3.1-pro-preview';
  * por eso no está aquí. El alias `-latest` sigue fuera porque caduca sin avisar.
  *
  * `gemma-4-26b-a4b-it` cierra la cadena y es el único que no es un Gemini. Vive
- * en el mismo endpoint pero su cuota es otra: ese mismo día, con los dos lite en
- * 429 y timeout a la vez, contestó en 0,6-0,9 s — también con las tools que
- * manda el chat, aunque las ignora, así que su respuesta sale sin grounding ni
- * ejecución de código. Como último recurso, eso es mejor que un 503. Es el mismo
- * pesos abiertos que corre el puente local, no un id de Google: si algún día
- * falta, la cadena falla exactamente igual que antes.
+ * en el mismo endpoint (también lo usa el puente local) pero su cuota es otra:
+ * ese mismo día, con `gemini-3.5-flash-lite` en 429 y `gemini-3.1-flash-lite`
+ * sin responder en 25 s, contestó en 0,6-0,9 s. Acepta `googleSearch` y
+ * `codeExecution` pero los ignora, así que como último recurso la respuesta sale
+ * sin grounding ni ejecución de código: aun así es mejor que un 503.
+ *
+ * También fluctúa, y conviene decirlo porque es fácil concluir lo contrario:
+ * una medición suelta del mismo día devolvió 500 INTERNAL en 644 ms, y la tanda
+ * siguiente contestó 3 de 3 en ~0,8 s. Ningún modelo de esta lista se decide con
+ * una sola llamada.
  */
 export const GEMINI_FALLBACK_MODELS = [
   'gemini-3.5-flash',
