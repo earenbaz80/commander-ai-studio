@@ -112,7 +112,12 @@ export async function handleAnthropicStream(req: Request, res: Response) {
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders?.();
   let sseClosed = false;
-  req.on('close', () => { sseClosed = true; });
+  // Mismo caso que en el stream de Gemini: `req.on('close')` se dispara al
+  // consumirse el cuerpo de la petición, no al desconectarse el cliente, y dejaba
+  // la respuesta truncada en el primer fragmento (o colgada si todo fallaba).
+  res.on('close', () => {
+    if (!res.writableEnded) sseClosed = true;
+  });
   req.socket.setTimeout(5 * 60 * 1000);
 
   try {
@@ -223,6 +228,12 @@ export async function handleAnthropicStream(req: Request, res: Response) {
           }
         }
       }
+    }
+
+    // El cliente se soltó a mitad: no hay a quién entregar el cierre.
+    if (sseClosed) {
+      try { res.end(); } catch { /* socket ya caído */ }
+      return;
     }
 
     const latencyMs = Date.now() - startTime;
