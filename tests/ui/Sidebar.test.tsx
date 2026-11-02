@@ -200,4 +200,65 @@ describe('Sidebar (panel lateral agrupado)', () => {
     vi.useRealTimers();
   });
 
+  test('agrupa las sesiones por proyecto y renombra, fija y borra desde la fila', () => {
+    const onRenameServerSession = vi.fn();
+    const onToggleServerSessionPin = vi.fn();
+    const onDeleteServerSession = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps()}
+        serverSessions={[
+          { id: 'th-uno', title: 'Refactor', project_path: 'C:/repo/uno', pinned: 0, updated_at: 1700000000000 },
+          { id: 'th-dos', title: 'Arreglo', project_path: 'C:/repo/dos', pinned: 1, updated_at: 1700000000000 },
+          { id: 'th-tres', title: 'Suelto' },
+        ]}
+        onRenameServerSession={onRenameServerSession}
+        onToggleServerSessionPin={onToggleServerSessionPin}
+        onDeleteServerSession={onDeleteServerSession}
+      />
+    );
+
+    // Cabecera por proyecto con el nombre de la carpeta; sin ruta, «Sin proyecto».
+    expect(screen.getByRole('button', { name: 'Proyecto uno' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Proyecto dos' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Proyecto Sin proyecto' })).toBeInTheDocument();
+
+    // Renombrar: el lápiz abre el campo y Enter guarda recortado.
+    fireEvent.click(screen.getByRole('button', { name: 'Renombrar Arreglo' }));
+    const input = screen.getByLabelText('Nuevo nombre del hilo');
+    fireEvent.change(input, { target: { value: '  Otro nombre  ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onRenameServerSession).toHaveBeenCalledWith('th-dos', 'Otro nombre');
+
+    // Escape cierra el campo sin guardar.
+    fireEvent.click(screen.getByRole('button', { name: 'Renombrar Refactor' }));
+    fireEvent.keyDown(screen.getByLabelText('Nuevo nombre del hilo'), { key: 'Escape' });
+    expect(onRenameServerSession).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText('Nuevo nombre del hilo')).toBeNull();
+
+    // Fijar recibe el hilo completo: la fila sabe si ya estaba fijado.
+    fireEvent.click(screen.getByRole('button', { name: 'Soltar Arreglo' }));
+    expect(onToggleServerSessionPin).toHaveBeenCalledWith(expect.objectContaining({ id: 'th-dos', pinned: 1 }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fijar Refactor' }));
+    expect(onToggleServerSessionPin).toHaveBeenCalledWith(expect.objectContaining({ id: 'th-uno', pinned: 0 }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar Suelto' }));
+    expect(onDeleteServerSession).toHaveBeenCalledWith('th-tres');
+  });
+
+  test('el filtro de historial también recorta las sesiones en servidor', () => {
+    render(
+      <Sidebar
+        {...baseProps()}
+        serverSessions={[
+          { id: 'th-a', title: 'Refactor', project_path: 'C:/repo/uno' },
+          { id: 'th-b', title: 'Arreglo', project_path: 'C:/repo/uno' },
+        ]}
+      />
+    );
+    fireEvent.change(screen.getByPlaceholderText('Buscar historial...'), { target: { value: 'arreglo' } });
+    expect(screen.queryByText('Refactor')).toBeNull();
+    expect(screen.getByText('Arreglo')).toBeInTheDocument();
+  });
+
 });

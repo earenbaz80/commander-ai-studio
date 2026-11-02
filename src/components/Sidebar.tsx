@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, Columns, Radio, Code2, Bot, ChevronDown, ChevronRight, Hammer, Server, X, Play, RefreshCw } from 'lucide-react';
+import { MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, Columns, Radio, Code2, Bot, ChevronDown, ChevronRight, Hammer, Server, X, Play, RefreshCw, Pin, Pencil } from 'lucide-react';
 import { StudioMode, HistorySession, ParameterConfig } from '../types/studio';
 import { Language, TRANSLATIONS } from '../i18n/translations';
 import { SYSTEM_PRESETS } from '../data/systemPresets';
@@ -69,6 +69,9 @@ interface SidebarProps {
   serverSessions?: any[];
   onSelectServerSession?: (t: any) => void;
   onRefreshServerSessions?: () => void;
+  onRenameServerSession?: (id: string, title: string) => void;
+  onDeleteServerSession?: (id: string) => void;
+  onToggleServerSessionPin?: (t: any) => void;
   /** Coincidencias dentro de los mensajes (las busca el servidor). */
   searchHits?: ConversationHit[];
   isSearchingMessages?: boolean;
@@ -96,6 +99,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   serverSessions = [],
   onSelectServerSession,
   onRefreshServerSessions,
+  onRenameServerSession,
+  onDeleteServerSession,
+  onToggleServerSessionPin,
   searchHits = [],
   isSearchingMessages = false,
   onSearchMessages,
@@ -116,6 +122,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const filteredHistory = recentHistory.filter((item) =>
     item.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Los hilos del servidor se agrupan por proyecto: la ruta es lo único que dice
+  // de dónde sale cada sesión. Los que no tienen proyecto van al final.
+  const sessionGroups = React.useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    const byProject = new Map<string, any[]>();
+    for (const t of serverSessions) {
+      if (term && !String(t.title || t.id).toLowerCase().includes(term)) continue;
+      const key = String(t.project_path || '');
+      const list = byProject.get(key);
+      if (list) list.push(t); else byProject.set(key, [t]);
+    }
+    const groups = [...byProject.entries()].map(([projectPath, threads]) => ({
+      projectPath,
+      label: projectPath
+        ? projectPath.split(/[\\/]/).filter(Boolean).pop() || projectPath
+        : (lang === 'es' ? 'Sin proyecto' : lang === 'de' ? 'Ohne Projekt' : 'No project'),
+      threads,
+    }));
+    return groups.sort((a, b) => {
+      if (!a.projectPath !== !b.projectPath) return a.projectPath ? -1 : 1;
+      return a.label.localeCompare(b.label);
+    });
+  }, [serverSessions, searchTerm, lang]);
+
+  // Renombrar en sitio: una fila a la vez, Enter guarda y Escape sale sin tocar el hilo.
+  const [editingSessionId, setEditingSessionId] = React.useState<string | null>(null);
+  const [sessionDraft, setSessionDraft] = React.useState('');
+  const renameCommitted = React.useRef(false);
 
   // Group openness belongs only to this mount, never to saved preferences.
   const [collapsedGroups, setCollapsedGroups] = React.useState<Record<string, boolean>>({
@@ -462,24 +497,117 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             )}
           </div>
-          <div className="space-y-1 max-h-40 overflow-y-auto">
+          <div className="space-y-1 max-h-64 overflow-y-auto">
             {serverSessions.length === 0 ? (
               <div className="text-[11px] text-[#00aaaa] italic p-2 text-center">
                 {lang === 'es' ? 'Sin sesiones en servidor' : lang === 'de' ? 'Keine Server-Sitzungen' : 'No server sessions'}
               </div>
+            ) : sessionGroups.length === 0 ? (
+              <div className="text-[10px] text-[#ff5555] italic p-2 text-center">
+                {lang === 'es' ? 'Sin coincidencias' : lang === 'de' ? 'Keine Treffer gefunden' : 'No matches found'}
+              </div>
             ) : (
-              serverSessions.map((t: any) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => onSelectServerSession?.(t)}
-                  className="w-full text-left bg-[#0000aa] border border-[#00ffff]/40 hover:border-[#00ffff] p-1.5 rounded text-[10px] transition-colors"
-                  title={t.title || t.id}
-                >
-                  <div className="font-bold text-[#ffff55] truncate">{t.title || t.id}</div>
-                  <div className="text-[#00ffff]/70 font-mono text-[9px] truncate">{t.project_path || t.id}</div>
-                </button>
-              ))
+              sessionGroups.map((group) => {
+                const groupKey = 'session:' + group.projectPath;
+                const open = isGroupOpen(groupKey);
+                return (
+                  <div key={groupKey} className="flex flex-col">
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(groupKey)}
+                      aria-expanded={open}
+                      aria-label={'Proyecto ' + group.label}
+                      className="flex min-h-7 items-center gap-1 text-[10px] font-bold text-[#00ffff] px-1 py-1 hover:text-white"
+                    >
+                      {open ? <ChevronDown className="w-3 h-3 shrink-0" /> : <ChevronRight className="w-3 h-3 shrink-0" />}
+                      <span className="flex-1 text-left truncate" title={group.projectPath || group.label}>{group.label}</span>
+                      <span className="font-mono text-[9px] text-[#00aaaa]">{group.threads.length}</span>
+                    </button>
+                    {open && group.threads.map((t: any) => (
+                      <div
+                        key={t.id}
+                        data-testid={'session-row-' + t.id}
+                        className="bg-[#0000aa] border border-[#00ffff]/40 hover:border-[#00ffff] rounded p-1 mb-1 text-[10px] transition-colors"
+                      >
+                        {editingSessionId === t.id ? (
+                          <input
+                            autoFocus
+                            value={sessionDraft}
+                            onChange={(e) => setSessionDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                renameCommitted.current = true;
+                                if (sessionDraft.trim()) onRenameServerSession?.(t.id, sessionDraft.trim());
+                                setEditingSessionId(null);
+                              } else if (e.key === 'Escape') {
+                                setEditingSessionId(null);
+                              }
+                            }}
+                            onBlur={() => {
+                              // Enter ya guardó y desmontó el campo: el blur posterior no repite el PATCH.
+                              if (renameCommitted.current) { renameCommitted.current = false; return; }
+                              if (sessionDraft.trim()) onRenameServerSession?.(t.id, sessionDraft.trim());
+                              setEditingSessionId(null);
+                            }}
+                            aria-label="Nuevo nombre del hilo"
+                            className="w-full bg-[#000044] border border-[#00ffff] text-[#ffff55] text-[10px] px-1 py-0.5 outline-none font-mono"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => onSelectServerSession?.(t)}
+                              className="flex-1 min-w-0 text-left"
+                              title={t.title || t.id}
+                            >
+                              <div className="font-bold text-[#ffff55] truncate flex items-center gap-1">
+                                {t.pinned ? <Pin className="w-2.5 h-2.5 shrink-0" /> : null}
+                                <span className="truncate">{t.title || t.id}</span>
+                              </div>
+                              <div className="text-[#00ffff]/70 font-mono text-[9px] truncate">
+                                {t.updated_at ? new Date(t.updated_at).toLocaleString() : String(t.id).slice(0, 8)}
+                              </div>
+                            </button>
+                            {onToggleServerSessionPin && (
+                              <button
+                                type="button"
+                                onClick={() => onToggleServerSessionPin(t)}
+                                aria-label={(t.pinned ? 'Soltar ' : 'Fijar ') + (t.title || t.id)}
+                                title={t.pinned ? 'Quitar de fijados' : 'Fijar arriba'}
+                                className={t.pinned ? 'text-[#ffff55] hover:text-white p-0.5 shrink-0' : 'text-[#00ffff]/60 hover:text-white p-0.5 shrink-0'}
+                              >
+                                <Pin className="w-3 h-3" />
+                              </button>
+                            )}
+                            {onRenameServerSession && (
+                              <button
+                                type="button"
+                                onClick={() => { setSessionDraft(t.title || ''); setEditingSessionId(t.id); }}
+                                aria-label={'Renombrar ' + (t.title || t.id)}
+                                title="Renombrar"
+                                className="text-[#00ffff]/60 hover:text-white p-0.5 shrink-0"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                            )}
+                            {onDeleteServerSession && (
+                              <button
+                                type="button"
+                                onClick={() => onDeleteServerSession(t.id)}
+                                aria-label={'Eliminar ' + (t.title || t.id)}
+                                title="Eliminar este hilo y sus mensajes"
+                                className="text-red-400 hover:text-white p-0.5 shrink-0"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })
             )}
           </div>
         </div>

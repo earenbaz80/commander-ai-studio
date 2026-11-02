@@ -127,6 +127,7 @@ function migrate(d: DatabaseSync): void {
   addCol('base_ref', 'TEXT');
   addCol('last_seen_head', 'TEXT');
   addCol('state_json', 'TEXT');
+  addCol('pinned', 'INTEGER NOT NULL DEFAULT 0');
 }
 
 export function getDb(): DatabaseSync {
@@ -146,6 +147,8 @@ export interface ThreadRow {
   worktree_path: string | null; source_branch: string | null; source_ref: string | null;
   base_ref: string | null; last_seen_head: string | null; state_json: string | null;
   created_at: number; updated_at: number;
+  /** 1 = fijado en el sidebar; los fijados se listan primero. */
+  pinned: number;
 }
 export interface MessageRow {
   seq: number; thread_id: string; request_id: string | null; input_id: string | null; origin: string | null;
@@ -178,15 +181,21 @@ export function getThread(id: string): ThreadRow | null {
   return r ?? null;
 }
 
-export function listThreads(projectId?: string): ThreadRow[] {
+export function listThreads(projectId?: string, projectPath?: string): ThreadRow[] {
   const d = getDb();
-  if (projectId) {
-    return d.prepare(`SELECT * FROM threads WHERE project_id = ? ORDER BY updated_at DESC`).all(projectId) as unknown as ThreadRow[];
-  }
-  return d.prepare(`SELECT * FROM threads ORDER BY updated_at DESC`).all() as unknown as ThreadRow[];
+  // El sidebar agrupa por ruta porque los hilos que nacen del agente sólo
+  // tienen `project_path`; filtrar únicamente por `project_id` los ocultaba.
+  const where: string[] = [];
+  const vals: any[] = [];
+  if (projectId) { where.push('project_id = ?'); vals.push(projectId); }
+  if (projectPath) { where.push('project_path = ?'); vals.push(projectPath); }
+  const filter = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  return d
+    .prepare(`SELECT * FROM threads ${filter} ORDER BY pinned DESC, updated_at DESC`)
+    .all(...vals) as unknown as ThreadRow[];
 }
 
-export function updateThread(id: string, patch: Partial<{ title: string; status: string; model: string; agent_mode: string; execution_mode: string; turn_state: string; worktree_path: string; source_branch: string; source_ref: string; base_ref: string; last_seen_head: string; state_json: string; }>): void {
+export function updateThread(id: string, patch: Partial<{ title: string; status: string; model: string; agent_mode: string; execution_mode: string; turn_state: string; worktree_path: string; source_branch: string; source_ref: string; base_ref: string; last_seen_head: string; state_json: string; pinned: number; }>): void {
   const d = getDb();
   const sets: string[] = [];
   const vals: any[] = [];

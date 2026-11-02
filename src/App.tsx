@@ -317,14 +317,38 @@ export default function App() {
     } catch { /* ignore */ }
   }, [setMessages, setPromptTitle, toChatMessages]);
   const activeTab = tabs.activeTab;
+  // Todos los hilos, no sólo los de la pestaña activa: el sidebar los agrupa por
+  // proyecto, y así una sesión abierta en otra carpeta no desaparece.
   const refreshServerSessions = useCallback(async () => {
     try {
       const { listThreads } = await import('./agent/persistence');
-      const threads = await listThreads(activeTab?.projectPath || undefined);
-      setServerSessions(threads);
+      setServerSessions(await listThreads());
     } catch { /* ignore */ }
-  }, [activeTab?.projectPath]);
+  }, []);
   useEffect(() => { refreshServerSessions(); }, [refreshServerSessions]);
+
+  const handleRenameServerSession = useCallback(async (id: string, title: string) => {
+    const clean = title.trim();
+    if (!clean) return;
+    const { updateThread } = await import('./agent/persistence');
+    const updated = await updateThread(id, { title: clean });
+    if (updated) setServerSessions((prev) => prev.map((t) => (t.id === id ? { ...t, ...updated } : t)));
+    else refreshServerSessions();
+  }, [refreshServerSessions]);
+
+  const handleToggleServerSessionPin = useCallback(async (thread: any) => {
+    const { updateThread } = await import('./agent/persistence');
+    const updated = await updateThread(thread.id, { pinned: !thread.pinned });
+    // El orden lo pone el servidor (fijados primero): recargar es más simple que reordenar aquí.
+    if (updated) await refreshServerSessions();
+  }, [refreshServerSessions]);
+
+  const handleDeleteServerSession = useCallback(async (id: string) => {
+    // Optimista: la fila desaparece ya; si el servidor falla, se recarga la lista.
+    setServerSessions((prev) => prev.filter((t) => t.id !== id));
+    const { deleteThread } = await import('./agent/persistence');
+    if (!(await deleteThread(id))) await refreshServerSessions();
+  }, [refreshServerSessions]);
   const activeTabId = tabs.activeId;
 
   /**
@@ -1172,6 +1196,9 @@ export default function App() {
               serverSessions={serverSessions}
               onSelectServerSession={handleSelectServerSession}
               onRefreshServerSessions={refreshServerSessions}
+              onRenameServerSession={handleRenameServerSession}
+              onDeleteServerSession={handleDeleteServerSession}
+              onToggleServerSessionPin={handleToggleServerSessionPin}
               searchHits={searchHits}
               isSearchingMessages={isSearchingMessages}
               onSearchMessages={handleSearchMessages}

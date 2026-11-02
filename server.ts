@@ -512,7 +512,8 @@ app.post('/api/worktree/create', (req, res) => {
 app.get('/api/threads', (req, res) => {
   try {
     const projectId = req.query.projectId ? String(req.query.projectId) : undefined;
-    res.json({ success: true, threads: persistence.listThreads(projectId) });
+    const projectPath = req.query.projectPath ? String(req.query.projectPath) : undefined;
+    res.json({ success: true, threads: persistence.listThreads(projectId, projectPath) });
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
 });
 app.post('/api/threads', (req, res) => {
@@ -526,6 +527,28 @@ app.post('/api/threads', (req, res) => {
     if (b.projectId && b.projectPath) persistence.upsertProject(String(b.projectId), String(b.projectPath), b.defaultBranch);
     const t = persistence.createThread({ id, projectId: b.projectId, projectPath: b.projectPath, title: b.title, model: b.model, agentMode: b.agentMode, executionMode: b.executionMode, stateJson: b.stateJson });
     res.json({ success: true, thread: t });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+// Renombrar y fijar. Sin este PATCH un hilo sólo podía listarse o borrarse: el
+// título lo fijaba el primer mensaje y no había forma de corregirlo.
+app.patch('/api/threads/:id', (req, res) => {
+  try {
+    const id = String(req.params.id);
+    if (!persistence.getThread(id)) return res.status(404).json({ success: false, error: 'not found' });
+    const b = req.body || {};
+    const patch: { title?: string; pinned?: number } = {};
+    if (b.title !== undefined) {
+      const title = typeof b.title === 'string' ? b.title.trim() : '';
+      if (!title) return res.status(400).json({ success: false, error: 'el título no puede quedar vacío' });
+      patch.title = title.slice(0, 200);
+    }
+    if (b.pinned !== undefined) {
+      if (typeof b.pinned !== 'boolean') return res.status(400).json({ success: false, error: 'pinned debe ser booleano' });
+      patch.pinned = b.pinned ? 1 : 0;
+    }
+    if (Object.keys(patch).length === 0) return res.status(400).json({ success: false, error: 'nada que actualizar' });
+    persistence.updateThread(id, patch);
+    res.json({ success: true, thread: persistence.getThread(id) });
   } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
 });
 app.get('/api/threads/:id', (req, res) => {

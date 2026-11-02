@@ -131,6 +131,59 @@ test('un hilo se crea, encola y se borra con su cola en cascada', async () => {
   assert.equal(after.body.items.length, 0, 'borrar el hilo se lleva su cola');
 });
 
+test('PATCH /api/threads/:id renombra y fija sin tocar el resto del hilo', async () => {
+  const id = uniqueId('http-patch');
+  const created = await srv.request('POST', '/api/threads', { id, title: 'viejo', projectPath: '/tmp/proyecto-patch' });
+  assert.equal(created.status, 200, created.raw);
+
+  const renamed = await srv.request('PATCH', '/api/threads/' + id, { title: '  nuevo nombre  ' });
+  assert.equal(renamed.status, 200, renamed.raw);
+  assert.equal(renamed.body.thread.title, 'nuevo nombre', 'el título se recorta');
+  assert.equal(renamed.body.thread.pinned, 0, 'renombrar no fija el hilo');
+
+  const pinned = await srv.request('PATCH', '/api/threads/' + id, { pinned: true });
+  assert.equal(pinned.status, 200, pinned.raw);
+  assert.equal(pinned.body.thread.pinned, 1);
+  assert.equal(pinned.body.thread.title, 'nuevo nombre', 'fijar no pierde el título');
+
+  // Un PATCH vacío no debe llegar a un UPDATE sin columnas.
+  const empty = await srv.request('PATCH', '/api/threads/' + id, {});
+  assert.equal(empty.status, 400, empty.raw);
+  assert.match(String(empty.body.error), /nada que actualizar/);
+
+  // Título en blanco: 400 y el hilo conserva el suyo.
+  const blank = await srv.request('PATCH', '/api/threads/' + id, { title: '   ' });
+  assert.equal(blank.status, 400, blank.raw);
+  const still = await srv.request('GET', '/api/threads/' + id);
+  assert.equal(still.body.thread.title, 'nuevo nombre');
+
+  const missing = await srv.request('PATCH', '/api/threads/no-existe-este-hilo', { title: 'x' });
+  assert.equal(missing.status, 404, missing.raw);
+
+  await srv.request('DELETE', '/api/threads/' + id);
+});
+
+test('GET /api/threads lista primero los fijados y filtra por projectPath', async () => {
+  const a = uniqueId('http-pin-a');
+  const b = uniqueId('http-pin-b');
+  const projectPath = '/tmp/proyecto-' + a; // única por corrida: la base es compartida
+
+  await srv.request('POST', '/api/threads', { id: a, title: 'a', projectPath });
+  await srv.request('POST', '/api/threads', { id: b, title: 'b', projectPath });
+  await srv.request('PATCH', '/api/threads/' + b, { pinned: true });
+
+  const filtered = await srv.request('GET', '/api/threads?projectPath=' + encodeURIComponent(projectPath));
+  assert.equal(filtered.status, 200, filtered.raw);
+  const ids = (filtered.body.threads as any[]).map((t) => t.id);
+  assert.deepEqual(ids, [b, a], 'el fijado va primero y sólo salen los del proyecto');
+
+  const other = await srv.request('GET', '/api/threads?projectPath=' + encodeURIComponent(projectPath + '-otro'));
+  assert.deepEqual((other.body.threads as any[]).map((t: any) => t.id), [], 'otra ruta no ve estos hilos');
+
+  await srv.request('DELETE', '/api/threads/' + a);
+  await srv.request('DELETE', '/api/threads/' + b);
+});
+
 test('POST /api/autonomous/:threadId/plan sin goal responde 400 sin llamar al modelo', async () => {
   const thread = uniqueId('http-auto-plan');
   const res = await srv.request('POST', `/api/autonomous/${thread}/plan`, { parentSessionId: 'sess-x' });
