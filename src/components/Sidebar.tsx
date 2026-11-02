@@ -3,6 +3,7 @@ import { MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, 
 import { StudioMode, HistorySession, ParameterConfig } from '../types/studio';
 import { Language, TRANSLATIONS } from '../i18n/translations';
 import { SYSTEM_PRESETS } from '../data/systemPresets';
+import type { ConversationHit } from '../agent/persistence';
 
 /** Sección colapsable del panel lateral (cabecera + items). */
 const NavGroup: React.FC<{
@@ -30,6 +31,21 @@ const NavGroup: React.FC<{
   </div>
 );
 
+/**
+ * El servidor devuelve el fragmento tal cual lo guardó: el JSON de `parts` con
+ * la coincidencia entre `<b>`. En una fila del sidebar eso se lee mal, así que
+ * se deja texto plano (React ya escapa el resto).
+ */
+function plainSnippet(raw: string): string {
+  let text = raw;
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === 'string') text = parsed;
+    else if (parsed && typeof parsed === 'object') text = parsed.text || parsed.content || raw;
+  } catch { /* no era JSON */ }
+  return String(text).replace(/<[^>]+>/g, '').replace(/s+/g, ' ').trim();
+}
+
 interface SidebarProps {
   mode: StudioMode;
   setMode: (mode: StudioMode) => void;
@@ -53,6 +69,11 @@ interface SidebarProps {
   serverSessions?: any[];
   onSelectServerSession?: (t: any) => void;
   onRefreshServerSessions?: () => void;
+  /** Coincidencias dentro de los mensajes (las busca el servidor). */
+  searchHits?: ConversationHit[];
+  isSearchingMessages?: boolean;
+  onSearchMessages?: (q: string) => void;
+  onOpenSearchResult?: (hit: ConversationHit) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -75,9 +96,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
   serverSessions = [],
   onSelectServerSession,
   onRefreshServerSessions,
+  searchHits = [],
+  isSearchingMessages = false,
+  onSearchMessages,
+  onOpenSearchResult,
 }) => {
   const t = TRANSLATIONS[lang];
   const [searchTerm, setSearchTerm] = React.useState('');
+
+  // El filtro de abajo sólo mira títulos. Los mensajes los busca el servidor
+  // (/api/search) y sin retardo se dispara una petición por pulsación.
+  React.useEffect(() => {
+    if (!onSearchMessages) return;
+    const term = searchTerm.trim();
+    const id = window.setTimeout(() => onSearchMessages(term), 250);
+    return () => window.clearTimeout(id);
+  }, [searchTerm, onSearchMessages]);
 
   const filteredHistory = recentHistory.filter((item) =>
     item.title.toLowerCase().includes(searchTerm.toLowerCase())
@@ -293,7 +327,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Search Past Projects Input */}
-        {recentHistory.length > 0 && (
+        {(recentHistory.length > 0 || serverSessions.length > 0) && (
           <div className="mb-2">
             <input
               type="text"
@@ -302,6 +336,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
               placeholder={lang === 'es' ? 'Buscar historial...' : lang === 'de' ? 'Verlauf durchsuchen...' : 'Search history...'}
               className="w-full bg-[#000044] border border-[#00ffff]/40 text-white placeholder-[#00aaaa]/50 text-[10px] px-2 py-1 outline-none focus:border-[#00ffff] transition-colors rounded font-mono"
             />
+          </div>
+        )}
+
+        {/* Coincidencias dentro de los mensajes: lo que el filtro de títulos no ve */}
+        {onSearchMessages && searchTerm.trim().length >= 2 && (searchHits.length > 0 || isSearchingMessages) && (
+          <div className="mb-2 border border-[#00ffff]/40 bg-[#000044] rounded" data-testid="message-search-results">
+            <div className="flex items-center justify-between px-2 py-1 border-b border-[#00ffff]/20 text-[9px] font-mono text-[#00ffff]">
+              <span>{lang === 'es' ? 'EN MENSAJES' : lang === 'de' ? 'IN NACHRICHTEN' : 'IN MESSAGES'}</span>
+              <span>{isSearchingMessages ? '…' : searchHits.length}</span>
+            </div>
+            <div className="max-h-40 overflow-y-auto">
+              {searchHits.length === 0 ? (
+                <div className="text-[10px] text-[#ff5555] italic p-2 text-center">
+                  {lang === 'es' ? 'Sin coincidencias en mensajes' : lang === 'de' ? 'Keine Treffer in Nachrichten' : 'No matches in messages'}
+                </div>
+              ) : (
+                searchHits.map((hit) => (
+                  <button
+                    key={`${hit.thread_id}-${hit.seq}`}
+                    type="button"
+                    onClick={() => onOpenSearchResult?.(hit)}
+                    className="w-full text-left px-2 py-1 text-[10px] text-white hover:bg-[#0000aa] transition-colors border-b border-[#00ffff]/10 last:border-b-0"
+                    title={plainSnippet(hit.snippet)}
+                  >
+                    <span className="block truncate font-mono text-[#ffff55]">
+                      {hit.thread_id.slice(0, 8)} · #{hit.seq}
+                    </span>
+                    <span className="block truncate text-[#aaffff]/80">{plainSnippet(hit.snippet)}</span>
+                  </button>
+                ))
+              )}
+            </div>
           </div>
         )}
 
