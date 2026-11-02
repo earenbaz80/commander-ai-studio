@@ -7,12 +7,9 @@
 import type { AIModel } from '../../types/studio';
 import {
   GEMINI_MODELS,
-  ANTHROPIC_MODELS,
   HUGGINGFACE_MODELS,
-  XAI_MODELS,
   OLLAMA_MODELS,
   OPENROUTER_FREE_MODELS,
-  POLLINATIONS_MODELS,
   CUSTOM_MODELS,
   ALL_MODELS,
 } from '../../data/models';
@@ -24,12 +21,9 @@ export interface ModelGroup {
 
 export const MODEL_GROUPS: ModelGroup[] = [
   { label: 'Google Gemini', models: GEMINI_MODELS },
-  { label: 'Anthropic Claude', models: ANTHROPIC_MODELS },
-  { label: 'xAI Grok', models: XAI_MODELS },
   { label: 'HuggingFace (Local)', models: HUGGINGFACE_MODELS },
   { label: 'Ollama (Local)', models: OLLAMA_MODELS },
   { label: 'OpenRouter', models: OPENROUTER_FREE_MODELS },
-  { label: 'Pollinations', models: POLLINATIONS_MODELS },
   { label: 'Personalizado', models: CUSTOM_MODELS },
 ];
 

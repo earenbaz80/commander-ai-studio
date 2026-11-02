@@ -160,50 +160,6 @@ export const HUGGINGFACE_MODELS: AIModel[] = [
   }
 ];
 
-export const XAI_MODELS: AIModel[] = [
-  {
-    id: 'grok-3',
-    name: 'Grok-3',
-    provider: 'xai',
-    description: 'El modelo más capaz y reciente de xAI.',
-    badge: 'XAI',
-    contextWindow: '128K tokens',
-    supportsImage: true,
-    supportsAudio: false,
-  }
-];
-
-export const ANTHROPIC_MODELS: AIModel[] = [
-  {
-    id: 'claude-3-7-sonnet-20250219',
-    name: 'Claude 3.7 Sonnet',
-    provider: 'anthropic',
-    description: 'Modelo de razonamiento híbrido y generación de código de élite (estándar Cursor).',
-    badge: 'Líder en Código',
-    contextWindow: '200K tokens',
-    supportsThinking: true,
-    supportsImage: true,
-  },
-  {
-    id: 'claude-3-5-sonnet-20241022',
-    name: 'Claude 3.5 Sonnet v2',
-    provider: 'anthropic',
-    description: 'Excelente para refactorizaciones complejas, arquitectura y frontend reactivo.',
-    badge: 'Top Coding',
-    contextWindow: '200K tokens',
-    supportsImage: true,
-  },
-  {
-    id: 'claude-3-5-haiku-20241022',
-    name: 'Claude 3.5 Haiku',
-    provider: 'anthropic',
-    description: 'Modelo ultrarrápido y económico para asistencia y autocompletado ágil.',
-    badge: 'Velocidad',
-    contextWindow: '200K tokens',
-    supportsImage: true,
-  }
-];
-
 export const OLLAMA_MODELS: AIModel[] = [
   {
     id: 'ollama/llama3.2',
@@ -259,17 +215,6 @@ export const OPENROUTER_FREE_MODELS: AIModel[] = [
   },
 ];
 
-export const POLLINATIONS_MODELS: AIModel[] = [
-  {
-    id: 'pollinations/openai',
-    name: 'Pollinations (gratis, sin key)',
-    provider: 'pollinations',
-    description: 'Gratis y sin registro ni API key. Ideal como fallback.',
-    badge: 'Sin Key',
-    contextWindow: '16K tokens',
-  },
-];
-
 export const CUSTOM_MODELS: AIModel[] = [
   {
     id: 'custom/big-pickle',
@@ -309,12 +254,11 @@ export const CUSTOM_MODELS: AIModel[] = [
 
 // Capacidades de tool-calling del agente (dialecto nativo):
 // Gemini + OpenAI-compatible (Ollama/OpenRouter/Custom) → function calling real.
-// Pollinations/HF → sin tool-calling nativo (el agente cae a JSON en texto).
+// HF local → sin tool-calling nativo (el agente cae a JSON en texto).
 for (const m of GEMINI_MODELS) m.supportsTools = true;
 for (const m of OLLAMA_MODELS) m.supportsTools = true;
 for (const m of OPENROUTER_FREE_MODELS) m.supportsTools = true;
 for (const m of CUSTOM_MODELS) m.supportsTools = true;
-for (const m of POLLINATIONS_MODELS) m.supportsTools = false;
 for (const m of HUGGINGFACE_MODELS) m.supportsTools = false;
 
-export const ALL_MODELS = [...GEMINI_MODELS, ...ANTHROPIC_MODELS, ...HUGGINGFACE_MODELS, ...XAI_MODELS, ...OLLAMA_MODELS, ...OPENROUTER_FREE_MODELS, ...POLLINATIONS_MODELS, ...CUSTOM_MODELS];
+export const ALL_MODELS = [...GEMINI_MODELS, ...HUGGINGFACE_MODELS, ...OLLAMA_MODELS, ...OPENROUTER_FREE_MODELS, ...CUSTOM_MODELS];
