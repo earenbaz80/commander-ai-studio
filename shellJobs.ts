@@ -28,6 +28,11 @@ export interface ShellJob {
   command: string;
   segments: string[];
   cwd: string;
+  /**
+   * Sesión del agente que lo pidió. El «parar» de una tanda para los trabajos
+   * de sus hijos; `null` cuando el trabajo vino de fuera del agente.
+   */
+  sessionId: string | null;
   /** PIDs de todas las etapas (el de la última es el que reporta el código). */
   pids: number[];
   /** PID de la última etapa. */
@@ -182,8 +187,9 @@ export function runPipeline(
         stdout: stdout.slice(0, 20000),
         stderr: stderr.slice(0, 5000),
         // El `close` del proceso muerto puede llegar antes que nuestro corte: el
-        // código de una cancelación es 130, no el que dejó el kill a medias.
-        exitCode: aborted ? 130 : exitCode,
+        // código lo pone el motivo del corte (130 cancelado, 124 timeout), no el
+        // que dejó el kill a medias.
+        exitCode: aborted ? 130 : timedOut ? 124 : exitCode,
         timedOut,
         ...(aborted ? { aborted: true } : {}),
       });
@@ -230,8 +236,8 @@ export function runPipeline(
 
     timer = setTimeout(() => {
       timedOut = true;
-      void matar();
-      finish(124);
+      // Igual que en el abort: se resuelve cuando el árbol está muerto, no antes.
+      void matar().then(() => finish(124));
     }, timeoutMs);
   });
 }
@@ -244,6 +250,7 @@ export function startJob(
   command: string,
   segments: string[],
   cwd: string,
+  sessionId: string | null = null,
 ): { ok: true; job: PublicJob } | { ok: false; error: string } {
   const full = evictIfFull();
   if (full) return { ok: false, error: full };
@@ -269,6 +276,7 @@ export function startJob(
     command,
     segments,
     cwd,
+    sessionId,
     pids: [],
     pid: null,
     logPath,
@@ -330,6 +338,23 @@ export function startJob(
 
 export function listJobs(): PublicJob[] {
   return [...jobs.values()].map(toPublicJob);
+}
+
+/**
+ * Para los trabajos en segundo plano que arrancó una sesión y devuelve sus ids.
+ *
+ * Cancelar una tanda sólo paraba a los hijos: el `vite dev` que uno de ellos
+ * había dejado con `background: true` seguía vivo y escribiendo. Los trabajos de
+ * otras sesiones no se tocan.
+ */
+export async function stopJobsForSession(sessionId: string): Promise<string[]> {
+  const parados: string[] = [];
+  for (const job of [...jobs.values()]) {
+    if (job.sessionId !== sessionId || job.status !== 'running') continue;
+    const res = await stopJob(job.id);
+    if (res.ok) parados.push(job.id);
+  }
+  return parados;
 }
 
 export function getJob(id: string): ShellJob | undefined {

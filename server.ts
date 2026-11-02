@@ -17,6 +17,7 @@ import { enforceTool, getPermissions, setPermissions } from './permissions';
 // `listSessions` ya lo exporta `sessionWorkspace` (sesiones de UI): se aliasa.
 import { createSession, getSession, listSessions as listAgentSessions, removeSession, stopSession } from './agentSession';
 import { cancelSubAgents, clearSubAgents, listSubAgents, subscribeSubAgents } from './subAgents';
+import { stopJobsForSession } from './shellJobs';
 import {
   handleGeminiGenerate,
   handleGeminiStream,
@@ -417,13 +418,20 @@ app.delete('/api/agent/sessions/:id', (req, res) => {
 // en su bucle, gastando tokens y escribiendo archivos. Primero se marcan —así el
 // cierre de cada hijo, que llega después, no pisa el estado— y luego se paran:
 // `stopSession` corta también la petición al proveedor que esté en vuelo.
-app.post('/api/agent/sessions/:id/cancel', (req, res) => {
+app.post('/api/agent/sessions/:id/cancel', async (req, res) => {
   try {
     const id = String(req.params.id || '');
     if (!getSession(id)) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
     const ids = cancelSubAgents(id);
+    // Los trabajos en segundo plano de la tanda se paran siempre: un
+    // `background: true` sobrevive al hijo que lo lanzó, así que mirar sólo a
+    // los que siguen corriendo deja huérfano al que ya respondió. Los trabajos
+    // de otras sesiones (y los del padre) no se tocan.
     const cancelados = ids.filter((sid) => stopSession(sid)).length;
-    res.json({ success: true, cancelled: cancelados, ids });
+    const idsTanda = new Set<string>([...ids, ...listSubAgents(id).map((r) => r.id)]);
+    const jobsStopped: string[] = [];
+    for (const sid of idsTanda) jobsStopped.push(...(await stopJobsForSession(sid)));
+    res.json({ success: true, cancelled: cancelados, ids, jobsStopped });
   } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
 });
 

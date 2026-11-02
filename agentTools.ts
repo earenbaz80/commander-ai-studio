@@ -484,8 +484,14 @@ function isReadOnlyCall(toolId: string, input: any): boolean {
 /**
  * Ejecuta una tool. `opts.signal` es la cancelación de la sesión que la pidió y
  * se pasa a lo que pueda quedarse en vuelo (hoy, el proceso de `shell.run`).
+ * `opts.sessionId` deja el trabajo en segundo plano a nombre de esa sesión, para
+ * que cancelar la tanda lo pare.
  */
-export async function executeAgentTool(toolId: string, input: any, opts?: { signal?: AbortSignal }): Promise<ToolResult> {
+export async function executeAgentTool(
+  toolId: string,
+  input: any,
+  opts?: { signal?: AbortSignal; sessionId?: string },
+): Promise<ToolResult> {
   const rootHint = input?.root ? String(input.root).slice(0, 1024) : undefined;
 
   // ── Permisos por proyecto (modo plan/readonly + tools + globs) ──
@@ -798,7 +804,7 @@ export async function executeAgentTool(toolId: string, input: any, opts?: { sign
     // Segundo plano: el proceso escribe a un log y se consulta por id. Nada de
     // esperar a que termine un servidor de desarrollo.
     if (input.background === true) {
-      const started = startJob(cmd, segments, cwd);
+      const started = startJob(cmd, segments, cwd, opts?.sessionId ?? null);
       if (!started.ok) return { ok: false, error: started.error };
       return {
         ok: true,
