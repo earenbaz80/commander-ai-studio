@@ -5,7 +5,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // Los 4 vCPU del runner de Windows daban para solapar: con 76 ejecuciones en
+  // serie el job tardaba 8,7 min. Se serializaba por el flaky del `goto`
+  // esperando `load`, ya corregido, así que ahora corren de dos en dos.
+  workers: process.env.CI ? 2 : undefined,
   reporter: [
     ['html', { outputFolder: 'playwright-report' }],
     ['json', { outputFile: 'playwright-report/results.json' }],
