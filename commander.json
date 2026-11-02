@@ -1,6 +1,11 @@
 {
   "version": 1,
-  "providers": {},
+  "providers": {
+    "google": {
+      "defaultModel": "gemini-3.5-flash",
+      "toolsMemoryTtlMinutes": 30
+    }
+  },
   "tools": {
     "mcp": {
       "enabled": true,
@@ -13,20 +18,53 @@
           ]
         },
         "rea": {
-          "command": "rea",
-          "args": ["--mcp"]
+          "command": "C:\\Program Files\\nodejs\\node.exe",
+          "args": [
+            "C:\\Tools\\rea\\launch-rea.mjs",
+            "mcp"
+          ],
+          "env": {
+            "REA_ADB_PATH": "C:\\Users\\Edel Arencibia Baez\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe"
+          }
+        },
+        "assetmcp": {
+          "command": "C:\\Users\\Edel Arencibia Baez\\Tools\\ASSETMCP\\.venv\\Scripts\\python.exe",
+          "args": [
+            "-m",
+            "assetmcp.server"
+          ],
+          "env": {
+            "ASSETMCP_LIBRARY_DIR": "C:\\Users\\Edel Arencibia Baez\\Documents\\Proyectos\\eko-cobra-tactical\\AssetLibrary",
+            "ASSETMCP_PREVIEW_DIR": "C:\\Users\\Edel Arencibia Baez\\Documents\\Proyectos\\eko-cobra-tactical\\AssetLibrary\\previews"
+          }
         },
         "context7": {
-          "command": "npx",
-          "args": ["-y", "@upstash/context7-mcp"]
+          "command": "C:\\Program Files\\nodejs\\npx.cmd",
+          "args": [
+            "-y",
+            "@upstash/context7-mcp"
+          ]
+        },
+        "engram": {
+          "command": "C:\\Users\\Edel Arencibia Baez\\AppData\\Local\\engram\\bin\\engram.exe",
+          "args": [
+            "mcp",
+            "--tools=agent"
+          ]
         },
         "chrome-devtools": {
-          "command": "npx",
-          "args": ["-y", "chrome-devtools-mcp@latest", "--no-usage-statistics"]
+          "command": "C:\\Program Files\\nodejs\\npx.cmd",
+          "args": [
+            "-y",
+            "chrome-devtools-mcp@latest",
+            "--no-usage-statistics"
+          ]
         },
         "pixelforge": {
-          "command": "npx",
-          "args": ["-y", "pixelforge-mcp"],
+          "command": "C:\\\\Program Files\\\\nodejs\\\\node.exe",
+          "args": [
+            "C:\\\\Users\\\\Edel Arencibia Baez\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\pixelforge-mcp\\\\dist\\\\index.js"
+          ],
           "env": {
             "GEMINI_API_KEY": "${PIXELFORGE_GEMINI_API_KEY}"
           }
