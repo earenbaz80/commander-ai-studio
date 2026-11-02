@@ -30,6 +30,7 @@
     "eval:history": "tsx evals/run.ts --history",
     "eval:wait": "tsx evals/wait-quota.ts",
     "models:freebuff": "node scripts/sync-freebuff-models.mjs",
+    "models:probe": "node scripts/probe-models.mjs",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "lint": "eslint src",

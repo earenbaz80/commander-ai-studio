@@ -26,16 +26,24 @@ export const GEMINI_PRO_MODEL = 'gemini-3.1-pro-preview';
  * que es el que más tarda en quedar obsoleto. Cualquier cambio aquí afecta a las
  * tres cadenas a la vez, que es justo lo que se busca.
  *
- * Verificado otra vez el 2026-11-02: `gemini-3.5-flash-lite` y el alias
- * `gemini-flash-lite-latest` no contestaron en 15 s, y tenerlos en medio dejaba
- * el turno esperando dos veces por un modelo que nunca iba a responder. Se
- * quedan fuera; `gemini-3.1-flash-lite` sube al segundo puesto porque era el
- * único que respondía con la cuota de ese día.
+ * Verificado otra vez el 2026-11-02 con sonda de un token sobre los 46 ids que
+ * aceptan `generateContent`: la cuota de Gemini es POR MODELO y se agota y se
+ * recupera en minutos, así que un 429 de los grandes no dice nada del resto.
+ * Ese día `gemini-3.5-flash` (el default) devolvía 429 en 154 ms, `gemini-3.8`
+ * y `gemini-3.7` daban 503 por demanda, y los lite contestaban en medio segundo.
+ *
+ * Un lite al final no es un adorno: es el que tiene cuota propia cuando los
+ * grandes están agotados, que es el estado normal de una cuenta sin plan. Se
+ * probó a sacarlos por un timeout de 15 s y fue un error: el mismo modelo
+ * midió 0,46 s dos veces seguidas después. Un solo timeout no demuestra que un
+ * modelo esté muerto — el que sí tarda siempre es `gemma-4-31b-it` (15 s), y
+ * por eso no está aquí. El alias `-latest` sigue fuera porque caduca sin avisar.
  */
 export const GEMINI_FALLBACK_MODELS = [
   'gemini-3.5-flash',
-  'gemini-3.1-flash-lite',
   'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
 ];
 
 /**

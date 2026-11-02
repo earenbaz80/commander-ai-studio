@@ -33,6 +33,10 @@ export const GEMINI_MODELS: AIModel[] = [
     supportsImage: true,
     supportsAudio: true,
   },
+  // Este id no se usa por `generateContent`: `handleGeminiInteractions` lo manda
+  // a la Interactions API (`ai.interactions.create`). Sondearlo con un ping
+  // normal devuelve 400 «This model only supports Interactions API», que es lo
+  // esperado y no un modelo roto: no lo saques del selector por eso.
   {
     id: 'antigravity-preview-09-2026',
     name: 'Google Antigravity Agent (Sandbox 2026)',
