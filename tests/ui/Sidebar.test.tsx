@@ -3,7 +3,7 @@
  * estado activo y grupos plegados al montar.
  */
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { Sidebar } from '../../src/components/Sidebar';
 import { DEFAULT_PARAMETERS } from '../../src/hooks/useTabs';
 
@@ -169,4 +169,35 @@ describe('Sidebar (panel lateral agrupado)', () => {
     rerender(<Sidebar {...baseProps()} />);
     expect(screen.getByRole('button', { name: 'Crear' })).toHaveAttribute('aria-expanded', 'true');
   });
+  test('busca en los mensajes con retardo y abre la coincidencia', () => {
+    vi.useFakeTimers();
+    const onSearchMessages = vi.fn();
+    const onOpenSearchResult = vi.fn();
+    // El servidor devuelve el JSON de `parts` con `<b>` alrededor de la coincidencia.
+    const hit = { thread_id: 'th-abcdef12', seq: 7, snippet: '{"text":"aquí estaba el <b>bug</b>"}' };
+    render(
+      <Sidebar
+        {...baseProps()}
+        serverSessions={[{ id: 'th-abcdef12', title: 'Sesión' }]}
+        searchHits={[hit]}
+        onSearchMessages={onSearchMessages}
+        onOpenSearchResult={onOpenSearchResult}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('Buscar historial...'), { target: { value: 'bu' } });
+    // Sin retardo, cada pulsación dispararía una petición al servidor.
+    expect(onSearchMessages).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(onSearchMessages).toHaveBeenCalledWith('bu');
+
+    const results = screen.getByTestId('message-search-results');
+    expect(results).toHaveTextContent('EN MENSAJES');
+    const fila = screen.getByRole('button', { name: /aquí estaba el bug/ });
+    expect(fila).not.toHaveTextContent('<b>');
+    fireEvent.click(fila);
+    expect(onOpenSearchResult).toHaveBeenCalledWith(hit);
+    vi.useRealTimers();
+  });
+
 });

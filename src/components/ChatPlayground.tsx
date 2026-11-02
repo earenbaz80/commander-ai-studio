@@ -305,6 +305,7 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
           messages.map((msg) => (
             <div
               key={msg.id}
+              data-msg-id={msg.id}
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div

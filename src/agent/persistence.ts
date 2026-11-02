@@ -40,7 +40,10 @@ export async function loadMessages(threadId: string, limit = 200): Promise<any[]
   return (data as any).messages || [];
 }
 
-export async function searchConversations(q: string, limit = 20): Promise<{ thread_id: string; seq: number; snippet: string }[]> {
+/** Coincidencia dentro de un mensaje, tal como la devuelve /api/search. */
+export interface ConversationHit { thread_id: string; seq: number; snippet: string }
+
+export async function searchConversations(q: string, limit = 20): Promise<ConversationHit[]> {
   const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=${limit}`);
   if (!res.ok) return [];
   const data = await res.json();

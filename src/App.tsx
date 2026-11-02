@@ -253,19 +253,69 @@ export default function App() {
   const [agentRoots, setAgentRoots] = useState<AgentRoot[]>([]);
   const [isAuditing, setIsAuditing] = useState(false);
 
+  /** Convierte los mensajes persistidos (SQLite) al formato del chat. */
+  const toChatMessages = useCallback((msgs: any[]) =>
+    msgs.map((m: any) => {
+      let content = '';
+      try { const p = JSON.parse(m.parts_json); content = typeof p === 'string' ? p : (p?.text || p?.content || JSON.stringify(p)); } catch { content = m.parts_json; }
+      return { id: `srv-${m.seq}`, role: m.role === 'assistant' ? 'model' : m.role, content, timestamp: new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+    }), []);
+
   const handleSelectServerSession = useCallback(async (thread: any) => {
     try {
       const { loadMessages } = await import('./agent/persistence');
-      const msgs = await loadMessages(thread.id);
-      const parsed = msgs.map((m: any) => {
-        let content = '';
-        try { const p = JSON.parse(m.parts_json); content = typeof p === 'string' ? p : (p?.text || p?.content || JSON.stringify(p)); } catch { content = m.parts_json; }
-        return { id: `srv-${m.seq}`, role: m.role === 'assistant' ? 'model' : m.role, content, timestamp: new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-      });
+      const parsed = toChatMessages(await loadMessages(thread.id));
       if (parsed.length > 0) setMessages(parsed as any);
       setPromptTitle(thread.title || 'Sesión restaurada');
     } catch { /* ignore */ }
-  }, [setMessages, setPromptTitle]);
+  }, [setMessages, setPromptTitle, toChatMessages]);
+
+  // ==================== BÚSQUEDA EN CONVERSACIONES ====================
+  // /api/search ya existía y nadie lo llamaba: el sidebar sólo filtraba títulos
+  // en memoria. Aquí se pide al servidor y se descartan las respuestas que
+  // llegan tarde, porque el input escribe más rápido que la red.
+  const [searchHits, setSearchHits] = useState<import('./agent/persistence').ConversationHit[]>([]);
+  const [isSearchingMessages, setIsSearchingMessages] = useState(false);
+  const searchReqRef = React.useRef(0);
+
+  const handleSearchMessages = useCallback(async (q: string) => {
+    const term = q.trim();
+    const req = ++searchReqRef.current;
+    if (term.length < 2) {
+      setSearchHits([]);
+      setIsSearchingMessages(false);
+      return;
+    }
+    setIsSearchingMessages(true);
+    try {
+      const { searchConversations } = await import('./agent/persistence');
+      const hits = await searchConversations(term, 20);
+      if (req !== searchReqRef.current) return; // respuesta vieja
+      setSearchHits(hits);
+    } catch {
+      if (req === searchReqRef.current) setSearchHits([]);
+    } finally {
+      if (req === searchReqRef.current) setIsSearchingMessages(false);
+    }
+  }, []);
+
+  const handleOpenSearchResult = useCallback(async (hit: import('./agent/persistence').ConversationHit) => {
+    try {
+      const { getThread, loadMessages } = await import('./agent/persistence');
+      const [thread, msgs] = await Promise.all([getThread(hit.thread_id), loadMessages(hit.thread_id)]);
+      const parsed = toChatMessages(msgs);
+      if (parsed.length === 0) return;
+      setMessages(parsed as any);
+      setPromptTitle(thread?.title || 'Sesión restaurada');
+      // El chat se vuelve a pintar y él mismo hace scroll al final: el salto se
+      // hace después, cuando ya existe el nodo del mensaje buscado.
+      setTimeout(() => {
+        document
+          .querySelector(`[data-msg-id="srv-${hit.seq}"]`)
+          ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }, 120);
+    } catch { /* ignore */ }
+  }, [setMessages, setPromptTitle, toChatMessages]);
   const activeTab = tabs.activeTab;
   const refreshServerSessions = useCallback(async () => {
     try {
@@ -1122,6 +1172,10 @@ export default function App() {
               serverSessions={serverSessions}
               onSelectServerSession={handleSelectServerSession}
               onRefreshServerSessions={refreshServerSessions}
+              searchHits={searchHits}
+              isSearchingMessages={isSearchingMessages}
+              onSearchMessages={handleSearchMessages}
+              onOpenSearchResult={handleOpenSearchResult}
             />
             {/* Drag handle (persisted width) */}
             <div
