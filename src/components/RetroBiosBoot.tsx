@@ -52,6 +52,13 @@ export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
 
   const stepsToUse = lang === 'es' ? bootSteps : bootStepsEn;
 
+  // Los 10 pasos suman 2.750 ms y, con los 200 ms de entrada y los 600 ms de
+  // salida, la secuencia completa dura ~3,55 s: el failsafe de 3.200 ms la
+  // cortaba y el último paso no llegaba a verse nunca. Con el ritmo a la mitad
+  // entra entera en ~1,75 s y el usuario llega antes al estudio. Un valor más
+  // alto la vuelve a truncar.
+  const BOOT_STEP_SCALE = 0.5;
+
   useEffect(() => {
     let currentStep = 0;
     const loadNextStep = () => {
@@ -60,7 +67,7 @@ export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
         setLogs((prev) => [...prev, step.text]);
         setProgress(Math.round(((currentStep + 1) / stepsToUse.length) * 100));
         currentStep++;
-        setTimeout(loadNextStep, step.wait);
+        setTimeout(loadNextStep, step.wait * BOOT_STEP_SCALE);
       } else {
         setBootFinished(true);
         // Play small retro click

@@ -19,7 +19,29 @@
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+    <!--
+      La hoja de Google Fonts bloqueaba el render ~3,2 s (medido): hasta que no
+      llegaba no se pintaba nada. Se pide como `print` y se cambia a `all` al
+      cargar, así el CSS no bloquea; las fuentes ya usan `display=swap`, con lo
+      que el texto se pinta con la de respaldo y hace el intercambio después.
+    -->
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Orbitron:wght@500;700;900&display=swap"
+    >
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Orbitron:wght@500;700;900&display=swap"
+      media="print"
+      onload="this.media='all'"
+    >
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Orbitron:wght@500;700;900&display=swap"
+      >
+    </noscript>
   </head>
   <body class="bg-[#131314] text-[#e3e2e6] font-sans antialiased selection:bg-[#383d47] selection:text-white">
     <div id="root"></div>
