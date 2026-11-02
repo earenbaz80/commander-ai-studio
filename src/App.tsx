@@ -14,7 +14,8 @@ import { useHistoryHandlers } from './hooks/useHistoryHandlers';
 import { useCommandPaletteShortcut } from './hooks/useCommandPaletteShortcut';
 import { useTabProjectHandlers } from './hooks/useTabProjectHandlers';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import React, { useState, useEffect, useRef } from 'react';
+import { useResizableWidth } from './hooks/useResizableWidth';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Header } from './components/Header';
 import { FloatingAssistant, type FloatingAssistantHandle } from './components/FloatingAssistant';
 import { WorkbenchPanel } from './components/WorkbenchPanel';
@@ -75,6 +76,7 @@ const AgentApprovalModal = React.lazy(() =>
   import('./components/AgentApprovalModal').then((m) => ({ default: m.AgentApprovalModal }))
 );
 import { CommandPalette } from './components/CommandPalette';
+import { StatusBar } from './components/StatusBar';
 import { buildPaletteCommands } from './components/paletteCommands';
 import { SymbolSearchModal } from './components/SymbolSearchModal';
 
@@ -148,6 +150,7 @@ export default function App() {
   const [isExtensionsOpen, setIsExtensionsOpen] = useState(false);
   const [isSymbolSearchOpen, setIsSymbolSearchOpen] = useState(false);
   const agent = useAgent('.', selectedModel);
+  const sidebarResize = useResizableWidth({ key: 'commander_sidebar_width', defaultWidth: 256, min: 180, max: 400 });
 
   // Modals
   const {
@@ -193,6 +196,9 @@ export default function App() {
   const [showNono, setShowNono] = useState(() => {
     try { return localStorage.getItem('commander_show_nono') !== 'false'; } catch { return true; }
   });
+  const [nonoDocked, setNonoDocked] = useState(() => {
+    try { return localStorage.getItem('commander_nono_docked') === 'true'; } catch { return false; }
+  });
   const [isolateSessions, setIsolateSessions] = useState(() => {
     try { return localStorage.getItem('commander_isolate_sessions') === 'true'; } catch { return false; }
   });
@@ -237,10 +243,32 @@ export default function App() {
   // ==================== PESTAÑAS Y PROYECTOS ====================
 
   const tabs = useTabs();
+  const [serverSessions, setServerSessions] = useState<any[]>([]);
   const [agentRoots, setAgentRoots] = useState<AgentRoot[]>([]);
   const [isAuditing, setIsAuditing] = useState(false);
 
+  const handleSelectServerSession = useCallback(async (thread: any) => {
+    try {
+      const { loadMessages } = await import('./agent/persistence');
+      const msgs = await loadMessages(thread.id);
+      const parsed = msgs.map((m: any) => {
+        let content = '';
+        try { const p = JSON.parse(m.parts_json); content = typeof p === 'string' ? p : (p?.text || p?.content || JSON.stringify(p)); } catch { content = m.parts_json; }
+        return { id: `srv-${m.seq}`, role: m.role === 'assistant' ? 'model' : m.role, content, timestamp: new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+      });
+      if (parsed.length > 0) setMessages(parsed as any);
+      setPromptTitle(thread.title || 'Sesión restaurada');
+    } catch { /* ignore */ }
+  }, [setMessages, setPromptTitle]);
   const activeTab = tabs.activeTab;
+  const refreshServerSessions = useCallback(async () => {
+    try {
+      const { listThreads } = await import('./agent/persistence');
+      const threads = await listThreads(activeTab?.projectPath || undefined);
+      setServerSessions(threads);
+    } catch { /* ignore */ }
+  }, [activeTab?.projectPath]);
+  useEffect(() => { refreshServerSessions(); }, [refreshServerSessions]);
   const activeTabId = tabs.activeId;
 
   /**
@@ -1067,23 +1095,36 @@ export default function App() {
       <div className="flex flex-row flex-1 overflow-hidden nc-container min-h-0 min-w-0 relative">
         {/* Left Navigation Sidebar */}
         {isSidebarOpen && (
-          <Sidebar
-            isSidebarOpen={isSidebarOpen}
-            mode={mode}
-            setMode={setMode}
-            recentHistory={tabHistory}
-            onSelectHistoryItem={handleSelectHistoryItem}
-            onRunHistoryItem={handleRunHistoryItem}
-            onDeleteHistoryItem={handleDeleteHistoryItem}
-            onClearHistory={handleClearHistory}
-            onNewPrompt={handleNewChat}
-            onOpenGallery={() => setIsGalleryModalOpen(true)}
-            onOpenCompile={() => setIsCompilerModalOpen(true)}
-            onOpenLocalLlmConfig={() => setIsLocalLlmModalOpen(true)}
-            parameters={parameters}
-            setParameters={setParameters}
-            lang={lang as any}
-          />
+          <>
+            <Sidebar
+              isSidebarOpen={isSidebarOpen}
+              mode={mode}
+              setMode={setMode}
+              recentHistory={tabHistory}
+              onSelectHistoryItem={handleSelectHistoryItem}
+              onRunHistoryItem={handleRunHistoryItem}
+              onDeleteHistoryItem={handleDeleteHistoryItem}
+              onClearHistory={handleClearHistory}
+              onNewPrompt={handleNewChat}
+              onOpenGallery={() => setIsGalleryModalOpen(true)}
+              onOpenCompile={() => setIsCompilerModalOpen(true)}
+              onOpenLocalLlmConfig={() => setIsLocalLlmModalOpen(true)}
+              parameters={parameters}
+              setParameters={setParameters}
+              lang={lang as any}
+              width={sidebarResize.width}
+              serverSessions={serverSessions}
+              onSelectServerSession={handleSelectServerSession}
+              onRefreshServerSessions={refreshServerSessions}
+            />
+            {/* Drag handle (persisted width) */}
+            <div
+              onMouseDown={sidebarResize.onMouseDown}
+              onDoubleClick={sidebarResize.onDoubleClick}
+              className="w-1.5 shrink-0 cursor-col-resize bg-[#00ffff]/20 hover:bg-[#00ffff]/60 transition-colors z-40"
+              title="Arrastra para redimensionar · doble clic para resetear"
+            />
+          </>
         )}
 
         {/* Center Canvas View based on active mode */}
@@ -1216,6 +1257,33 @@ export default function App() {
           selectedModel={selectedModel}
           parameters={parameters}
         />
+
+        {/* Nono acoplado (panel derecho) */}
+        {nonoDocked && showNono && (
+          <div className="shrink-0 h-full border-l-2 border-[#00ffff] overflow-hidden" style={{ width: 320 }}>
+            <FloatingAssistant
+              ref={nonoRef}
+              lang={lang as any}
+              displayName={displayName}
+              projectId={activeTab?.projectPath || null}
+              onNewPrompt={handleNewChat}
+              status={nonoStatus}
+              onOpenWorkbench={() => setIsWorkbenchOpen(true)}
+              onOpenCompile={() => setIsCompilerModalOpen(true)}
+              onOpenGallery={() => setIsGalleryModalOpen(true)}
+              onOpenSearch={() => setIsWorkbenchOpen(true)}
+              selectedModel={selectedModel}
+              selectedProvider={selectedProvider}
+              parameters={parameters}
+              suggestionConfig={suggestionConfig}
+              hidden={false}
+              projectInfo={{ mode: (mode === 'agent' || mode === 'freeform') ? mode : 'chat', goal: promptTitle, hasPackageJson: true, hasTsConfig: true, hasGit: false, framework: 'react', mainLanguage: 'typescript', files: [] }}
+              codeContext={savedCodeContext || ''}
+              docked={true}
+              onToggleDock={() => setNonoDocked(v => { const n = !v; try { localStorage.setItem('commander_nono_docked', String(n)); } catch {} return n; })}
+            />
+          </div>
+        )}
 
         {/* Right Parameters Panel (Hidden in Exporter mode to give max space to wizard) */}
         {isInspectorOpen && (
@@ -1437,10 +1505,11 @@ export default function App() {
       <GlobalTooltip />
 
       {/* Nono - Asistente flotante interactivo */}
+      {!nonoDocked && (
       <FloatingAssistant
-        ref={nonoRef}
         lang={lang as any}
         displayName={displayName}
+        projectId={activeTab?.projectPath || null}
         onNewPrompt={handleNewChat}
         status={nonoStatus}
         onOpenWorkbench={() => setIsWorkbenchOpen(true)}
@@ -1473,6 +1542,7 @@ export default function App() {
             return last ? (last.text || last.content || '') : '';
           })()}
       />
+      )}
 
       {/* Búsqueda de símbolos del workspace (LSP) */}
       {isSymbolSearchOpen && (
@@ -1491,6 +1561,8 @@ export default function App() {
         commands={paletteCommands}
         lang={lang as any}
       />
+      {/* Status bar Norton */}
+      <StatusBar lang={lang as any} model={selectedModel} isGenerating={isGenerating} />
     </div>
   );
 }

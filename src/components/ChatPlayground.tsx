@@ -6,11 +6,11 @@ import {
   X,
   Edit3,
   Check,
-  Zap,
   User,
   Link,
 } from 'lucide-react';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { EmptyState } from './EmptyState';
 import { PermissionsModal } from './PermissionsModal';
 import { getActiveProjectRoot } from '../agent/activeProject';
 import { MentionAutocomplete } from './MentionAutocomplete';
@@ -293,25 +293,14 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center space-y-4">
-              <h1 className="commander-title mx-auto text-xl sm:text-2xl text-center leading-tight px-2">
-                Commander AI Studio
-              </h1>
-              {/* El saludo ("¡Hola…") lo muestra únicamente Nono, de forma flotante */}
-              <p className="text-[#ffff55] text-sm">
-                {lang === 'es' ? 'Escribe tu mensaje o adjunta un archivo para comenzar' : lang === 'de' ? 'Schreibe eine Nachricht oder hänge eine Datei an, um zu beginnen' : 'Type your message or attach a file to start'}
-              </p>
-              {!isAuthenticated && (
-                <p className="text-xs text-cyan-200 pt-1 flex items-center justify-center gap-1">
-                  <Zap className="w-3 h-3 shrink-0" />
-                  {lang === 'es'
-                    ? 'Sesión de invitado — el historial se guarda solo en este dispositivo'
-                    : lang === 'de' ? 'Gastsitzung — der Verlauf wird nur auf diesem Gerät gespeichert' : 'Guest session — history is saved on this device only'}
-                </p>
-              )}
-            </div>
-          </div>
+          <EmptyState
+            title="Commander AI Studio"
+            titleClassName="commander-title mx-auto text-xl sm:text-2xl text-center leading-tight px-2"
+            description={
+              (lang === 'es' ? 'Escribe tu mensaje o adjunta un archivo para comenzar' : lang === 'de' ? 'Schreibe eine Nachricht oder hänge eine Datei an, um zu beginnen' : 'Type your message or attach a file to start') +
+              (!isAuthenticated ? '\n' + (lang === 'es' ? 'Sesión de invitado — el historial se guarda solo en este dispositivo' : lang === 'de' ? 'Gastsitzung — der Verlauf wird nur auf diesem Gerät gespeichert' : 'Guest session — history is saved on this device only') : '')
+            }
+          />
         ) : (
           messages.map((msg) => (
             <div

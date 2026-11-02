@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, Columns, Radio, Code2, Bot, ChevronDown, ChevronRight, Hammer, Server, X, Play } from 'lucide-react';
+import { MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, Columns, Radio, Code2, Bot, ChevronDown, ChevronRight, Hammer, Server, X, Play, RefreshCw } from 'lucide-react';
 import { StudioMode, HistorySession, ParameterConfig } from '../types/studio';
 import { Language, TRANSLATIONS } from '../i18n/translations';
 import { SYSTEM_PRESETS } from '../data/systemPresets';
@@ -49,6 +49,10 @@ interface SidebarProps {
   setParameters?: React.Dispatch<React.SetStateAction<ParameterConfig>>;
   lang?: Language;
   isSidebarOpen?: boolean;
+  width?: number;
+  serverSessions?: any[];
+  onSelectServerSession?: (t: any) => void;
+  onRefreshServerSessions?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -67,6 +71,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setParameters,
   lang = 'es',
   isSidebarOpen = false,
+  width,
+  serverSessions = [],
+  onSelectServerSession,
+  onRefreshServerSessions,
 }) => {
   const t = TRANSLATIONS[lang];
   const [searchTerm, setSearchTerm] = React.useState('');
@@ -92,7 +100,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside 
-      className={isSidebarOpen ? 'w-56 lg:w-64 shrink-0 h-full nc-panel p-3 flex flex-col gap-3 border-r-2 border-[#00ffff] overflow-y-auto select-none min-h-0' : 'hidden'}
+      className={isSidebarOpen ? 'shrink-0 h-full nc-panel p-3 flex flex-col gap-3 border-r-2 border-[#00ffff] overflow-y-auto select-none min-h-0 max-w-[45vw]' : 'hidden'}
+      style={width ? { width } : undefined}
       aria-label={lang === 'es' ? 'Navegación principal' : lang === 'de' ? 'Hauptnavigation' : 'Main navigation'}
     >
       <div className="flex flex-col gap-2.5 shrink-0">
@@ -366,6 +375,45 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
       </div>
-    </aside>
+
+        {/* Sesiones persistidas en servidor (SQLite) */}
+        <div className="border-t-2 border-[#00ffff] pt-2 mt-2">
+          <div className="flex items-center justify-between text-xs mb-2">
+            <span className="flex items-center gap-1 font-bold">
+              <Clock className="w-3.5 h-3.5" /> {lang === 'es' ? 'SESIONES (servidor)' : lang === 'de' ? 'SITZUNGEN (Server)' : 'SESSIONS (server)'}
+              {serverSessions.length > 0 && (
+                <span className="bg-[#000055] border border-[#00ffff]/40 text-[#00ffff] px-1 text-[9px] font-mono">
+                  {serverSessions.length}
+                </span>
+              )}
+            </span>
+            {onRefreshServerSessions && (
+              <button onClick={onRefreshServerSessions} className="text-[#00ffff] hover:text-white p-1" title={lang === 'es' ? 'Actualizar' : lang === 'de' ? 'Aktualisieren' : 'Refresh'}>
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <div className="space-y-1 max-h-40 overflow-y-auto">
+            {serverSessions.length === 0 ? (
+              <div className="text-[11px] text-[#00aaaa] italic p-2 text-center">
+                {lang === 'es' ? 'Sin sesiones en servidor' : lang === 'de' ? 'Keine Server-Sitzungen' : 'No server sessions'}
+              </div>
+            ) : (
+              serverSessions.map((t: any) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onSelectServerSession?.(t)}
+                  className="w-full text-left bg-[#0000aa] border border-[#00ffff]/40 hover:border-[#00ffff] p-1.5 rounded text-[10px] transition-colors"
+                  title={t.title || t.id}
+                >
+                  <div className="font-bold text-[#ffff55] truncate">{t.title || t.id}</div>
+                  <div className="text-[#00ffff]/70 font-mono text-[9px] truncate">{t.project_path || t.id}</div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      </aside>
   );
 };
