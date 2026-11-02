@@ -20,6 +20,25 @@ import { test, expect, type Page } from '@playwright/test';
  */
 const esMovil = (page: Page) => (page.viewportSize()?.width ?? 1024) < 640;
 
+/**
+ * La suite no sale de localhost. La app pide recursos a terceros al arrancar
+ * (el iframe de auth de Firebase, fuentes) y si uno de esos hosts se atasca en
+ * el runner, `page.goto` espera al evento `load` —que incluye los iframes—
+ * hasta agotar el presupuesto del test. Eso salía como
+ * `Tearing down "context" exceeded the test timeout` y marcaba flaky una prueba
+ * que había pasado. Abortarlos no cuesta arranque (medido: 4,2 s frente a 4,5 s)
+ * y deja la suite sin dependencia de red.
+ */
+test.beforeEach(async ({ context }) => {
+  await context.route('**/*', (route) => {
+    const url = route.request().url();
+    if (url.startsWith('http://localhost:4173') || url.startsWith('data:') || url.startsWith('blob:')) {
+      return route.continue();
+    }
+    return route.abort();
+  });
+});
+
 test.describe('Commander AI Studio - Core', () => {
   test.setTimeout(60000);
   test.beforeEach(async ({ page }) => {
