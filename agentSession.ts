@@ -382,7 +382,7 @@ export class AgentSession {
 
   private async runParallel(calls: { tool: string; input: any }[]) {
     const results = await Promise.allSettled(
-      calls.map((c) => executeAgentTool(c.tool, { ...c.input, root: this.cfg.cwd }))
+      calls.map((c) => executeAgentTool(c.tool, { ...c.input, root: this.cfg.cwd }, { signal: this.abortCtrl.signal }))
     );
     return calls.map((c, i) => {
       const r = results[i];
@@ -503,6 +503,8 @@ export class AgentSession {
     if (this.turns.length > 10) this.turns = this.turns.slice(-10);
 
     const results = await this.runParallel(executable.map((m) => ({ tool: m.name, input: m.args })));
+    // Cancelado mientras corrían las tools: no se anotan resultados ni se sigue.
+    if (this.stopReason) return;
     this.turns.push({ role: 'user', text: `Resultados:\n${JSON.stringify(results).slice(0, 3000)}` });
     if (this.turns.length > 10) this.turns = this.turns.slice(-10);
 
@@ -555,6 +557,7 @@ export class AgentSession {
 
     if (executable.length > 0) {
       const results = await this.runParallel(executable.map((tc) => ({ tool: tc.tool, input: tc.input })));
+      if (this.stopReason) return;
       this.turns.push({ role: 'user', text: `Resultados:\n${JSON.stringify(results).slice(0, 3000)}` });
       if (this.turns.length > 10) this.turns = this.turns.slice(-10);
       for (const r of results) {
