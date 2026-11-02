@@ -28,10 +28,25 @@ const cmValue = (): string => {
  * Con la suite completa en paralelo ese import puede pasar del segundo que
  * `waitFor` espera por defecto, y el test fallaba sin que la app estuviera mal.
  * El timeout no es un sleep: se sigue esperando al DOM, sólo se le da margen a
- * la carga del chunk.
+ * la carga del chunk (en solitario el montaje tarda ~1 s; con las 38 jsdom de
+ * la suite en paralelo, varios).
  */
+const MONTAJE_EDITOR_MS = 10_000;
+
+/**
+ * Timeout de los tests que montan CodeMirror.
+ *
+ * Tiene que ser **mayor** que `MONTAJE_EDITOR_MS`: mientras los dos eran 5000,
+ * el timeout del test mataba primero y el margen del `waitFor` era
+ * inalcanzable, así que una carga lenta se veía como «Test timed out» en vez de
+ * como el fallo del `waitFor` que dice qué elemento faltaba.
+ */
+const TIMEOUT_EDITOR = 20_000;
+
 const waitForEditor = async () => {
-  await waitFor(() => expect(document.querySelector('.cm-content')).toBeTruthy(), { timeout: 5000 });
+  await waitFor(() => expect(document.querySelector('.cm-content')).toBeTruthy(), {
+    timeout: MONTAJE_EDITOR_MS,
+  });
 };
 
 /** Reemplaza el documento del editor CodeMirror montado (simula teclear). */
@@ -356,7 +371,7 @@ describe('EditorView', () => {
     localStorage.clear();
   });
 
-  test('sin proyecto abre igualmente el bloc de notas local', async () => {
+  test('sin proyecto abre igualmente el bloc de notas local', { timeout: TIMEOUT_EDITOR }, async () => {
     render(<EditorView projectPath="" />);
     expect(screen.getByTitle('Abrir archivo local desde tu disco')).toBeInTheDocument();
     expect(screen.getByTitle('Guardar archivo en tu disco')).toBeInTheDocument();
@@ -365,7 +380,7 @@ describe('EditorView', () => {
     expect(screen.getByText(/Bloc de notas local/)).toBeInTheDocument();
   });
 
-  test('abre un archivo (fs.read) y lo guarda (fs.write)', async () => {
+  test('abre un archivo (fs.read) y lo guarda (fs.write)', { timeout: TIMEOUT_EDITOR }, async () => {
     const fetchMock = vi.fn().mockImplementation((_url: string, init: any) => {
       const body = JSON.parse(init.body);
       if (body.toolId === 'fs.glob') {
@@ -420,7 +435,7 @@ describe('EditorView', () => {
     });
   });
 
-  test('el botón Guardar está deshabilitado sin cambios pendientes', async () => {
+  test('el botón Guardar está deshabilitado sin cambios pendientes', { timeout: TIMEOUT_EDITOR }, async () => {
     global.fetch = vi.fn().mockImplementation((_url: string, init: any) => {
       const body = JSON.parse(init.body);
       if (body.toolId === 'fs.glob') {
@@ -443,7 +458,7 @@ describe('EditorView', () => {
     expect(screen.getByTitle('Guardar en el proyecto (Ctrl+S)')).toBeDisabled();
   });
 
-  test('abre un archivo LOCAL existente y carga su contenido en el editor', async () => {
+  test('abre un archivo LOCAL existente y carga su contenido en el editor', { timeout: TIMEOUT_EDITOR }, async () => {
     render(<EditorView projectPath="" />);
     const input = document.querySelector('input[data-testid="editor-local-open"]') as HTMLInputElement;
     expect(input).toBeTruthy();
@@ -456,7 +471,7 @@ describe('EditorView', () => {
     expect(screen.getByText(/Abierto: index\.html \(local\)/)).toBeInTheDocument();
   });
 
-  test('guarda el contenido como archivo LOCAL descargable (txt/html/otro)', async () => {
+  test('guarda el contenido como archivo LOCAL descargable (txt/html/otro)', { timeout: TIMEOUT_EDITOR }, async () => {
     const downloads: string[] = [];
     const clickSpy = vi
       .spyOn(HTMLAnchorElement.prototype, 'click')
@@ -480,7 +495,7 @@ describe('EditorView', () => {
     clickSpy.mockRestore();
   });
 
-  test('"Guardar como" escribe el contenido en un archivo nuevo del proyecto', async () => {
+  test('"Guardar como" escribe el contenido en un archivo nuevo del proyecto', { timeout: TIMEOUT_EDITOR }, async () => {
     const fetchMock = vi.fn().mockImplementation((_url: string, init: any) => {
       const body = JSON.parse(init.body);
       if (body.toolId === 'fs.glob') {
@@ -523,7 +538,7 @@ describe('EditorView', () => {
     });
   });
 
-  test('recuerda y reabre el último archivo del proyecto entre sesiones', async () => {
+  test('recuerda y reabre el último archivo del proyecto entre sesiones', { timeout: TIMEOUT_EDITOR }, async () => {
     localStorage.setItem('commander_editor_last_file::C:/tmp/proyecto-web', 'src/App.tsx');
     const fetchMock = vi.fn().mockImplementation((_url: string, init: any) => {
       const body = JSON.parse(init.body);

@@ -460,7 +460,10 @@ export const AgentMode: React.FC<AgentModeProps> = ({
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 w-full flex flex-col lg:flex-row overflow-hidden">
+      {/* En escritorio son dos columnas; en móvil dos filas. Con `flex-col` el
+          panel de la derecha (h-full + shrink-0) se llevaba todo el alto y el
+          consola quedaba con altura 0, así que el grid reparte el espacio. */}
+      <div className="flex-1 min-h-0 w-full grid grid-rows-[minmax(0,1fr)_minmax(0,45%)] lg:flex lg:flex-row overflow-hidden">
         <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden border-r-2 border-[#00ffff]/10">
           <div className="p-3 border-b-2 border-[#00ffff]/20 bg-[#000028] shrink-0">
             <div className="flex flex-col gap-2">
@@ -471,11 +474,11 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                 className="w-full bg-[#000045] text-white p-2 border-2 border-[#00ffff] text-xs font-mono outline-none min-h-[60px] resize-y"
                 disabled={state.running}
               />
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <input
                   value={toolId}
                   onChange={(e) => setToolId(e.target.value)}
-                  className="bg-[#000045] text-[#00ffff] border border-[#00ffff] px-2 py-1 text-xs font-mono w-40"
+                  className="bg-[#000045] text-[#00ffff] border border-[#00ffff] px-2 py-1 text-xs font-mono w-40 max-w-full"
                   list="agent-tools"
                   disabled={state.running}
                 />
@@ -500,7 +503,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                 <input
                   value={toolInput}
                   onChange={(e) => setToolInput(e.target.value)}
-                  className="flex-1 bg-[#000045] text-white border border-[#00ffff] px-2 py-1 text-xs font-mono"
+                  className="flex-1 min-w-0 bg-[#000045] text-white border border-[#00ffff] px-2 py-1 text-xs font-mono"
                   placeholder='{"path":"README.md"}'
                   disabled={state.running}
                 />
