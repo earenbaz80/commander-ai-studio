@@ -42,7 +42,13 @@ test.beforeEach(async ({ context }) => {
 test.describe('Commander AI Studio - Core', () => {
   test.setTimeout(60000);
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    // `load` espera a todos los recursos (fuentes, imágenes, iframes) y aquí esa
+    // espera se mide en 11-18 s: con el techo de 20 s de `navigationTimeout` no
+    // quedaba margen y un `load` lento en el runner salía como test fallido, que
+    // es el flaky que quedaba. La señal de «app lista» ya la da el
+    // waitForSelector de abajo (30 s); al goto le basta con traer y ejecutar el
+    // bundle.
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     // Esperar a que la app esté lista (retro BIOS boot)
     await page.waitForSelector('[data-testid="app-root"], .nc-header, .commander-title', { timeout: 30000 });
     const guestBtn0 = page.locator('button:has-text("ENTRAR COMO INVITADO")');
@@ -155,7 +161,7 @@ test.describe('Commander AI Studio - Core', () => {
 test.describe('Commander AI Studio - Chat', () => {
   test.setTimeout(60000);
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="app-root"], .nc-header', { timeout: 45000 });
     // Descartar modal de autenticación si aparece (modo invitado)
     const guestBtn = page.locator('button:has-text("ENTRAR COMO INVITADO")');
@@ -201,7 +207,7 @@ test.describe('Commander AI Studio - Chat', () => {
 test.describe('Commander AI Studio - Agent Mode', () => {
   test.setTimeout(60000);
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="app-root"], .nc-header', { timeout: 45000 });
     // Descartar modal de autenticación si aparece (modo invitado)
     const guestBtn = page.locator('button:has-text("ENTRAR COMO INVITADO")');
@@ -251,7 +257,7 @@ test.describe('Commander AI Studio - Agent Mode', () => {
 test.describe('Commander AI Studio - Workbench', () => {
   test.setTimeout(90000);
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="app-root"], .nc-header', { timeout: 45000 });
     // Descartar modal de autenticación si aparece (modo invitado)
     const guestBtn = page.locator('button:has-text("ENTRAR COMO INVITADO")');
@@ -297,7 +303,7 @@ test.describe('Commander AI Studio - Workbench', () => {
 test.describe('Commander AI Studio - Accesibilidad', () => {
   test.setTimeout(60000);
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="app-root"], .nc-header', { timeout: 45000 });
     // Descartar modal de autenticación si aparece (modo invitado)
     const guestBtn = page.locator('button:has-text("ENTRAR COMO INVITADO")');
