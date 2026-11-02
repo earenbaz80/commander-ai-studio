@@ -7,8 +7,14 @@ import WebSocket from 'ws';
 const server = http.createServer((_req, res) => res.end('ok'));
 attachTerminalWs(server);
 
-server.listen(3999, () => {
-  const ws = new WebSocket('ws://localhost:3999/ws/terminal');
+// Puerto efímero: el 3999 fijo chocaba con un dev server o con otra corrida del
+// smoke, y el fallo se veía como "ws error: ECONNREFUSED" sin decir por qué.
+server.listen(0, '127.0.0.1', () => {
+  const address = server.address();
+  const port = address && typeof address === 'object' ? address.port : 0;
+  console.log(`[terminal-smoke] ws://127.0.0.1:${port}/ws/terminal`);
+
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/terminal`);
   let out = '';
   let done = false;
 

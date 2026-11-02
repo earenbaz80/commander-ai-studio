@@ -413,3 +413,46 @@ test('AgentLoop.resume retoma la corrida sin borrar el log previo', async () => 
   assert.ok(s.steps.length > s.task!.maxSteps - 2, 'renueva el presupuesto de pasos');
   loop.stop();
 });
+
+// ── Corte por pasos sin progreso ──
+
+test('el contador de pasos sin progreso se reinicia en cada corrida', async () => {
+  // El AgentLoop se reutiliza entre corridas del mismo modelo (useMemo en
+  // useAgent), así que el contador de fallos sobrevive a `stop()`. Sin el
+  // reinicio, una corrida nueva con un solo fallo se cortaba como si arrastrara
+  // los ocho de la anterior.
+  const { orchestrator, steps } = createMockOrchestrator();
+  let turn = 0;
+  let fallosSeguidos = 8;
+  const client: AgentLLMClient = {
+    callJson: async () => ({ finish: true, answer: 'no debería usarse' }),
+    callTools: async () => {
+      turn += 1;
+      if (turn <= fallosSeguidos) {
+        return {
+          thought: `fallo ${turn}`,
+          calls: [{ name: 'fs_read', args: { path: `no-existe-${turn}.txt` } }],
+        };
+      }
+      return { thought: 'listo', calls: [] };
+    },
+  };
+  const loop = new AgentLoop(orchestrator, 'gemini-2.0-flash', client);
+  const cortes = () => steps.filter((s) => s.title === 'Límite de pasos').length;
+
+  await loop.start({ id: 'prog-1', goal: 'primer intento', cwd: '.', maxSteps: 40 });
+  const cortado = await waitFor(() => cortes() === 1, 15_000);
+  assert.ok(cortado, 'ocho fallos seguidos deben cortar la corrida');
+  loop.stop();
+
+  // Corrida nueva: un fallo y luego termina. Con el contador a 8, el primer
+  // fallo (9) volvería a disparar el corte antes de llegar al final.
+  turn = 0;
+  fallosSeguidos = 1;
+  await loop.start({ id: 'prog-2', goal: 'segundo intento', cwd: '.', maxSteps: 40 });
+  const termino = await waitFor(() => steps.some((s) => s.title === 'Finalizado'), 8_000);
+  loop.stop();
+
+  assert.ok(termino, 'la corrida nueva debe llegar al final, no cortarse por fallos viejos');
+  assert.equal(cortes(), 1, 'el corte no debe repetirse en la corrida nueva');
+});

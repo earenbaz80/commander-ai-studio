@@ -84,9 +84,43 @@ export const fsEditTool: ToolDefinition<FsEditInput, FsEditOutput> = {
   run: async (input) => callServer('fs.edit', input),
 };
 
+export interface FsGlobInput {
+  pattern: string;
+}
+
+export interface FsGlobOutput {
+  files: string[];
+}
+
+/**
+ * Resultado del typecheck del borrador (`diagnose: true`).
+ *
+ * Se declara aquí, y no importando el de `agentTools.ts`, porque ese módulo es
+ * del servidor: importarlo desde el cliente arrastraría `fs` y `child_process`
+ * al bundle.
+ */
+export interface ProposedDiagnosticsSummary {
+  /** `false` si no se pudo comprobar (sin tsconfig, sin typescript…): ver `note`. */
+  checked: boolean;
+  /** Sólo diagnósticos del archivo propuesto; los de sus imports ya existían. */
+  diagnostics: {
+    file: string;
+    line: number;
+    column: number;
+    severity: 'error' | 'warning';
+    code: string;
+    message: string;
+  }[];
+  errorCount: number;
+  warningCount: number;
+  note?: string;
+}
+
 export interface FsProposeWriteInput {
   path: string;
   content: string;
+  /** Typechequear el contenido propuesto sin escribirlo. Lento: úsalo si el cambio es dudoso. */
+  diagnose?: boolean;
 }
 export interface FsProposeWriteOutput {
   path: string;
@@ -96,12 +130,15 @@ export interface FsProposeWriteOutput {
   deletions: number;
   diff: string;
   hint?: string;
+  /** Presente sólo con `diagnose: true` y si hay algo que cambiar. */
+  diagnostics?: ProposedDiagnosticsSummary;
 }
 export const fsProposeWriteTool: ToolDefinition<FsProposeWriteInput, FsProposeWriteOutput> = {
   id: 'fs.propose.write',
   description:
     'Proponer escribir un archivo (crear o sobreescribir) SIN tocar disco. Devuelve un diff unificado ' +
-    'para que el usuario decida si se aplica. Funciona en modo plan.',
+    'para que el usuario decida si se aplica. Funciona en modo plan. Con diagnose:true typechequea ' +
+    'el contenido propuesto sin escribirlo.',
   danger: false,
   requiresApproval: () => false,
   run: async (input) => callServer('fs.propose.write', input),
@@ -112,6 +149,8 @@ export interface FsProposeEditInput {
   oldString: string;
   newString: string;
   replaceAll?: boolean;
+  /** Typechequear el archivo resultante sin escribirlo. Lento: úsalo si el cambio es dudoso. */
+  diagnose?: boolean;
 }
 export interface FsProposeEditOutput {
   path: string;
@@ -121,24 +160,18 @@ export interface FsProposeEditOutput {
   deletions: number;
   diff: string;
   hint?: string;
+  /** Presente sólo con `diagnose: true` y si hay algo que cambiar. */
+  diagnostics?: ProposedDiagnosticsSummary;
 }
 export const fsProposeEditTool: ToolDefinition<FsProposeEditInput, FsProposeEditOutput> = {
   id: 'fs.propose.edit',
   description:
     'Proponer un edit (str_replace) SIN tocar disco. Devuelve un diff unificado para revisión. ' +
-    'Funciona en modo plan.',
+    'Funciona en modo plan. Con diagnose:true typechequea el resultado sin escribirlo.',
   danger: false,
   requiresApproval: () => false,
   run: async (input) => callServer('fs.propose.edit', input),
 };
-
-export interface FsGlobInput {
-  pattern: string;
-}
-
-export interface FsGlobOutput {
-  files: string[];
-}
 
 export const fsGlobTool: ToolDefinition<FsGlobInput, FsGlobOutput> = {
   id: 'fs.glob',
