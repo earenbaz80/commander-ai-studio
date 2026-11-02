@@ -51,6 +51,27 @@ jobs:
       - name: Tests (Vitest)
         run: npm run test
 
+  # Sólo el proyecto `node` de Vitest (tests/unit + tests/mcp): lógica pura, sin
+  # jsdom ni polyfills de UI. No lleva `needs` a propósito —corre en paralelo a
+  # `lint-and-test`— para que un fallo de lógica llegue en un par de minutos en
+  # vez de detrás de la suite de UI. No sustituye a `npm run test`: el job
+  # completo sigue siendo el que gatea el build.
+  logic:
+    name: Vitest (sólo lógica)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Tests de lógica (Vitest, proyecto node)
+        run: npm run test:logic
+
   build:
     name: Build
     needs: lint-and-test

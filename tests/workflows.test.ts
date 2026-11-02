@@ -26,10 +26,9 @@ const CI = '.github/workflows/tests.yml';
  * Lee texto del repo con los saltos de línea normalizados.
  *
  * Estas pruebas fijan la estructura de los workflows con expresiones que cruzan
- * líneas (de `workflow_dispatch:` a `inputs:`). Un checkout con
- * `core.autocrlf=true` —el de Windows por defecto— entrega saltos CRLF, así que
- * sin normalizar el mismo YAML pasaba o fallaba según la configuración de git de
- * quien corriera la suite.
+ * líneas (`workflow_dispatch:\n  inputs:`). Un checkout con `core.autocrlf=true`
+ * —el de Windows por defecto— entrega `\r\n`, así que sin normalizar el mismo
+ * YAML pasaba o fallaba según la configuración de git de quien corriera la suite.
  */
 const leer = (rel: string): string =>
   fs.readFileSync(path.join(process.cwd(), rel), 'utf8').replace(/\r\n/g, '\n');
@@ -207,6 +206,32 @@ test('CI: el gate audita producción, no la cadena de tooling', () => {
 test('CI: build depende del gate y e2e del build', () => {
   assert.match(jobDe(ci, 'build'), /needs: lint-and-test/, 'no se construye sin lint ni tests');
   assert.match(jobDe(ci, 'e2e'), /needs: build/, 'el e2e usa el build');
+});
+
+test('CI: el job de lógica corre sólo el proyecto node y en paralelo', () => {
+  const job = jobDe(ci, 'logic');
+  const pasos = pasosDe(job);
+  const esRun = (paso: string, comando: string) =>
+    paso.split('\n').some((l) => l.trim() === `run: ${comando}`);
+
+  assert.ok(
+    pasos.some((p) => esRun(p, 'npm run test:logic')),
+    'el job de lógica corre `npm run test:logic`'
+  );
+  // El flag es lo único que lo separa de la suite completa: sin él vuelve a
+  // levantar jsdom y deja de ser el feedback rápido que justifica el job.
+  assert.match(
+    leer('package.json'),
+    /"test:logic": "vitest run --project node"/,
+    'test:logic sigue limitado al proyecto node'
+  );
+  // Con `needs` arrancaría cuando `lint-and-test` termine, que es justo lo que
+  // el job evita.
+  assert.ok(!job.includes('needs:'), 'corre en paralelo, sin `needs`');
+  assert.ok(
+    !pasos.some((p) => esRun(p, 'npm run test')),
+    'no corre la suite completa: para eso ya está lint-and-test'
+  );
 });
 
 test('los workflows no invocan scripts ni ficheros que no existan', () => {
