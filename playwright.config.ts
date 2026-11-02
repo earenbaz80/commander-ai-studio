@@ -5,10 +5,11 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  // Los 4 vCPU del runner de Windows daban para solapar: con 76 ejecuciones en
-  // serie el job tardaba 8,7 min. Se serializaba por el flaky del `goto`
-  // esperando `load`, ya corregido, así que ahora corren de dos en dos.
-  workers: process.env.CI ? 2 : undefined,
+  // Serial a propósito, y medido: con 76 ejecuciones en serie el job tarda
+  // 8,7 min; con 2 workers pasó de 15 min sin terminar, porque los 4 vCPU del
+  // runner sostienen además el preview server y cada test arranca la app en
+  // 11-18 s. Para paralelizar hay que bajar antes ese arranque.
+  workers: process.env.CI ? 1 : undefined,
   reporter: [
     ['html', { outputFolder: 'playwright-report' }],
     ['json', { outputFile: 'playwright-report/results.json' }],
