@@ -9,6 +9,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MAX_SUB_AGENT_RECORDS,
+  cancelSubAgents,
   clearSubAgents,
   finishSubAgent,
   listSubAgents,
@@ -119,4 +120,42 @@ test('el registro está acotado aunque todos sigan corriendo', () => {
   assert.ok(listado.length > 0);
   // Los más nuevos son los que se conservan: el último lanzado está.
   assert.ok(listado.some((r) => r.id === `s${MAX_SUB_AGENT_RECORDS + 9}`));
+});
+
+test('cancelar marca a los que corren y devuelve sus ids', () => {
+  startSubAgent({ id: 'a', parentSessionId: 'p1', goal: 'uno', model: 'm' });
+  startSubAgent({ id: 'b', parentSessionId: 'p1', goal: 'dos', model: 'm' });
+  finishSubAgent('b', { ok: true, answer: 'ya estaba' });
+
+  const ids = cancelSubAgents('p1');
+  assert.deepEqual(ids, ['a'], 'sólo los que seguían corriendo');
+
+  const porId = new Map(listSubAgents('p1').map((r) => [r.id, r]));
+  assert.equal(porId.get('a')?.status, 'cancelled');
+  assert.equal(porId.get('a')?.error, 'Cancelado por el usuario');
+  assert.ok(porId.get('a')?.endedAt, 'un cancelado es un terminado: tiene hora de fin');
+  assert.equal(porId.get('b')?.status, 'completed', 'un terminado no se reescribe');
+
+  // El cierre tardío del hijo llega después: no puede devolverlo a «falló».
+  finishSubAgent('a', { ok: false, error: 'tarde' });
+  assert.equal(listSubAgents('p1').find((r) => r.id === 'a')?.status, 'cancelled');
+});
+
+test('cancelar dos veces no inventa cancelaciones', () => {
+  startSubAgent({ id: 'a', parentSessionId: 'p1', goal: 'uno', model: 'm' });
+
+  assert.deepEqual(cancelSubAgents('p1'), ['a']);
+  assert.deepEqual(cancelSubAgents('p1'), [], 'ya no queda nadie corriendo');
+});
+
+test('cancelar avisa a quien escucha el panel', () => {
+  const vistos: string[][] = [];
+  const unsub = subscribeSubAgents('p1', (rows) => vistos.push(rows.map((r) => `${r.id}:${r.status}`)));
+  startSubAgent({ id: 'a', parentSessionId: 'p1', goal: 'uno', model: 'm' });
+
+  cancelSubAgents('p1');
+
+  // Un solo aviso, con la lista completa: el panel no ve «corriendo» de más.
+  assert.deepEqual(vistos, [['a:running'], ['a:cancelled']]);
+  unsub();
 });

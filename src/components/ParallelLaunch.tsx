@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Play, Plus, X, Users } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Play, Plus, Square, X, Users } from 'lucide-react';
 import { setSubAgentsSession } from '../agent/subAgentsStream';
 import type { Language } from '../i18n/translations';
 import { deText } from '../i18n/de';
@@ -48,6 +48,11 @@ export function ParallelLaunch({ cwd, running = false, lang = 'es' }: ParallelLa
   const [lanzando, setLanzando] = useState(false);
   const [error, setError] = useState('');
   const [aviso, setAviso] = useState('');
+  /** Sesión padre de la tanda en curso: es la que se cancela. */
+  const [sesionPadre, setSesionPadre] = useState('');
+  const [cancelando, setCancelando] = useState(false);
+  /** Cancelada a mano: el resultado que llegue después no debe fingir otra cosa. */
+  const canceladoRef = useRef(false);
 
   const objetivos = filas.map((f) => f.goal.trim()).filter(Boolean);
 
@@ -97,6 +102,8 @@ export function ParallelLaunch({ cwd, running = false, lang = 'es' }: ParallelLa
       // Antes de lanzar: el panel de al lado se suscribe a este id y recibe el
       // estado inicial vacío, en vez de perder los primeros eventos.
       setSubAgentsSession(String(parentSessionId));
+      setSesionPadre(String(parentSessionId));
+      canceladoRef.current = false;
 
       const agentes = filas
         .filter((f) => f.goal.trim())
@@ -112,6 +119,14 @@ export function ParallelLaunch({ cwd, running = false, lang = 'es' }: ParallelLa
         throw new Error(body?.error || `HTTP ${res.status}`);
       }
       const lanzados = Number(body?.data?.spawned) || agentes.length;
+      // Si se canceló, el `spawn_agents` vuelve con los hijos cortados: decir
+      // «terminados» aquí taparía lo que el usuario acaba de hacer.
+      if (canceladoRef.current) {
+        const cancelados = (Array.isArray(body?.data?.results) ? body.data.results : [])
+          .filter((r: any) => r?.cancelled).length;
+        setAviso(`${cancelados || lanzados} ${t('cancelados', 'cancelled')}`);
+        return;
+      }
       setAviso(
         body?.data?.capped
           ? `${lanzados}/${agentes.length} ${t('lanzados: el resto pasa del tope de', 'launched: the rest exceed the cap of')} ${MAX_PARALELOS}`
@@ -121,6 +136,30 @@ export function ParallelLaunch({ cwd, running = false, lang = 'es' }: ParallelLa
       setError(e?.message || t('No se pudo lanzar', 'Could not launch'));
     } finally {
       setLanzando(false);
+    }
+  };
+
+  /**
+   * Parar la tanda. No basta con cerrar el panel: los hijos seguirían en su
+   * bucle escribiendo archivos, así que se pide al servidor que los pare, y el
+   * `POST` de `spawn_agents` termina en cuanto salen del bucle.
+   */
+  const cancelar = async () => {
+    if (!sesionPadre || cancelando) return;
+    setCancelando(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/agent/sessions/${encodeURIComponent(sesionPadre)}/cancel`, { method: 'POST' });
+      const body: any = await res.json().catch(() => ({}));
+      if (!res.ok || !body?.success) {
+        throw new Error(body?.error || `HTTP ${res.status}`);
+      }
+      canceladoRef.current = true;
+      setAviso(`${Number(body?.cancelled) || 0} ${t('cancelados', 'cancelled')}`);
+    } catch (e: any) {
+      setError(e?.message || t('No se pudo cancelar', 'Could not cancel'));
+    } finally {
+      setCancelando(false);
     }
   };
 
@@ -198,6 +237,18 @@ export function ParallelLaunch({ cwd, running = false, lang = 'es' }: ParallelLa
           <Play className={`w-3 h-3 ${lanzando ? 'animate-spin' : ''}`} />
           {lanzando ? t('corriendo…', 'running…') : t('Lanzar en paralelo', 'Launch in parallel')}
         </button>
+        {lanzando && sesionPadre && (
+          <button
+            type="button"
+            onClick={cancelar}
+            disabled={cancelando}
+            className="text-[10px] px-2 py-1 border border-red-500/50 rounded text-red-200 hover:bg-red-500/10 disabled:opacity-40 flex items-center gap-1"
+            data-testid="parallel-cancel"
+          >
+            <Square className="w-3 h-3" />
+            {cancelando ? t('cancelando…', 'cancelling…') : t('Cancelar', 'Cancel')}
+          </button>
+        )}
       </div>
 
       {running && (

@@ -29,12 +29,14 @@ type Traductor = (es: string, en: string) => string;
 function estadoTexto(status: SubAgentRow['status'], t: Traductor): string {
   if (status === 'running') return t('corriendo', 'running');
   if (status === 'completed') return t('completo', 'done');
+  if (status === 'cancelled') return t('cancelado', 'cancelled');
   return t('falló', 'failed');
 }
 
 function colorEstado(status: SubAgentRow['status']): string {
   if (status === 'running') return 'text-[#00ffff]';
   if (status === 'completed') return 'text-green-400';
+  if (status === 'cancelled') return 'text-[#ffff55]';
   return 'text-red-400';
 }
 
