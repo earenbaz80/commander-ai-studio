@@ -238,10 +238,16 @@ test('la cadena de respaldo de Gemini no reintenta ids retirados', () => {
     assert.ok(id.startsWith('gemini-'), `id inesperado en la cadena: ${id}`);
     assert.ok(!RETIRED_GEMINI_MODELS.includes(id), `${id} ya no existe en la API`);
   }
-  // Un modelo que no responde es peor que no tenerlo: en medio de la cadena
-  // deja el turno esperando su timeout. Estos dos lo hicieron el 2026-11-02.
-  for (const id of ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest']) {
-    assert.ok(!GEMINI_FALLBACK_MODELS.includes(id), `${id} no respondió en 15 s: no debe estar en la cadena`);
+  // La cuota se agota por modelo, no por cuenta: con los grandes en 429 el
+  // único que contesta es un lite, y sin uno la cadena termina en error.
+  assert.ok(
+    GEMINI_FALLBACK_MODELS.some((id) => id.includes('flash-lite')),
+    'la cadena necesita un lite: es el que tiene cuota propia cuando los grandes dan 429'
+  );
+  for (const id of GEMINI_FALLBACK_MODELS) {
+    // Un alias `-latest` cambia de modelo sin avisar y deja el id apuntando a
+    // otro: la cadena tiene que nombrar el modelo que de verdad se usa.
+    assert.ok(!/-latest$/.test(id), `${id} es un alias: usa el id concreto del modelo`);
   }
 });
 
