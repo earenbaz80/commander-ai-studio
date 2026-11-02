@@ -18,7 +18,8 @@
 
 import { uid } from './src/agent/id';
 import { toolDialectForModel, toOpenAITools } from './src/agent/providers';
-import { AGENT_FUNCTION_DECLARATIONS } from './src/agent/fnTools';
+import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from './src/agent/fnTools';
+import { PLAN_TOOL, normalizePlan } from './src/agent/plan';
 import { TOOL_REGISTRY } from './src/agent/registry';
 import { loadMCPServers, mcpListTools } from './src/agent/mcp';
 import { executeAgentTool } from './agentTools';
@@ -443,12 +444,41 @@ export class AgentSession {
       this.emit({ type: 'thought', title: 'Razonamiento', content: native.thought.slice(0, 2000) });
     }
 
-    const mapped = (native.calls || [])
-      .map((c) => ({ name: c.name, args: c.args }))
+    // `update_plan` es una pseudo-tool: mueve el plan visible y no se ejecuta.
+    // Se descartaba en el filtro, así que un turno que sólo planificaba se daba
+    // por respuesta final («Objetivo completado.») sin tocar el workspace.
+    const calls = native.calls || [];
+    const planCalls = calls.filter((c) => c.name === PLAN_TOOL);
+    if (planCalls.length > 0) {
+      const next = planCalls.reduce(
+        (acc, c) => normalizePlan((c.args as any)?.items, acc),
+        this.plan
+      );
+      this.plan = next;
+      this.emit({ type: 'plan', plan: next });
+    }
+
+    // El proveedor devuelve los nombres con guion bajo (`fs_write`), pero aquí
+    // los tools son ids con punto (`fs.write`). Sin esta traducción el filtro
+    // descartaba TODAS las llamadas: la sesión las veía como «sin salida» y
+    // cerraba con «Objetivo completado» sin ejecutar ni una tool.
+    const mapped = calls
+      .filter((c) => c.name !== PLAN_TOOL)
+      .map((c) => {
+        const call = mapFunctionCall(c.name, c.args);
+        return call ? { name: call.tool, args: call.input } : null;
+      })
+      .filter((c): c is { name: string; args: any } => c !== null)
       .filter((c) => ALLOWED_TOOLS.includes(c.name))
       .slice(0, 5);
 
     if (mapped.length === 0) {
+      // Un turno que sólo actualizó el plan no es la respuesta final.
+      if (planCalls.length > 0) {
+        this.turns.push({ role: 'model', text: native.thought || '(plan actualizado)' });
+        if (this.turns.length > 10) this.turns = this.turns.slice(-10);
+        return;
+      }
       this.turns.push({ role: 'model', text: native.thought || '(sin salida)' });
       if (this.turns.length > 10) this.turns = this.turns.slice(-10);
       this.addStep({ type: 'thought', title: 'Finalizado', content: native.thought || 'Objetivo completado.', status: 'completed' });
