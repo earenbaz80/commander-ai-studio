@@ -17,7 +17,16 @@ import { enforceTool, getPermissions, setPermissions } from './permissions';
 // `listSessions` ya lo exporta `sessionWorkspace` (sesiones de UI): se aliasa.
 import { createSession, getSession, listSessions as listAgentSessions, removeSession } from './agentSession';
 import { clearSubAgents, listSubAgents, subscribeSubAgents } from './subAgents';
-import { handleGeminiGenerate, handleGeminiStream, handleGeminiInteractions } from './gemini';
+import {
+  handleGeminiGenerate,
+  handleGeminiStream,
+  handleGeminiInteractions,
+  handleResetToolsMemory,
+  handleToolsMemoryStatus,
+  handleSetToolsMemoryTtl,
+  handleFallbackModelsStatus,
+  handleSetFallbackModels,
+} from './gemini';
 import { handleAnthropicGenerate, handleAnthropicStream } from './anthropic';
 import { executeLocalHfModel } from './localModels';
 import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList, apiKeyMiddleware } from './apiKeys';
@@ -338,6 +347,14 @@ app.post('/api/transcribe', async (req, res) => {
 app.post('/api/gemini/generate', handleGeminiGenerate);
 app.post('/api/gemini/stream', handleGeminiStream);
 app.post('/api/gemini/interactions/create', handleGeminiInteractions);
+// Estado y borrado de la marca «esta key no admite herramientas integradas».
+app.get('/api/gemini/tools-memory', handleToolsMemoryStatus);
+app.post('/api/gemini/tools-memory/reset', handleResetToolsMemory);
+// Duración configurable de la marca (se guarda en commander.json).
+app.post('/api/gemini/tools-memory/ttl', handleSetToolsMemoryTtl);
+// Cadena de respaldo guardada: la UI la elige aquí en vez de mandarla por petición.
+app.get('/api/gemini/fallback-models', handleFallbackModelsStatus);
+app.post('/api/gemini/fallback-models', handleSetFallbackModels);
 
 // Anthropic endpoints
 app.post('/api/anthropic/generate', handleAnthropicGenerate);
@@ -826,11 +843,35 @@ app.get('/api/plugins', (req, res) => {
   }
 });
 
+/**
+ * Id de plugin: un nombre de archivo y nada más.
+ *
+ * El id se concatena en rutas bajo `.commander/plugins`, así que un valor como
+ * `../../x` escribía el manifiesto (y borraba el zip) fuera del directorio. La
+ * lista blanca es la primera barrera; `pluginPath` comprueba además que el
+ * fichero resuelto siga dentro del directorio de plugins.
+ */
+const PLUGIN_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+function isSafePluginId(id: unknown): id is string {
+  return typeof id === 'string' && PLUGIN_ID_RE.test(id) && !id.includes('..');
+}
+
+/** Ruta de un fichero de plugin, garantizada dentro de `<root>/.commander/plugins`. */
+function pluginPath(root: string, id: string, ext: '.zip' | '.manifest.json'): string {
+  if (!isSafePluginId(id)) throw new Error('Id de plugin inválido');
+  const dir = path.resolve(root, PLUGINS_DIR);
+  const file = path.resolve(dir, `${id}${ext}`);
+  if (path.dirname(file) !== dir) throw new Error('Id de plugin inválido');
+  return file;
+}
+
 // Esquema inline de validación para plugins (sin nuevas dependencias)
 function validarManifestPlugin(body: any): { ok: boolean; error?: string; data?: any } {
   if (!body || typeof body !== 'object') return { ok: false, error: 'Cuerpo de request inválido' };
   const { id, name, version, entrypoint } = body;
   if (!id || typeof id !== 'string') return { ok: false, error: 'id es obligatorio y debe ser string' };
+  if (!isSafePluginId(id)) return { ok: false, error: 'id inválido: sólo letras, números, ".", "_" y "-"' };
   if (name !== undefined && typeof name !== 'string') return { ok: false, error: 'name debe ser string si se provee' };
   if (version !== undefined && (typeof version !== 'string' || version.trim() === '')) return { ok: false, error: 'version debe ser string no vacío si se provee' };
   if (entrypoint !== undefined && typeof entrypoint !== 'string') return { ok: false, error: 'entrypoint debe ser string si se provee' };
@@ -844,7 +885,7 @@ app.post('/api/plugins', async (req, res) => {
     if (!validation.ok) return res.status(400).json({ success: false, error: validation.error });
     const { id, name, version, entrypoint } = validation.data;
     const root = getPluginsRoot(req.body?.root);
-    const manifestPath = path.join(root, PLUGINS_DIR, `${id}.manifest.json`);
+    const manifestPath = pluginPath(root, id, '.manifest.json');
     const manifest = { id, name, version, entrypoint };
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
     return res.json({ success: true, id, manifest });
@@ -857,9 +898,10 @@ app.post('/api/plugins', async (req, res) => {
 app.delete('/api/plugins/:id', (req, res) => {
   try {
     const id = req.params.id;
-    const root = getPluginsRoot();
-    const zipPath = path.join(root, PLUGINS_DIR, `${id}.zip`);
-    const manifestPath = path.join(root, PLUGINS_DIR, `${id}.manifest.json`);
+    if (!isSafePluginId(id)) return res.status(400).json({ success: false, error: 'Id de plugin inválido' });
+    const root = getPluginsRoot(req.query.root);
+    const zipPath = pluginPath(root, id, '.zip');
+    const manifestPath = pluginPath(root, id, '.manifest.json');
     if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
     if (fs.existsSync(manifestPath)) fs.unlinkSync(manifestPath);
     return res.json({ success: true, id });

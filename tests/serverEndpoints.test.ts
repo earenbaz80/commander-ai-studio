@@ -224,6 +224,53 @@ test('spawn_agents encuentra la sesión padre que crea el bootstrap', async () =
   await srv.request('DELETE', `/api/agent/sessions/${id}`);
 });
 
+test('POST /api/agent/run-tool niega fs.read y fs.grep sobre archivos de secretos', async () => {
+  // El predicado se prueba suelto en `tests/security.test.ts` y el ejecutor en
+  // `tests/agentTools.test.ts`. Falta el camino que usa el agente de verdad:
+  // `src/agent/tools/fs.ts` hace este mismo POST con `{toolId, input}`, así que
+  // aquí se cubren la ruta, la puerta de `AGENT_TOOLS` y el mapeo del `status`
+  // del ejecutor a HTTP. Quitar el guard del endpoint deja esto rojo; quitarlo
+  // de `executeAgentTool` también.
+  //
+  // Las rutas ni siquiera existen en el repo: la comprobación de sensibilidad va
+  // antes que la de existencia y que la de permisos, así que el 403 sólo puede
+  // venir del guard. Con un archivo real, un verde también sería compatible con
+  // "el archivo no estaba".
+  const casos: Array<{ toolId: string; input: Record<string, unknown>; porque: string }> = [
+    { toolId: 'fs.read', input: { path: '.env' }, porque: 'las claves del proyecto' },
+    { toolId: 'fs.read', input: { path: '.ssh/id_ed25519' }, porque: 'una clave privada' },
+    { toolId: 'fs.grep', input: { pattern: 'API_KEY', path: '.env' }, porque: 'buscar dentro del .env' },
+    { toolId: 'fs.grep', input: { pattern: 'PRIVATE', path: 'certs/server.pem' }, porque: 'un certificado' },
+  ];
+
+  for (const caso of casos) {
+    const res = await srv.request('POST', '/api/agent/run-tool', { toolId: caso.toolId, input: caso.input });
+    const etiqueta = `${caso.toolId} ${JSON.stringify(caso.input)}`;
+    assert.equal(res.status, 403, `${etiqueta} debía ser 403 (${caso.porque}): ${res.raw}`);
+    assert.equal(res.body.ok, false, `${etiqueta} no puede devolver ok:true`);
+    assert.match(String(res.body.error), /sensible/i, `${etiqueta} debe explicar el motivo`);
+    assert.doesNotMatch(String(res.body.error), /No existe/i, `${etiqueta}: el guard va antes de mirar si existe`);
+  }
+
+  // Control: las mismas dos tools sobre un archivo normal funcionan. Sin esto,
+  // un 403 por una ruta mal montada pasaría como si el filtro hiciera su trabajo.
+  const lectura = await srv.request('POST', '/api/agent/run-tool', {
+    toolId: 'fs.read',
+    input: { path: 'package.json' },
+  });
+  assert.equal(lectura.status, 200, lectura.raw);
+  assert.equal(lectura.body.ok, true);
+  assert.match(String(lectura.body.data.content), /"name"/);
+
+  const busqueda = await srv.request('POST', '/api/agent/run-tool', {
+    toolId: 'fs.grep',
+    input: { pattern: '"name"', path: 'package.json' },
+  });
+  assert.equal(busqueda.status, 200, busqueda.raw);
+  assert.equal(busqueda.body.ok, true);
+  assert.ok((busqueda.body.data.matches as any[]).length > 0, 'grep debe encontrar el campo de package.json');
+});
+
 test('GET /api/agent/sessions/:id/subagents expone los hijos del padre', async () => {
   const creada = await srv.request('POST', '/api/agent/sessions', { goal: 'padre del panel', maxSteps: 3 });
   assert.equal(creada.status, 200, creada.raw);

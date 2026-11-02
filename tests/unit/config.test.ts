@@ -14,6 +14,7 @@ import {
   getAgentConfig,
   CommanderConfigSchema,
   resetConfig,
+  setGoogleToolsMemoryTtlMinutes,
   getGoogleFallbackModels,
   setGoogleFallbackModels,
 } from '../../src/config/index';
@@ -65,6 +66,36 @@ describe('Config System', () => {
     expect(updated.agent?.maxSteps).toBe(50);
   });
 
+  it('writeConfig no vuelca en el fichero las API keys que sólo vienen del entorno', () => {
+    fs.writeFileSync(path.join(tmpDir, 'commander.json'), JSON.stringify({ providers: {} }));
+    resetConfig();
+
+    const previous = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = 'clave-de-entorno-que-no-debe-persistirse';
+    try {
+      const file = writeConfig({ ui: { theme: 'amber' } });
+      const raw = fs.readFileSync(file, 'utf8');
+      expect(raw).not.toContain('clave-de-entorno-que-no-debe-persistirse');
+      expect(JSON.parse(raw).ui.theme).toBe('amber');
+    } finally {
+      if (previous === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = previous;
+    }
+  });
+
+  it('tras guardar, la configuración en memoria sigue viendo las claves del entorno', () => {
+    resetConfig();
+    const previous = process.env.XAI_API_KEY;
+    process.env.XAI_API_KEY = 'clave-xai-solo-entorno';
+    try {
+      writeConfig({ ui: { theme: 'amber' } });
+      expect(loadConfig().providers?.xai?.apiKey).toBe('clave-xai-solo-entorno');
+    } finally {
+      if (previous === undefined) delete process.env.XAI_API_KEY;
+      else process.env.XAI_API_KEY = previous;
+    }
+  });
+
   it('debe validar config correcta con Zod', () => {
     const result = CommanderConfigSchema.safeParse({
       ui: { theme: 'amber' },
@@ -83,6 +114,40 @@ describe('Config System', () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe('Duración de la marca de herramientas integradas', () => {
+  it('guarda los minutos en providers.google sin tocar el resto', () => {
+    const file = path.join(tmpDir, 'commander.json');
+    fs.writeFileSync(file, JSON.stringify({ providers: { google: { toolsMemoryTtlMinutes: 30 } }, agent: { maxSteps: 50 } }));
+    resetConfig();
+
+    const saved = setGoogleToolsMemoryTtlMinutes(7);
+    const parsed = JSON.parse(fs.readFileSync(saved, 'utf8'));
+
+    expect(parsed.providers.google.toolsMemoryTtlMinutes).toBe(7);
+    expect(parsed.agent.maxSteps).toBe(50);
+    resetConfig();
+    expect(loadConfig().providers?.google?.toolsMemoryTtlMinutes).toBe(7);
+  });
+
+  it('no escribe en el fichero las API keys que sólo vienen del entorno', () => {
+    const file = path.join(tmpDir, 'commander.json');
+    fs.writeFileSync(file, JSON.stringify({ providers: {} }));
+    resetConfig();
+
+    const previous = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = 'clave-solo-del-entorno';
+    try {
+      const saved = setGoogleToolsMemoryTtlMinutes(15);
+      const raw = fs.readFileSync(saved, 'utf8');
+      expect(raw).not.toContain('clave-solo-del-entorno');
+      expect(JSON.parse(raw).providers.google.toolsMemoryTtlMinutes).toBe(15);
+    } finally {
+      if (previous === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = previous;
+    }
   });
 });
 

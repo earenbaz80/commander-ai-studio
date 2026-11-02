@@ -75,27 +75,39 @@ function loadEnvOverrides(): Partial<CommanderConfig> {
   return overrides;
 }
 
+/**
+ * Config de los ficheros (global → proyecto), sin variables de entorno.
+ *
+ * Es la base que se puede volver a escribir: las variables de entorno nunca
+ * deben acabar guardadas en `commander.json` (una API key del entorno no es
+ * asunto del fichero). No valida; eso lo hace quien la consume.
+ */
+function loadFileLayers(cwd: string = process.cwd()): any {
+  let merged: any = DEFAULT_CONFIG;
+
+  // Global config (lowest priority)
+  if (fs.existsSync(GLOBAL_CONFIG_FILE)) {
+    merged = deepMerge(merged, loadConfigFile(GLOBAL_CONFIG_FILE));
+  }
+
+  // Project config (higher priority)
+  const projectConfig = findConfigFile(cwd);
+  if (projectConfig) {
+    merged = deepMerge(merged, loadConfigFile(projectConfig));
+  }
+
+  return merged;
+}
+
 export function loadConfig(opts?: { cwd?: string; skipCache?: boolean }): CommanderConfig {
   const cwd = opts?.cwd || process.cwd();
   
   if (configCache && !opts?.skipCache) return configCache;
   
-  let merged = DEFAULT_CONFIG;
-  const loadedPaths: string[] = [];
-  
-  // Global config (lowest priority)
-  if (fs.existsSync(GLOBAL_CONFIG_FILE)) {
-    merged = deepMerge(merged, loadConfigFile(GLOBAL_CONFIG_FILE));
-    loadedPaths.push(GLOBAL_CONFIG_FILE);
-  }
-  
-  // Project config (higher priority)
+  let merged = loadFileLayers(cwd);
+
   const projectConfig = findConfigFile(cwd);
-  if (projectConfig) {
-    merged = deepMerge(merged, loadConfigFile(projectConfig));
-    loadedPaths.push(projectConfig);
-    configPathCache = projectConfig;
-  }
+  if (projectConfig) configPathCache = projectConfig;
   
   // Env vars (highest priority)
   merged = deepMerge(merged, loadEnvOverrides());
@@ -156,7 +168,9 @@ export function watchConfig(callback: (config: CommanderConfig) => void): () => 
 }
 
 export function writeConfig(config: DeepPartial<CommanderConfig>, target?: 'project' | 'global'): string {
-  const existing = loadConfig({ skipCache: true });
+  // La base son sólo los ficheros: fusionar `loadConfig()` aquí guardaría en
+  // `commander.json` las API keys que únicamente venían del entorno.
+  const existing = loadFileLayers();
   const merged = deepMerge(existing, config);
   
   const validated = CommanderConfigSchema.parse(merged);
@@ -171,7 +185,9 @@ export function writeConfig(config: DeepPartial<CommanderConfig>, target?: 'proj
   }
   
   fs.writeFileSync(filePath, JSON.stringify(validated, null, 2), 'utf-8');
-  configCache = validated;
+  // Se invalida en vez de fijar la config escrita: al releer se vuelven a
+  // aplicar las variables de entorno, que no forman parte del fichero.
+  configCache = null;
   configPathCache = filePath;
   
   return filePath;
@@ -180,6 +196,33 @@ export function writeConfig(config: DeepPartial<CommanderConfig>, target?: 'proj
 export function resetConfig(): void {
   configCache = null;
   configPathCache = null;
+}
+
+/**
+ * Cambia sólo la duración de la marca «esta key no admite herramientas integradas»
+ * (`providers.google.toolsMemoryTtlMinutes`).
+ *
+ * Lee el fichero tal cual, sin fusionar las variables de entorno, para no acabar
+ * escribiendo una API key del entorno en `commander.json`: toca ese único campo
+ * y valida el resultado antes de guardarlo.
+ */
+export function setGoogleToolsMemoryTtlMinutes(minutes: number): string {
+  const projectConfig = findConfigFile() || path.join(process.cwd(), 'commander.json');
+  const raw = fs.existsSync(projectConfig) ? loadConfigFile(projectConfig) : {};
+  const rawProviders = (raw.providers || {}) as Record<string, unknown>;
+  const rawGoogle = (rawProviders.google || {}) as Record<string, unknown>;
+  const providers = {
+    ...rawProviders,
+    google: { ...rawGoogle, toolsMemoryTtlMinutes: minutes },
+  };
+
+  const validated = CommanderConfigSchema.parse({ ...raw, providers });
+  fs.writeFileSync(projectConfig, JSON.stringify(validated, null, 2), 'utf-8');
+  // Igual que en `writeConfig`: al releer, el entorno vuelve a entrar.
+  configCache = null;
+  configPathCache = projectConfig;
+
+  return projectConfig;
 }
 
 /**
