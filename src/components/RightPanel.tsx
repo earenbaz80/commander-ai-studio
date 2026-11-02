@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { 
   Sliders, 
   FileJson, 
@@ -9,6 +9,9 @@ import {
   X,
   Server,
   Settings,
+  ArrowUp,
+  ArrowDown,
+  FlaskConical,
 } from 'lucide-react';
 import { saveApiKey } from '../lib/apiKeys';
 import { ApiKeyInput } from './ApiKeyInput';
@@ -19,6 +22,9 @@ import { ProviderManager } from './panel/ProviderManager';
 import { ParameterConfig, ProviderType, StudioMode } from '../types/studio';
 import { useModelsCatalog } from '../data/modelsLoader';
 import { Language, TRANSLATIONS } from '../i18n/translations';
+import { MAX_FALLBACK_MODELS } from '../config/geminiModels';
+import { addModel, moveModel } from '../lib/fallbackChain';
+import { probeFirstResponder, probeModel, type ChainProbeResult } from '../lib/modelProbe';
 
 interface RightPanelProps {
   parameters: ParameterConfig;
@@ -68,6 +74,40 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false);
   const [isFunctionModalOpen, setIsFunctionModalOpen] = useState(false);
   const [isDatasetModalOpen, setIsDatasetModalOpen] = useState(false);
+  /** Estado del reintento manual de las herramientas integradas de Gemini. */
+  const [toolsRetry, setToolsRetry] = useState<'idle' | 'working' | 'done' | 'error'>('idle');
+  /** Marca del servidor: la key en uso no admite grounding / code execution. */
+  const [toolsMemory, setToolsMemory] = useState<{ marked: boolean; expiresAt: number | null; keyKnown: boolean; ttlMs: number | null } | null>(null);
+  /** Aviso pasajero cuando la marca caduca con el panel abierto. */
+  const [toolsExpiryNotice, setToolsExpiryNotice] = useState(false);
+  /** Duración de la marca: borrador editable y estado del guardado. */
+  const [ttlDraft, setTtlDraft] = useState('');
+  const [ttlSave, setTtlSave] = useState<'idle' | 'working' | 'done' | 'error'>('idle');
+  /** Cadena de respaldo guardada en commander.json: borrador y estado. */
+  const [fallbackRows, setFallbackRows] = useState<string[]>([]);
+  /** Modelo que se va a añadir a la cadena (el orden se cambia con flechas). */
+  const [fallbackNew, setFallbackNew] = useState('');
+  const [fallbackState, setFallbackState] = useState<{
+    models: string[];
+    defaultModels: string[];
+    configured: boolean;
+  } | null>(null);
+  const [fallbackSave, setFallbackSave] = useState<'idle' | 'working' | 'done' | 'error'>('idle');
+  const [fallbackError, setFallbackError] = useState('');
+  /** Resultado de probar un modelo de la cadena, por id. */
+  const [probeResults, setProbeResults] = useState<
+    Record<string, { status: 'working' | 'ok' | 'substituted' | 'failed'; detail: string }>
+  >({});
+  /** Último resultado, en texto: el glifo de la fila no cabe explicar el motivo. */
+  const [lastProbe, setLastProbe] = useState<{
+    status: 'working' | 'ok' | 'substituted' | 'failed';
+    detail: string;
+  } | null>(null);
+  /** Recorrido de la cadena entera; `result` sólo cuando ya terminó. */
+  const [chainProbe, setChainProbe] = useState<{
+    running: boolean;
+    result?: ChainProbeResult;
+  } | null>(null);
   const [isProviderManagerOpen, setIsProviderManagerOpen] = useState(false);
   const [panelWidth, setPanelWidth] = useState(initialWidth);
   const [, setIsResizing] = useState(false);
@@ -76,6 +116,220 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   const panelRef = useRef<HTMLDivElement>(null);
   const resizeHandleRef = useRef<HTMLDivElement>(null);
   
+  // Estado de la marca de herramientas integradas de la key en uso.
+  const refreshToolsMemory = useCallback(async () => {
+    try {
+      const res = await fetch('/api/gemini/tools-memory', { credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (data?.success) {
+        setToolsMemory({
+          marked: data.marked === true,
+          expiresAt: typeof data.expiresAt === 'number' ? data.expiresAt : null,
+          keyKnown: data.keyKnown === true,
+          ttlMs: typeof data.ttlMs === 'number' ? data.ttlMs : null,
+        });
+      }
+    } catch {
+      // Sin servidor, el panel sigue usable: el estado es informativo.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshToolsMemory();
+  }, [refreshToolsMemory]);
+
+  // Reloj local: hace que la cuenta atrás de la marca avance sola con el panel abierto.
+  const [now, setNow] = useState(() => Date.now());
+  const expiredRefreshRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!toolsMemory?.marked) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    // Disparo exacto en el vencimiento: el aviso de caducidad no espera al tick.
+    const expiresAt = toolsMemory.expiresAt;
+    const untilExpiry = expiresAt != null ? expiresAt - Date.now() : -1;
+    const expiryId = untilExpiry > 0 ? setTimeout(() => setNow(Date.now()), untilExpiry) : null;
+    return () => {
+      clearInterval(id);
+      if (expiryId != null) clearTimeout(expiryId);
+    };
+  }, [toolsMemory?.marked, toolsMemory?.expiresAt]);
+
+  // Al llegar la hora de caducidad, el servidor ya no la considera marcada:
+  // se relee una sola vez por cada vencimiento para no encadenar peticiones.
+  useEffect(() => {
+    const expiresAt = toolsMemory?.expiresAt;
+    if (!toolsMemory?.marked || expiresAt == null || now < expiresAt) return;
+    if (expiredRefreshRef.current === expiresAt) return;
+    expiredRefreshRef.current = expiresAt;
+    setToolsExpiryNotice(true);
+    void refreshToolsMemory();
+  }, [now, toolsMemory, refreshToolsMemory]);
+
+  // El aviso de caducidad es breve: se retira solo a los pocos segundos.
+  useEffect(() => {
+    if (!toolsExpiryNotice) return;
+    const id = setTimeout(() => setToolsExpiryNotice(false), 8000);
+    return () => clearTimeout(id);
+  }, [toolsExpiryNotice]);
+
+  /** Duración efectiva que anuncia el servidor, en minutos. */
+  const ttlMinutes = toolsMemory?.ttlMs ? Math.round(toolsMemory.ttlMs / 60000) : null;
+
+  useEffect(() => {
+    if (ttlMinutes != null) setTtlDraft(String(ttlMinutes));
+  }, [ttlMinutes]);
+
+  /** Cadena de respaldo tal como la usará el servidor si la petición no la trae. */
+  const refreshFallbackModels = useCallback(async () => {
+    try {
+      const res = await fetch('/api/gemini/fallback-models', { credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (data?.success) {
+        const models = Array.isArray(data.models) ? data.models.map(String) : [];
+        setFallbackState({
+          models,
+          defaultModels: Array.isArray(data.defaultModels) ? data.defaultModels.map(String) : [],
+          configured: data.configured === true,
+        });
+        setFallbackRows(models);
+      }
+    } catch {
+      // Sin servidor el editor sigue visible; guardar avisará del fallo.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshFallbackModels();
+  }, [refreshFallbackModels]);
+
+  const saveFallbackModels = useCallback(
+    async (models: string[]) => {
+      setFallbackSave('working');
+      setFallbackError('');
+      try {
+        const res = await fetch('/api/gemini/fallback-models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ models }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.success === true) {
+          setFallbackSave('done');
+          await refreshFallbackModels();
+        } else {
+          setFallbackSave('error');
+          setFallbackError(typeof data.error === 'string' ? data.error : '');
+        }
+      } catch {
+        setFallbackSave('error');
+        setFallbackError('');
+      }
+    },
+    [refreshFallbackModels]
+  );
+
+  /** Una edición del borrador invalida el «✓ guardada» anterior. */
+  const touchFallbackDraft = useCallback(() => {
+    setFallbackSave('idle');
+    setFallbackError('');
+    // Un «respondería X» de una cadena que ya no es ésa sería una mentira
+    // tranquilizadora.
+    setChainProbe(null);
+  }, []);
+
+  /** Mueve un modelo una posición; el índice 0 es el primero que se prueba. */
+  const moveFallbackModel = useCallback(
+    (index: number, delta: number) => {
+      setFallbackRows((rows) => moveModel(rows, index, delta));
+      touchFallbackDraft();
+    },
+    [touchFallbackDraft]
+  );
+
+  const removeFallbackModel = useCallback(
+    (index: number) => {
+      // El id se lee del render actual: dentro del updater de `setFallbackRows`
+      // no se puede saber cuándo se ejecutará.
+      const removed = fallbackRows[index] ?? '';
+      setFallbackRows((rows) => rows.filter((_, i) => i !== index));
+      // Un «✓» de un modelo que ya no está en la lista confundiría al volver a
+      // añadirlo: la prueba se olvida con él.
+      if (removed) {
+        setProbeResults((prev) => {
+          if (!(removed in prev)) return prev;
+          const next = { ...prev };
+          delete next[removed];
+          return next;
+        });
+      }
+      touchFallbackDraft();
+    },
+    [fallbackRows, touchFallbackDraft]
+  );
+
+  /**
+   * Añadir se niega a duplicar: el servidor rechaza la lista entera si repite,
+   * así que avisar aquí evita un guardado que falla por un detalle invisible.
+   */
+  const addFallbackModel = useCallback(() => {
+    const result = addModel(fallbackRows, fallbackNew, MAX_FALLBACK_MODELS);
+    if (result.error) {
+      setFallbackError(result.error);
+      setFallbackSave('idle');
+      return;
+    }
+    if (result.rows === fallbackRows) return;
+    setFallbackRows(result.rows);
+    setFallbackNew('');
+    touchFallbackDraft();
+  }, [fallbackNew, fallbackRows, touchFallbackDraft]);
+
+  /**
+   * Prueba un modelo de la cadena con una llamada mínima, sin guardar nada.
+   *
+   * Se manda `fallbackModels: []` a propósito: si el servidor pudiera cambiar
+   * de modelo, un «✓» diría que responde cuando en realidad responde otro — que
+   * es justo lo que este botón viene a despejar.
+   */
+  const probeFallbackModel = useCallback(async (modelId: string) => {
+    setProbeResults((prev) => ({ ...prev, [modelId]: { status: 'working', detail: '' } }));
+    setLastProbe({ status: 'working', detail: `Probando ${modelId}…` });
+    const result = await probeModel({ baseUrl: '', model: modelId, disableFallback: true });
+    const detail =
+      result.status === 'ok'
+        ? `${modelId} responde`
+        : result.status === 'substituted'
+        ? `${result.fallback?.from ?? modelId} no respondió; contestó ${result.fallback?.to ?? 'otro modelo'}`
+        : `${modelId}: ${result.error || 'sin respuesta'}`;
+    setProbeResults((prev) => ({ ...prev, [modelId]: { status: result.status, detail } }));
+    setLastProbe({ status: result.status, detail });
+  }, []);
+
+  /**
+   * Prueba la cadena en el orden en que se guardará y para en el primero que
+   * responda: es lo mismo que hará el servidor, así que seguir probando sería
+   * gastar llamadas para saber algo que ya no se usa.
+   */
+  const probeFallbackChain = useCallback(async () => {
+    if (fallbackRows.length === 0) return;
+    setChainProbe({ running: true });
+    setLastProbe(null);
+    const result = await probeFirstResponder(fallbackRows, (model) =>
+      probeModel({ baseUrl: '', model, disableFallback: true })
+    );
+    setProbeResults((prev) => {
+      const next = { ...prev };
+      for (const attempt of result.attempts) {
+        next[attempt.model] = { status: attempt.status, detail: attempt.detail };
+      }
+      return next;
+    });
+    setChainProbe({ running: false, result });
+  }, [fallbackRows]);
+
   // Persist panel width
   useEffect(() => {
     const saved = localStorage.getItem('ai_studio_right_panel_width');
@@ -145,7 +399,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   return (
     <aside 
       ref={panelRef} 
-      className="shrink-0 bg-[#0000aa] border-l-2 border-[#00ffff] flex flex-col overflow-y-auto h-full min-h-0 text-xs text-[#00ffff] font-mono p-2 z-30"
+      className="shrink-0 bg-[#0000aa] border-l-2 border-[#00ffff] flex flex-col overflow-y-auto h-full min-h-0 text-xs text-[#00ffff] font-mono p-2 z-30 resize-x min-w-[200px] max-w-[480px]"
       style={{ width: panelWidth, minWidth: 280, maxWidth: 800 }}
       aria-label={lang === 'es' ? 'Panel de configuración' : lang === 'de' ? 'Konfigurationspanel' : 'Configuration panel'}
     >
@@ -287,6 +541,537 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           </div>
           
           <ApiKeyInput provider="google" onSave={(k) => saveApiKey('GEMINI_API_KEY', k)} />
+          {toolsMemory?.marked && (
+            <div className="text-[9px] text-[#ffff55] px-1" title={toolsMemory.expiresAt ? new Date(toolsMemory.expiresAt).toLocaleString() : undefined}>
+              {(() => {
+                const minutes = toolsMemory.expiresAt
+                  ? Math.max(0, Math.ceil((toolsMemory.expiresAt - now) / 60000))
+                  : 0;
+                return lang === 'es'
+                  ? `⚑ Marcada sin herramientas integradas · caduca en ${minutes} min`
+                  : lang === 'de'
+                  ? `⚑ Ohne integrierte Tools markiert · läuft in ${minutes} Min. ab`
+                  : `⚑ Marked as lacking built-in tools · expires in ${minutes} min`;
+              })()}
+            </div>
+          )}
+          {toolsMemory?.keyKnown && !toolsMemory.marked && (
+            <div className="text-[9px] text-[#00ffff] px-1">
+              {lang === 'es'
+                ? '✓ Búsqueda de Google y ejecución de código: se piden en cada mensaje'
+                : lang === 'de'
+                ? '✓ Google-Suche und Code-Ausführung: werden bei jeder Nachricht angefragt'
+                : '✓ Google Search and code execution: requested on every message'}
+            </div>
+          )}
+          {toolsExpiryNotice && (
+            <div className="text-[9px] text-[#00ff00] px-1" role="status" aria-live="polite">
+              {lang === 'es'
+                ? '⏱ La marca caducó: la búsqueda de Google se vuelve a pedir desde ahora.'
+                : lang === 'de'
+                ? '⏱ Markierung abgelaufen: Google-Suche wird ab jetzt wieder angefragt.'
+                : '⏱ Mark expired: Google Search is requested again from now on.'}
+            </div>
+          )}
+          {/* Si una key demostró no admitir grounding / code execution, el chat
+              las omite para no pagar una pasada fallida en cada mensaje. Este
+              botón borra esa memoria y vuelve a probarlas en el próximo envío. */}
+          <button
+            type="button"
+            onClick={async () => {
+              setToolsRetry('working');
+              try {
+                const res = await fetch('/api/gemini/tools-memory/reset', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                });
+                const data = await res.json().catch(() => ({}));
+                setToolsRetry(res.ok && data.success === true ? 'done' : 'error');
+                await refreshToolsMemory();
+              } catch {
+                setToolsRetry('error');
+              }
+            }}
+            disabled={toolsRetry === 'working'}
+            className="nc-button w-full text-left flex items-center gap-1.5 text-[10px] bg-[#0000aa] border-[#00ffff] mt-1"
+            title={
+              lang === 'es'
+                ? 'Borra la memoria de «esta key no admite búsqueda de Google» y vuelve a intentarlo'
+                : lang === 'de'
+                ? 'Löscht «dieser Key kann keine Google-Suche» und versucht es erneut'
+                : 'Clears “this key has no Google Search” and tries again'
+            }
+          >
+            <Globe className="w-3.5 h-3.5 text-[#ffff55]" />
+            <span>
+              {toolsRetry === 'working'
+                ? (lang === 'es' ? 'REINICIANDO PRUEBA…' : lang === 'de' ? 'TEST WIRD ZURÜCKGESETZT…' : 'RESETTING TEST…')
+                : (lang === 'es' ? 'VOLVER A PROBAR BÚSQUEDA DE GOOGLE' : lang === 'de' ? 'GOOGLE-SUCHE ERNEUT TESTEN' : 'RETRY GOOGLE SEARCH')}
+            </span>
+          </button>
+          {toolsRetry === 'done' && (
+            <div className="text-[9px] text-[#00ff00] px-1">
+              {lang === 'es'
+                ? '✓ Se probará de nuevo en el próximo mensaje.'
+                : lang === 'de'
+                ? '✓ Wird bei der nächsten Nachricht erneut versucht.'
+                : '✓ Will be retried on the next message.'}
+            </div>
+          )}
+          {toolsRetry === 'error' && (
+            <div className="text-[9px] text-[#ff5555] px-1">
+              {lang === 'es'
+                ? '✗ No se pudo reiniciar la prueba.'
+                : lang === 'de'
+                ? '✗ Test konnte nicht zurückgesetzt werden.'
+                : '✗ Could not reset the retry.'}
+            </div>
+          )}
+          {/* Cuánto dura la marca. Se guarda en commander.json, así que la
+              siguiente marca nace ya con el valor elegido. */}
+          <div className="mt-1 px-1 text-[9px] text-[#ffff55]">
+            {lang === 'es'
+              ? 'DURACIÓN DE LA MARCA (MINUTOS):'
+              : lang === 'de'
+              ? 'DAUER DER MARKIERUNG (MINUTEN):'
+              : 'MARK DURATION (MINUTES):'}
+          </div>
+          <div className="flex items-center gap-1 px-1">
+            <input
+              type="number"
+              min={1}
+              max={1440}
+              value={ttlDraft}
+              onChange={(e) => {
+                setTtlDraft(e.target.value);
+                setTtlSave('idle');
+              }}
+              disabled={ttlSave === 'working' || ttlMinutes == null}
+              aria-label={
+                lang === 'es'
+                  ? 'Minutos que dura la marca sin herramientas integradas'
+                  : lang === 'de'
+                  ? 'Minuten, die die Markierung ohne integrierte Tools gilt'
+                  : 'Minutes the built-in-tools mark lasts'
+              }
+              className="w-16 bg-[#000040] border border-[#00ffff] text-[#00ffff] text-[10px] px-1 py-0.5 font-mono"
+            />
+            <button
+              type="button"
+              onClick={async () => {
+                const minutes = Number.parseInt(ttlDraft, 10);
+                if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+                  setTtlSave('error');
+                  return;
+                }
+                setTtlSave('working');
+                try {
+                  const res = await fetch('/api/gemini/tools-memory/ttl', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ minutes }),
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  setTtlSave(res.ok && data.success === true ? 'done' : 'error');
+                  await refreshToolsMemory();
+                } catch {
+                  setTtlSave('error');
+                }
+              }}
+              disabled={ttlSave === 'working' || ttlMinutes == null}
+              className="nc-button text-[10px] bg-[#0000aa] border-[#00ffff] px-2"
+              title={
+                lang === 'es'
+                  ? 'Guarda la duración en commander.json (1–1440 minutos)'
+                  : lang === 'de'
+                  ? 'Dauer in commander.json speichern (1–1440 Minuten)'
+                  : 'Save the duration in commander.json (1–1440 minutes)'
+              }
+            >
+              {ttlSave === 'working'
+                ? (lang === 'es' ? 'GUARDANDO…' : lang === 'de' ? 'SPEICHERN…' : 'SAVING…')
+                : (lang === 'es' ? 'GUARDAR' : lang === 'de' ? 'SPEICHERN' : 'SAVE')}
+            </button>
+          </div>
+          {ttlSave === 'done' && (
+            <div className="text-[9px] text-[#00ff00] px-1">
+              {lang === 'es'
+                ? `✓ Guardado: la próxima marca durará ${ttlMinutes} min.`
+                : lang === 'de'
+                ? `✓ Gespeichert: die nächste Markierung gilt ${ttlMinutes} Min.`
+                : `✓ Saved: the next mark will last ${ttlMinutes} min.`}
+            </div>
+          )}
+          {ttlSave === 'error' && (
+            <div className="text-[9px] text-[#ff5555] px-1">
+              {lang === 'es'
+                ? '✗ Valor no válido o no se pudo guardar (1–1440 min).'
+                : lang === 'de'
+                ? '✗ Ungültiger Wert oder Speichern fehlgeschlagen (1–1440 Min.).'
+                : '✗ Invalid value or save failed (1–1440 min).'}
+            </div>
+          )}
+          {/* Cadena de respaldo de Gemini. Se guarda en commander.json para no
+              repetirla en cada petición. El orden es la prioridad, así que se
+              cambia con flechas: reescribir el texto entero para subir un
+              modelo una posición era la forma fácil de equivocarse. */}
+          <div className="mt-2 px-1 text-[9px] text-[#ffff55]">
+            {lang === 'es'
+              ? `CADENA DE RESPALDO (MÁX. ${MAX_FALLBACK_MODELS}, EN ORDEN):`
+              : lang === 'de'
+              ? `AUSWEICHKETTE (MAX. ${MAX_FALLBACK_MODELS}, IN REIHENFOLGE):`
+              : `FALLBACK CHAIN (MAX. ${MAX_FALLBACK_MODELS}, IN ORDER):`}
+          </div>
+          <div
+            className="border border-[#00ffff] bg-[#000040] px-1 py-0.5"
+            aria-label={
+              lang === 'es'
+                ? 'Modelos de respaldo de Gemini en orden'
+                : lang === 'de'
+                ? 'Gemini-Ausweichmodelle in Reihenfolge'
+                : 'Gemini fallback models in order'
+            }
+          >
+            {fallbackRows.length === 0 && !(fallbackState?.configured && fallbackState.models.length === 0) && (
+              <div className="text-[9px] text-[#00ffff]/70 py-0.5">
+                {lang === 'es'
+                  ? '· Sin modelos de respaldo.'
+                  : lang === 'de'
+                  ? '· Keine Ausweichmodelle.'
+                  : '· No fallback models.'}
+              </div>
+            )}
+            {fallbackRows.map((modelId, index) => (
+              <div
+                key={`${modelId}-${index}`}
+                className="flex items-center gap-1 text-[10px] py-0.5 border-b border-[#00ffff]/20 last:border-b-0"
+              >
+                <span className="text-[#ffff55] w-3 shrink-0">{index + 1}.</span>
+                {/* Partido en dos líneas, no truncado: con el panel estrecho
+                    dos ids que sólo se distinguen por el sufijo quedaban
+                    idénticos y no se sabía cuál se estaba moviendo. */}
+                <span className="flex-1 break-all" title={modelId}>
+                  {modelId}
+                </span>
+                {/* Probar este modelo sin guardar la cadena. El resultado se
+                    queda pegado al id, no a la posición: reordenar no borra
+                    lo que ya sabes de cada modelo. */}
+                <button
+                  type="button"
+                  onClick={() => void probeFallbackModel(modelId)}
+                  disabled={probeResults[modelId]?.status === 'working'}
+                  className="nc-button px-1 py-0 disabled:opacity-30"
+                  aria-label={
+                    lang === 'es'
+                      ? `Probar ${modelId}`
+                      : lang === 'de'
+                      ? `${modelId} testen`
+                      : `Test ${modelId}`
+                  }
+                  title={
+                    lang === 'es'
+                      ? 'Hace una llamada mínima a este modelo; no guarda nada'
+                      : lang === 'de'
+                      ? 'Macht einen minimalen Aufruf an dieses Modell; speichert nichts'
+                      : 'Makes one minimal call to this model; saves nothing'
+                  }
+                >
+                  <FlaskConical className="w-3 h-3" />
+                </button>
+                {probeResults[modelId] && (
+                  <span
+                    role="status"
+                    aria-label={`${modelId}: ${probeResults[modelId].detail}`}
+                    title={probeResults[modelId].detail}
+                    className={
+                      'w-3 shrink-0 text-center ' +
+                      (probeResults[modelId].status === 'ok'
+                        ? 'text-[#00ff00]'
+                        : probeResults[modelId].status === 'working'
+                        ? 'text-[#00ffff]'
+                        : probeResults[modelId].status === 'substituted'
+                        ? 'text-[#ffff55]'
+                        : 'text-[#ff5555]')
+                    }
+                  >
+                    {probeResults[modelId].status === 'ok'
+                      ? '✓'
+                      : probeResults[modelId].status === 'working'
+                      ? '…'
+                      : probeResults[modelId].status === 'substituted'
+                      ? '⚠'
+                      : '✖'}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => moveFallbackModel(index, -1)}
+                  disabled={index === 0 || fallbackSave === 'working'}
+                  className="nc-button px-1 py-0 disabled:opacity-30"
+                  aria-label={
+                    lang === 'es'
+                      ? `Subir ${modelId}`
+                      : lang === 'de'
+                      ? `${modelId} nach oben`
+                      : `Move ${modelId} up`
+                  }
+                  title={
+                    lang === 'es' ? 'Subir' : lang === 'de' ? 'Nach oben' : 'Move up'
+                  }
+                >
+                  <ArrowUp className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveFallbackModel(index, 1)}
+                  disabled={index === fallbackRows.length - 1 || fallbackSave === 'working'}
+                  className="nc-button px-1 py-0 disabled:opacity-30"
+                  aria-label={
+                    lang === 'es'
+                      ? `Bajar ${modelId}`
+                      : lang === 'de'
+                      ? `${modelId} nach unten`
+                      : `Move ${modelId} down`
+                  }
+                  title={
+                    lang === 'es' ? 'Bajar' : lang === 'de' ? 'Nach unten' : 'Move down'
+                  }
+                >
+                  <ArrowDown className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeFallbackModel(index)}
+                  disabled={fallbackSave === 'working'}
+                  className="nc-button px-1 py-0"
+                  aria-label={
+                    lang === 'es'
+                      ? `Quitar ${modelId}`
+                      : lang === 'de'
+                      ? `${modelId} entfernen`
+                      : `Remove ${modelId}`
+                  }
+                  title={lang === 'es' ? 'Quitar' : lang === 'de' ? 'Entfernen' : 'Remove'}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-1 px-1 mt-1">
+            <input
+              type="text"
+              value={fallbackNew}
+              onChange={(e) => {
+                setFallbackNew(e.target.value);
+                setFallbackError('');
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addFallbackModel();
+                }
+              }}
+              spellCheck={false}
+              disabled={fallbackSave === 'working'}
+              placeholder={
+                lang === 'es'
+                  ? 'modelo a añadir…'
+                  : lang === 'de'
+                  ? 'Modell hinzufügen…'
+                  : 'model to add…'
+              }
+              aria-label={
+                lang === 'es'
+                  ? 'Identificador del modelo que se añade al final de la cadena'
+                  : lang === 'de'
+                  ? 'Kennung des Modells, das ans Ende der Kette kommt'
+                  : 'Id of the model added to the end of the chain'
+              }
+              className="flex-1 min-w-0 bg-[#000040] border border-[#00ffff] text-[#00ffff] text-[10px] px-1 py-0.5 font-mono"
+            />
+            <button
+              type="button"
+              onClick={() => addFallbackModel()}
+              disabled={
+                fallbackSave === 'working' ||
+                !fallbackNew.trim() ||
+                fallbackRows.length >= MAX_FALLBACK_MODELS
+              }
+              className="nc-button text-[10px] bg-[#0000aa] border-[#00ffff] px-2 disabled:opacity-30"
+              title={
+                lang === 'es'
+                  ? 'Añade el modelo al final; luego colócalo con las flechas'
+                  : lang === 'de'
+                  ? 'Modell ans Ende hängen; dann mit den Pfeilen sortieren'
+                  : 'Adds the model at the end; position it with the arrows'
+              }
+            >
+              {lang === 'es' ? 'AÑADIR' : lang === 'de' ? 'HINZU' : 'ADD'}
+            </button>
+          </div>
+          {/* Probar la cadena en orden: para en el primero que conteste, igual
+              que hará el servidor, así que en el caso sano cuesta una llamada. */}
+          <button
+            type="button"
+            onClick={() => void probeFallbackChain()}
+            disabled={chainProbe?.running === true || fallbackRows.length === 0}
+            className="nc-button w-full text-left flex items-center gap-1.5 text-[10px] bg-[#0000aa] border-[#00ffff] mt-1 disabled:opacity-30"
+            title={
+              lang === 'es'
+                ? 'Prueba la cadena en orden y para en el primero que responda; no guarda nada'
+                : lang === 'de'
+                ? 'Testet die Kette der Reihe nach und stoppt beim ersten Treffer; speichert nichts'
+                : 'Tests the chain in order and stops at the first answer; saves nothing'
+            }
+          >
+            <FlaskConical className="w-3.5 h-3.5 text-[#ffff55]" />
+            <span>
+              {chainProbe?.running
+                ? lang === 'es'
+                  ? 'PROBANDO LA CADENA…'
+                  : lang === 'de'
+                  ? 'KETTE WIRD GETESTET…'
+                  : 'TESTING THE CHAIN…'
+                : lang === 'es'
+                ? 'PROBAR ORDEN'
+                : lang === 'de'
+                ? 'REIHENFOLGE TESTEN'
+                : 'TEST ORDER'}
+            </span>
+          </button>
+          {chainProbe?.result && !chainProbe.running && (
+            <div
+              role="status"
+              aria-live="polite"
+              className={
+                'text-[9px] px-1 ' +
+                (chainProbe.result.answeredIndex === 0
+                  ? 'text-[#00ff00]'
+                  : chainProbe.result.answeredIndex > 0
+                  ? 'text-[#ffff55]'
+                  : 'text-[#ff5555]')
+              }
+            >
+              {chainProbe.result.answeredIndex < 0
+                ? lang === 'es'
+                  ? `✖ ningún modelo de la cadena respondió (${chainProbe.result.attempts.length} probados)`
+                  : lang === 'de'
+                  ? `✖ kein Modell der Kette antwortete (${chainProbe.result.attempts.length} getestet)`
+                  : `✖ no model in the chain answered (${chainProbe.result.attempts.length} tested)`
+                : chainProbe.result.answeredIndex === 0
+                ? lang === 'es'
+                  ? `✓ respondería el primero: ${chainProbe.result.answeredModel}`
+                  : lang === 'de'
+                  ? `✓ das erste Modell würde antworten: ${chainProbe.result.answeredModel}`
+                  : `✓ the first model would answer: ${chainProbe.result.answeredModel}`
+                : lang === 'es'
+                ? `⚠ ${chainProbe.result.answeredIndex} modelo(s) sin responder antes; respondería ${chainProbe.result.answeredModel} (posición ${chainProbe.result.answeredIndex + 1})`
+                : lang === 'de'
+                ? `⚠ ${chainProbe.result.answeredIndex} Modell(e) davor ohne Antwort; ${chainProbe.result.answeredModel} würde antworten (Position ${chainProbe.result.answeredIndex + 1})`
+                : `⚠ ${chainProbe.result.answeredIndex} model(s) did not answer before; ${chainProbe.result.answeredModel} would (position ${chainProbe.result.answeredIndex + 1})`}
+            </div>
+          )}
+          <div className="flex items-center gap-1 px-1 mt-1">
+            <button
+              type="button"
+              onClick={() => void saveFallbackModels(fallbackRows)}
+              disabled={fallbackSave === 'working'}
+              className="nc-button text-[10px] bg-[#0000aa] border-[#00ffff] px-2"
+              title={
+                lang === 'es'
+                  ? 'Guarda la cadena en commander.json; se usará cuando la petición no traiga la suya'
+                  : lang === 'de'
+                  ? 'Kette in commander.json speichern; gilt, wenn die Anfrage keine eigene schickt'
+                  : 'Save the chain in commander.json; used when the request brings none'
+              }
+            >
+              {fallbackSave === 'working'
+                ? (lang === 'es' ? 'GUARDANDO…' : lang === 'de' ? 'SPEICHERN…' : 'SAVING…')
+                : (lang === 'es' ? 'GUARDAR CADENA' : lang === 'de' ? 'KETTE SPEICHERN' : 'SAVE CHAIN')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void saveFallbackModels(fallbackState?.defaultModels ?? [])}
+              disabled={fallbackSave === 'working' || !fallbackState}
+              className="nc-button text-[10px] bg-[#0000aa] border-[#00ffff] px-2"
+              title={
+                lang === 'es'
+                  ? 'Vuelve a la cadena de respaldo de fábrica'
+                  : lang === 'de'
+                  ? 'Zurück zur Standard-Ausweichkette'
+                  : 'Restore the factory fallback chain'
+              }
+            >
+              {lang === 'es' ? 'POR DEFECTO' : lang === 'de' ? 'STANDARD' : 'DEFAULT'}
+            </button>
+          </div>
+          {fallbackState && !fallbackState.configured && (
+            <div className="text-[9px] text-[#00ffff] px-1">
+              {lang === 'es'
+                ? '· Sin guardar: se usa la cadena de fábrica.'
+                : lang === 'de'
+                ? '· Nicht gespeichert: Standard-Kette ist aktiv.'
+                : '· Not saved: the factory chain is in use.'}
+            </div>
+          )}
+          {fallbackState?.configured && fallbackState.models.length === 0 && (
+            <div className="text-[9px] text-[#ffff55] px-1">
+              {lang === 'es'
+                ? '⚑ Respaldo desactivado: si el modelo falla, el error se muestra en vez de cambiarlo por detrás.'
+                : lang === 'de'
+                ? '⚑ Ausweichen deaktiviert: bei einem Fehler erscheint der Fehler statt eines anderen Modells.'
+                : '⚑ Fallback disabled: on failure the error is shown instead of switching model behind your back.'}
+            </div>
+          )}
+          {fallbackSave === 'done' && (
+            <div className="text-[9px] text-[#00ff00] px-1" role="status" aria-live="polite">
+              {lang === 'es'
+                ? `✓ Guardada: ${fallbackState?.models.length ?? 0} modelo(s) de respaldo.`
+                : lang === 'de'
+                ? `✓ Gespeichert: ${fallbackState?.models.length ?? 0} Ausweichmodell(e).`
+                : `✓ Saved: ${fallbackState?.models.length ?? 0} fallback model(s).`}
+            </div>
+          )}
+          {lastProbe && (
+            <div
+              role="status"
+              aria-live="polite"
+              className={
+                'text-[9px] px-1 ' +
+                (lastProbe.status === 'ok'
+                  ? 'text-[#00ff00]'
+                  : lastProbe.status === 'working'
+                  ? 'text-[#00ffff]'
+                  : lastProbe.status === 'substituted'
+                  ? 'text-[#ffff55]'
+                  : 'text-[#ff5555]')
+              }
+            >
+              {lastProbe.status === 'ok'
+                ? '✓ '
+                : lastProbe.status === 'working'
+                ? '… '
+                : lastProbe.status === 'substituted'
+                ? '⚠ '
+                : '✖ '}
+              {lastProbe.detail}
+            </div>
+          )}
+          {fallbackError && (
+            <div className="text-[9px] text-[#ff5555] px-1">{fallbackError}</div>
+          )}
+          {fallbackSave === 'error' && !fallbackError && (
+            <div className="text-[9px] text-[#ff5555] px-1">
+              {lang === 'es'
+                ? '✗ No se pudo guardar la cadena.'
+                : lang === 'de'
+                ? '✗ Kette konnte nicht gespeichert werden.'
+                : '✗ Could not save the chain.'}
+            </div>
+          )}
           <ApiKeyInput provider="anthropic" onSave={(k) => saveApiKey('ANTHROPIC_API_KEY', k)} />
           <ApiKeyInput provider="xai" onSave={(k) => saveApiKey('XAI_API_KEY', k)} />
           <ApiKeyInput provider="huggingface" onSave={(k) => saveApiKey('HF_API_TOKEN', k)} />

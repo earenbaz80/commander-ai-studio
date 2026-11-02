@@ -239,8 +239,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
                 <Card icon={<Cpu className="w-4 h-4" />} title={L('Multi-modelo', 'Multi-model engine')}>
                   <p>
                     {L(
-                      'Gemini, Claude, xAI Grok y modelos locales de Hugging Face. Cambia de modelo desde el selector del chat.',
-                      'Gemini, Claude, xAI Grok and local Hugging Face models. Switch models from the chat selector.'
+                      'Gemini, OpenRouter, Ollama y modelos locales de Hugging Face. Cambia de modelo desde el selector del chat.',
+                      'Gemini, OpenRouter, Ollama and local Hugging Face models. Switch models from the chat selector.'
                     )}
                   </p>
                 </Card>

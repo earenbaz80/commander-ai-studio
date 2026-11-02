@@ -33,6 +33,14 @@ const ETIQUETAS_EN_DEL_PANEL = [
   'show all',
 ];
 
+/**
+ * Los dos casos que recorren `en` y `de` montan casi todos los paneles del modo
+ * agente una vez por idioma. Aislados tardan ~1,3 s, pero dentro de la suite
+ * completa (jsdom con el resto de archivos cargando) superaban el timeout por
+ * defecto de 5 s. El margen es por el entorno, no porque el test espere algo.
+ */
+const TIMEOUT_DOS_IDIOMAS = 30_000;
+
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
   readyState = 0;
@@ -134,7 +142,7 @@ describe('i18n · panel de subagentes', () => {
       const texto = textoDelPanel(lang);
       expect(texto, `${lang} dejó castellano: ${texto}`).not.toMatch(MARCAS_ES);
     }
-  });
+  }, TIMEOUT_DOS_IDIOMAS);
 
   test('en alemán las etiquetas del panel no se quedan en inglés', () => {
     const texto = textoDelPanel('de');
@@ -161,7 +169,7 @@ describe('i18n · modo agente', () => {
       const texto = textoDelModoAgente(lang);
       expect(texto, `${lang} dejó castellano: ${texto}`).not.toMatch(MARCAS_ES);
     }
-  });
+  }, TIMEOUT_DOS_IDIOMAS);
 
   test('en alemán las pestañas y acciones salen del diccionario', () => {
     const texto = textoDelModoAgente('de');
