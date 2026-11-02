@@ -8,6 +8,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { runPipeline } from '../shellJobs.js';
 import { executeAgentTool } from '../agentTools.js';
 
@@ -39,4 +40,43 @@ test('shell.run propaga la señal de la sesión hasta el proceso', async () => {
 
   assert.equal(res.ok, false);
   assert.match(String(res.error), /Cancelado/);
+});
+
+/** PIDs de `ping` vivos: si el kill no alcanza al nieto, queda uno aquí. */
+function pings(): string[] {
+  try {
+    if (process.platform === 'win32') {
+      const ps = "Get-CimInstance Win32_Process -Filter \"Name='ping.exe'\" | ForEach-Object { Write-Output $_.ProcessId }";
+      return execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8' }).split(/\s+/).filter(Boolean);
+    }
+    return execFileSync('pgrep', ['-x', 'ping'], { encoding: 'utf8' }).split(/\s+/).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+// El bug original: el `cmd /c` moría y el `node`/`ping` nieto seguía vivo. Que el
+// pipeline resuelva rápido no basta; tiene que no quedar nadie corriendo.
+test('cancelar no deja el proceso huérfano', async () => {
+  const antes = new Set(pings());
+  const ctrl = new AbortController();
+  setTimeout(() => ctrl.abort(), 400);
+
+  await runPipeline([LENTO], process.cwd(), 60_000, ctrl.signal);
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const huerfanos = pings().filter((p) => !antes.has(p));
+  assert.deepEqual(huerfanos, [], `quedaron procesos vivos: ${huerfanos.join(', ')}`);
+});
+
+test('el timeout también mata el árbol antes de resolver', async () => {
+  const antes = new Set(pings());
+
+  const out = await runPipeline([LENTO], process.cwd(), 600);
+
+  assert.equal(out.timedOut, true, 'es el corte por timeout');
+  assert.equal(out.exitCode, 124, 'código de corte por timeout');
+  // Sin la espera al kill, el proceso sobrevivía al resultado de la tool.
+  const huerfanos = pings().filter((p) => !antes.has(p));
+  assert.deepEqual(huerfanos, [], `quedaron procesos vivos: ${huerfanos.join(', ')}`);
 });

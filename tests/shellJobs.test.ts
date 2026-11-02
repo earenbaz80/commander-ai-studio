@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { listJobs, readJobLog, startJob, stopJob } from '../shellJobs.js';
+import { listJobs, readJobLog, startJob, stopJob, stopJobsForSession } from '../shellJobs.js';
 
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-jobs-test-'));
 fs.writeFileSync(path.join(DIR, 'quick.js'), 'console.log("linea uno");\nconsole.log("listo-12345");\n', 'utf8');
@@ -145,4 +145,20 @@ test('readJobLog devuelve solo la cola pedida', async () => {
     assert.match(String(one.data.content), /listo-12345/);
     assert.equal(one.data.truncated, true, 'con tail 1 y dos líneas hay recorte');
   }
+});
+
+test('stopJobsForSession para los trabajos de una sesión y respeta los de otras', async () => {
+  const mio = startJob('node long.js', ['node long.js'], DIR, 'sess-uno');
+  const ajeno = startJob('node long.js', ['node long.js'], DIR, 'sess-dos');
+  assert.equal(mio.ok, true, mio.ok ? '' : mio.error);
+  assert.equal(ajeno.ok, true, ajeno.ok ? '' : ajeno.error);
+  if (!mio.ok || !ajeno.ok) return;
+  started.push(mio.job.id, ajeno.job.id);
+  assert.equal(mio.job.sessionId, 'sess-uno', 'el trabajo recuerda a quién pertenece');
+
+  const parados = await stopJobsForSession('sess-uno');
+
+  assert.deepEqual(parados, [mio.job.id], 'sólo se para el de esa sesión');
+  assert.equal(listJobs().find((j) => j.id === mio.job.id)?.status, 'stopped');
+  assert.equal(listJobs().find((j) => j.id === ajeno.job.id)?.status, 'running', 'el de otra sesión sigue vivo');
 });

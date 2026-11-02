@@ -25,13 +25,17 @@ export const GEMINI_PRO_MODEL = 'gemini-3.1-pro-preview';
  * El orden va del mismo nivel al más ligero y deja el alias `-latest` al final,
  * que es el que más tarda en quedar obsoleto. Cualquier cambio aquí afecta a las
  * tres cadenas a la vez, que es justo lo que se busca.
+ *
+ * Verificado otra vez el 2026-11-02: `gemini-3.5-flash-lite` y el alias
+ * `gemini-flash-lite-latest` no contestaron en 15 s, y tenerlos en medio dejaba
+ * el turno esperando dos veces por un modelo que nunca iba a responder. Se
+ * quedan fuera; `gemini-3.1-flash-lite` sube al segundo puesto porque era el
+ * único que respondía con la cuota de ese día.
  */
 export const GEMINI_FALLBACK_MODELS = [
   'gemini-3.5-flash',
-  'gemini-3.5-flash-lite',
   'gemini-3.1-flash-lite',
   'gemini-3.6-flash',
-  'gemini-flash-lite-latest',
 ];
 
 /**

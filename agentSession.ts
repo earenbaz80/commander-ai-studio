@@ -382,7 +382,9 @@ export class AgentSession {
 
   private async runParallel(calls: { tool: string; input: any }[]) {
     const results = await Promise.allSettled(
-      calls.map((c) => executeAgentTool(c.tool, { ...c.input, root: this.cfg.cwd }, { signal: this.abortCtrl.signal }))
+      calls.map((c) =>
+        executeAgentTool(c.tool, { ...c.input, root: this.cfg.cwd }, { signal: this.abortCtrl.signal, sessionId: this.id }),
+      )
     );
     return calls.map((c, i) => {
       const r = results[i];

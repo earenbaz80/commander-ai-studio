@@ -238,10 +238,11 @@ test('la cadena de respaldo de Gemini no reintenta ids retirados', () => {
     assert.ok(id.startsWith('gemini-'), `id inesperado en la cadena: ${id}`);
     assert.ok(!RETIRED_GEMINI_MODELS.includes(id), `${id} ya no existe en la API`);
   }
-  assert.ok(
-    GEMINI_FALLBACK_MODELS.some((id) => id.endsWith('-latest')),
-    'conviene dejar un alias -latest, que es el que más tarda en quedar obsoleto'
-  );
+  // Un modelo que no responde es peor que no tenerlo: en medio de la cadena
+  // deja el turno esperando su timeout. Estos dos lo hicieron el 2026-11-02.
+  for (const id of ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest']) {
+    assert.ok(!GEMINI_FALLBACK_MODELS.includes(id), `${id} no respondió en 15 s: no debe estar en la cadena`);
+  }
 });
 
 /** fetch que responde 404 a todo: simula que Google retiró todos los modelos. */
