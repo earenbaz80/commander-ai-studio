@@ -4,7 +4,9 @@ export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  // Un reintento basta para absorber un parpadeo de red; con 2 cada fallo real
+  // costaba hasta 40 s y el flaky se disimulaba más de lo que se veía.
+  retries: process.env.CI ? 1 : 0,
   // Serial a propósito, y medido: con 76 ejecuciones en serie el job tarda
   // 8,7 min; con 2 workers pasó de 15 min sin terminar, porque los 4 vCPU del
   // runner sostienen además el preview server y cada test arranca la app en
@@ -26,6 +28,9 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
+  // Sin proyecto `webkit`: la app es de escritorio sobre Electron/Chromium, es el
+  // motor que menos dice de lo que usa el usuario y era ~1,7 min de los 8,2 del
+  // job. `firefox` se queda: el único fallo cross-engine real apareció ahí.
   projects: [
     {
       name: 'chromium',
@@ -34,10 +39,6 @@ export default defineConfig({
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
-    },
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
     },
     {
       name: 'mobile-chrome',
