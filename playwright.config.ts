@@ -12,6 +12,12 @@ export default defineConfig({
   ],
   use: {
     baseURL: 'http://localhost:4173',
+    // Un recurso atascado no puede comerse el presupuesto del test: con límites
+    // explícitos el atasco falla nombrando el paso (goto, clic) en vez de
+    // aparecer como `Tearing down "context" exceeded the test timeout`, que es
+    // lo que disfrazaba de flaky una prueba que había pasado.
+    navigationTimeout: 20000,
+    actionTimeout: 15000,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
