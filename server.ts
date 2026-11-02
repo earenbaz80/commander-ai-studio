@@ -536,11 +536,16 @@ app.patch('/api/threads/:id', (req, res) => {
     const id = String(req.params.id);
     if (!persistence.getThread(id)) return res.status(404).json({ success: false, error: 'not found' });
     const b = req.body || {};
-    const patch: { title?: string; pinned?: number } = {};
+    const patch: { title?: string; pinned?: number; project_path?: string } = {};
     if (b.title !== undefined) {
       const title = typeof b.title === 'string' ? b.title.trim() : '';
       if (!title) return res.status(400).json({ success: false, error: 'el título no puede quedar vacío' });
       patch.title = title.slice(0, 200);
+    }
+    if (b.projectPath !== undefined) {
+      // El sidebar agrupa los hilos por ruta: una pestaña que elige proyecto
+      // después de crear el hilo debe poder mudarse de grupo.
+      patch.project_path = typeof b.projectPath === 'string' ? b.projectPath.trim() : '';
     }
     if (b.pinned !== undefined) {
       if (typeof b.pinned !== 'boolean') return res.status(400).json({ success: false, error: 'pinned debe ser booleano' });
@@ -573,6 +578,8 @@ app.post('/api/threads/:id/messages', (req, res) => {
       steering: !!b.steering, role: String(b.role), parts: b.parts ?? b.content,
       attachments: b.attachments, metrics: b.metrics, ts: b.ts,
     });
+    // Sin esto el hilo conservaba la fecha de creación y el sidebar lo hundía.
+    if (seq !== null) persistence.touchThread(String(req.params.id));
     res.json({ success: true, seq });
   } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
 });

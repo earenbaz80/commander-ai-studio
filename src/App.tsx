@@ -261,14 +261,35 @@ export default function App() {
       return { id: `srv-${m.seq}`, role: m.role === 'assistant' ? 'model' : m.role, content, timestamp: new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
     }), []);
 
+  /**
+   * Un hilo se abre en su propia pestaña, enlazada por `sessionId === thread.id`:
+   * antes la conversación se volcaba sobre la pestaña activa y se comía lo que
+   * el usuario tuviera delante.
+   */
   const handleSelectServerSession = useCallback(async (thread: any) => {
+    const owner = tabs.tabs.find((t) => t.sessionId === thread.id);
+    if (owner) {
+      if (owner.id !== tabs.activeId) { tabs.selectTab(owner.id); return; }
+      if (owner.messages.length > 0) return;
+    }
     try {
       const { loadMessages } = await import('./agent/persistence');
       const parsed = toChatMessages(await loadMessages(thread.id));
+      if (owner) {
+        // Pestaña enlazada pero vacía (se cerró el navegador antes del volcado).
+        if (parsed.length > 0) { setMessages(parsed as any); setPromptTitle(thread.title || owner.title); }
+        return;
+      }
+      tabs.newTab({
+        sessionId: thread.id,
+        title: thread.title || 'Sesión restaurada',
+        projectPath: thread.project_path || tabs.activeTab?.projectPath || '',
+        messages: parsed as any,
+      });
       if (parsed.length > 0) setMessages(parsed as any);
       setPromptTitle(thread.title || 'Sesión restaurada');
-    } catch { /* ignore */ }
-  }, [setMessages, setPromptTitle, toChatMessages]);
+    } catch { /* servidor caído: no hay nada que abrir */ }
+  }, [tabs, setMessages, setPromptTitle, toChatMessages]);
 
   // ==================== BÚSQUEDA EN CONVERSACIONES ====================
   // /api/search ya existía y nadie lo llamaba: el sidebar sólo filtraba títulos
@@ -327,6 +348,44 @@ export default function App() {
   }, []);
   useEffect(() => { refreshServerSessions(); }, [refreshServerSessions]);
 
+  // Las conversaciones de chat sólo existían en localStorage. Con este volcado
+  // (con retardo) pasan a ser hilos del servidor y se pueden retomar en otra
+  // máquina; el id del hilo es el sessionId de la pestaña, así no se duplican.
+  useEffect(() => {
+    if (!activeTab || messages.length === 0) return;
+    void import('./agent/tabSync').then(({ scheduleTabSync }) => {
+      scheduleTabSync({ ...activeTab, messages }, refreshServerSessions);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, activeTab?.sessionId, activeTab?.title, activeTab?.projectPath, refreshServerSessions]);
+
+  /**
+   * Otra máquina: localStorage vacío y sin historial, pero el servidor conserva
+   * los hilos. Se reanuda ahí el más reciente en la primera pestaña.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (tabs.tabs.length !== 1 || tabs.tabs[0].messages.length > 0) return;
+      if (history.length > 0) return;
+      try {
+        const { listThreads, loadMessages } = await import('./agent/persistence');
+        const threads = await listThreads();
+        // El orden ya viene con los fijados primero: se retoma el primero libre.
+        const latest = threads.find((t) => !t.pinned) || threads[0];
+        if (!latest || cancelled) return;
+        const parsed = toChatMessages(await loadMessages(latest.id));
+        if (cancelled || parsed.length === 0) return;
+        const title = latest.title || tabs.tabs[0].title;
+        tabs.updateTab({ sessionId: latest.id, title, projectPath: latest.project_path || '', messages: parsed as any });
+        setPromptTitle(title);
+        setMessages(parsed as any);
+      } catch { /* servidor caído: se queda la pestaña vacía */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleRenameServerSession = useCallback(async (id: string, title: string) => {
     const clean = title.trim();
     if (!clean) return;
@@ -346,9 +405,13 @@ export default function App() {
   const handleDeleteServerSession = useCallback(async (id: string) => {
     // Optimista: la fila desaparece ya; si el servidor falla, se recarga la lista.
     setServerSessions((prev) => prev.filter((t) => t.id !== id));
+    // La pestaña enlazada se desengancha: si no, el siguiente volcado resucitaría
+    // el hilo que el usuario acaba de borrar.
+    const owner = tabs.tabs.find((t) => t.sessionId === id);
+    if (owner) tabs.updateTab({ sessionId: 'sess-' + Date.now().toString(36) }, owner.id);
     const { deleteThread } = await import('./agent/persistence');
     if (!(await deleteThread(id))) await refreshServerSessions();
-  }, [refreshServerSessions]);
+  }, [refreshServerSessions, tabs]);
   const activeTabId = tabs.activeId;
 
   /**

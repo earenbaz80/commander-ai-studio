@@ -22,7 +22,7 @@ export async function listThreads(filter?: { projectId?: string; projectPath?: s
   return (data as any).threads || [];
 }
 
-export async function updateThread(id: string, patch: { title?: string; pinned?: boolean }): Promise<ThreadSummary | null> {
+export async function updateThread(id: string, patch: { title?: string; pinned?: boolean; projectPath?: string }): Promise<ThreadSummary | null> {
   const res = await fetch(`/api/threads/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
