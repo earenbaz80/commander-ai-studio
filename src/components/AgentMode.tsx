@@ -11,6 +11,7 @@ import PlanEditor, { type PlanItem } from './PlanEditor';
 import RollbackTimeline from './RollbackTimeline';
 import SubAgentPanel from './SubAgentPanel';
 import { ServerSubAgents } from './ServerSubAgents';
+import { ParallelLaunch } from './ParallelLaunch';
 
 interface AgentModeProps {
   cwd: string;
@@ -681,7 +682,9 @@ export const AgentMode: React.FC<AgentModeProps> = ({
               <>
                 {/* Los que se crean a mano en la interfaz y los que corren de
                     verdad en el servidor son dos cosas distintas: éstos últimos
-                    se consultan al endpoint mientras trabajan. */}
+                    se consultan al endpoint mientras trabajan. El lanzador va
+                    arriba porque su resultado se sigue justo debajo. */}
+                <ParallelLaunch cwd={cwd} running={state.running} lang={lang} />
                 <ServerSubAgents lang={lang} />
                 <SubAgentPanel
                   subAgents={subAgents}
