@@ -8,6 +8,6 @@ export function formatErrorMessage(error: any, model: string): string {
     error?.message?.includes('quota') ||
     error?.message?.includes('RESOURCE_EXHAUSTED');
   return isQuotaError
-    ? `Límite de cuota (Rate Limit) alcanzado para "${model}".\n\n💡 Sugerencia: En cuentas gratuitas de Google AI Studio, los modelos "Gemini 2.0 Flash" y "Gemini 2.0 Flash Lite" disponen de la mayor cuota gratuita (hasta 1,500 consultas al día y 15 por minuto). También puedes emplear modelos locales en el menú superior.`
+    ? `Límite de cuota (Rate Limit) alcanzado para "${model}".\n\n💡 Sugerencia: en las cuentas gratuitas de Google AI Studio la cuota se mide por minuto y se recupera en unos segundos. Selecciona un modelo más ligero en el selector de modelos (los «flash lite» tienen más margen) o usa un modelo local desde el menú superior.`
     : (error?.message || 'Error desconocido');
 }
