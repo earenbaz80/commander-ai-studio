@@ -167,6 +167,20 @@ function loadFromStorage(key: string, fallback: any) {
   }
 }
 
+/**
+ * Ancho por debajo del cual el sidebar estorba más que ayuda: es el `sm` de
+ * Tailwind (640px). En un teléfono se lleva un tercio de la pantalla y deja al
+ * área de trabajo sin sitio, así que arranca colapsado; el botón del header
+ * (`Alternar Barra Lateral`) y Ctrl+B lo siguen abriendo.
+ */
+function arrancaSinSidebar(): boolean {
+  try {
+    return window.matchMedia('(max-width: 639px)').matches;
+  } catch {
+    return false;
+  }
+}
+
 function saveToStorage(key: string, value: any) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
@@ -421,7 +435,7 @@ export function UIStoreProvider({ children }: { children: ReactNode }) {
     const savedLang = loadFromStorage('ai_studio_lang', 'es');
     const savedTooltips = loadFromStorage('ai_studio_tooltips', true);
     const savedWorkbench = loadFromStorage('ai_studio_workbench_open', false);
-    const savedSidebar = loadFromStorage('ai_studio_sidebar_open', true);
+    const savedSidebar = loadFromStorage('ai_studio_sidebar_open', !arrancaSinSidebar());
     const savedLowResource = loadFromStorage('ai_studio_low_resource', false);
     const savedPowerSaver = loadFromStorage('ai_studio_power_saver', false);
     const savedExportFolder = loadFromStorage('ai_studio_export_folder', 'C:\\CommanderExports');
