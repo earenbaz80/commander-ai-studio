@@ -1,0 +1,73 @@
+# Hoja de ruta UX — Commander AI Studio
+
+Estilo retro Norton intacto. Solo mejoras de practicidad/intuición/versatilidad.
+
+## Principios
+- No tocar paleta (#000080/#00ffff/#ffff55), tipografía retro, ni Nono como diferenciador.
+- Mantener single-process (Express+Vite en 127.0.0.1:3280).
+- Cada item debe pasar `tsc --noEmit` y `vite build` (la regla del repo en [AGENTS.md](AGENTS.md); sin `--skipLibCheck`, que afloja la comprobación).
+
+## Estado real
+
+Revisado contra el árbol: varias fases ya están hechas, así que no hay que reimplementarlas.
+
+| Fase | Estado | Evidencia |
+| --- | --- | --- |
+| 1. Command palette | **Hecho** | `src/components/CommandPalette.tsx` (204 líneas) importado en `App.tsx`; el atajo vive en `src/hooks/useCommandPaletteShortcut.ts` |
+| 2. Layout 3 paneles | Parcial | `useResizableWidth.ts` ya persiste anchos en `localStorage`; faltan splitter y `layoutStore` |
+| 3. Diff viewer | **Hecho** | `src/components/DiffViewer.tsx` integrado en `AgentApprovalModal.tsx` con aceptación por hunk, sobre `diffLines`/`mergeHunks` de `src/utils/patch.ts` |
+| 4. Status bar | **Hecho** | `src/components/StatusBar.tsx` importado en `App.tsx` |
+| 5. Nono acoplable | Pendiente | `src/features/nono` no tiene `NonoDock.tsx` |
+| 6. Streaming de shell.run | Pendiente | `AgentMode.tsx` no consulta `shell.job` ni hace polling |
+| 7. Sidebar de sesiones | Pendiente | No hay `SessionSidebar.tsx`; `GET /api/threads` existe y ya está cubierto por `tests/serverEndpoints.test.ts` |
+| 8. Atajos | Parcial | `Ctrl+B`, `Ctrl+/` y `Ctrl+,` ya están en `src/hooks/useKeyboardShortcuts.ts`; faltan `Ctrl+P`, `Ctrl+Shift+P` y ``Ctrl+` `` |
+| 9. Empty states | Pendiente | — |
+| 10. Consolidar playgrounds | Pendiente | Hoy son seis: Chat, Compare, Composer, Freeform, HuggingFace, Structured |
+
+Orden sugerido por retorno: **6 → 7 → 8**, y dejar la 10 para el final (toca pantallas que ya funcionan sin añadir capacidad).
+
+## Fases (orden por impacto/día)
+
+### Fase 1 — Command palette (Ctrl+K)  [EN CURSO]
+Búsqueda universal: archivos, comandos, sesiones, tools, agentes. Fuzzy filter, Enter ejecuta, Esc cierra.
+Archivos: src/components/CommandPalette.tsx, src/hooks/useCommandPaletteShortcut.ts, App.tsx (atajo global).
+
+### Fase 2 — Layout 3 paneles redimensionables
+File tree | editor | agent. Paneles colapsables, tamaños persistidos en localStorage. Splitter arrastrable.
+Archivos: src/components/ResizableSplit.tsx, src/stores/layoutStore.ts.
+
+### Fase 3 — Diff viewer visual para aprobaciones
+Vista lado a lado con checkboxes por hunk. Reusa src/utils/patch.ts (diffLines/mergeHunks).
+Archivos: src/components/DiffViewer.tsx, integración en AgentMode.
+
+### Fase 4 — Status bar Norton
+Modelo, rama git, conteo de diagnósticos, estado del agente. Pie fijo.
+Archivos: src/components/StatusBar.tsx.
+
+### Fase 5 — Nono acoplable (dock)
+Opción de anclar Nono como panel lateral además de flotante. Toggle en memoria UI.
+Archivos: src/features/nono/NonoDock.tsx.
+
+### Fase 6 — Streaming de shell.run
+Output en vivo en AgentMode (polling shell.job logs cada 500ms).
+Archivos: AgentMode.tsx (polling), sin cambios server.
+
+### Fase 7 — Sidebar de sesiones con scoping por proyecto
+Lista de threads por proyecto, resume con un click. Usa /api/threads.
+Archivos: src/components/SessionSidebar.tsx.
+
+### Fase 8 — Atajos de teclado
+Ctrl+P archivos, Ctrl+Shift+P comandos, Ctrl+` terminal, Ctrl+B sidebar.
+Archivos: src/hooks/useKeyboardShortcuts.ts (ya existe; ampliar).
+
+### Fase 9 — Empty states guiados
+Onboarding mínimo: "sin proyecto", "sin archivo", "sin sesión".
+Archivos: componentes EmptyState reutilizables.
+
+### Fase 10 — Consolidar Playgrounds
+Un solo tab con selector de modelo (Anthropic/OpenAI/Gemini/HF/local).
+Archivos: src/components/Playground.tsx (unificación).
+
+## Fuera de alcance (no tocar)
+- Paleta, tipografía, Nono como diferenciador, single-process, agent core.
+- LSP real y file watcher (descartables).
