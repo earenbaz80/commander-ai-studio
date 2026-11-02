@@ -93,3 +93,79 @@ test('task ejecuta un subagente real, lo registra mientras corre y lo limpia al 
 
   assert.equal(getSession(padre.id), undefined);
 });
+
+test('un nombre con guion bajo del proveedor se ejecuta como la tool real', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const padre = createSession({ goal: 'padre de la prueba de mapeo', cwd: dir });
+  let llamadas = 0;
+
+  globalThis.fetch = (async () => {
+    llamadas += 1;
+    if (llamadas === 1) {
+      // El proveedor nombra las tools con guion bajo (`fs_write`); el registro
+      // usa ids con punto (`fs.write`). Sin la traducción este turno se veía
+      // como «sin salida» y la sesión cerraba sin escribir nada.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ functionCalls: [{ name: 'fs_write', args: { path: 'salida.txt', content: 'hola' } }] }),
+      } as any;
+    }
+    return { ok: true, status: 200, json: async () => ({ text: 'listo', functionCalls: [] }) } as any;
+  }) as any;
+
+  try {
+    const res: any = await executeAgentTool('task', { root: dir, parentSessionId: padre.id, goal: 'escribir salida.txt' });
+
+    assert.equal(res.ok, true, JSON.stringify(res).slice(0, 400));
+    assert.equal(res.answer, 'listo', 'el segundo turno cierra la tarea');
+    assert.equal(llamadas, 2, 'un turno para la tool y otro para cerrar');
+    assert.equal(fs.readFileSync(path.join(dir, 'salida.txt'), 'utf8'), 'hola', 'la tool se ejecutó de verdad');
+  } finally {
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('un turno que sólo actualiza el plan no se toma por respuesta final', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const padre = createSession({ goal: 'padre de la prueba de plan', cwd: dir });
+  let llamadas = 0;
+
+  globalThis.fetch = (async () => {
+    llamadas += 1;
+    if (llamadas === 1) {
+      // `update_plan` es pseudo-tool: sin consumirla, este turno se daba por
+      // terminado («Objetivo completado.») sin tocar el workspace.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ functionCalls: [{ name: 'update_plan', args: { items: [{ id: 'p1', text: 'escribir', done: false }] } }] }),
+      } as any;
+    }
+    if (llamadas === 2) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ functionCalls: [{ name: 'fs_write', args: { path: 'plan.txt', content: 'ok' } }] }),
+      } as any;
+    }
+    return { ok: true, status: 200, json: async () => ({ text: 'hecho', functionCalls: [] }) } as any;
+  }) as any;
+
+  try {
+    const res: any = await executeAgentTool('task', { root: dir, parentSessionId: padre.id, goal: 'planificar y escribir' });
+
+    assert.equal(res.ok, true, JSON.stringify(res).slice(0, 400));
+    assert.equal(res.answer, 'hecho');
+    assert.equal(llamadas, 3, 'planificar no cierra la sesión: siguen el trabajo y el cierre');
+    assert.equal(fs.readFileSync(path.join(dir, 'plan.txt'), 'utf8'), 'ok', 'el trabajo se hizo después del plan');
+  } finally {
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});

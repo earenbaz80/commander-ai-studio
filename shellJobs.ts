@@ -53,7 +53,7 @@ export const JOB_DIR = path.join(os.tmpdir(), 'commander-jobs');
 const jobs = new Map<string, ShellJob>();
 let seq = 0;
 
-function spawnSegment(segment: string, cwd: string, stdio: any[]): ChildProcess {
+function spawnSegment(segment: string, cwd: string, stdio: any[], grupo = false): ChildProcess {
   if (process.platform === 'win32') {
     return spawn(process.env.COMSPEC || 'cmd.exe', ['/d', '/s', '/c', segment], {
       cwd,
@@ -64,7 +64,9 @@ function spawnSegment(segment: string, cwd: string, stdio: any[]): ChildProcess 
   }
   const tokens = segment.split(/\s+/).filter(Boolean);
   const [bin, ...args] = tokens;
-  return spawn(bin, args, { cwd, windowsHide: true, stdio: stdio as any });
+  // `grupo`: líder de su propio grupo de procesos, para poder matar el árbol
+  // entero (npm → node) y no sólo el primer proceso.
+  return spawn(bin, args, { cwd, windowsHide: true, stdio: stdio as any, ...(grupo ? { detached: true } : {}) });
 }
 
 function killTree(pid: number): Promise<void> {
@@ -124,35 +126,89 @@ export interface PipelineOutput {
   stderr: string;
   exitCode: number;
   timedOut: boolean;
+  /** Cortado por la señal de cancelación, no por el timeout del pipeline. */
+  aborted?: boolean;
 }
 
 /**
  * Ejecuta un pipeline en primer plano y devuelve la salida de la última etapa.
  * El timeout mata todas las etapas; el código 124 marca el corte.
  */
-export function runPipeline(segments: string[], cwd: string, timeoutMs: number): Promise<PipelineOutput> {
+export function runPipeline(
+  segments: string[],
+  cwd: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<PipelineOutput> {
   return new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
     let settled = false;
     let timedOut = false;
+    let aborted = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const children: ChildProcess[] = [];
 
+    /**
+     * Mata lo que el pipeline arrancó, no sólo el primer proceso.
+     *
+     * En Windows cada etapa va por `cmd /c`: matar el `cmd` dejaba vivo al
+     * `node` nieto, así que la cancelación se veía en la UI mientras el build
+     * seguía escribiendo `dist/`. En POSIX se mata el grupo entero (las etapas
+     * se arrancan con `detached`, o sea, líderes de su propio grupo).
+     */
+    const matar = async () => {
+      const pids = children.map((c) => c.pid).filter((p): p is number => typeof p === 'number' && p > 0);
+      if (process.platform === 'win32') {
+        await Promise.all(pids.map((p) => killTree(p)));
+        return;
+      }
+      for (const pid of pids) {
+        try {
+          process.kill(-pid, 'SIGTERM');
+        } catch {
+          /* el grupo ya no está */
+        }
+      }
+    };
+
+    let onAbort: (() => void) | undefined;
     const finish = (exitCode: number) => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
-      resolve({ stdout: stdout.slice(0, 20000), stderr: stderr.slice(0, 5000), exitCode, timedOut });
+      if (onAbort) signal?.removeEventListener('abort', onAbort);
+      resolve({
+        stdout: stdout.slice(0, 20000),
+        stderr: stderr.slice(0, 5000),
+        // El `close` del proceso muerto puede llegar antes que nuestro corte: el
+        // código de una cancelación es 130, no el que dejó el kill a medias.
+        exitCode: aborted ? 130 : exitCode,
+        timedOut,
+        ...(aborted ? { aborted: true } : {}),
+      });
     };
     const appendErr = (chunk: unknown) => {
       stderr = (stderr + String(chunk)).slice(-5000);
     };
 
+    // Cancelado antes de arrancar: no se lanza ningún proceso.
+    if (signal?.aborted) {
+      aborted = true;
+      return finish(130);
+    }
+    onAbort = () => {
+      aborted = true;
+      // Se espera a que el árbol esté muerto: si se resuelve antes, la tool
+      // devuelve «cancelado» mientras el proceso sigue escribiendo.
+      void matar().then(() => finish(130));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+
     let input: any = 'ignore';
     segments.forEach((segment, i) => {
       const isLast = i === segments.length - 1;
-      const child = spawnSegment(segment, cwd, [input, 'pipe', 'pipe']);
+      const child = spawnSegment(segment, cwd, [input, 'pipe', 'pipe'], true);
       children.push(child);
       input = child.stdout;
       child.stderr?.on('data', appendErr);
@@ -174,15 +230,7 @@ export function runPipeline(segments: string[], cwd: string, timeoutMs: number):
 
     timer = setTimeout(() => {
       timedOut = true;
-      for (const child of children) {
-        try {
-          child.kill();
-        } catch {
-          /* ya murió */
-        }
-      }
-      const last = children[children.length - 1];
-      if (process.platform === 'win32' && last?.pid) void killTree(last.pid);
+      void matar();
       finish(124);
     }, timeoutMs);
   });

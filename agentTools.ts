@@ -481,7 +481,11 @@ function isReadOnlyCall(toolId: string, input: any): boolean {
   return false;
 }
 
-export async function executeAgentTool(toolId: string, input: any): Promise<ToolResult> {
+/**
+ * Ejecuta una tool. `opts.signal` es la cancelación de la sesión que la pidió y
+ * se pasa a lo que pueda quedarse en vuelo (hoy, el proceso de `shell.run`).
+ */
+export async function executeAgentTool(toolId: string, input: any, opts?: { signal?: AbortSignal }): Promise<ToolResult> {
   const rootHint = input?.root ? String(input.root).slice(0, 1024) : undefined;
 
   // ── Permisos por proyecto (modo plan/readonly + tools + globs) ──
@@ -808,7 +812,11 @@ export async function executeAgentTool(toolId: string, input: any): Promise<Tool
 
     const timeout = Math.min(Number(input.timeoutMs) || 30000, 60000);
     const start = Date.now();
-    const result = await runPipeline(segments, cwd, timeout);
+    const result = await runPipeline(segments, cwd, timeout, opts?.signal);
+    // Cortado por la cancelación: antes el proceso seguía hasta el final aunque
+    // el panel ya dijera «cancelado» (un `vite build` terminaba de escribir
+    // `dist/` después de pulsar «parar»).
+    if (result.aborted) return { ok: false, error: 'Cancelado por el usuario' };
     const cap = 8000;
     const clip = (s: string) => (s.length > cap ? s.slice(0, cap) + `\n… [${s.length - cap} caracteres omitidos]` : s);
     return {
