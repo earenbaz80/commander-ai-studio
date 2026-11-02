@@ -5,11 +5,13 @@ import { callAgentLLM, callAgentLLMTools } from './llm';
 import { mapFunctionCall } from './fnTools';
 import { PLAN_TOOL, normalizePlan } from './plan';
 import { modelSupportsTools, getContextWindow } from './providers';
+import * as serverPersistence from './persistence';
 import { TOOL_REGISTRY } from './registry';
 import { loadMCPServers, mcpListTools, listRegistryServers, listRegistryServerTools } from './mcp';
 import { RESULT_TURN_CHARS, TURN_CHARS, TURNS_BUDGET_CHARS, clipMiddle, compactTurns, serializeResults, createReadIndex, recordRead, ReadIndex } from './contextBudget';
 
-const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.propose.write', 'fs.propose.edit', 'fs.glob', 'fs.grep', 'shell.run', 'shell.job', 'browser', 'preview', 'read_diagnostics', 'task', 'spawn_agents', 'skill', 'git.status', 'git.diff', 'git.log', 'git.commit', 'git.worktree', 'git.rebase', 'git.conflict', 'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list'];
+const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.propose.write', 'fs.propose.edit', 'fs.glob', 'fs.grep', 'shell.run', 'shell.job', 'browser', 'preview', 'read_diagnostics', 'task', 'spawn_agents', 'skill', 'git.status', 'git.diff', 'git.log', 'git.commit', 'git.worktree', 'git.rebase', 'git.conflict', 'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list', 'run_file_change_hooks', 'worktree.create'];
+
 /**
  * Huella estable de una toolCall: misma tool y mismos argumentos (el orden de
  * las claves no cuenta).
@@ -42,6 +44,7 @@ export const BLOCK_AFTER_REPEATS = 3;
  * girar —y, a partir de la tercera, tampoco la ejecuta—. Una escritura limpia la
  * cuenta: después de editar, volver a leer el mismo sitio es legítimo.
  */
+
 export class RepeatGuard {
   private counts = new Map<string, number>();
 
@@ -94,6 +97,7 @@ export class AgentLoop {
   private mcpSchema = '';
   private turns: { role: string; text: string }[] = [];
   private readIndex: ReadIndex = createReadIndex();
+  private noProgressSteps = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private repeats = new RepeatGuard();
 
@@ -105,8 +109,7 @@ export class AgentLoop {
 
   /**
    * Pre-vuelo compartido por `start` y `resume`: reglas del repo, tools MCP y
-   * skills.
-   * No toca el log de pasos, así que no consume presupuesto de maxSteps.
+   * skills. No toca el log de pasos, así que no consume presupuesto de maxSteps.
    */
   private async prepare(): Promise<{ rules: { file: string; text: string } | null; mcpParts: string[] }> {
     const rules = await this.loadRepoRules();
@@ -129,6 +132,15 @@ export class AgentLoop {
     this.running = true;
     this.turns = [];
     this.repeats.reset();
+    // El contador vive en el loop, que se reutiliza entre corridas del mismo
+    // modelo: sin reiniciarlo, una corrida nueva hereda los fallos de la anterior.
+    this.noProgressSteps = 0;
+    void (async () => {
+      try {
+        await serverPersistence.createThread({ id: task.id, projectPath: task.cwd, title: task.goal.slice(0, 80), model: this.model });
+        await serverPersistence.appendMessage(task.id, { requestId: `goal-${task.id}`, role: 'user', parts: { goal: task.goal, cwd: task.cwd }, ts: Date.now() });
+      } catch { /* ignore */ }
+    })();
     // Pre-vuelo ANTES de orchestrator.start() (que reinicia el log de steps).
     const { rules, mcpParts } = await this.prepare();
     this.orchestrator.start(task, task.plan);
@@ -155,6 +167,7 @@ export class AgentLoop {
     this.running = true;
     this.turns = [];
     this.repeats.reset();
+    this.noProgressSteps = 0;
     const { rules, mcpParts } = await this.prepare();
     if (!this.orchestrator.resume()) {
       this.running = false;
@@ -242,6 +255,10 @@ export class AgentLoop {
     // recortarlos al presupuesto de razonamiento lo dejaba leyendo a ciegas.
     const cap = role === 'user' ? RESULT_TURN_CHARS : TURN_CHARS;
     this.turns.push({ role, text: clipMiddle(text, cap) });
+    // Persistencia durable (fire-and-forget).
+    if (this.task) {
+      void serverPersistence.appendMessage(this.task.id, { role, parts: { text: clipMiddle(text, cap) }, ts: Date.now() }).catch(() => { /* ignore */ });
+    }
     // Puerta dura: solo compactamos cuando el contexto supera el 80% de la
     // ventana del modelo; por debajo, se conserva todo (sin resumir).
     const threshold = Math.floor(getContextWindow(this.model) * 4 * 0.8);
@@ -249,6 +266,21 @@ export class AgentLoop {
     if (current > threshold) {
       const maxChars = Math.min(TURNS_BUDGET_CHARS, threshold);
       this.turns = compactTurns(this.turns, { maxChars, readIndex: this.readIndex });
+    }
+  }
+
+  /** Turn-spend breaker: si N pasos seguidos no producen ningún cambio, se corta. */
+  private trackProgress(results: Array<{ tool: string; ok: boolean }>) {
+    const progressed = results.some((r) => r.ok);
+    if (progressed) {
+      this.noProgressSteps = 0;
+    } else {
+      this.noProgressSteps += 1;
+      if (this.noProgressSteps >= 8) {
+        this.addThoughtCapped('Límite de pasos', '8 pasos seguidos sin cambios: se detiene para evitar bucle.');
+        this.pushTurn('user', 'CORTE: llevas 8 pasos sin producir ningún cambio en el workspace. Detente y reporta qué bloquea el avance, o pide instrucciones al usuario.');
+        this.stop();
+      }
     }
   }
 
@@ -271,13 +303,6 @@ export class AgentLoop {
     this.pushTurn('user', prefix + serializeResults(results, RESULT_TURN_CHARS - prefix.length));
   }
 
-  /** ToolCalls ejecutables con el presupuesto restante (cada call consume 2 steps: llamada + resultado). */
-  private toolBudget(): number {
-    const max = this.task?.maxSteps ?? 0;
-    const used = this.orchestrator.getState().steps.length;
-    return Math.floor((max - used) / 2);
-  }
-
   /**
    * Deja fuera las llamadas que ya no aportan nada. A la tercera lectura
    * idéntica se le dice al modelo que el resultado lo tiene arriba y que edite
@@ -297,6 +322,14 @@ export class AgentLoop {
     return calls.filter((call) => !this.repeats.exhausted(call));
   }
 
+  /** ToolCalls ejecutables con el presupuesto restante (cada call consume 2 steps: llamada + resultado). */
+  private toolBudget(): number {
+    const max = this.task?.maxSteps ?? 0;
+    const used = this.orchestrator.getState().steps.length;
+    return Math.floor((max - used) / 2);
+  }
+
+  /** addThought que nunca rompe el invariante steps.length <= maxSteps. */
   /** Aviso al modelo: repetir la misma lectura no aporta y gasta pasos. */
   private warnRepeats(repeated: Array<{ tool: string; times: number }>) {
     if (repeated.length === 0) return;
@@ -309,7 +342,6 @@ export class AgentLoop {
     );
   }
 
-  /** addThought que nunca rompe el invariante steps.length <= maxSteps. */
   private addThoughtCapped(title: string, content: string) {
     const max = this.task?.maxSteps ?? Infinity;
     if (this.orchestrator.getState().steps.length < max) {
@@ -368,15 +400,15 @@ export class AgentLoop {
           cwd: this.task.cwd,
           history: [],
           toolSchema: JSON.stringify(
-            Object.values(TOOL_REGISTRY).map((t) => ({ id: t.id, description: t.description, danger: t.danger })),
+            Object.values(TOOL_REGISTRY).map((t) => ({ id: t.id, description: t.description, danger: t.danger, endsAgentStep: t.endsAgentStep !== false })),
             null,
             2
           ) + (this.mcpSchema ? `\n${this.mcpSchema}` : ''),
           recentSteps,
           plan,
           agentsMd: this.agentsMd,
-          skills: this.skills,
           turns: this.turns,
+          skills: this.skills,
         },
         { model: this.model }
       );
@@ -413,7 +445,7 @@ export class AgentLoop {
 
     const mapped = calls
       .map((c) => mapFunctionCall(c.name, c.args))
-      .filter((m): m is { tool: string; input: unknown } => !!m && ALLOWED_TOOLS.includes(m.tool))
+      .filter((m): m is { tool: string; input: unknown } => !!m && !!m.input && ALLOWED_TOOLS.includes(m.tool))
       .slice(0, 5);
 
     if (mapped.length === 0) {
@@ -445,9 +477,10 @@ export class AgentLoop {
     const repeated = this.repeats.track(executable);
     const results = await this.runParallel(this.dropExhausted(executable));
     this.recordReads(executable, results);
-    this.warnRepeats(repeated.filter((item) => item.times < BLOCK_AFTER_REPEATS));
     const fails = results.filter((r) => !r.ok);
     if (results.length > 0) this.pushResults(results);
+    this.trackProgress(results);
+    this.warnRepeats(repeated.filter((item) => item.times < BLOCK_AFTER_REPEATS));
     if (fails.length > 0) {
       this.addThoughtCapped('Tools con fallo', fails.map((f) => `${f.tool}: ${f.error}`).join('\n').slice(0, 1000));
     }
@@ -461,7 +494,7 @@ export class AgentLoop {
         cwd: this.task.cwd,
         history: [],
         toolSchema: JSON.stringify(
-          Object.values(TOOL_REGISTRY).map((t) => ({ id: t.id, description: t.description, danger: t.danger })),
+          Object.values(TOOL_REGISTRY).map((t) => ({ id: t.id, description: t.description, danger: t.danger, endsAgentStep: t.endsAgentStep !== false })),
           null,
           2
         ) + (this.mcpSchema ? `\n${this.mcpSchema}` : ''),
@@ -521,6 +554,7 @@ export class AgentLoop {
       const results = await this.runParallel(this.dropExhausted(executable));
       this.recordReads(executable, results);
       if (results.length > 0) this.pushResults(results);
+      this.trackProgress(results);
       this.warnRepeats(repeated.filter((item) => item.times < BLOCK_AFTER_REPEATS));
       const fails = results.filter((r) => !r.ok);
       if (fails.length > 0) {
