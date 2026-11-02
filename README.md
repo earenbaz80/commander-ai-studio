@@ -16,6 +16,8 @@ Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos
   - `fs.read/write/edit/glob/grep`, `shell.run` (allowlist), `web.fetch/search`, `code.run` (vm sandbox), `mcp.call/list`.
 - `danger=true` pide aprobación con diff preview (`fs.edit/write`).
 - Reglas repo: `AGENTS.md`, `.cursorrules`, `CLAUDE.md` se inyectan al prompt.
+- Llamadas repetidas: si el modelo pide dos veces la misma tool con los mismos argumentos, el bucle registra `Llamada repetida` y le añade un aviso al turno ("ya tienes ese resultado, da el siguiente paso"). Una escritura limpia la cuenta: releer el mismo fichero después de editarlo no se marca.
+- Enrutado de modelo: la cadena de respaldo vive en `commander.json` → `providers.google.fallbackModels` y se edita en el panel derecho (**CADENA DE RESPALDO**: añadir/quitar y reordenar con flechas, porque el orden es la prioridad; máx. 5). Cada fila tiene un botón de probar que hace **una** llamada mínima a ese modelo con `fallbackModels: []` (así un «✓» no puede significar «respondió otro») y deja el resultado pegado al id; no guarda nada. **PROBAR ORDEN** recorre la cadena tal cual está y **para en el primero que responda** —lo mismo que hará el servidor—, así que en el caso sano cuesta una sola llamada; dice qué modelo respondería y en qué posición, y cuando hay alguno caído por delante lo señala. Usa la misma sonda que la comprobación previa de las evaluaciones (`src/lib/modelProbe.ts`) o vía `GET/POST /api/gemini/fallback-models`. Las peticiones ya no necesitan mandarla: `POST /api/gemini/generate` (y `/api/gemini/stream`) sigue aceptando `fallbackModels: string[]` y esa lista manda sobre la config. Sin config propia se usa la de fábrica (`GEMINI_FALLBACK_MODELS`); un array **vacío**, en la config o en la petición, **desactiva el respaldo** y devuelve 503 en vez de cambiar de modelo por detrás. La respuesta declara `model` (quien contestó), `requestedModel` y `fallback: {from, to} | null`, y el agente deja un paso `Modelo sustituido`.
 - Freebuff: proveedor propio (`freebuff/…` → `POST /api/freebuff/generate`, proxy OpenAI-compatible a `freebuff.com/api/v1/paid`). Sus modelos **no** vienen en el catálogo por defecto porque sin `FREEBUFF_API_KEY` fallarían al elegirlos: `npm run models:freebuff` mete los que declaran tool-calling (hoy 9 de 280; el resto sólo hace chat) y se repite cuando el proveedor añada modelos. Los ids viven en `src/config/freebuff-models.json`, que leen a la vez el agente (`toolDialectForModel`), el proxy y el propio script.
 - MCP: panel lateral (add/list/toggle, persiste `localStorage`). Schemas MCP se anexan al `toolSchema`.
 - Sesiones: auto-guardado en `localStorage` (20), restore/fork/delete. Métricas por tool en panel.
@@ -27,14 +29,14 @@ Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos
 
 ## Desktop
 
-- `npm run electron:dev` / `npm run electron:build` (puerto embebido 3280).
+- `npm run electron:dev` / `npm run build:electron` (puerto embebido 3280).
 - SW deshabilitado en Electron; rutas `index.html` relativas (`./`) para `loadFile`.
 
 ## Seguridad
 
 - Headers base + CORS allowlist (`CORS_ORIGINS`) + rate global 300/min.
 - Debug `listModels` 403 en prod. Export ZIP con escape HTML y filename sanitizado.
-- `firestore.rules`: `/users` self-only, `likesCount` solo ±1, likes no públicos. Check: `npm run test:rules`.
+- `firestore.rules`: `/users` self-only, `likesCount` solo ±1, likes no públicos.
 
 ## Dependencias y auditoría
 
@@ -50,6 +52,7 @@ El CI exige **cero vulnerabilidades en producción**: `npm audit --omit=dev --au
 - **Vigilancia semanal.** [`.github/workflows/audit-watch.yml`](.github/workflows/audit-watch.yml) (lunes 06:00 UTC, o a mano con *workflow_dispatch*) corre `scripts/audit-watch.ts`: `npm audit` completo más la resolución **real** de la cadena contra el registry (`npm view <pkg>@<rango>`), no el lockfile instalado. Falla y anota un aviso si aparece un advisory distinto del conocido, o si toda la cadena ya admite `minimatch` >= 11.0.1 —la señal de que toca actualizar y apuntar el gate a dev—. En verde significa «sigue bloqueado y no hay novedades», que es lo esperado. `--offline` se salta el registry y sólo audita el árbol instalado.
 - **Issue automático.** Cuando el vigilante encuentra algo que hacer no se queda en el run rojo: deja un issue abierto con las tablas (cadena y advisories nuevos) y qué hacer marcado como checklist. Si ya hay uno abierto con prefijo `audit-watch:` en el título, comenta ahí en vez de duplicarlo. Un fallo de red **no** abre issue: el script no deja informe en ese caso, porque un registry intermitente no es un hallazgo.
 - **Cierre automático.** Cuando una corrida vuelve a verde **con veredicto completo** (audit sin advisories nuevos, cadena medida y todavía sin admitir el parche), comenta el motivo en ese issue y lo cierra: el aviso no se queda colgado. El disparador es el archivo `cierre.md`, que el script sólo escribe en ese caso, así que un `--offline` o un registry a medias —que igual salen en verde— no pueden cerrar nada. Si el problema reaparece, la corrida siguiente abre un issue nuevo.
+- **Override vigente.** `@grpc/grpc-js` (^1.14.7) fuerza la versión parcheada que Firestore sigue pineando en `~1.9.0`; ese transporte es la vía Node de Firestore y la app lo usa desde el renderer, no desde `server.ts`.
 - **Prueba del camino `gh`.** El mismo workflow, lanzado con *workflow_dispatch* y el input `self_test` marcado, no audita: abre un issue `[self-test] audit-watch — …`, lo comenta, lo cierra y **lee el estado** para confirmar que quedó `CLOSED` (salir 0 al cerrar no lo prueba); luego intenta borrarlo. Corre en un job aparte, sin checkout ni `npm ci`, así que el único motivo posible de fallo es el token o los permisos de issues. El título no empieza por `audit-watch:` a propósito, para que una corrida real nunca lo tome por el suyo. Borrar un issue pide permiso de administración: si el token no lo tiene, la prueba pasa igual y avisa de que el issue de prueba queda cerrado.
 
 ## Suite de tests (Vitest)
