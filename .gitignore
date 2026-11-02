@@ -35,6 +35,9 @@ tests/tmp-evals/
 # Registro local de proyectos del agente (permisos por máquina)
 .agent-roots.json
 
+# Volcado de conversaciones importadas: material de trabajo, no fuente
+.cloud-attachments/
+
 # Artefactos de empaquetado (¡11 GB!)
 release-packager/
 staging/
