@@ -36,6 +36,7 @@ import { ProblemsView } from './panel/ProblemsView';
 import { useLspProblemCounts } from '../utils/lspProblems';
 import type { WorkspaceTab } from '../hooks/useTabs';
 import { ParameterConfig } from '../types/studio';
+import { ResizableSplit } from './ResizableSplit';
 
 // Terminal PTY real (xterm.js) bajo demanda: no pesa en el bundle inicial.
 const XTerminal = React.lazy(() =>
@@ -189,8 +190,9 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
   
 
   return (
+    <ResizableSplit id="workbench" side="right" lang={lang}>
     <aside
-      className="w-[clamp(280px,34vw,560px)] shrink-0 h-full nc-panel border-l-2 border-[#00ffff] flex flex-col min-h-0 overflow-hidden z-20 font-mono"
+      className="w-full h-full nc-panel border-l-2 border-[#00ffff] flex flex-col min-h-0 overflow-hidden z-20 font-mono"
       aria-label={lang === 'es' ? 'Workbench' : lang === 'de' ? 'Workbench' : 'Workbench'}
     >
       {/* Menú de selección */}
@@ -297,6 +299,7 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
         {active === 'providers' && <ProviderHealthView lang={lang} />}
       </div>
     </aside>
+    </ResizableSplit>
   );
 };
 
