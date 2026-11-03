@@ -162,7 +162,7 @@ export function UpdateNotification() {
                 </span>
                 <span className="bg-[var(--nc-active-bg)] text-black text-[10px] px-1.5 py-0.5 rounded font-bold">Lista para instalar</span>
               </div>
-              <p className="text-[#e3e2e6] text-[11px] mb-3 line-clamp-2">
+              <p className="text-[var(--nc-text)] text-[11px] mb-3 line-clamp-2">
                 Update ready to install.
               </p>
               <div className="flex gap-2">
@@ -199,7 +199,7 @@ export function UpdateNotification() {
                 <span className="font-bold">Actualización disponible</span>
                 <span className="bg-[var(--nc-highlight-bg)] text-black text-[10px] px-1.5 py-0.5 rounded font-bold">v{updateInfo.version}</span>
               </div>
-              <p className="text-[#e3e2e6] text-[11px] mb-3 line-clamp-2">
+              <p className="text-[var(--nc-text)] text-[11px] mb-3 line-clamp-2">
                 {updateInfo.releaseNotes || 'Una nueva versión está disponible con mejoras y correcciones.'}
               </p>
               <div className="flex gap-2">

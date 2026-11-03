@@ -424,7 +424,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
         tabIndex={0}
         role="button"
         aria-label="Nono"
-        className={`fixed z-[9998] select-none touch-none focus-visible:outline-2 focus-visible:outline-[#ffff55] cursor-pointer ${expression !== 'sleepy' ? (idle ? 'nono-awake nono-idle' : 'nono-awake') : 'nono-asleep'} ${isChatTyping && !dragPos ? 'nono-lean-chat' : ''}`}
+        className={`fixed z-[9998] select-none touch-none focus-visible:outline-2 focus-visible:outline-[var(--nc-text-accent)] cursor-pointer ${expression !== 'sleepy' ? (idle ? 'nono-awake nono-idle' : 'nono-awake') : 'nono-asleep'} ${isChatTyping && !dragPos ? 'nono-lean-chat' : ''}`}
         style={headStyle}
       >
         {/* Charco de luz bajo Nono: sobre un fondo casi negro una sombra

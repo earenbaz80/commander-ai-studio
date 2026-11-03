@@ -17,7 +17,7 @@ const NavGroup: React.FC<{
       onClick={onToggle}
       aria-expanded={open}
       aria-label={title}
-      className="flex min-h-9 items-center gap-1 text-xs font-bold text-[var(--nc-text-accent)] uppercase tracking-wider px-1 py-2 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ffff55]"
+      className="flex min-h-9 items-center gap-1 text-xs font-bold text-[var(--nc-text-accent)] uppercase tracking-wider px-1 py-2 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--nc-text-accent)]"
     >
       {open ? (
         <ChevronDown className="w-3.5 h-3.5 shrink-0" />

@@ -302,7 +302,7 @@ const SubAgentCard: React.FC<{
           <span className="text-white/60">{Math.round(agent.progress)}%</span>
           <span className="text-[var(--nc-text)]/60 font-mono">{agent.progress}%</span>
         </div>
-        <div className="h-1.5 bg-[#000020] rounded-full overflow-hidden">
+        <div className="h-1.5 bg-[var(--nc-bg-deep)] rounded-full overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-300"
             style={{
@@ -344,7 +344,7 @@ const SubAgentCard: React.FC<{
 
       {/* Expanded Details */}
       {isExpanded && (
-        <div className="border-t border-[var(--nc-border-light)]/20 bg-[#000020] p-3 space-y-3 animate-slide-down">
+        <div className="border-t border-[var(--nc-border-light)]/20 bg-[var(--nc-bg-deep)] p-3 space-y-3 animate-slide-down">
           {/* Current Tool */}
           {agent.currentTool && (
             <div className="flex items-center gap-2 p-2 bg-[var(--nc-bg-deep)] rounded text-[10px]">
@@ -360,7 +360,7 @@ const SubAgentCard: React.FC<{
               <span className="text-white/60">Tokens:</span>
               <span className="font-mono text-[var(--nc-text)]">{agent.tokensUsed.toLocaleString()} / {agent.tokensBudget.toLocaleString()}</span>
             </div>
-            <div className="h-1.5 bg-[#000020] rounded-full overflow-hidden">
+            <div className="h-1.5 bg-[var(--nc-bg-deep)] rounded-full overflow-hidden">
               <div
                 className="h-full rounded-full transition-all duration-300"
                 style={{
@@ -383,7 +383,7 @@ const SubAgentCard: React.FC<{
                 View all
               </button>
             </div>
-            <div className="max-h-40 overflow-y-auto bg-[#000020] rounded p-2 space-y-1 font-mono text-[9px]">
+            <div className="max-h-40 overflow-y-auto bg-[var(--nc-bg-deep)] rounded p-2 space-y-1 font-mono text-[9px]">
               {agent.logs.slice(-5).map((log) => (
                 <div key={log.id} className="flex items-start gap-1 text-white/70">
                   <span className="text-[var(--nc-text)]/60 font-mono">
@@ -516,7 +516,7 @@ const SubAgentPanel: React.FC<SubAgentPanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#000030] border-l-2 border-[var(--nc-border-light)]/20 overflow-hidden">
+    <div className="flex flex-col h-full bg-[var(--nc-bg-deep)] border-l-2 border-[var(--nc-border-light)]/20 overflow-hidden">
       {/* Header */}
       <div className="p-3 border-b-2 border-[var(--nc-border-light)]/20 bg-[var(--nc-bg-deep)] shrink-0">
         <div className="flex items-center justify-between mb-2">

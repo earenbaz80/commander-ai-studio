@@ -252,7 +252,7 @@ return { zen: text };`)
 
         <div className="flex-1 overflow-y-auto p-2 space-y-2 bg-[var(--nc-bg-deep)]">
           {history.length === 0 ? (
-            <div className="text-center p-6 text-[#5555aa] italic text-xs">
+            <div className="text-center p-6 text-[var(--nc-text-dim)] italic text-xs">
               No hay ejecuciones recientes. Haz clic en "EJECUTAR CÓDIGO REAL" para procesar datos.
             </div>
           ) : (

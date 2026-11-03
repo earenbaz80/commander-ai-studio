@@ -389,7 +389,7 @@ export function ServerSubAgents({ lang = 'es' }: { lang?: Language }) {
                 fijada
                   ? 'sticky top-0 z-10 bg-[var(--nc-bg-panel)] border-cyan-500/50'
                   : 'border-cyan-900/40'
-              } ${atascado ? 'outline outline-1 outline-[#ffff55]' : ''}`}
+              } ${atascado ? 'outline outline-1 outline-[var(--nc-text-accent)]' : ''}`}
               data-status={r.status}
               data-pinned={fijada ? 'true' : undefined}
               data-stuck={atascado ? 'true' : undefined}

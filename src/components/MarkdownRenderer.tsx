@@ -97,7 +97,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isS
                   </button>
                 </div>
               </div>
-              <pre className="p-3 text-[11px] sm:text-xs font-mono text-[#e3e2e6] overflow-x-auto leading-relaxed bg-[#0b0c10]">
+              <pre className="p-3 text-[11px] sm:text-xs font-mono text-[var(--nc-text)] overflow-x-auto leading-relaxed bg-[#0b0c10]">
                 <code>{code}</code>
               </pre>
             </div>

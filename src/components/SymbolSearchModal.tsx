@@ -194,7 +194,7 @@ export const SymbolSearchModal: React.FC<SymbolSearchModalProps> = ({
               onMouseEnter={() => setActive(index)}
               onClick={() => open(sym)}
               className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs font-mono ${
-                index === active ? 'bg-[var(--nc-highlight-bg)] text-black' : 'text-[#e3e2e6] hover:bg-[var(--nc-highlight-bg)]/10'
+                index === active ? 'bg-[var(--nc-highlight-bg)] text-black' : 'text-[var(--nc-text)] hover:bg-[var(--nc-highlight-bg)]/10'
               }`}
             >
               <span

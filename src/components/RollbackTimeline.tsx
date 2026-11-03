@@ -329,7 +329,7 @@ const RollbackTimeline: React.FC<RollbackTimelineProps> = ({
   );
 
   return (
-    <div className="flex flex-col h-full bg-[#000030] border-l-2 border-[var(--nc-border-light)]/20 overflow-hidden">
+    <div className="flex flex-col h-full bg-[var(--nc-bg-deep)] border-l-2 border-[var(--nc-border-light)]/20 overflow-hidden">
       <div className="p-3 border-b-2 border-[var(--nc-border-light)]/20 bg-[var(--nc-bg-deep)] shrink-0">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">

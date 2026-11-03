@@ -524,7 +524,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
           consola quedaba con altura 0, así que el grid reparte el espacio. */}
       <div className="flex-1 min-h-0 w-full grid grid-rows-[minmax(0,1fr)_minmax(0,45%)] lg:flex lg:flex-row overflow-hidden">
         <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden border-r-2 border-[var(--nc-border-light)]/10">
-          <div className="p-3 border-b-2 border-[var(--nc-border-light)]/20 bg-[#000028] shrink-0">
+          <div className="p-3 border-b-2 border-[var(--nc-border-light)]/20 bg-[var(--nc-bg-deep)] shrink-0">
             <div className="flex flex-col gap-2">
               <textarea
                 value={goal}
@@ -598,7 +598,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
           </div>
         </div>
 
-        <div className="w-full lg:w-[380px] shrink-0 border-t-2 lg:border-t-0 lg:border-l-2 border-[var(--nc-border-light)] bg-[#000030] flex flex-col min-w-0 h-full overflow-hidden">
+        <div className="w-full lg:w-[380px] shrink-0 border-t-2 lg:border-t-0 lg:border-l-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-deep)] flex flex-col min-w-0 h-full overflow-hidden">
           {/* Panel Tabs */}
           <div className="p-2 bg-[#000088] border-b-2 border-[var(--nc-border-light)] flex items-center gap-1 flex-wrap">
             <button
@@ -906,7 +906,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                     type="button"
                     disabled={resolvingConflict}
                     onClick={() => resolveConflict('theirs', true)}
-                    className="nc-button text-[10px] px-2 py-1 bg-[#0055aa] text-white disabled:opacity-50"
+                    className="nc-button text-[10px] px-2 py-1 bg-[var(--nc-header-bg)] text-white disabled:opacity-50"
                   >
                     Them
                   </button>
@@ -945,7 +945,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                                 type="button"
                                 disabled={resolvingConflict}
                                 onClick={() => resolveConflictPath(f.path, 'theirs')}
-                                className="nc-button text-[9px] px-1 py-0.5 bg-[#0055aa] text-white disabled:opacity-50"
+                                className="nc-button text-[9px] px-1 py-0.5 bg-[var(--nc-header-bg)] text-white disabled:opacity-50"
                               >
                                 Them
                               </button>
@@ -1060,7 +1060,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                       onClick={async () => {
                         await resolveConflict('theirs');
                       }}
-                      className="nc-button text-[10px] px-2 py-1 bg-[#0055aa] text-white disabled:opacity-50"
+                      className="nc-button text-[10px] px-2 py-1 bg-[var(--nc-header-bg)] text-white disabled:opacity-50"
                     >
                       <Send className="w-3 h-3" /> Them
                     </button>

@@ -104,7 +104,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
     .filter((group) => group.models.length > 0);
 
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-mono [&_button]:min-h-9 [&_button]:min-w-9 [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-[#ffff55]">
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-mono [&_button]:min-h-9 [&_button]:min-w-9 [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-[var(--nc-text-accent)]">
       {/* Icono de ayuda para menciones @ */}
       <button
         type="button"
@@ -150,7 +150,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
               ? `Verwendetes Modell${currentModel?.description ? `: ${currentModel.description}` : ''}`
               : `Model in use${currentModel?.description ? `: ${currentModel.description}` : ''}`
         }
-        className="order-first w-full min-w-0 min-h-10 sm:order-none sm:w-auto sm:min-w-[240px] sm:flex-1 bg-[var(--nc-bg-panel)] border border-cyan-400/60 text-[var(--nc-text)] text-sm font-mono px-2 py-2 rounded focus-visible:outline-2 focus-visible:outline-[#ffff55] cursor-pointer"
+        className="order-first w-full min-w-0 min-h-10 sm:order-none sm:w-auto sm:min-w-[240px] sm:flex-1 bg-[var(--nc-bg-panel)] border border-cyan-400/60 text-[var(--nc-text)] text-sm font-mono px-2 py-2 rounded focus-visible:outline-2 focus-visible:outline-[var(--nc-text-accent)] cursor-pointer"
       >
         {/* Modelo no listado (p. ej. descargado de HuggingFace) */}
         {!currentModel && <option value={selectedModel}>{selectedModel}</option>}
@@ -209,7 +209,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           lang === 'es' ? 'Menú para cambiar' : lang === 'de' ? 'Menü zum Ändern' : 'Menu to change'
         }`}
         aria-label={lang === 'es' ? 'Modo del agente' : lang === 'de' ? 'Agentenmodus' : 'Agent mode'}
-        className={`min-h-9 max-w-full flex items-center gap-1 rounded border px-2 py-2 text-xs font-bold shrink-0 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-[#ffff55] ${
+        className={`min-h-9 max-w-full flex items-center gap-1 rounded border px-2 py-2 text-xs font-bold shrink-0 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-[var(--nc-text-accent)] ${
           runMode === 'build'
             ? 'border-[#00aa00] bg-[#002200] text-[var(--nc-success)]'
             : runMode === 'plan'
@@ -247,7 +247,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
             e.currentTarget.querySelector('summary')?.focus();
           }
         }}>
-          <summary className="min-h-9 flex items-center px-2 border border-cyan-400/40 cursor-pointer text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] focus-visible:outline-2 focus-visible:outline-[#ffff55]" aria-label={lang === 'es' ? 'Opciones de conversación' : lang === 'de' ? 'Unterhaltungsoptionen' : 'Conversation options'}>
+          <summary className="min-h-9 flex items-center px-2 border border-cyan-400/40 cursor-pointer text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] focus-visible:outline-2 focus-visible:outline-[var(--nc-text-accent)]" aria-label={lang === 'es' ? 'Opciones de conversación' : lang === 'de' ? 'Unterhaltungsoptionen' : 'Conversation options'}>
             {lang === 'es' ? 'Opciones' : lang === 'de' ? 'Optionen' : 'Options'}
           </summary>
           <div className="absolute bottom-full right-0 z-20 mb-2 w-56 max-w-[80vw] border border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] p-1 shadow-lg">

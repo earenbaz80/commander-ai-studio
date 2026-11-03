@@ -582,7 +582,7 @@ const de = lang === 'de';
 
       {/* Fila de guardado local */}
       {showLocalSave && (
-        <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--nc-border-dark)] bg-[#001a2e] shrink-0">
+        <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] shrink-0">
           <Download className="w-3.5 h-3.5 text-[var(--nc-text-accent)] shrink-0" />
           <input
             ref={localNameRef}
@@ -616,7 +616,7 @@ const de = lang === 'de';
 
       {/* Fila de "Guardar como" en el proyecto */}
       {showProjectSaveAs && (
-        <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--nc-border-dark)] bg-[#001a2e] shrink-0">
+        <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] shrink-0">
           <FilePlus className="w-3.5 h-3.5 text-[var(--nc-text-accent)] shrink-0" />
           <input
             ref={projectNameRef}

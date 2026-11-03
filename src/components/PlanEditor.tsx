@@ -205,7 +205,7 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      <div className="flex items-center justify-between p-2.5 border-b-2 border-[var(--nc-border-light)]/20 bg-[#000028] shrink-0">
+      <div className="flex items-center justify-between p-2.5 border-b-2 border-[var(--nc-border-light)]/20 bg-[var(--nc-bg-deep)] shrink-0">
         <div className="flex items-center gap-1.5 text-[var(--nc-text-accent)] font-bold text-[11px]">
           <ListTodo className="w-4 h-4" />
           <span>{t.addStep}</span>
