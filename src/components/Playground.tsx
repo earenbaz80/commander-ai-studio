@@ -138,7 +138,7 @@ export const Playground: React.FC<PlaygroundProps> = ({
               className={`px-2 py-0.5 text-[11px] font-bold rounded-sm border whitespace-nowrap transition-colors ${
                 active
                   ? 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border-[var(--nc-border-light)]'
-                  : 'text-black hover:bg-black/10 border-transparent'
+                  : 'bg-transparent text-[var(--nc-header-text)] hover:bg-black/10 border-transparent'
               }`}
             >
               {lang === 'es' ? spec.es : lang === 'de' ? spec.de : spec.en}
@@ -147,7 +147,7 @@ export const Playground: React.FC<PlaygroundProps> = ({
         })}
 
         <span className="ml-auto flex items-center gap-1 shrink-0 pl-2">
-          <span className="text-[10px] text-black/70 font-bold">{modelLabel}:</span>
+          <span className="text-[10px] text-[var(--nc-header-text)]/80 font-bold">{modelLabel}:</span>
           <code
             className="text-[10px] text-[var(--nc-text-accent)] bg-[var(--nc-bg-deep)] px-1.5 py-0.5 rounded-sm max-w-[220px] truncate"
             title={selectedModel || ''}
