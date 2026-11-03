@@ -258,7 +258,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                 menu.querySelector('summary')?.focus();
               }
               onClearChat();
-            }} className="w-full px-3 py-2 text-left text-red-300 hover:bg-[var(--nc-bg-hover)]">
+            }} className="w-full px-3 py-2 text-left text-[var(--nc-danger)] hover:bg-[var(--nc-bg-hover)]">
               {lang === 'es' ? 'Limpiar conversación' : lang === 'de' ? 'Unterhaltung leeren' : 'Clear conversation'}
             </button>
           </div>
@@ -268,7 +268,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           disabled={isGenerating || !canSend}
           aria-label={lang === 'es' ? 'Enviar mensaje' : lang === 'de' ? 'Nachricht senden' : 'Send message'}
           title={lang === 'es' ? 'Enviar mensaje' : lang === 'de' ? 'Nachricht senden' : 'Send message'}
-          className="flex min-h-10 items-center gap-2 px-4 py-2 border-2 border-[var(--nc-text-accent)] bg-[var(--nc-active-bg)] text-[var(--nc-active-text)] font-bold hover:bg-white hover:border-white disabled:bg-[var(--nc-bg-deep)] disabled:border-[var(--nc-border-dark)] disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
+          className="flex min-h-10 items-center gap-2 px-4 py-2 border-2 border-[var(--nc-text-accent)] bg-[var(--nc-active-bg)] text-[var(--nc-active-text)] font-bold hover:bg-white hover:border-white disabled:bg-[var(--nc-bg-deep)] disabled:border-[var(--nc-border-dark)] disabled:text-[var(--nc-text-dim)] disabled:cursor-not-allowed transition-colors"
         >
           {isGenerating ? (
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />

@@ -206,7 +206,7 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
             className={`flex shrink-0 items-center gap-1.5 px-2 py-1 text-[11px] font-bold rounded-sm border whitespace-nowrap transition-colors ${
               active === tab.id
                 ? 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border-[var(--nc-border-light)]'
-                : 'text-black hover:bg-black/10 border-transparent'
+                : 'bg-transparent text-[var(--nc-header-text)] hover:bg-black/10 border-transparent'
             }`}
           >
             {tab.icon}

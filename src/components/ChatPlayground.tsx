@@ -312,18 +312,18 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
                 className={`max-w-[80%] rounded-lg p-3 ${
                   msg.role === 'user'
                     ? 'bg-[var(--nc-bg-main)] border border-cyan-400/30'
-                    : 'bg-[var(--nc-bg-deep)] border border-yellow-500/30'
+                    : 'bg-[var(--nc-bg-deep)] border border-[var(--nc-text-accent)]/40'
                 }`}
               >
                 <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-xs font-bold flex items-center gap-1 ${msg.role === 'user' ? 'text-cyan-400' : 'text-yellow-500'}`}>
+                  <span className={`text-xs font-bold flex items-center gap-1 ${msg.role === 'user' ? 'text-[var(--nc-text)]' : 'text-[var(--nc-text-accent)]'}`}>
                     {msg.role === 'user' ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
                     {msg.role === 'user' ? 'TÚ' : 'AI'}
                   </span>
                   {msg.modelUsed && (
-                    <span className="text-[10px] text-gray-400">{msg.modelUsed}</span>
+                    <span className="text-[10px] text-[var(--nc-text-dim)]">{msg.modelUsed}</span>
                   )}
-                  <span className="text-[10px] text-gray-500">{msg.timestamp}</span>
+                  <span className="text-[10px] text-[var(--nc-text-dim)]">{msg.timestamp}</span>
                 </div>
 
                 {editingMessageId === msg.id ? (
@@ -337,13 +337,13 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
                     <div className="flex gap-2">
                       <button
                         onClick={handleSaveEdit}
-                        className="px-3 py-1 bg-green-600 hover:bg-green-500 rounded text-xs flex items-center gap-1"
+                        className="px-3 py-1 bg-[var(--nc-success)] text-[var(--nc-bg-main)] hover:brightness-110 rounded text-xs flex items-center gap-1"
                       >
                         <Check className="w-3.5 h-3.5" /> Guardar
                       </button>
                       <button
                         onClick={() => setEditingMessageId(null)}
-                        className="px-3 py-1 bg-gray-600 hover:bg-gray-500 rounded text-xs flex items-center gap-1"
+                        className="px-3 py-1 bg-[var(--nc-bg-hover)] text-[var(--nc-text)] hover:bg-[var(--nc-header-bg)] hover:text-[var(--nc-header-text)] rounded text-xs flex items-center gap-1"
                       >
                         <X className="w-3.5 h-3.5" /> Cancelar
                       </button>
@@ -369,7 +369,7 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
                   <div className="mt-2 flex items-center gap-2">
                     <button
                       onClick={() => handleCopyMessage(msg.content)}
-                      className="text-[10px] text-gray-400 hover:text-cyan-400 transition-colors flex items-center gap-1"
+                      className="text-[10px] text-[var(--nc-text-dim)] hover:text-[var(--nc-text)] transition-colors flex items-center gap-1"
                     >
                       {copiedId === msg.content.slice(0, 20) ? (
                         <>
@@ -383,17 +383,17 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
                     </button>
                     <button
                       onClick={() => handleEditMessage(msg.id, msg.content)}
-                      className="text-[10px] text-gray-400 hover:text-yellow-500 transition-colors flex items-center gap-1"
+                      className="text-[10px] text-[var(--nc-text-dim)] hover:text-[var(--nc-text-accent)] transition-colors flex items-center gap-1"
                     >
                       <Edit3 className="w-3 h-3" /> Editar
                     </button>
                     {msg.groundingSources && msg.groundingSources.length > 0 && (
-                      <span className="text-[10px] text-green-400 flex items-center gap-1">
+                      <span className="text-[10px] text-[var(--nc-success)] flex items-center gap-1">
                         <Link className="w-3 h-3" /> {msg.groundingSources.length} fuentes
                       </span>
                     )}
                     {msg.tokensUsed && (
-                      <span className="text-[10px] text-gray-500">
+                      <span className="text-[10px] text-[var(--nc-text-dim)]">
                         {msg.tokensUsed} tokens
                       </span>
                     )}
@@ -411,7 +411,7 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
       </div>
 
       {/* Input Area */}
-      <div data-chat-divider className="border-t border-cyan-400/30 bg-[#000066] p-4">
+      <div data-chat-divider className="border-t border-[var(--nc-border-mid)]/40 bg-[var(--nc-bg-deep)] p-4">
         {attachments.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
             {attachments.map((file, idx) => (

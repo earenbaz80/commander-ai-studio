@@ -572,12 +572,12 @@ code::-webkit-scrollbar-track,
   --nc-bg-main: #002b36;
   --nc-bg-panel: #073642;
   --nc-text: #93a1a1;
-  --nc-text-accent: #b58900;
+  --nc-text-accent: #d7a300;
   --nc-header-bg: #268bd2;
-  --nc-header-text: #002b36;
+  --nc-header-text: #000000;
   --nc-border-light: #2aa198;
   --nc-border-dark: #0b4a5a;
-  --nc-active-bg: #b58900;
+  --nc-active-bg: #d7a300;
   --nc-active-text: #002b36;
   --nc-shadow: #001f27;
   --nc-text-dim: #839496;
@@ -585,8 +585,8 @@ code::-webkit-scrollbar-track,
   --nc-highlight-bg: #2aa198;
   --nc-bg-hover: #0e4b58;
   --nc-bg-deep: #04232c;
-  --nc-danger: #dc322f;
-  --nc-success: #859900;
+  --nc-danger: #ff7b72;
+  --nc-success: #9fb800;
 }
 
 @layer utilities {
@@ -770,6 +770,29 @@ body {
   [class*="text-slate-"]
 ) {
   color: var(--nc-text-dim) !important;
+}
+
+/* Colores semánticos literales: conservan su intención (error, aviso, éxito)
+   pero toman el tono de cada paleta, que en claro necesita versiones oscuras. */
+:is(.theme-matrix, .theme-amber, .theme-dos, .theme-light, .theme-solarized) :is(
+  [class*="text-red-"],
+  [class*="text-rose-"]
+) {
+  color: var(--nc-danger) !important;
+}
+
+:is(.theme-matrix, .theme-amber, .theme-dos, .theme-light, .theme-solarized) :is(
+  [class*="text-yellow-"],
+  [class*="text-amber-"]
+) {
+  color: var(--nc-text-accent) !important;
+}
+
+:is(.theme-matrix, .theme-amber, .theme-dos, .theme-light, .theme-solarized) :is(
+  [class*="text-green-"],
+  [class*="text-emerald-"]
+) {
+  color: var(--nc-success) !important;
 }
 
 /* En claro y solarizado el blanco deja de verse sobre el papel. */

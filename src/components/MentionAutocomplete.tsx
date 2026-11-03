@@ -116,7 +116,7 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = ({
               className={`p-1.5 cursor-pointer border flex flex-col gap-0.5 transition-colors ${
                 isSelected
                   ? 'bg-[var(--nc-highlight-bg)] text-black border-white font-bold'
-                  : 'bg-[var(--nc-bg-main)] text-white border-[var(--nc-border-dark)] hover:bg-[#000066]'
+                  : 'bg-[var(--nc-bg-main)] text-[var(--nc-text)] border-[var(--nc-border-dark)] hover:bg-[var(--nc-bg-hover)]'
               }`}
             >
               <div className="flex items-center justify-between gap-1">

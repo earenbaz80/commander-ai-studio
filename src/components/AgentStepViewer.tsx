@@ -110,7 +110,7 @@ export const AgentStepViewer: React.FC<AgentStepViewerProps> = ({
                 {/* Step Item Header */}
                 <div
                   onClick={() => toggleStep(step.id)}
-                  className="px-2 py-1 bg-[var(--nc-bg-main)] flex items-center justify-between cursor-pointer hover:bg-[#000066] border-b border-black"
+                  className="px-2 py-1 bg-[var(--nc-bg-main)] flex items-center justify-between cursor-pointer hover:bg-[var(--nc-bg-hover)] border-b border-[var(--nc-border-dark)]"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-[var(--nc-text)] text-[10px] font-bold shrink-0">#{idx + 1}</span>

@@ -69,7 +69,7 @@ export const TabsView: React.FC<TabsViewProps> = ({
               className={`group flex items-center gap-2 px-2 py-1.5 mx-1 mb-0.5 rounded border cursor-pointer ${
                 active
                   ? 'bg-[var(--nc-bg-main)] border-[var(--nc-border-light)]'
-                  : 'border-transparent hover:bg-[#000066] hover:border-[var(--nc-border-dark)]'
+                  : 'border-transparent hover:bg-[var(--nc-bg-hover)] hover:border-[var(--nc-border-dark)]'
               }`}
               onClick={() => onSelect(tab.id)}
             >
