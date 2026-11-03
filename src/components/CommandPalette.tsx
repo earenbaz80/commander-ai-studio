@@ -52,6 +52,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     }
   }, [isOpen]);
 
+  // Escape cierra desde cualquier foco. El manejador del input sólo cubre el
+  // caso normal: si el foco se fue a la lista, al pie o al fondo, la paleta se
+  // quedaba abierta y el atajo parecía muerto.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
   // Mantener el índice activo dentro de rango.
   useEffect(() => {
     if (active >= filtered.length) {
@@ -84,9 +98,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     } else if (e.key === 'Enter') {
       e.preventDefault();
       runAt(active);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      onClose();
     }
   };
 

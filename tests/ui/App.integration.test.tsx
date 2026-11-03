@@ -286,4 +286,25 @@ describe('App (integración)', { timeout: 20_000 }, () => {
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(document.querySelector('[data-command-palette]')).toBeNull();
   });
+
+  test('la paleta lleva de Composer a agente al elegir un subagente', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ roots: [] }) });
+    await bootApp();
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    let input = screen.getByLabelText('Paleta de comandos');
+    fireEvent.change(input, { target: { value: 'composer' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() =>
+      expect(screen.getByTestId('playground-mode-composer')).toHaveAttribute('aria-pressed', 'true')
+    );
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    input = screen.getByLabelText('Paleta de comandos');
+    fireEvent.change(input, { target: { value: 'file explorer' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(screen.getByText('MODO AGENTE')).toBeInTheDocument(), { timeout: 5000 });
+    expect(screen.getByDisplayValue(/Lanza el subagente file-explorer/)).toBeInTheDocument();
+  });
 });
