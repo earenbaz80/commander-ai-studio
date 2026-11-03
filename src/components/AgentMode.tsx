@@ -12,6 +12,7 @@ import RollbackTimeline from './RollbackTimeline';
 import SubAgentPanel from './SubAgentPanel';
 import { ServerSubAgents } from './ServerSubAgents';
 import { ParallelLaunch } from './ParallelLaunch';
+import { ShellJobLog } from './ShellJobLog';
 
 interface AgentModeProps {
   cwd: string;
@@ -1085,7 +1086,19 @@ export const AgentMode: React.FC<AgentModeProps> = ({
   );
 };
 
-const StepCard: React.FC<{ step: AgentStep; lang: Language }> = ({ step }) => {
+/**
+ * Id del trabajo cuando el paso es un `shell.run` en segundo plano: ese
+ * comando ya contestó con su id, así que su salida se sigue en vivo.
+ */
+function backgroundJob(step: AgentStep): { id: string; command?: string } | null {
+  if (step.type !== 'tool_result' || step.toolId !== 'shell.run') return null;
+  const data: any = (step.output as any)?.data;
+  if (!data || data.background !== true || typeof data.id !== 'string' || !data.id) return null;
+  return { id: data.id, command: typeof data.command === 'string' ? data.command : undefined };
+}
+
+const StepCard: React.FC<{ step: AgentStep; lang: Language }> = ({ step, lang }) => {
+  const job = backgroundJob(step);
   return (
     <div className="bg-[#000045] border-2 border-[#00ffff]/40 rounded p-2 space-y-1.5">
       <div className="flex items-center justify-between">
@@ -1107,6 +1120,7 @@ const StepCard: React.FC<{ step: AgentStep; lang: Language }> = ({ step }) => {
           </pre>
         </details>
       )}
+      {job && <ShellJobLog jobId={job.id} command={job.command} lang={lang} />}
       {step.output != null && (
         <details className="text-[10px]">
           <summary className="cursor-pointer text-[#00ffff]">output</summary>
