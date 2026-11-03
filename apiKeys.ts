@@ -16,6 +16,8 @@ export const VALID_KEYS: ReadonlySet<string> = new Set([
   'XAI_API_KEY',
   'HF_API_TOKEN',
   'OPENROUTER_API_KEY',
+  'OPENAI_API_KEY',
+  'NVIDIA_API_KEY',
   'OPENCODE_API_KEY',
   'FREEBUFF_API_KEY',
   'FREEBUFF_BASE_URL',
@@ -23,6 +25,7 @@ export const VALID_KEYS: ReadonlySet<string> = new Set([
   'CUSTOM_BASE_URL',
   'CUSTOM_MODEL',
   'OLLAMA_HOST',
+  'LMSTUDIO_HOST',
 ]);
 
 function sanitizeValue(value: string): string {

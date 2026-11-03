@@ -1,5 +1,4 @@
 import React from 'react';
-import { SlidersHorizontal } from 'lucide-react';
 import type { StudioMode } from '../types/studio';
 import type { Language } from '../i18n/translations';
 import { ChatPlayground, type ChatPlaygroundProps } from './ChatPlayground';
@@ -63,8 +62,6 @@ export interface PlaygroundProps {
   lang?: Language;
   /** Modelo activo, sólo como referencia: cada pantalla decide cuál usa. */
   selectedModel?: string;
-  /** Abre el panel de ajustes del modelo. */
-  onOpenSettings?: () => void;
   /** Props de cada pantalla; sin ellas se pinta `children`. */
   chat?: ChatPlaygroundProps;
   freeform?: FreeformPlaygroundProps;
@@ -82,7 +79,6 @@ export const Playground: React.FC<PlaygroundProps> = ({
   setMode,
   lang = 'es',
   selectedModel,
-  onOpenSettings,
   chat,
   freeform,
   structured,
@@ -96,8 +92,6 @@ export const Playground: React.FC<PlaygroundProps> = ({
   if (!isPlaygroundMode(mode)) return null;
 
   const modelLabel = lang === 'es' ? 'Modelo' : lang === 'de' ? 'Modell' : 'Model';
-  const settingsLabel =
-    lang === 'es' ? 'Ajustes del modelo' : lang === 'de' ? 'Modell-Einstellungen' : 'Model settings';
 
   // Pantallas propias primero; `children` queda como salida de emergencia.
   let screen: React.ReactNode = children;
@@ -155,17 +149,6 @@ export const Playground: React.FC<PlaygroundProps> = ({
           >
             {selectedModel || '—'}
           </code>
-          {onOpenSettings && (
-            <button
-              type="button"
-              onClick={onOpenSettings}
-              title={settingsLabel}
-              aria-label={settingsLabel}
-              className="p-0.5 text-black hover:text-[var(--nc-text-accent)] rounded-sm"
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-            </button>
-          )}
         </span>
       </div>
 

@@ -171,11 +171,11 @@ function guardarPlegadas(plegadas: Record<string, boolean>): void {
 const LONGITUD_RECORTE = 400;
 
 /**
- * Umbral de «posible atasco», configurable en Preferencias. Cinco minutos es
+ * Umbral de «posible atasco», configurable en Configuración. Cinco minutos es
  * holgado para una tarea normal y bastante menos que «me olvidé del panel».
  */
 export const ATASCO_KEY = 'commander_subagents_stuck_minutes';
-/** Preferencias avisa por aquí para que el panel no necesite recargarse. */
+/** Configuración avisa por aquí para que el panel no necesite recargarse. */
 export const PREFERENCIAS_EVENT = 'commander:prefs-changed';
 const ATASCO_MINUTOS_POR_DEFECTO = 5;
 const ATASCO_MINUTOS_MIN = 1;
@@ -256,7 +256,7 @@ export function ServerSubAgents({ lang = 'es' }: { lang?: Language }) {
   const [completas, setCompletas] = useState<Record<string, boolean>>({});
   const [umbralAtasco, setUmbralAtasco] = useState(leerUmbralAtasco);
 
-  // Cambiar el umbral en Preferencias debe verse aquí sin recargar la página.
+  // Cambiar el umbral en Configuración debe verse aquí sin recargar la página.
   useEffect(() => {
     const alCambiar = () => setUmbralAtasco(leerUmbralAtasco());
     window.addEventListener(PREFERENCIAS_EVENT, alCambiar);

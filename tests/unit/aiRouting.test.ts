@@ -16,6 +16,8 @@ describe('resolveChatRoute', () => {
       ['openrouter/llama-3', '/api/openrouter/generate'],
       ['pollinations/pi', '/api/pollinations/generate'],
       ['ollama/llama3', '/api/ollama/generate'],
+      ['openai/gpt-4.1', '/api/openai/generate'],
+      ['nvidia/meta/llama-3.3-70b-instruct', '/api/nvidia/generate'],
     ])('no confunde el prefijo %s con HuggingFace', (modelId, expected) => {
       const route = resolveChatRoute({ modelId });
       expect(route.isHf).toBe(false);
@@ -62,6 +64,17 @@ describe('resolveChatRoute', () => {
       const route = resolveChatRoute({ modelId: 'qwen', provider: 'local' });
       expect(route.isLocal).toBe(true);
       expect(route.endpoint).toBe('/api/local-models/generate');
+    });
+
+    it('OpenRouter gana aunque su id empiece por openai/', () => {
+      const route = resolveChatRoute({ modelId: 'openai/gpt-4o', provider: 'openrouter' });
+      expect(route.endpoint).toBe('/api/openrouter/generate');
+    });
+
+    it('NVIDIA se enruta a su proxy aunque el id tenga barras', () => {
+      const route = resolveChatRoute({ modelId: 'meta/llama-3.3-70b-instruct', provider: 'nvidia' });
+      expect(route.isHf).toBe(false);
+      expect(route.endpoint).toBe('/api/nvidia/generate');
     });
   });
 

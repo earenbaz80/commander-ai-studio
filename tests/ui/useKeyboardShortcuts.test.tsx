@@ -19,7 +19,7 @@ const Probe = ({ onPalette, onWorkbench, onSymbol }: ProbeProps) => {
     parameters: {},
     tabs: { newTab: () => {}, closeTab: () => {}, tabs: { length: 1 }, activeId: 'a' },
     setIsShortcutsModalOpen: () => {},
-    setIsInspectorOpen: () => {},
+    setIsPreferencesModalOpen: () => {},
     setIsSidebarOpen: () => {},
     setIsWorkbenchOpen: (onWorkbench ?? (() => {})) as any,
     setIsCompilerModalOpen: () => {},

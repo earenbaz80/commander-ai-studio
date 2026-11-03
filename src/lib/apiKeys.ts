@@ -19,6 +19,8 @@ export const CLIENT_VALID_KEYS: readonly string[] = [
   'XAI_API_KEY',
   'HF_API_TOKEN',
   'OPENROUTER_API_KEY',
+  'OPENAI_API_KEY',
+  'NVIDIA_API_KEY',
   'OPENCODE_API_KEY',
   'FREEBUFF_API_KEY',
   'FREEBUFF_BASE_URL',
@@ -26,6 +28,7 @@ export const CLIENT_VALID_KEYS: readonly string[] = [
   'CUSTOM_BASE_URL',
   'CUSTOM_MODEL',
   'OLLAMA_HOST',
+  'LMSTUDIO_HOST',
 ];
 
 export function getCachedApiKey(key: string): string | undefined {

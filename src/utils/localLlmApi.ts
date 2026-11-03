@@ -1,5 +1,5 @@
 /**
- * Cliente para configurar y probar el LLM local (Ollama / OpenAI-compatible).
+ * Cliente para configurar y probar el LLM local (Ollama / LM Studio / OpenAI-compatible).
  *
  * Reutiliza las rutas del servidor:
  *  • GET /api/ollama/models  → lista los modelos de un servidor Ollama.
@@ -7,7 +7,7 @@
  *    OpenAI-compatible (`${baseURL}/models`: LM Studio, llama.cpp, vLLM…).
  */
 
-export type LocalLlmRuntime = 'ollama' | 'openai';
+export type LocalLlmRuntime = 'ollama' | 'lmstudio' | 'openai';
 
 /** Modelos populares de Ollama con metadatos para UI. */
 export interface OllamaModelInfo {
@@ -122,6 +122,33 @@ export async function listOllamaModels(host: string): Promise<LocalLlmTestResult
   }
 }
 
+/**
+ * Lista los modelos de LM Studio usando su ruta propia.
+ *
+ * No usa `/api/custom/models` a propósito: LM Studio y un endpoint genérico
+ * OpenAI-compatible son configuraciones distintas, con host y credenciales
+ * distintas. El servidor normaliza `http://IP:1234` a `/v1` y consulta también
+ * la ruta nativa `/api/v0/models` para servidores remotos antiguos.
+ */
+export async function listLmStudioModels(host: string): Promise<LocalLlmTestResult> {
+  try {
+    const res = await fetch('/api/lmstudio/models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host }),
+    });
+    const data = await res.json().catch(() => ({}));
+    const models = Array.isArray(data.models) ? data.models.filter(Boolean) : [];
+    // `success` significa «el servidor respondió», no «tiene modelos»: LM Studio
+    // puede estar abierto sin ningún modelo cargado.
+    return data.success === true
+      ? { ok: true, models }
+      : { ok: false, error: data.error || 'LM Studio no respondió' };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Error de red' };
+  }
+}
+
 /** Lista los modelos de un endpoint OpenAI-compatible (`${baseURL}/models`). */
 export async function listCustomModels(baseURL: string, apiKey?: string): Promise<LocalLlmTestResult> {
   try {
@@ -141,7 +168,9 @@ export async function listCustomModels(baseURL: string, apiKey?: string): Promis
 
 /** Prueba la conexión según el runtime elegido. */
 export function testLocalLlm(runtime: LocalLlmRuntime, url: string, apiKey?: string): Promise<LocalLlmTestResult> {
-  return runtime === 'ollama' ? listOllamaModels(url) : listCustomModels(url, apiKey);
+  if (runtime === 'ollama') return listOllamaModels(url);
+  if (runtime === 'lmstudio') return listLmStudioModels(url);
+  return listCustomModels(url, apiKey);
 }
 
 export interface OllamaHealthResult {

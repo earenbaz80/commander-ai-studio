@@ -17,6 +17,8 @@ export type ProviderType =
   | 'ollama'
   | 'lmstudio'
   | 'openrouter'
+  | 'openai'
+  | 'nvidia'
   | 'pollinations'
   | 'custom'
   | 'local'
@@ -140,10 +142,6 @@ export interface ParameterConfig {
   tools?: ToolsConfig;
   systemInstruction: string;
   examples: StructuredExample[];
-  safetyHarassment: 'BLOCK_NONE' | 'BLOCK_FEW' | 'BLOCK_SOME' | 'BLOCK_MOST';
-  safetyHateSpeech: 'BLOCK_NONE' | 'BLOCK_FEW' | 'BLOCK_SOME' | 'BLOCK_MOST';
-  safetySexuallyExplicit: 'BLOCK_NONE' | 'BLOCK_FEW' | 'BLOCK_SOME' | 'BLOCK_MOST';
-  safetyDangerousContent: 'BLOCK_NONE' | 'BLOCK_FEW' | 'BLOCK_SOME' | 'BLOCK_MOST';
   // HuggingFace specific
   hfDevice: 'webgpu' | 'wasm' | 'api';
   hfQuantization: 'fp16' | 'q8' | 'q4';

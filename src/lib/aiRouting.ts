@@ -65,6 +65,12 @@ export function resolveChatRoute({
 
   const isCustom = provider === 'custom' || modelId.startsWith('custom/');
 
+  // Si la UI ya resolvió el proveedor, manda él: un id de OpenRouter como
+  // `openai/gpt-4o` no debe acabar en la ruta de OpenAI.
+  const isOpenAi = provider ? provider === 'openai' : modelId.startsWith('openai/');
+
+  const isNvidia = provider ? provider === 'nvidia' : modelId.startsWith('nvidia/');
+
   const isLocal = provider === 'local' || modelId.startsWith('local/');
 
   const isFreeProvider =
@@ -79,6 +85,8 @@ export function resolveChatRoute({
     !isLocal &&
     !isAnthropic &&
     !isCustom &&
+    !isOpenAi &&
+    !isNvidia &&
     (provider === 'huggingface' ||
       modelId.includes('/') ||
       HUGGINGFACE_MODELS.some((m) => m.id === modelId) ||
@@ -86,7 +94,11 @@ export function resolveChatRoute({
 
   let endpoint: string;
 
-  if (isAnthropic) {
+  if (isOpenAi) {
+    endpoint = '/api/openai/generate';
+  } else if (isNvidia) {
+    endpoint = '/api/nvidia/generate';
+  } else if (isAnthropic) {
     endpoint = '/api/anthropic/generate';
   } else if (isHf) {
     endpoint = '/api/hf/generate';

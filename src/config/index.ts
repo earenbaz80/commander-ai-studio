@@ -67,6 +67,8 @@ function loadEnvOverrides(): Partial<CommanderConfig> {
   if (process.env.ANTHROPIC_API_KEY) overrides.providers = { ...(overrides.providers || {}), anthropic: { apiKey: process.env.ANTHROPIC_API_KEY, defaultModel: 'claude-3-5-sonnet-20241022' } } as any;
   if (process.env.HF_API_TOKEN) overrides.providers = { ...(overrides.providers || {}), huggingface: { apiToken: process.env.HF_API_TOKEN, defaultModel: 'deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B', device: 'webgpu', quantization: 'q4' } } as any;
   if (process.env.OPENROUTER_API_KEY) overrides.providers = { ...(overrides.providers || {}), openrouter: { apiKey: process.env.OPENROUTER_API_KEY, defaultModel: 'deepseek/deepseek-chat-v3-0324:free' } } as any;
+  if (process.env.OPENAI_API_KEY) overrides.providers = { ...(overrides.providers || {}), openai: { apiKey: process.env.OPENAI_API_KEY, defaultModel: 'gpt-4.1-mini' } } as any;
+  if (process.env.NVIDIA_API_KEY) overrides.providers = { ...(overrides.providers || {}), nvidia: { apiKey: process.env.NVIDIA_API_KEY, defaultModel: 'meta/llama-3.3-70b-instruct' } } as any;
   if (process.env.OLLAMA_HOST) overrides.providers = { ...(overrides.providers || {}), ollama: { host: process.env.OLLAMA_HOST, defaultModel: 'llama3.2' } } as any;
   if (process.env.CUSTOM_BASE_URL) overrides.providers = { ...(overrides.providers || {}), custom: { baseUrl: process.env.CUSTOM_BASE_URL, defaultModel: 'custom' } } as any;
   if (process.env.CUSTOM_API_KEY) overrides.providers = { ...(overrides.providers || {}), custom: { apiKey: process.env.CUSTOM_API_KEY } } as any;

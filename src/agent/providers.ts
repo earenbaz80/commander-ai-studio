@@ -24,6 +24,10 @@ export function toolDialectForModel(model?: string): ToolDialect {
   if (/^lmstudio\//.test(model)) return 'openai';
   if (/^openrouter\//.test(model)) return 'openai';
   if (/^custom\//.test(model)) return 'openai';
+  if (/^openai\//.test(model)) return 'openai';
+  if (/^nvidia\//.test(model)) return 'openai';
+  // Ids planos del catálogo de OpenAI (sin prefijo de proveedor).
+  if (/^(gpt-|o\d)/i.test(model)) return 'openai';
   // Freebuff es OpenAI-compatible; sólo los que declaran toolCalls lo usan.
   if (model.startsWith('freebuff/')) {
     return FREEBUFF_TOOL_MODELS.has(model.slice('freebuff/'.length)) ? 'openai' : 'json-text';

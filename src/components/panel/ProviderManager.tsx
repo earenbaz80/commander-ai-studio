@@ -14,7 +14,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   Loader2,
-  RefreshCw,
   Search,
   Trash2,
   Save,
@@ -57,9 +56,11 @@ interface ProviderEntry {
 }
 
 interface ProviderManagerProps {
-  isOpen: boolean;
-  onClose: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
   lang?: Language;
+  /** Se renderiza dentro de Configuración, sin overlay ni cabecera de modal. */
+  embedded?: boolean;
 }
 
 const SOURCE_LABEL: Record<ProviderEntry['source'], { es: string; en: string; de: string }> = {
@@ -69,7 +70,7 @@ const SOURCE_LABEL: Record<ProviderEntry['source'], { es: string; en: string; de
   none: { es: 'sin configurar', en: 'not configured', de: 'nicht konfiguriert' },
 };
 
-export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClose, lang = 'es' }) => {
+export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false, onClose, lang = 'es', embedded = false }) => {
   const [providers, setProviders] = useState<ProviderEntry[]>([]);
   const [configPath, setConfigPath] = useState('');
   const [error, setError] = useState('');
@@ -107,13 +108,13 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
   }, [t]);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen || embedded) {
       void load();
       setNotice('');
       setOpenId(null);
       setDraft({});
     }
-  }, [isOpen, load]);
+  }, [isOpen, embedded, load]);
 
   const toggle = (provider: ProviderEntry) => {
     if (openId === provider.id) {
@@ -243,7 +244,12 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
         });
         const data = await res.json().catch(() => ({}));
         ok = data.success === true;
-        message = ok ? t('Clave válida', 'Key valid', 'Schlüssel gültig') : data.error || t('Clave rechazada', 'Key rejected', 'Schlüssel abgelehnt');
+        const count = Array.isArray(data.models) ? data.models.length : 0;
+        message = ok
+          ? count > 0
+            ? t(`Clave válida · ${count} modelos`, `Key valid · ${count} models`, `Schlüssel gültig · ${count} Modelle`)
+            : t('Clave válida', 'Key valid', 'Schlüssel gültig')
+          : data.error || t('Clave rechazada', 'Key rejected', 'Schlüssel abgelehnt');
       }
 
       setTestResults((prev) => ({ ...prev, [provider.id]: { ok, message } }));
@@ -313,43 +319,57 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
 
   const configuredCount = providers.filter((p) => p.configured).length;
 
-  if (!isOpen) return null;
+  React.useEffect(() => {
+    if (!isOpen || embedded || !onClose) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, embedded, onClose]);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-[92vw] max-w-3xl max-h-[88vh] flex flex-col nc-panel border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-main)]">
-        <div className="flex items-center justify-between px-3 py-2 border-b-2 border-[var(--nc-border-light)] bg-[var(--nc-header-bg)]">
-          <div className="flex items-center gap-2 min-w-0">
-            <Server className="w-4 h-4 text-[var(--nc-header-text)]" />
-            <span className="text-[var(--nc-header-text)] font-bold text-sm truncate">
-              {t('Gestor de proveedores', 'Provider manager', 'Anbieter verwalten')}
-            </span>
-            <span className="text-[10px] text-[var(--nc-header-text)] font-bold">
-              {configuredCount}/{providers.length}
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => void load()}
-              className="text-[var(--nc-header-text)] p-1"
-              title={t('Recargar', 'Reload', 'Neu laden')}
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="text-[var(--nc-header-text)] font-bold p-1"
-              title={t('Cerrar', 'Close', 'Schließen')}
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+  if (!isOpen && !embedded) return null;
 
-        <div className="px-3 pt-2">
-          <div className="flex items-center gap-2 bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] px-2 py-1">
+  const content = (
+      <div
+        className={
+          embedded
+            ? 'w-full flex flex-col'
+            : 'w-[92vw] max-w-3xl max-h-[88vh] flex flex-col nc-panel border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-main)]'
+        }
+        onClick={(e) => e.stopPropagation()}
+        role={embedded ? undefined : 'dialog'}
+        aria-modal={embedded ? undefined : true}
+        aria-label={t('Gestor de proveedores', 'Provider manager', 'Anbieter verwalten')}
+      >
+        {/* Dentro de Configuración no hay cabecera propia: la sección ya se
+            llama Proveedores. Solo el modal suelto conserva título y cierre. */}
+        {!embedded && (
+          <div className="flex items-center justify-between px-3 py-2 border-b-2 border-[var(--nc-border-light)] bg-[var(--nc-header-bg)]">
+            <div className="flex items-center gap-2 min-w-0">
+              <Server className="w-4 h-4 text-[var(--nc-header-text)]" />
+              <span className="text-[var(--nc-header-text)] font-bold text-sm truncate">
+                {t('Gestor de proveedores', 'Provider manager', 'Anbieter verwalten')}
+              </span>
+              <span className="text-[10px] text-[var(--nc-header-text)] font-bold">
+                {configuredCount}/{providers.length}
+              </span>
+            </div>
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-[var(--nc-header-text)] font-bold p-1"
+                title={t('Cerrar', 'Close', 'Schließen')}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className={embedded ? 'pb-2' : 'px-3 pt-2'}>
+          <div className="flex items-center gap-2 bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] px-2 py-1">
             <Search className="w-3.5 h-3.5 text-[var(--nc-text)]" />
             <input
               value={query}
@@ -357,6 +377,11 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
               placeholder={t('Buscar proveedor, id o variable…', 'Search provider, id or env var…', 'Anbieter, ID oder Variable suchen…')}
               className="flex-1 bg-transparent text-[var(--nc-text)] text-xs outline-none"
             />
+            {embedded && (
+              <span className="text-[9px] font-bold text-[var(--nc-text-accent)] tabular-nums shrink-0">
+                {configuredCount}/{providers.length}
+              </span>
+            )}
           </div>
           {configPath && (
             <div className="mt-1 text-[9px] text-[var(--nc-text)] truncate" title={configPath}>
@@ -365,7 +390,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
           )}
         </div>
 
-        <div className="flex-1 overflow-auto p-3 min-h-0 space-y-2">
+        <div className={embedded ? 'space-y-2' : 'flex-1 overflow-auto p-3 min-h-0 space-y-2'}>
           {error && <div className="p-2 text-red-300 text-[10px] border border-red-400/40 bg-red-400/10">{error}</div>}
           {notice && <div className="p-2 text-emerald-300 text-[10px] border border-emerald-400/40 bg-emerald-400/10">{notice}</div>}
 
@@ -432,6 +457,26 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
                         {t('Apagado no aparece en los selectores', 'Disabled providers are hidden', 'Deaktivierte Anbieter werden ausgeblendet')}
                       </span>
                     </div>
+
+                    {provider.id === 'lmstudio' && (
+                      <p className="pt-1 text-[9px] leading-snug text-[var(--nc-text)] opacity-70">
+                        {t(
+                          'Acepta http://IP:1234 o http://IP:1234/v1. En el otro equipo activa «Serve on Local Network» en LM Studio.',
+                          'Accepts http://IP:1234 or http://IP:1234/v1. On the other machine enable “Serve on Local Network” in LM Studio.',
+                          'Akzeptiert http://IP:1234 oder http://IP:1234/v1. Aktiviere „Serve on Local Network“ in LM Studio.'
+                        )}
+                      </p>
+                    )}
+
+                    {provider.id === 'custom' && (
+                      <p className="pt-1 text-[9px] leading-snug text-[var(--nc-text)] opacity-70">
+                        {t(
+                          'Endpoint OpenAI-compatible independiente (vLLM, llama.cpp, oMLX…). LM Studio se configura aparte, con su propio host.',
+                          'Standalone OpenAI-compatible endpoint (vLLM, llama.cpp, oMLX…). LM Studio is configured separately with its own host.',
+                          'Eigenständiger OpenAI-kompatibler Endpoint (vLLM, llama.cpp, oMLX…). LM Studio wird getrennt mit eigenem Host konfiguriert.'
+                        )}
+                      </p>
+                    )}
 
                     {provider.fields.map((field) => (
                       <label key={field.name} className="flex items-center gap-2">
@@ -573,6 +618,13 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
           )}
         </div>
       </div>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      {content}
     </div>
   );
 };

@@ -22,12 +22,12 @@ import { MODEL_GROUPS, isLocalModelId, type ModelGroup } from './modelGroups';
 import { useConfiguredProviderIds } from '../../hooks/useConfiguredProviderIds';
 import { filterModelIds } from '../../lib/providerFilters';
 
-/** `true` si hay un servidor local configurado (Ollama u OpenAI-compatible). */
+/** `true` si hay un servidor local configurado (Ollama, LM Studio u otro). */
 const hasLocalServer = (): boolean =>
-  !!(getCachedApiKey('OLLAMA_HOST') || getCachedApiKey('CUSTOM_BASE_URL'));
+  !!(getCachedApiKey('OLLAMA_HOST') || getCachedApiKey('LMSTUDIO_HOST') || getCachedApiKey('CUSTOM_BASE_URL'));
 
 const localServerLabel = (): string =>
-  getCachedApiKey('OLLAMA_HOST') || getCachedApiKey('CUSTOM_BASE_URL') || '';
+  getCachedApiKey('OLLAMA_HOST') || getCachedApiKey('LMSTUDIO_HOST') || getCachedApiKey('CUSTOM_BASE_URL') || '';
 
 export type FontScale = 'normal' | 'lg' | 'xl';
 

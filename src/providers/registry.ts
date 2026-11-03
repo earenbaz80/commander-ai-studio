@@ -12,6 +12,7 @@
  */
 import { CUSTOM_MODELS, GEMINI_MODELS, HUGGINGFACE_MODELS, OLLAMA_MODELS } from '../data/models';
 import { filterModelIds, isProviderEnabled, modelFilterOf } from '../lib/providerFilters';
+import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
 
 export type ProviderFieldKind = 'secret' | 'url' | 'text';
 
@@ -40,7 +41,7 @@ export const PROVIDER_SPECS: ProviderSpec[] = [
     name: 'Google Gemini',
     env: ['GEMINI_API_KEY'],
     fields: [{ name: 'apiKey', required: true, kind: 'secret' }],
-    defaultModel: 'gemini-3.5-flash',
+    defaultModel: GEMINI_DEFAULT_MODEL,
   },
   {
     id: 'anthropic',
@@ -64,6 +65,20 @@ export const PROVIDER_SPECS: ProviderSpec[] = [
     defaultModel: 'deepseek/deepseek-chat-v3-0324:free',
   },
   {
+    id: 'openai',
+    name: 'OpenAI',
+    env: ['OPENAI_API_KEY'],
+    fields: [{ name: 'apiKey', required: true, kind: 'secret' }],
+    defaultModel: 'gpt-4.1-mini',
+  },
+  {
+    id: 'nvidia',
+    name: 'NVIDIA NIM',
+    env: ['NVIDIA_API_KEY'],
+    fields: [{ name: 'apiKey', required: true, kind: 'secret' }],
+    defaultModel: 'meta/llama-3.3-70b-instruct',
+  },
+  {
     id: 'huggingface',
     name: 'Hugging Face',
     env: ['HF_API_TOKEN'],
@@ -78,16 +93,19 @@ export const PROVIDER_SPECS: ProviderSpec[] = [
     defaultModel: 'llama3.2',
   },
   {
-    // LM Studio habla OpenAI-compatible. Acepta un host de otro equipo de la
-    // red, que es cómo se usa un modelo cargado en tu PC desde otra máquina.
+    // LM Studio es un proveedor local propio. Acepta un host de otro equipo
+    // de la red, pero no comparte configuración con el endpoint compatible.
     id: 'lmstudio',
-    name: 'LM Studio (OpenAI-compatible)',
+    name: 'LM Studio (local)',
     env: ['LMSTUDIO_HOST'],
     fields: [{ name: 'host', required: false, kind: 'url' }],
   },
   {
+    // Endpoint genérico, separado de LM Studio: vLLM, llama.cpp, oMLX, Zen…
+    // Conserva el id `custom` para no romper CUSTOM_* ni configuraciones ya
+    // guardadas, pero la UI lo presenta como OpenAI-compatible.
     id: 'custom',
-    name: 'Custom (OpenAI-compatible)',
+    name: 'OpenAI-compatible',
     env: ['CUSTOM_BASE_URL', 'CUSTOM_API_KEY', 'OPENCODE_API_KEY'],
     fields: [
       { name: 'baseUrl', required: true, kind: 'url' },
@@ -183,8 +201,35 @@ export function parseModelsDev(payload: unknown): CatalogProvider[] {
   return out;
 }
 
+/**
+ * Catálogo mínimo de OpenAI y NVIDIA.
+ *
+ * models.dev suele publicar ambos, pero el gestor tiene que enseñar algo útil
+ * aunque el catálogo vivo falle o tarde. NVIDIA sólo lista los modelos NIM
+ * gratuitos más habituales; la lista real se refresca desde su API al probar
+ * la clave y en `/api/models/live`.
+ */
+const OPENAI_FALLBACK_MODELS: CatalogModel[] = [
+  { id: 'gpt-4.1', name: 'GPT-4.1', provider: 'openai', contextWindow: '1M tokens', supportsTools: true, supportsImage: true },
+  { id: 'gpt-4.1-mini', name: 'GPT-4.1 mini', provider: 'openai', contextWindow: '1M tokens', supportsTools: true, supportsImage: true },
+  { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', contextWindow: '128K tokens', supportsTools: true, supportsImage: true },
+  { id: 'gpt-4o-mini', name: 'GPT-4o mini', provider: 'openai', contextWindow: '128K tokens', supportsTools: true, supportsImage: true },
+  { id: 'o4-mini', name: 'o4-mini', provider: 'openai', contextWindow: '200K tokens', supportsTools: true, supportsReasoning: true },
+];
+
+const NVIDIA_FALLBACK_MODELS: CatalogModel[] = [
+  { id: 'meta/llama-3.3-70b-instruct', name: 'Llama 3.3 70B Instruct', provider: 'nvidia', contextWindow: '128K tokens', supportsTools: true },
+  { id: 'meta/llama-3.1-8b-instruct', name: 'Llama 3.1 8B Instruct', provider: 'nvidia', contextWindow: '128K tokens', supportsTools: true },
+  { id: 'nvidia/llama-3.1-nemotron-70b-instruct', name: 'Llama 3.1 Nemotron 70B', provider: 'nvidia', contextWindow: '128K tokens', supportsTools: true },
+  { id: 'deepseek-ai/deepseek-r1', name: 'DeepSeek R1', provider: 'nvidia', contextWindow: '128K tokens', supportsReasoning: true },
+  { id: 'qwen/qwen2.5-coder-32b-instruct', name: 'Qwen 2.5 Coder 32B', provider: 'nvidia', contextWindow: '32K tokens' },
+  { id: 'mistralai/mistral-7b-instruct-v0.3', name: 'Mistral 7B Instruct', provider: 'nvidia', contextWindow: '32K tokens' },
+];
+
 /** Modelos que el catálogo base conoce y models.dev no publica (HF/Ollama/custom). */
 function fallbackModels(providerId: string): CatalogModel[] {
+  if (providerId === 'openai') return [...OPENAI_FALLBACK_MODELS];
+  if (providerId === 'nvidia') return [...NVIDIA_FALLBACK_MODELS];
   const source =
     providerId === 'google'
       ? GEMINI_MODELS

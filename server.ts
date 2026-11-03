@@ -30,7 +30,7 @@ import {
 } from './gemini';
 import { handleAnthropicGenerate, handleAnthropicStream } from './anthropic';
 import { executeLocalHfModel } from './localModels';
-import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList, apiKeyMiddleware } from './apiKeys';
+import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList, apiKeyMiddleware, getApiKey as getRequestApiKey } from './apiKeys';
 import { isAllowedHost, allowedHostsFromEnv } from './hostGuard';
 import { getConfig, getConfigPath, getEnvProviderIds, getGlobalConfigPath, getProviderSecret, loadConfig, removeProviderConfig } from './src/config/index';
 import { PROVIDER_SPECS, buildProviderList, describeProvider, getProviderCatalog } from './src/providers/registry';
@@ -40,6 +40,7 @@ import { handleOAuthLogin, handleOAuthCallback, handleLogout, getCurrentUser } f
 import { executeWithFallback, getProviderMetrics, checkAllProvidersHealth, resetCircuitBreaker, setProviderEnabled } from './fallbackRouter';
 import { GEMINI_DEFAULT_MODEL } from './src/config/geminiModels';
 import { handleFreebuffGenerate } from './freebuff';
+import { normalizeLmStudioHost, parseLmStudioModels } from './src/lib/lmStudio';
 
 dotenv.config();
 
@@ -172,6 +173,26 @@ app.get('/api/gemini/debug/listModels', async (req, res) => {
   }
 });
 
+const OPENAI_MODELS_URL = 'https://api.openai.com/v1/models';
+const NVIDIA_MODELS_URL = 'https://integrate.api.nvidia.com/v1/models';
+
+/** Lista los ids de modelo de una API OpenAI-compatible usando una clave. */
+async function fetchProviderModelIds(url: string, key: string): Promise<string[]> {
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${key}`, 'User-Agent': 'CommanderAIStudio/2.5' },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!response.ok) {
+    const err: any = await response.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `HTTP ${response.status}`);
+  }
+  const data: any = await response.json().catch(() => ({}));
+  const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.models) ? data.models : [];
+  return list
+    .map((m: any) => (typeof m === 'string' ? m : m?.id || m?.name))
+    .filter((m: unknown): m is string => typeof m === 'string' && m.length > 0);
+}
+
 // Endpoint para probar API Key con diagnóstico detallado
 app.post('/api/test-key', async (req, res) => {
   const { provider, key } = req.body;
@@ -264,6 +285,12 @@ app.post('/api/test-key', async (req, res) => {
       if (!response.ok) {
         throw new Error('La clave de OpenRouter es inválida o fue revocada.');
       }
+    } else if (provider === 'openai') {
+      const models = await fetchProviderModelIds(OPENAI_MODELS_URL, cleanKey);
+      return res.json({ success: true, models });
+    } else if (provider === 'nvidia') {
+      const models = await fetchProviderModelIds(NVIDIA_MODELS_URL, cleanKey);
+      return res.json({ success: true, models });
     } else if (provider === 'opencode') {
       if (cleanKey.length < 10) {
         return res.status(400).json({ success: false, error: 'API key de OpenCode Zen inválida (muy corta).' });
@@ -829,6 +856,8 @@ app.post('/api/providers', async (req, res) => {
       huggingface: ['apiToken'],
       ollama: ['host'],
       openrouter: ['apiKey'],
+      openai: ['apiKey'],
+      nvidia: ['apiKey'],
       pollinations: [],
       custom: ['baseUrl'],
       xai: ['apiKey'],
@@ -2252,30 +2281,65 @@ function lmstudioHost(req: any, bodyHost?: unknown): string {
   const raw =
     (typeof bodyHost === 'string' && bodyHost.trim()) ||
     (typeof req?.query?.host === 'string' && req.query.host.trim()) ||
+    // El modal local guarda el host en cookie httpOnly; sin leerla, el chat
+    // seguía yendo a localhost aunque el usuario hubiera configurado su PC.
+    getRequestApiKey(req, 'LMSTUDIO_HOST') ||
     process.env.LMSTUDIO_HOST ||
     getProviderSecret('lmstudio', 'host') ||
     'http://localhost:1234/v1';
-  return String(raw).replace(/\/+$/, '');
+  return normalizeLmStudioHost(String(raw));
 }
 
-async function fetchLmstudioModels(host: string): Promise<string[]> {
-  const response = await fetch(`${host}/models`, {
-    headers: { 'User-Agent': 'CommanderAIStudio/2.5' },
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!response.ok) throw new Error(`LM Studio HTTP ${response.status}`);
-  const data = await response.json().catch(() => ({}));
-  const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.models) ? data.models : [];
-  return list
-    .map((m: any) => (typeof m === 'string' ? m : m?.id || m?.name))
-    .filter((m: unknown): m is string => typeof m === 'string' && m.length > 0);
+/**
+ * Consulta el catálogo de LM Studio por las dos rutas que existen en sus
+ * versiones: `/v1/models` (OpenAI-compatible) y `/api/v0/models` (nativa).
+ * Devuelve también si el servidor respondió, porque «conectado sin modelos»
+ * no es un error de conexión: es LM Studio abierto sin modelo cargado.
+ */
+async function fetchLmstudioModels(host: string): Promise<{ models: string[]; host: string }> {
+  const base = normalizeLmStudioHost(host);
+  const root = base.replace(/\/v\d+$/i, '');
+  const candidates = [...new Set([`${base}/models`, `${root}/api/v0/models`])];
+  const settled = await Promise.allSettled(
+    candidates.map(async (url) => {
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'CommanderAIStudio/2.5' },
+        signal: AbortSignal.timeout(7000),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status} en ${url}`);
+      return response.json().catch(() => ({}));
+    })
+  );
+
+  const models = new Set<string>();
+  const errors: string[] = [];
+  let answered = false;
+  for (const result of settled) {
+    if (result.status === 'rejected') {
+      errors.push(result.reason?.message || String(result.reason));
+      continue;
+    }
+    answered = true;
+    for (const id of parseLmStudioModels(result.value)) models.add(id);
+  }
+
+  if (!answered) {
+    throw new Error(
+      `No se pudo conectar a LM Studio en ${base}. Comprueba el puerto 1234, que «Serve on Local Network» esté activo y el firewall. ${errors[0] || ''}`.trim()
+    );
+  }
+  return { models: [...models], host: base };
 }
 
 app.get('/api/lmstudio/models', async (req, res) => {
   try {
-    const host = lmstudioHost(req);
-    const models = await fetchLmstudioModels(host);
-    return res.json({ success: true, models, host });
+    const probe = await fetchLmstudioModels(lmstudioHost(req));
+    return res.json({
+      success: true,
+      models: probe.models,
+      host: probe.host,
+      warning: probe.models.length === 0 ? 'LM Studio responde, pero no tiene modelos cargados.' : undefined,
+    });
   } catch (e: any) {
     return res.json({ success: false, models: [], error: e?.message || 'LM Studio no responde' });
   }
@@ -2284,9 +2348,13 @@ app.get('/api/lmstudio/models', async (req, res) => {
 // POST para poder probar un host que aún no está guardado (botón «Probar»).
 app.post('/api/lmstudio/models', async (req, res) => {
   try {
-    const host = lmstudioHost(req, req.body?.host);
-    const models = await fetchLmstudioModels(host);
-    return res.json({ success: true, models, host });
+    const probe = await fetchLmstudioModels(lmstudioHost(req, req.body?.host));
+    return res.json({
+      success: true,
+      models: probe.models,
+      host: probe.host,
+      warning: probe.models.length === 0 ? 'LM Studio responde, pero no tiene modelos cargados.' : undefined,
+    });
   } catch (e: any) {
     return res.json({ success: false, models: [], error: e?.message || 'LM Studio no responde' });
   }
@@ -2342,7 +2410,9 @@ app.post('/api/lmstudio/generate', async (req, res) => {
 // Catálogo de modelos de Ollama para el modal Local LLM. `/api/ollama/health`
 // dice si el servidor responde; esto devuelve lo que ese modal pinta.
 app.get('/api/ollama/models', async (req, res) => {
-  const host = String(req.query.host || process.env.OLLAMA_HOST || 'http://localhost:11434');
+  const host = String(
+    req.query.host || getRequestApiKey(req, 'OLLAMA_HOST') || process.env.OLLAMA_HOST || 'http://localhost:11434'
+  );
   try {
     const response = await fetch(`${host}/api/tags`, {
       method: 'GET',
@@ -2360,7 +2430,9 @@ app.get('/api/ollama/models', async (req, res) => {
 });
 
 app.get('/api/ollama/health', async (req, res) => {
-  const host = String(req.query.host || process.env.OLLAMA_HOST || 'http://localhost:11434');
+  const host = String(
+    req.query.host || getRequestApiKey(req, 'OLLAMA_HOST') || process.env.OLLAMA_HOST || 'http://localhost:11434'
+  );
   try {
     const response = await fetch(`${host}/api/tags`, {
       method: 'GET',
@@ -2487,6 +2559,23 @@ interface ModelsDevModel {
   deprecated?: boolean;
 }
 
+async function fetchNvidiaLiveModels() {
+  const key = process.env.NVIDIA_API_KEY || getProviderSecret('nvidia', 'apiKey');
+  if (!key) return [];
+  try {
+    const ids = await fetchProviderModelIds(NVIDIA_MODELS_URL, key);
+    return ids.map((id) => ({
+      id: `nvidia/${id}`,
+      name: id,
+      provider: 'nvidia',
+      context_window: 128_000,
+      tags: ['nvidia', 'nim'],
+    }));
+  } catch {
+    return [];
+  }
+}
+
 async function fetchModelsDevCatalog(): Promise<ModelsDevModel[]> {
   // models.dev devuelve un mapa `proveedor → { env, models }`, no una lista
   // plana. El registro lo normaliza y aquí sólo se aplana a este formato.
@@ -2506,7 +2595,7 @@ async function fetchModelsDevCatalog(): Promise<ModelsDevModel[]> {
 
 app.get('/api/models/live', async (req, res) => {
   try {
-    const [modelsDevModels, ollamaModels, lmstudioModels] = await Promise.all([
+    const [modelsDevModels, ollamaModels, lmstudioModels, nvidiaModels] = await Promise.all([
       fetchModelsDevCatalog(),
       (async () => {
         try {
@@ -2529,16 +2618,10 @@ app.get('/api/models/live', async (req, res) => {
       })(),
       (async () => {
         try {
-          const host = lmstudioHost(req);
-          const response = await fetch(`${host}/models`, {
-            headers: { 'User-Agent': 'CommanderAIStudio/2.5' },
-            signal: AbortSignal.timeout(4000),
-          });
-          if (!response.ok) return [];
-          const data = await response.json();
-          return (data.data || []).map((m: any) => ({
-            id: `lmstudio/${m.id}`,
-            name: m.id,
+          const probe = await fetchLmstudioModels(lmstudioHost(req));
+          return probe.models.map((id) => ({
+            id: `lmstudio/${id}`,
+            name: id,
             provider: 'lmstudio',
             context_window: 32_768,
             tags: ['local'],
@@ -2547,11 +2630,15 @@ app.get('/api/models/live', async (req, res) => {
           return [];
         }
       })(),
+      fetchNvidiaLiveModels(),
     ]);
 
     // Merge and normalize to CatalogEntry format
     const allEntries = [
-      ...modelsDevModels.map((m) => ({
+      // NVIDIA se sirve desde `fetchNvidiaLiveModels()` con ids prefijados;
+      // las entradas crudas de models.dev (`meta/...`) se clasificarían como
+      // HuggingFace por llevar `/`.
+      ...modelsDevModels.filter((m) => m.provider !== 'nvidia').map((m) => ({
         id: m.id,
         name: m.name,
         provider: m.provider as any,
@@ -2574,6 +2661,7 @@ app.get('/api/models/live', async (req, res) => {
       })),
       ...ollamaModels,
       ...lmstudioModels,
+      ...nvidiaModels,
     ];
 
     // Estado por proveedor: `available` dice si tiene modelos listados y
@@ -2628,7 +2716,12 @@ app.get('/api/ollama/library', async (req, res) => {
 app.post('/api/ollama/generate', async (req, res) => {
   try {
     const { prompt, model = 'llama3.2', systemInstruction = '', temperature = 0.7, maxTokens = 2048 } = req.body;
-    const host = req.query.host || process.env.OLLAMA_HOST || getProviderSecret('ollama', 'host') || 'http://localhost:11434';
+    const host =
+      req.query.host ||
+      getRequestApiKey(req, 'OLLAMA_HOST') ||
+      process.env.OLLAMA_HOST ||
+      getProviderSecret('ollama', 'host') ||
+      'http://localhost:11434';
 
     const response = await fetch(`${host}/api/generate`, {
       method: 'POST',
@@ -2854,6 +2947,88 @@ app.post('/api/custom/generate', async (req, res) => {
     return res.json({ ok: false, error: error.message || 'Custom generate falló' });
   }
 });
+
+// OpenAI y NVIDIA NIM comparten el contrato Chat Completions. Se normalizan
+// aquí las tool_calls al formato que consume `src/agent/llm.ts`.
+async function generateOpenAiCompatible(req: any, res: any, provider: 'openai' | 'nvidia') {
+  try {
+    const body = req.body || {};
+    const isOpenAI = provider === 'openai';
+    const key =
+      (typeof body.apiKey === 'string' && body.apiKey.trim()) ||
+      (isOpenAI ? process.env.OPENAI_API_KEY : process.env.NVIDIA_API_KEY) ||
+      getProviderSecret(provider, 'apiKey');
+    if (!key) return res.json({ ok: false, error: `${isOpenAI ? 'OPENAI_API_KEY' : 'NVIDIA_API_KEY'} requerida` });
+
+    const base = isOpenAI ? 'https://api.openai.com/v1' : 'https://integrate.api.nvidia.com/v1';
+    const fallbackModel = isOpenAI ? 'gpt-4.1-mini' : 'meta/llama-3.3-70b-instruct';
+    const model = String(body.model || getProviderSecret(provider, 'defaultModel') || fallbackModel).replace(
+      new RegExp(`^${provider}/`),
+      ''
+    );
+    const messages = [
+      ...(body.systemInstruction ? [{ role: 'system', content: body.systemInstruction }] : []),
+      { role: 'user', content: body.prompt || '' },
+    ];
+    const payload: Record<string, unknown> = {
+      model,
+      messages,
+      temperature: body.temperature ?? 0.7,
+      max_tokens: body.maxTokens ?? 2048,
+    };
+    if (Array.isArray(body.tools) && body.tools.length > 0) {
+      payload.tools = body.tools;
+      payload.tool_choice = body.toolChoice || 'auto';
+    }
+
+    const response = await fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'CommanderAIStudio/2.5',
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(120000),
+    });
+    if (!response.ok) {
+      const err: any = await response.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `${isOpenAI ? 'OpenAI' : 'NVIDIA'} HTTP ${response.status}`);
+    }
+
+    const data: any = await response.json();
+    const message = data.choices?.[0]?.message || {};
+    const toolCalls = (Array.isArray(message.tool_calls) ? message.tool_calls : [])
+      .map((tc: any) => {
+        const fn = tc?.function || {};
+        let args: Record<string, unknown> = {};
+        try {
+          args = typeof fn.arguments === 'string' ? JSON.parse(fn.arguments) : fn.arguments || {};
+        } catch {
+          args = {};
+        }
+        return { id: tc?.id, name: fn.name, args };
+      })
+      .filter((tc: any) => typeof tc.name === 'string' && tc.name.length > 0);
+
+    return res.json({
+      success: true,
+      text: message.content || '',
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      metrics: {
+        promptTokens: data.usage?.prompt_tokens || 0,
+        responseTokens: data.usage?.completion_tokens || 0,
+        totalTokens: data.usage?.total_tokens || 0,
+        latencyMs: 0,
+      },
+    });
+  } catch (error: any) {
+    return res.json({ ok: false, error: error.message || `${provider} generate falló` });
+  }
+}
+
+app.post('/api/openai/generate', (req, res) => generateOpenAiCompatible(req, res, 'openai'));
+app.post('/api/nvidia/generate', (req, res) => generateOpenAiCompatible(req, res, 'nvidia'));
 
 // ==================== FREEBUFF ====================
 

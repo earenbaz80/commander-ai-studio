@@ -316,8 +316,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
       'Panels with nothing to show explain what is missing instead of going blank.'
     ),
     L(
-      'Menú hamburguesa con Apariencia (tema, idioma, tamaño de texto, tooltips), Ajustes, Cuenta y Ayuda.',
-      'Hamburger menu with Appearance (theme, language, text size, tooltips), Settings, Account and Help.'
+      'El botón Configuración de la cabecera (Ctrl+,) abre un único panel con modelo, proveedores, apariencia, agente y rutas; Ayuda y Acerca de están al lado.',
+      'The Settings button in the header (Ctrl+,) opens a single panel with model, providers, appearance, agent and paths; Help and About sit next to it.'
     ),
   ];
 
