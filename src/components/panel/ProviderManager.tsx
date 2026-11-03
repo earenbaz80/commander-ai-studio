@@ -120,6 +120,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
     const next: Record<string, string> = {};
     for (const field of provider.fields) next[field.name] = '';
     if (provider.id === 'ollama') next.host = 'http://localhost:11434';
+    if (provider.id === 'lmstudio') next.host = 'http://localhost:1234/v1';
     setDraft(next);
   };
 
@@ -190,6 +191,18 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
         const data = await res.json().catch(() => ({}));
         ok = data.success === true || data.healthy === true;
         message = ok ? t('Servidor local responde', 'Local server responds', 'Lokaler Server antwortet') : data.error || t('Sin respuesta', 'No response', 'Keine Antwort');
+      } else if (provider.id === 'lmstudio') {
+        const res = await fetch('/api/lmstudio/models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ host: draft.host }),
+        });
+        const data = await res.json().catch(() => ({}));
+        ok = data.success === true;
+        message = ok
+          ? t(`${data.models?.length ?? 0} modelos`, `${data.models?.length ?? 0} models`, `${data.models?.length ?? 0} Modelle`)
+          : data.error || t('Sin respuesta', 'No response', 'Keine Antwort');
       } else if (provider.id === 'custom') {
         const res = await fetch('/api/custom/models', {
           method: 'POST',

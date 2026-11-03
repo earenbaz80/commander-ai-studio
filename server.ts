@@ -2210,6 +2210,101 @@ app.post('/api/local-models/download-runtime', async (req, res) => {
   }
 });
 
+// ==================== LM STUDIO (OpenAI-compatible) ====================
+//
+// El host puede ser local o de otro equipo de la red: así se usa un modelo
+// cargado en tu PC desde la app abierta en otra máquina. Se resuelve en este
+// orden: lo que mande el formulario, la query, `LMSTUDIO_HOST`, la config
+// guardada en el gestor y, por último, el puerto por defecto de LM Studio.
+
+function lmstudioHost(req: any, bodyHost?: unknown): string {
+  const raw =
+    (typeof bodyHost === 'string' && bodyHost.trim()) ||
+    (typeof req?.query?.host === 'string' && req.query.host.trim()) ||
+    process.env.LMSTUDIO_HOST ||
+    getProviderSecret('lmstudio', 'host') ||
+    'http://localhost:1234/v1';
+  return String(raw).replace(/\/+$/, '');
+}
+
+async function fetchLmstudioModels(host: string): Promise<string[]> {
+  const response = await fetch(`${host}/models`, {
+    headers: { 'User-Agent': 'CommanderAIStudio/2.5' },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!response.ok) throw new Error(`LM Studio HTTP ${response.status}`);
+  const data = await response.json().catch(() => ({}));
+  const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.models) ? data.models : [];
+  return list
+    .map((m: any) => (typeof m === 'string' ? m : m?.id || m?.name))
+    .filter((m: unknown): m is string => typeof m === 'string' && m.length > 0);
+}
+
+app.get('/api/lmstudio/models', async (req, res) => {
+  try {
+    const host = lmstudioHost(req);
+    const models = await fetchLmstudioModels(host);
+    return res.json({ success: true, models, host });
+  } catch (e: any) {
+    return res.json({ success: false, models: [], error: e?.message || 'LM Studio no responde' });
+  }
+});
+
+// POST para poder probar un host que aún no está guardado (botón «Probar»).
+app.post('/api/lmstudio/models', async (req, res) => {
+  try {
+    const host = lmstudioHost(req, req.body?.host);
+    const models = await fetchLmstudioModels(host);
+    return res.json({ success: true, models, host });
+  } catch (e: any) {
+    return res.json({ success: false, models: [], error: e?.message || 'LM Studio no responde' });
+  }
+});
+
+app.post('/api/lmstudio/generate', async (req, res) => {
+  try {
+    const { prompt, model, systemInstruction = '', temperature = 0.7, maxTokens = 2048, host: bodyHost } = req.body || {};
+    const host = lmstudioHost(req, bodyHost);
+    const target = model
+      ? String(model).replace(/^lmstudio\//, '')
+      : getProviderSecret('lmstudio', 'defaultModel') || '';
+    if (!target) return res.json({ ok: false, error: 'Modelo requerido' });
+
+    const response = await fetch(`${host}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: target,
+        messages: [
+          ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
+          { role: 'user', content: prompt || '' },
+        ],
+        temperature,
+        max_tokens: maxTokens,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `LM Studio HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    return res.json({
+      success: true,
+      text: data.choices?.[0]?.message?.content || '',
+      metrics: {
+        promptTokens: data.usage?.prompt_tokens || 0,
+        responseTokens: data.usage?.completion_tokens || 0,
+        totalTokens: data.usage?.total_tokens || 0,
+        latencyMs: 0,
+      },
+    });
+  } catch (e: any) {
+    return res.json({ ok: false, error: e?.message || 'LM Studio generate falló' });
+  }
+});
+
 // ==================== OLLAMA HEALTH ====================
 // ==================== OLLAMA HEALTH ====================
 // ==================== OLLAMA HEALTH ====================
@@ -2380,7 +2475,7 @@ async function fetchModelsDevCatalog(): Promise<ModelsDevModel[]> {
 
 app.get('/api/models/live', async (req, res) => {
   try {
-    const [modelsDevModels, ollamaModels] = await Promise.all([
+    const [modelsDevModels, ollamaModels, lmstudioModels] = await Promise.all([
       fetchModelsDevCatalog(),
       (async () => {
         try {
@@ -2395,6 +2490,26 @@ app.get('/api/models/live', async (req, res) => {
             name: typeof m === 'string' ? m : m.name,
             provider: 'ollama',
             context_window: 128_000,
+            tags: ['local'],
+          }));
+        } catch {
+          return [];
+        }
+      })(),
+      (async () => {
+        try {
+          const host = lmstudioHost(req);
+          const response = await fetch(`${host}/models`, {
+            headers: { 'User-Agent': 'CommanderAIStudio/2.5' },
+            signal: AbortSignal.timeout(4000),
+          });
+          if (!response.ok) return [];
+          const data = await response.json();
+          return (data.data || []).map((m: any) => ({
+            id: `lmstudio/${m.id}`,
+            name: m.id,
+            provider: 'lmstudio',
+            context_window: 32_768,
             tags: ['local'],
           }));
         } catch {
@@ -2427,6 +2542,7 @@ app.get('/api/models/live', async (req, res) => {
         deprecated: m.deprecated,
       })),
       ...ollamaModels,
+      ...lmstudioModels,
     ];
 
     // Estado por proveedor: `available` dice si tiene modelos listados y
@@ -2449,6 +2565,7 @@ app.get('/api/models/live', async (req, res) => {
       providerStatus[spec.id] = { available: st.configured, count: 0, configured: st.configured, source: st.source };
     }
     providerStatus.ollama = { available: ollamaModels.length > 0, count: ollamaModels.length, configured: true, source: 'local' };
+    providerStatus.lmstudio = { available: lmstudioModels.length > 0, count: lmstudioModels.length, configured: true, source: 'local' };
 
     return res.json({
       success: true,

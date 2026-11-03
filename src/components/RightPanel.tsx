@@ -19,8 +19,9 @@ import { JsonSchemaModal } from './JsonSchemaModal';
 import { FunctionCallingModal } from './FunctionCallingModal';
 import { DatasetFineTuningModal } from './DatasetFineTuningModal';
 import { ProviderManager } from './panel/ProviderManager';
-import { ParameterConfig, ProviderType, StudioMode } from '../types/studio';
+import { DownloadedLocalModel, ParameterConfig, ProviderType, StudioMode } from '../types/studio';
 import { useModelsCatalog } from '../data/modelsLoader';
+import { useConfiguredProviderIds } from '../hooks/useConfiguredProviderIds';
 import { Language, TRANSLATIONS } from '../i18n/translations';
 import { MAX_FALLBACK_MODELS } from '../config/geminiModels';
 import { addModel, moveModel } from '../lib/fallbackChain';
@@ -50,6 +51,8 @@ interface RightPanelProps {
   initialWidth?: number;
   /** Callback cuando cambia el ancho del panel (px) */
   onWidthChange?: (width: number) => void;
+  /** Modelos descargados de Hugging Face: se ofrecen aunque su proveedor no esté configurado. */
+  downloadedModels?: DownloadedLocalModel[];
 }
 
 export const RightPanel: React.FC<RightPanelProps> = ({
@@ -68,6 +71,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   onOpenLocalLlmConfig,
   initialWidth = 320,
   onWidthChange,
+  downloadedModels = [],
 }) => {
   const t = TRANSLATIONS[lang];
   /** Tres idiomas en una línea: las etiquetas nuevas no necesitan su ternario. */
@@ -391,9 +395,54 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   const ollamaList = catalog.filter((m) => m.provider === 'ollama');
   const openrouterList = catalog.filter((m) => m.provider === 'openrouter');
   const customList = catalog.filter((m) => m.provider === 'custom');
+  const lmstudioList = catalog.filter((m) => m.provider === 'lmstudio');
+
+  // Sólo se ofrecen modelos de proveedores configurados, más los que ya están
+  // descargados de Hugging Face. Mientras carga, o si el servidor no responde,
+  // se mantiene la lista base para no dejar el selector vacío.
+  const { ids: configuredProviderIds, loaded: providersLoaded, failed: providersFailed } = useConfiguredProviderIds();
+  interface SelectGroup {
+    id: string;
+    label: string;
+    models: Array<{ id: string; name: string }>;
+  }
+  const baseGroups: SelectGroup[] = [
+    { id: 'google', label: '🌟 GOOGLE GEMINI', models: geminiList },
+    { id: 'anthropic', label: '🧠 ANTHROPIC CLAUDE', models: anthropicList },
+    { id: 'xai', label: '🚀 XAI GROK', models: xaiList },
+    { id: 'huggingface', label: '🤗 HUGGING FACE', models: hfList },
+    {
+      id: 'ollama',
+      label: ollamaOffline ? '💻 OLLAMA LOCAL (sin conexión)' : '💻 OLLAMA LOCAL',
+      models: ollamaList,
+    },
+    { id: 'lmstudio', label: '🖥 LM STUDIO', models: lmstudioList },
+    { id: 'openrouter', label: '🆓 OPENROUTER', models: openrouterList },
+    { id: 'custom', label: '🔌 CUSTOM ENDPOINT', models: customList },
+  ];
+  const allowedGroups =
+    providersFailed || !providersLoaded
+      ? baseGroups
+      : baseGroups.filter((group) => configuredProviderIds.has(group.id));
+  const downloadedGroup: SelectGroup[] = downloadedModels.length
+    ? [
+        {
+          id: 'downloaded',
+          label: '⬇ DESCARGADOS (HF)',
+          models: downloadedModels.map((m) => ({ id: m.hfRepoId || m.id, name: m.name })),
+        },
+      ]
+    : [];
+  const visibleGroups = allowedGroups.filter((group) => group.models.length > 0).concat(downloadedGroup);
+  const selectedVisible = visibleGroups.some((group) => group.models.some((m) => m.id === selectedModel));
 
   const handleModelChange = (modelId: string) => {
     setSelectedModel(modelId);
+    const downloaded = downloadedModels.find((m) => m.id === modelId || m.hfRepoId === modelId);
+    if (downloaded) {
+      setSelectedProvider('huggingface');
+      return;
+    }
     const p = catalog.find((m) => m.id === modelId)?.provider;
     setSelectedProvider(p || 'google');
   };
@@ -501,46 +550,25 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 : 'text-green-600'
             }`}
           >
-            {/* Sólo se puede elegir lo que se puede usar: el grupo de un
-                proveedor sin credenciales queda con sus opciones deshabilitadas
-                y dice cómo arreglarlo, en vez de prometer un modelo que
-                responderá con error. Ollama se libra: funciona en local con su
-                host por defecto. */}
-            {[
-              { id: 'google', label: '🌟 GOOGLE GEMINI', models: geminiList },
-              { id: 'anthropic', label: '🧠 ANTHROPIC CLAUDE', models: anthropicList },
-              { id: 'xai', label: '🚀 XAI GROK', models: xaiList },
-              { id: 'huggingface', label: '🤗 HUGGING FACE', models: hfList },
-              {
-                id: 'ollama',
-                label: ollamaOffline ? '💻 OLLAMA LOCAL (sin conexión)' : '💻 OLLAMA LOCAL',
-                models: ollamaList,
-              },
-              { id: 'openrouter', label: '🆓 OPENROUTER', models: openrouterList },
-              { id: 'custom', label: '🔌 CUSTOM ENDPOINT', models: customList },
-            ].map((group) => {
-              const enabled = group.id === 'ollama' || providers[group.id]?.configured === true;
-              return (
-                <optgroup
-                  key={group.id}
-                  label={`${group.label} ${
-                    enabled
-                      ? '✓'
-                      : lang === 'es'
-                        ? '(sin configurar)'
-                        : lang === 'de'
-                          ? '(nicht konfiguriert)'
-                          : '(not configured)'
-                  }`}
-                >
-                  {group.models.map((m) => (
-                    <option key={m.id} value={m.id} disabled={!enabled}>
-                      {m.name}
-                    </option>
-                  ))}
-                </optgroup>
-              );
-            })}
+            {/* Sólo lo que se puede usar: grupos de proveedores configurados
+                y modelos ya descargados de Hugging Face. */}
+            {visibleGroups.length === 0 && (
+              <option value={selectedModel}>
+                {tx('Configura un proveedor…', 'Anbieter konfigurieren…', 'Configure a provider…')}
+              </option>
+            )}
+            {!selectedVisible && visibleGroups.length > 0 && (
+              <option value={selectedModel}>{selectedModel}</option>
+            )}
+            {visibleGroups.map((group) => (
+              <optgroup key={group.id} label={group.label}>
+                {group.models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select>
 
           <div className="bg-[#0000aa] border border-[#00aaaa] p-2 text-[10px] text-[#ffffff]">

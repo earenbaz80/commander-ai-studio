@@ -29,6 +29,12 @@ export const ProviderConfigSchema = z.object({
     host: z.string().url().default('http://localhost:11434'),
     defaultModel: z.string().default('llama3.2'),
   }).optional(),
+  // LM Studio expone una API OpenAI-compatible. El host puede ser local o de
+  // otro equipo de la red (p. ej. http://192.168.1.20:1234/v1).
+  lmstudio: z.object({
+    host: z.string().url().default('http://localhost:1234/v1'),
+    defaultModel: z.string().optional(),
+  }).optional(),
   openrouter: z.object({
     apiKey: z.string().optional(),
     defaultModel: z.string().default('deepseek/deepseek-chat-v3-0324:free'),

@@ -20,6 +20,8 @@ export type ToolDialect = 'gemini' | 'openai' | 'anthropic' | 'json-text';
 export function toolDialectForModel(model?: string): ToolDialect {
   if (!model) return 'gemini';
   if (/^ollama\//.test(model)) return 'openai';
+  // LM Studio también es OpenAI-compatible.
+  if (/^lmstudio\//.test(model)) return 'openai';
   if (/^openrouter\//.test(model)) return 'openai';
   if (/^custom\//.test(model)) return 'openai';
   // Freebuff es OpenAI-compatible; sólo los que declaran toolCalls lo usan.

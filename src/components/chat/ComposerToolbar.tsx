@@ -19,6 +19,7 @@ import { getCachedApiKey } from '../../lib/apiKeys';
 import type { Language } from '../../i18n/translations';
 import type { RunMode } from '../../types/studio';
 import { MODEL_GROUPS, isLocalModelId, type ModelGroup } from './modelGroups';
+import { useConfiguredProviderIds } from '../../hooks/useConfiguredProviderIds';
 
 /** `true` si hay un servidor local configurado (Ollama u OpenAI-compatible). */
 const hasLocalServer = (): boolean =>
@@ -89,6 +90,16 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   const isLocal = isLocalModelId(selectedModel);
   const localConfigured = hasLocalServer();
 
+  // Sólo se ofrecen modelos de proveedores configurados. Si la consulta falla
+  // (servidor caído) se cae a la lista base para no dejar el selector vacío.
+  const { ids: configuredIds, loaded: providersLoaded, failed: providersFailed } = useConfiguredProviderIds();
+  // Mientras llega la respuesta se muestra la lista base: el filtro estricto
+  // se aplica en cuanto se sabe qué proveedores están configurados.
+  const visibleGroups =
+    providersFailed || !providersLoaded
+      ? modelGroups
+      : modelGroups.filter((group) => configuredIds.has(group.id));
+
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-mono [&_button]:min-h-9 [&_button]:min-w-9 [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-[#ffff55]">
       {/* Icono de ayuda para menciones @ */}
@@ -140,7 +151,12 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
       >
         {/* Modelo no listado (p. ej. descargado de HuggingFace) */}
         {!currentModel && <option value={selectedModel}>{selectedModel}</option>}
-        {modelGroups.map((group) => (
+        {providersLoaded && !providersFailed && visibleGroups.length === 0 && (
+          <option value={selectedModel}>
+            {lang === 'es' ? 'Configura un proveedor…' : lang === 'de' ? 'Anbieter konfigurieren…' : 'Configure a provider…'}
+          </option>
+        )}
+        {visibleGroups.map((group) => (
           <optgroup key={group.label} label={group.label}>
             {group.models.map((m) => (
               <option key={m.id} value={m.id}>

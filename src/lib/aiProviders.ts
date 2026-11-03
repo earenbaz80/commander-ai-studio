@@ -54,6 +54,14 @@ export const PROVIDER_CONFIGS: Record<ProviderType, ProviderConfig> = {
     supportsThinking: true,
     defaultEndpoint: '/api/ollama/generate',
   },
+  lmstudio: {
+    id: 'lmstudio',
+    name: 'LM Studio (OpenAI-compatible)',
+    supportsStreaming: false,
+    supportsTools: true,
+    supportsThinking: false,
+    defaultEndpoint: '/api/lmstudio/generate',
+  },
   openrouter: {
     id: 'openrouter',
     name: 'OpenRouter',
@@ -128,6 +136,7 @@ export function detectProvider(
   // los prefijos con barra (ollama/, openrouter/, custom/, local/…) tienen que
   // resolverse antes o nunca se alcanzan.
   if (modelId.startsWith('ollama/')) return 'ollama';
+  if (modelId.startsWith('lmstudio/')) return 'lmstudio';
   if (modelId.startsWith('openrouter/')) return 'openrouter';
   if (modelId.startsWith('pollinations/')) return 'pollinations';
   if (modelId.startsWith('custom/')) return 'custom';

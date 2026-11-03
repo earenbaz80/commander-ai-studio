@@ -77,6 +77,14 @@ export const PROVIDER_SPECS: ProviderSpec[] = [
     defaultModel: 'llama3.2',
   },
   {
+    // LM Studio habla OpenAI-compatible. Acepta un host de otro equipo de la
+    // red, que es cómo se usa un modelo cargado en tu PC desde otra máquina.
+    id: 'lmstudio',
+    name: 'LM Studio (OpenAI-compatible)',
+    env: ['LMSTUDIO_HOST'],
+    fields: [{ name: 'host', required: false, kind: 'url' }],
+  },
+  {
     id: 'custom',
     name: 'Custom (OpenAI-compatible)',
     env: ['CUSTOM_BASE_URL', 'CUSTOM_API_KEY', 'OPENCODE_API_KEY'],
@@ -209,7 +217,7 @@ export function describeProvider(
   // que esté en el fichero marcaría como «sin configurar» algo que funciona.
   const missing = fromEnv ? [] : spec.fields.filter((f) => f.required && !filled(f.name)).map((f) => f.name);
   const hasAny = spec.fields.some((f) => filled(f.name));
-  const local = spec.id === 'ollama';
+  const local = spec.id === 'ollama' || spec.id === 'lmstudio';
 
   return {
     configured: missing.length === 0 && (hasAny || fromEnv || local),
