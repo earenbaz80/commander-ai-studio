@@ -39,7 +39,7 @@
     "check:index": "tsx scripts/check-index.ts",
     "check:mcp": "tsx scripts/check-mcp.ts",
     "check:rules": "tsx scripts/check-rules.ts",
-    "check:contrast": "playwright test tests/e2e/contrast.spec.ts --project=chromium",
+    "check:contrast": "npm run build && playwright test tests/e2e/contrast.spec.ts --project=chromium",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
     "prepare": "husky install",
     "postinstall": "electron-builder install-app-deps",
