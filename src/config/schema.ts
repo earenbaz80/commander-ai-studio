@@ -1,8 +1,22 @@
 import { z } from 'zod';
 import { GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODELS, MAX_FALLBACK_MODELS } from './geminiModels';
 
+/**
+ * Filtros comunes a todos los proveedores, con el mismo criterio que opencode.
+ *
+ * `enabled: false` apaga un proveedor sin borrar sus credenciales, y las listas
+ * recortan su catálogo (`claude-*` casa por prefijo). Son opcionales: sin ellas
+ * todo sigue encendido y visible.
+ */
+const providerFilters = {
+  enabled: z.boolean().optional(),
+  whitelist: z.array(z.string().trim().min(1).max(200)).max(500).optional(),
+  blacklist: z.array(z.string().trim().min(1).max(200)).max(500).optional(),
+};
+
 export const ProviderConfigSchema = z.object({
   google: z.object({
+    ...providerFilters,
     apiKey: z.string().optional(),
     defaultModel: z.string().default(GEMINI_DEFAULT_MODEL),
     // Cuánto se recuerda que una key no admite grounding / code execution.
@@ -16,38 +30,46 @@ export const ProviderConfigSchema = z.object({
       .default([...GEMINI_FALLBACK_MODELS]),
   }).optional(),
   anthropic: z.object({
+    ...providerFilters,
     apiKey: z.string().optional(),
     defaultModel: z.string().default('claude-3-5-sonnet-20241022'),
   }).optional(),
   huggingface: z.object({
+    ...providerFilters,
     apiToken: z.string().optional(),
     defaultModel: z.string().default('deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B'),
     device: z.enum(['webgpu', 'wasm', 'cpu']).default('webgpu'),
     quantization: z.enum(['q4', 'q8', 'fp16', 'fp32']).default('q4'),
   }).optional(),
   ollama: z.object({
+    ...providerFilters,
     host: z.string().url().default('http://localhost:11434'),
     defaultModel: z.string().default('llama3.2'),
   }).optional(),
   // LM Studio expone una API OpenAI-compatible. El host puede ser local o de
   // otro equipo de la red (p. ej. http://192.168.1.20:1234/v1).
   lmstudio: z.object({
+    ...providerFilters,
     host: z.string().url().default('http://localhost:1234/v1'),
     defaultModel: z.string().optional(),
   }).optional(),
   openrouter: z.object({
+    ...providerFilters,
     apiKey: z.string().optional(),
     defaultModel: z.string().default('deepseek/deepseek-chat-v3-0324:free'),
   }).optional(),
   pollinations: z.object({
+    ...providerFilters,
     defaultModel: z.string().default('openai'),
   }).optional(),
   custom: z.object({
+    ...providerFilters,
     baseUrl: z.string().url().optional(),
     apiKey: z.string().optional(),
     defaultModel: z.string().optional(),
   }).optional(),
   xai: z.object({
+    ...providerFilters,
     apiKey: z.string().optional(),
     defaultModel: z.string().default('grok-beta'),
   }).optional(),

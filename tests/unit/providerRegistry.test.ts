@@ -5,6 +5,7 @@ import {
   describeProvider,
   parseModelsDev,
 } from '../../src/providers/registry';
+import { filterModelIds, isProviderEnabled, matchesModelPattern, parseFilterList } from '../../src/lib/providerFilters';
 
 /**
  * El registro es lo que decide qué proveedores se pueden configurar y qué
@@ -127,5 +128,67 @@ describe('buildProviderList', () => {
     const anthropic = list.find((p) => p.id === 'anthropic')!;
     expect(anthropic.env).toContain('ANTHROPIC_API_KEY');
     expect(new Set(anthropic.env).size).toBe(anthropic.env.length);
+  });
+
+  test('aplica whitelist y blacklist y conserva el total', () => {
+    const config = {
+      anthropic: {
+        apiKey: 'k',
+        whitelist: ['claude-*'],
+        blacklist: ['claude-viejo*'],
+      },
+    };
+    const list = buildProviderList(config, new Set(), parseModelsDev(payload));
+    const anthropic = list.find((p) => p.id === 'anthropic')!;
+    expect(anthropic.modelCount).toBe(1);
+    expect(anthropic.totalModels).toBe(1);
+    expect(anthropic.models.map((m) => m.id)).toEqual(['claude-sonnet-4']);
+    expect(anthropic.whitelist).toEqual(['claude-*']);
+  });
+
+  test('un proveedor apagado sigue listado pero se marca y va detrás', () => {
+    const config = { anthropic: { apiKey: 'k', enabled: false } };
+    const list = buildProviderList(config, new Set(), parseModelsDev(payload));
+    const anthropic = list.find((p) => p.id === 'anthropic')!;
+    expect(anthropic.enabled).toBe(false);
+    expect(anthropic.configured).toBe(true);
+    const first = list.findIndex((p) => p.id === 'anthropic');
+    const firstEnabled = list.findIndex((p) => p.enabled);
+    expect(firstEnabled).toBeLessThan(first);
+  });
+});
+
+describe('filtros de proveedor', () => {
+  const models = [{ id: 'claude-sonnet-4' }, { id: 'claude-opus-4' }, { id: 'gemini-3.5-flash' }];
+
+  test('sin listas devuelve lo mismo', () => {
+    expect(filterModelIds(models, undefined)).toBe(models);
+    expect(filterModelIds(models, { whitelist: [], blacklist: [] })).toHaveLength(3);
+  });
+
+  test('la whitelist acepta ids exactos y prefijos con *', () => {
+    expect(filterModelIds(models, { whitelist: ['claude-opus-4'], blacklist: [] }).map((m) => m.id)).toEqual(['claude-opus-4']);
+    expect(filterModelIds(models, { whitelist: ['claude-*'], blacklist: [] })).toHaveLength(2);
+  });
+
+  test('la blacklist gana sobre la whitelist', () => {
+    const out = filterModelIds(models, { whitelist: ['claude-*'], blacklist: ['claude-opus-*'] });
+    expect(out.map((m) => m.id)).toEqual(['claude-sonnet-4']);
+  });
+
+  test('el patrón compara el id, no el nombre', () => {
+    expect(matchesModelPattern('gemini-3.5-flash', 'gemini-3.5-*')).toBe(true);
+    expect(matchesModelPattern('gemini-3.5-flash', 'Gemini')).toBe(false);
+  });
+
+  test('enabled es true salvo apagado explícito', () => {
+    expect(isProviderEnabled({}, 'google')).toBe(true);
+    expect(isProviderEnabled({ google: { apiKey: 'k' } }, 'google')).toBe(true);
+    expect(isProviderEnabled({ google: { enabled: false } }, 'google')).toBe(false);
+  });
+
+  test('parseFilterList limpia, separa y deduplica vacíos', () => {
+    expect(parseFilterList(' a-1, b-*,  , c\nd ')).toEqual(['a-1', 'b-*', 'c', 'd']);
+    expect(parseFilterList('   ')).toEqual([]);
   });
 });

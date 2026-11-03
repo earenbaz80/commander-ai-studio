@@ -20,6 +20,7 @@ import type { Language } from '../../i18n/translations';
 import type { RunMode } from '../../types/studio';
 import { MODEL_GROUPS, isLocalModelId, type ModelGroup } from './modelGroups';
 import { useConfiguredProviderIds } from '../../hooks/useConfiguredProviderIds';
+import { filterModelIds } from '../../lib/providerFilters';
 
 /** `true` si hay un servidor local configurado (Ollama u OpenAI-compatible). */
 const hasLocalServer = (): boolean =>
@@ -92,13 +93,15 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
 
   // Sólo se ofrecen modelos de proveedores configurados. Si la consulta falla
   // (servidor caído) se cae a la lista base para no dejar el selector vacío.
-  const { ids: configuredIds, loaded: providersLoaded, failed: providersFailed } = useConfiguredProviderIds();
+  const { ids: configuredIds, filters: providerFilters, loaded: providersLoaded, failed: providersFailed } = useConfiguredProviderIds();
   // Mientras llega la respuesta se muestra la lista base: el filtro estricto
-  // se aplica en cuanto se sabe qué proveedores están configurados.
-  const visibleGroups =
-    providersFailed || !providersLoaded
-      ? modelGroups
-      : modelGroups.filter((group) => configuredIds.has(group.id));
+  // se aplica en cuanto se sabe qué proveedores están configurados. Los
+  // apagados no aparecen y las listas blanca/negra recortan cada grupo.
+  const visibleGroups = (providersFailed || !providersLoaded
+    ? modelGroups
+    : modelGroups.filter((group) => configuredIds.has(group.id)))
+    .map((group) => ({ ...group, models: filterModelIds(group.models, providerFilters[group.id]) }))
+    .filter((group) => group.models.length > 0);
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-mono [&_button]:min-h-9 [&_button]:min-w-9 [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-[#ffff55]">
