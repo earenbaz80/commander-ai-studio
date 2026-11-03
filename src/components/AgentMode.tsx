@@ -13,6 +13,7 @@ import SubAgentPanel from './SubAgentPanel';
 import { ServerSubAgents } from './ServerSubAgents';
 import { ParallelLaunch } from './ParallelLaunch';
 import { ShellJobLog } from './ShellJobLog';
+import { EmptyState } from './EmptyState';
 
 interface AgentModeProps {
   cwd: string;
@@ -524,14 +525,15 @@ export const AgentMode: React.FC<AgentModeProps> = ({
 
           <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-[#000033]">
             {state.steps.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center text-[#00ffff]/70">
-                <Terminal className="w-12 h-12 mb-2" />
-                <p className="text-xs">
-                  {lang === 'es'
+              <EmptyState
+                icon={<Terminal className="w-12 h-12" />}
+                title={lang === 'es' ? 'Sin sesión activa' : lang === 'de' ? 'Keine aktive Sitzung' : 'No active session'}
+                description={
+                  lang === 'es'
                     ? 'El agente aún no ha ejecutado pasos. Inicia una tarea o ejecuta una tool manualmente.'
-                    : lang === 'de' ? 'Noch keine Schritte. Starte eine Aufgabe oder führe ein Tool manuell aus.' : 'No steps yet. Start a task or run a tool manually.'}
-                </p>
-              </div>
+                    : lang === 'de' ? 'Noch keine Schritte. Starte eine Aufgabe oder führe ein Tool manuell aus.' : 'No steps yet. Start a task or run a tool manually.'
+                }
+              />
             ) : (
               state.steps.map((step) => (
                 <StepCard key={step.id} step={step} lang={lang} />

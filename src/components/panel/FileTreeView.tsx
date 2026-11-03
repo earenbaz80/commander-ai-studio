@@ -112,6 +112,8 @@ const FileRow: React.FC<{
   );
 };
 
+import { EmptyState } from '../EmptyState';
+
 export const FileTreeView: React.FC<{ projectPath: string }> = ({ projectPath }) => {
   const [files, setFiles] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -151,12 +153,11 @@ export const FileTreeView: React.FC<{ projectPath: string }> = ({ projectPath })
 
   if (!projectPath) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-4">
-        <HardDrive className="w-8 h-8 text-[#00ffff]/40" />
-        <p className="text-[11px] text-[#00ffff]/60 font-mono max-w-[220px]">
-          Sin proyecto activo. Crea o selecciona un proyecto en la barra de pestañas para explorar sus archivos.
-        </p>
-      </div>
+      <EmptyState
+        icon={<HardDrive className="w-8 h-8" />}
+        title="Sin proyecto"
+        description="Crea o selecciona un proyecto en la barra de pestañas para explorar sus archivos."
+      />
     );
   }
 
