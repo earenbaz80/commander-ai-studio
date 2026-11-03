@@ -472,13 +472,15 @@ async function runFileChangeHooks(absPath: string, root: string): Promise<{ ran:
   if (!['.ts', '.tsx', '.js', '.jsx', '.css', '.json', '.md'].includes(ext)) {
     return { ran: false };
   }
-  try {
-    const { execFileSync } = await import('child_process');
-    const out = execFileSync('npx', ['prettier', '--write', absPath], { cwd: root, encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024 });
-    return { ran: true, output: String(out).slice(0, 2000) };
-  } catch (e: any) {
-    return { ran: true, error: String(e.message || e).slice(0, 500) };
-  }
+  // Con el binario del proyecto, no con `npx`: es el mismo camino que
+  // `code.fix` y no depende de que npx exista en el PATH (en Windows,
+  // `execFileSync('npx')` sin shell no resuelve el `.cmd`).
+  const formatted = await runProjectBin(root, 'prettier', 'bin/prettier.cjs', ['--write', absPath]);
+  return {
+    ran: formatted.ran,
+    ...(formatted.output ? { output: formatted.output } : {}),
+    ...(formatted.error ? { error: formatted.error } : {}),
+  };
 }
 
 /**
@@ -868,6 +870,7 @@ export async function executeAgentTool(
       symbol: input.symbol ? String(input.symbol).slice(0, 200) : undefined,
       line: Number(input.line) || undefined,
       column: Number(input.column) || undefined,
+      diagnose: input.diagnose !== false,
     });
     if (!res.ok) return { ok: false, error: res.error || res.note || 'no se pudo renombrar' };
     return {

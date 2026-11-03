@@ -47,6 +47,8 @@ Tres tools que no llaman a ningún proveedor del LLM: funcionan sin clave, sin c
 
 Así se puede exigir «no añadas deuda» sin limpiar los ~3.000 colores que ya existen. `--all` enseña todo, `--base <ref>` cambia la referencia y `--files a,b` limita el alcance.
 
+En el editor del Workbench, el botón de revisar abre un panel con ese análisis, el formato (`code.fix`) y el renombrado (`code.refactor`) con sus diffs por archivo; no aplica nada si el resultado deja errores de tipos.
+
 Las listas blancas de `allowedTools` escritas antes de estas tools no las incluyen: `code.analyze` y `code.refactor` están en `CORE_TOOLS` (no escriben) y entran igual; `code.fix` escribe, así que hay que permitirla a mano en el proyecto.
 
 ## Desktop

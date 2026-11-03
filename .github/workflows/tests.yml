@@ -12,6 +12,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # `check:rules --base` compara contra la rama base y necesita su
+          # historial: con el clon superficial de 1 commit no existe.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -38,7 +42,12 @@ jobs:
         run: npx tsx scripts/audit-prod.ts
 
       - name: Lint (ESLint)
-        run: npm run lint
+        run: npx eslint src
+
+      # Contra la rama base, no contra HEAD: en CI el árbol de trabajo ES el
+      # commit que se mide, así que comparar con HEAD siempre daría cero.
+      - name: Reglas del repo (sin deuda nueva)
+        run: npm run check:rules -- --base origin/${{ github.base_ref || 'main' }}
 
       - name: Tipos (tsc --noEmit)
         run: npm run typecheck

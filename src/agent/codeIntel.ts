@@ -14,7 +14,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { loadTypeScript } from './proposedDiagnostics';
+import { diagnoseProposed, loadTypeScript } from './proposedDiagnostics';
 import { checkSource, type RuleViolation } from './projectRules';
 import { diffLines, toUnifiedDiff } from '../utils/patch';
 import type { Diagnostic } from '../../agentTools';
@@ -53,6 +53,15 @@ export interface RenameFile {
   additions: number;
   deletions: number;
   diff: string;
+  /**
+   * Contenido resultante, para aplicarlo sin volver a calcular el refactor.
+   * Se omite en archivos enormes: el diff sigue estando.
+   */
+  content?: string;
+  /** Errores de tipos que DEJARÍA el renombrado en este archivo. */
+  diagnostics?: Diagnostic[];
+  /** `false` si no se pudo comprobar el resultado (sin tsconfig, sin typescript). */
+  checked?: boolean;
 }
 
 export interface RenamePlan {
@@ -358,7 +367,7 @@ function isValidIdentifier(name: string): boolean {
 export function planRename(
   rootAbs: string,
   relPath: string,
-  opts: { newName: string; symbol?: string; line?: number; column?: number }
+  opts: { newName: string; symbol?: string; line?: number; column?: number; diagnose?: boolean }
 ): IntelResult<RenamePlan> {
   const newName = String(opts.newName || '').trim();
   if (!isValidIdentifier(newName)) return { ok: false, error: `Nombre inválido: ${newName.slice(0, 80)}` };
@@ -432,13 +441,25 @@ export function planRename(
     after += before.slice(cursor);
     const rel = relOf(rootAbs, fileName);
     const diff = diffLines(before, after, 3);
-    files.push({
+    const changed = before !== after;
+    const entry: RenameFile = {
       path: rel,
-      changed: before !== after,
+      changed,
       additions: diff.additions,
       deletions: diff.deletions,
-      diff: before === after ? '' : toUnifiedDiff(rel, diff, { exists: true }),
-    });
+      diff: changed ? toUnifiedDiff(rel, diff, { exists: true }) : '',
+    };
+    if (changed) {
+      // Tope por si alguien renombra en un bundle: el diff se queda, el
+      // contenido completo se omite para no mandar megabytes por HTTP.
+      if (after.length <= 400_000) entry.content = after;
+      if (opts.diagnose !== false && /\.(ts|tsx)$/i.test(rel)) {
+        const check = diagnoseProposed(rootAbs, rel, after);
+        entry.checked = check.checked;
+        entry.diagnostics = check.diagnostics.filter((d) => d.severity === 'error');
+      }
+    }
+    files.push(entry);
   }
 
   return { ok: true, data: { symbol, newName, locations: locations.length, files } };
