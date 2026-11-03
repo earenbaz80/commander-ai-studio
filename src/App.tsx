@@ -1091,6 +1091,7 @@ export default function App() {
     setIsWorkbenchOpen,
     setIsCompilerModalOpen,
     setIsSymbolSearchOpen,
+    setIsPaletteOpen,
     handleNewChat,
     handleSaveVersion,
     handleGeneralAudit,

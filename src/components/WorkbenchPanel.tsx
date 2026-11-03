@@ -174,6 +174,16 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
     return () => window.removeEventListener('commander:open-location', handler);
   }, []);
 
+  // Un atajo global puede pedir una pestaña concreta (Ctrl+` → terminal).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ tab?: WorkbenchTab }>).detail;
+      if (detail?.tab) setActive(detail.tab);
+    };
+    window.addEventListener('commander:open-workbench-tab', handler);
+    return () => window.removeEventListener('commander:open-workbench-tab', handler);
+  }, []);
+
   if (!isOpen) return null;
 
   

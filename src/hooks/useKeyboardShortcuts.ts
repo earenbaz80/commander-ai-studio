@@ -24,6 +24,7 @@ export interface KeyboardShortcutsOptions {
   setIsWorkbenchOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setIsCompilerModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSymbolSearchOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsPaletteOpen: React.Dispatch<React.SetStateAction<boolean>>;
   handleNewChat: () => void;
   handleSaveVersion: (title: string, note?: string) => void | Promise<void>;
   handleGeneralAudit: () => void;
@@ -42,6 +43,7 @@ export function useKeyboardShortcuts(opts: KeyboardShortcutsOptions): void {
     setIsWorkbenchOpen,
     setIsCompilerModalOpen,
     setIsSymbolSearchOpen,
+    setIsPaletteOpen,
     handleNewChat,
     handleSaveVersion,
     handleGeneralAudit,
@@ -147,9 +149,25 @@ export function useKeyboardShortcuts(opts: KeyboardShortcutsOptions): void {
         e.preventDefault();
         setIsSymbolSearchOpen(true);
       }
+
+      // 10. Ctrl+Shift+P or Cmd+Shift+P → paleta de comandos (como VS Code)
+      if (isMetaOrCtrl && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        setIsPaletteOpen(true);
+      }
+
+      // 11. Ctrl+` or Cmd+` → Workbench abierto en la terminal
+      // El panel decide su propia pestaña, así que se le avisa por evento.
+      if (isMetaOrCtrl && !e.altKey && !e.shiftKey && e.key === '`') {
+        e.preventDefault();
+        setIsWorkbenchOpen(true);
+        window.dispatchEvent(
+          new CustomEvent('commander:open-workbench-tab', { detail: { tab: 'terminal' } })
+        );
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [lang, promptTitle, parameters, tabs, setIsShortcutsModalOpen, setIsInspectorOpen, setIsSidebarOpen, setIsWorkbenchOpen, setIsCompilerModalOpen, setIsSymbolSearchOpen, handleNewChat, handleSaveVersion, handleGeneralAudit, sendBrowserNotification]);
+  }, [lang, promptTitle, parameters, tabs, setIsShortcutsModalOpen, setIsInspectorOpen, setIsSidebarOpen, setIsWorkbenchOpen, setIsCompilerModalOpen, setIsSymbolSearchOpen, setIsPaletteOpen, handleNewChat, handleSaveVersion, handleGeneralAudit, sendBrowserNotification]);
 }
