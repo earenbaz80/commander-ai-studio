@@ -59,7 +59,7 @@ function looksLikeTypeScript(m: any): boolean {
  * el compilador), el del propio Commander. No se añade como dependencia nueva:
  * en un repo que compila, ya está.
  */
-function loadTypeScript(rootAbs: string): any {
+export function loadTypeScript(rootAbs: string): any {
   const from = [
     () => createRequire(path.join(rootAbs, 'package.json'))('typescript'),
     () => createRequire(path.join(process.cwd(), 'package.json'))('typescript'),

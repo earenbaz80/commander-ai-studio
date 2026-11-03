@@ -25,6 +25,9 @@ export type ToolId =
   | 'web.fetch'
   | 'web.search'
   | 'run_file_change_hooks'
+  | 'code.analyze'
+  | 'code.refactor'
+  | 'code.fix'
   | 'worktree.create';
 
 export interface ToolContext {

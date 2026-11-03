@@ -3,6 +3,7 @@ import { fsReadTool, fsWriteTool, fsEditTool, fsGlobTool, fsGrepTool, fsProposeW
 import { shellRunTool, shellJobTool } from './tools/shell';
 import { browserTool, previewTool } from './tools/browser';
 import { readDiagnosticsTool } from './tools/diagnostics';
+import { codeAnalyzeTool, codeRefactorTool, codeFixTool } from './tools/code';
 import { taskTool } from './tools/task';
 import { spawnAgentsTool } from './tools/spawnAgents';
 import { skillTool } from './tools/skill';
@@ -33,6 +34,9 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition<any, any>> = {
   [browserTool.id]: browserTool,
   [previewTool.id]: previewTool,
   [readDiagnosticsTool.id]: readDiagnosticsTool,
+  [codeAnalyzeTool.id]: codeAnalyzeTool,
+  [codeRefactorTool.id]: codeRefactorTool,
+  [codeFixTool.id]: codeFixTool,
   [taskTool.id]: taskTool,
   [spawnAgentsTool.id]: spawnAgentsTool,
   [skillTool.id]: skillTool,

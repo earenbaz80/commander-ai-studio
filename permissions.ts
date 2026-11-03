@@ -55,7 +55,7 @@ const FILE_WRITE_TOOLS = new Set(['fs.write', 'fs.edit', 'git.commit']);
  * y readonly no debe hacerlo. Su único punto de entrada es `POST /api/worktrees`,
  * y es ese handler quien consulta `enforceTool` con esta lista.
  */
-const EXEC_TOOLS = new Set(['shell.run', 'shell.job', 'code.run', 'browser', 'preview', 'git.worktree', 'git.rebase', 'git.conflict', 'mcp.call', 'run_file_change_hooks', 'worktree.create']);
+const EXEC_TOOLS = new Set(['shell.run', 'shell.job', 'code.run', 'browser', 'preview', 'git.worktree', 'git.rebase', 'git.conflict', 'mcp.call', 'run_file_change_hooks', 'code.fix', 'worktree.create']);
 
 // ── Coincidencia de globs ( ** , * , ? ) sobre rutas relativas ──
 
@@ -139,8 +139,16 @@ function canonical(root: string): string {
   }
 }
 
-/** Tools que deben estar siempre permitidas si se usa lista blanca explícita. */
-const CORE_TOOLS = ['task', 'read_diagnostics'];
+/**
+ * Tools que deben estar siempre permitidas si se usa lista blanca explícita.
+ *
+ * `code.analyze` y `code.refactor` entran aquí por la misma razón que
+ * `read_diagnostics`: no escriben nada (el refactor devuelve diffs). Una lista
+ * blanca escrita antes de que existieran dejaría al agente sin poder mirar el
+ * código, y el usuario tendría que adivinar qué tool nueva le falta.
+ * `code.fix` NO está: escribe, y esa decisión sí es del usuario.
+ */
+const CORE_TOOLS = ['task', 'read_diagnostics', 'code.analyze', 'code.refactor'];
 
 /** Rellena valores por defecto y valida la estructura. */
 export function normalizePermissions(input: unknown): Permissions {

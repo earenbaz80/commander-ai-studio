@@ -176,17 +176,28 @@ test('sin tsconfig se avisa y el diff se devuelve igual', async () => {
   assert.match(String(data.diagnostics.note), /tsconfig/);
 });
 
-test('sin diagnose no se compila nada', async () => {
+test('con diagnose:false no se compila nada', async () => {
   const dir = project('opt-in', {});
 
   const res = await executeAgentTool('fs.propose.write', {
     root: dir,
     path: 'tranquilo.ts',
     content: "export const a: number = 'texto';\n",
+    diagnose: false,
   });
 
   assert.equal(res.ok, true, String(res.error));
-  assert.equal((res.data as any).diagnostics, undefined, 'el typecheck es opt-in');
+  assert.equal((res.data as any).diagnostics, undefined, 'diagnose:false desactiva el typecheck');
+
+  // El typecheck es lo que hay por defecto: un borrador roto se avisa sin pedirlo.
+  const porDefecto = await executeAgentTool('fs.propose.write', {
+    root: dir,
+    path: 'por-defecto.ts',
+    content: "export const a: number = 'texto';\n",
+  });
+  const diag = (porDefecto.data as any).diagnostics;
+  assert.equal(diag.checked, true, `debe comprobarse por defecto: ${diag.note || ''}`);
+  assert.ok(diag.errorCount >= 1, 'sin diagnose el borrador roto pasaba sin aviso');
 
   // Y si no hay cambio que aplicar, tampoco se compila: no hay nada que revisar.
   const igual = await executeAgentTool('fs.propose.write', {

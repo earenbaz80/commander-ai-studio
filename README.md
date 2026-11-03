@@ -14,6 +14,7 @@ Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos
 - Sidebar → **Modo Agente**. Describe tarea → INICIAR TAREA.
 - Tools (vía `POST /api/agent/run-tool`,Rate-limit 60/min):
   - `fs.read/write/edit/glob/grep`, `shell.run` (allowlist), `web.fetch/search`, `code.run` (vm sandbox), `mcp.call/list`.
+  - `code.analyze` / `code.refactor` / `code.fix`: análisis, renombrado y formateo **sin modelo** (ver [Análisis nativo](#análisis-nativo-sin-modelo)).
 - `danger=true` pide aprobación con diff preview (`fs.edit/write`).
 - Reglas repo: `AGENTS.md`, `.cursorrules`, `CLAUDE.md` se inyectan al prompt.
 - Llamadas repetidas: si el modelo pide dos veces la misma tool con los mismos argumentos, el bucle registra `Llamada repetida` y le añade un aviso al turno ("ya tienes ese resultado, da el siguiente paso"). Una escritura limpia la cuenta: releer el mismo fichero después de editarlo no se marca.
@@ -26,6 +27,27 @@ Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos
 
 - `POST /api/agent/run-tool {toolId, input}` — sandbox a `process.cwd()`, validación y allowlist shell.
 - `GET /api/health` — smoke.
+
+## Análisis nativo (sin modelo)
+
+Tres tools que no llaman a ningún proveedor del LLM: funcionan sin clave, sin cuota y sin red, y su resultado lo firma el compilador.
+
+- **`code.analyze { path, symbol? }`** — diagnósticos del archivo (language service de TypeScript), imports que no se usan, reglas del repo (`color-token`, `i18n-literal`) y, con `symbol`, sus referencias en todo el proyecto. Sólo lee, así que entra en modo plan.
+- **`code.refactor { path, symbol | line+column, newName }`** — renombrado con las mismas posiciones que usaría el editor. Devuelve un diff por archivo y **no escribe**: se aplica con `fs.write`, que es lo que pasa por aprobación.
+- **`code.fix { paths[] }`** — `eslint --fix` y después `prettier --write`, con los binarios del proyecto (`node_modules`, nunca `npx`: no hay red que asumir). Es la acción «revisar» de un clic; escribe, así que está en `EXEC_TOOLS` y en modo plan responde 403.
+
+`fs.propose.write/edit` typechequean el borrador **por defecto** (`diagnose: false` lo desactiva) y devuelven `rules`: sólo las violaciones que el cambio introduce, no la deuda que ya tenía el archivo.
+
+### Reglas del repo
+
+`npm run check:rules` (también dentro de `npm run lint`) compara con `HEAD` y falla sólo por violaciones **nuevas**, comparando por regla+fragmento y no por línea:
+
+- `color-token`: colores literales (`#ff0000`) en vez de la paleta Norton.
+- `i18n-literal`: texto de interfaz que no pasa por `L(es, en)` / `t` / `deText`.
+
+Así se puede exigir «no añadas deuda» sin limpiar los ~3.000 colores que ya existen. `--all` enseña todo, `--base <ref>` cambia la referencia y `--files a,b` limita el alcance.
+
+Las listas blancas de `allowedTools` escritas antes de estas tools no las incluyen: `code.analyze` y `code.refactor` están en `CORE_TOOLS` (no escriben) y entran igual; `code.fix` escribe, así que hay que permitirla a mano en el proyecto.
 
 ## Desktop
 
