@@ -18,9 +18,9 @@ Revisado contra el árbol: varias fases ya están hechas, así que no hay que re
 | 3. Diff viewer | **Hecho** | `src/components/DiffViewer.tsx` integrado en `AgentApprovalModal.tsx` con aceptación por hunk, sobre `diffLines`/`mergeHunks` de `src/utils/patch.ts` |
 | 4. Status bar | **Hecho** | `src/components/StatusBar.tsx` importado en `App.tsx` |
 | 5. Nono acoplable | Pendiente | `src/features/nono` no tiene `NonoDock.tsx` |
-| 6. Streaming de shell.run | Pendiente | `AgentMode.tsx` no consulta `shell.job` ni hace polling |
-| 7. Sidebar de sesiones | Pendiente | No hay `SessionSidebar.tsx`; `GET /api/threads` existe y ya está cubierto por `tests/serverEndpoints.test.ts` |
-| 8. Atajos | Parcial | `Ctrl+B`, `Ctrl+/` y `Ctrl+,` ya están en `src/hooks/useKeyboardShortcuts.ts`; faltan `Ctrl+P`, `Ctrl+Shift+P` y ``Ctrl+` `` |
+| 6. Streaming de shell.run | **Hecho** | `ShellJobLog.tsx` consulta `shell.job` cada 1000 ms desde el paso `tool_result` de un `shell.run` con `background: true`: salida en vivo, corte al terminar y botón de parar |
+| 7. Sidebar de sesiones | **Hecho** | El historial del `Sidebar` lista las sesiones del servidor agrupadas por proyecto y `handleSelectServerSession` las reanuda con un clic (historial unificado, commit `9f78089`) |
+| 8. Atajos | **Hecho** | `src/hooks/useKeyboardShortcuts.ts` cubre `Ctrl+B`, `Ctrl+/`, `Ctrl+,`, `Ctrl+P`, `Ctrl+Shift+P` (paleta) y ``Ctrl+` `` (Workbench en la terminal); el modal de atajos los documenta |
 | 9. Empty states | Pendiente | — |
 | 10. Consolidar playgrounds | Pendiente | Hoy son seis: Chat, Compare, Composer, Freeform, HuggingFace, Structured |
 

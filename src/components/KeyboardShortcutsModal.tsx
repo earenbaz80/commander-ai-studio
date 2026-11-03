@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Keyboard, Sidebar, Save, Plus, Hammer, HelpCircle, Search, PanelRight, SlidersHorizontal, Layers, Send, ShieldCheck } from 'lucide-react';
+import { X, Keyboard, Sidebar, Save, Plus, Hammer, HelpCircle, Search, PanelRight, SlidersHorizontal, Layers, Send, ShieldCheck, TerminalSquare } from 'lucide-react';
 import { Language } from '../i18n/translations';
 
 interface KeyboardShortcutsModalProps {
@@ -29,6 +29,12 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
       icon: <Search className="w-4 h-4 text-[#ffff55]" />,
     },
     {
+      keys: ['Ctrl', 'Shift', 'P'],
+      cmdKeys: ['⌘', '⇧', 'P'],
+      action: lang === 'es' ? 'Abrir la Paleta de Comandos (atajo alternativo)' : lang === 'de' ? 'Befehlspalette öffnen (Alternativtasten)' : 'Open the Command Palette (alternate binding)',
+      icon: <Search className="w-4 h-4 text-[#ffff55]" />,
+    },
+    {
       keys: ['Ctrl', 'P'],
       cmdKeys: ['⌘', 'P'],
       action: lang === 'es' ? 'Ir a símbolo del workspace (LSP)' : lang === 'de' ? 'Zu Symbol im Workspace springen (LSP)' : 'Go to symbol in workspace (LSP)',
@@ -45,6 +51,12 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
       cmdKeys: ['⌘', '⌥', 'B'],
       action: lang === 'es' ? 'Mostrar / ocultar el Workbench' : lang === 'de' ? 'Workbench-Panel umschalten' : 'Toggle the Workbench panel',
       icon: <PanelRight className="w-4 h-4 text-[#00ffff]" />,
+    },
+    {
+      keys: ['Ctrl', '`'],
+      cmdKeys: ['⌘', '`'],
+      action: lang === 'es' ? 'Abrir el Workbench en la terminal' : lang === 'de' ? 'Workbench im Terminal öffnen' : 'Open the Workbench on the terminal',
+      icon: <TerminalSquare className="w-4 h-4 text-[#7dff9e]" />,
     },
     {
       keys: ['Ctrl', ','],
