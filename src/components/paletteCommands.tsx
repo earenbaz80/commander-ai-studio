@@ -24,7 +24,32 @@ import {
   Info,
   PanelRight,
   PanelLeft,
+  FileCode,
+  History,
+  Wrench,
 } from 'lucide-react';
+
+export interface PaletteFile {
+  path: string;
+  projectPath?: string;
+}
+
+export interface PaletteSession {
+  id: string;
+  title?: string;
+  project_path?: string;
+}
+
+export interface PaletteTool {
+  name: string;
+  description?: string;
+}
+
+export interface PaletteAgent {
+  name: string;
+  description?: string;
+  role?: string;
+}
 
 export interface PaletteCommandsOptions {
   lang: Language;
@@ -43,6 +68,15 @@ export interface PaletteCommandsOptions {
   setIsAboutModalOpen: (v: boolean) => void;
   setIsWorkbenchOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
   setIsSidebarOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
+  /** Fuentes de búsqueda universal, además de modos y comandos. */
+  files?: PaletteFile[];
+  onOpenFile?: (path: string) => void;
+  sessions?: PaletteSession[];
+  onSelectSession?: (session: PaletteSession) => void;
+  tools?: PaletteTool[];
+  onUseTool?: (name: string) => void;
+  agents?: PaletteAgent[];
+  onUseAgent?: (name: string) => void;
 }
 
 export function buildPaletteCommands(opts: PaletteCommandsOptions): CommandItem[] {
@@ -82,5 +116,72 @@ export function buildPaletteCommands(opts: PaletteCommandsOptions): CommandItem[
     { id: 'view-workbench', label: L('Alternar Workbench', 'Toggle Workbench'), group: L('Vista', 'View'), keywords: 'workbench panel derecho terminal archivos', icon: <PanelRight className={ico} />, run: () => setIsWorkbenchOpen((v) => !v) },
     { id: 'view-sidebar', label: L('Alternar barra lateral', 'Toggle sidebar'), group: L('Vista', 'View'), keywords: 'sidebar barra lateral menu navegacion', icon: <PanelLeft className={ico} />, run: () => setIsSidebarOpen((v) => !v) },
   ];
-  return paletteCommands;
+
+  // Fuentes universales: primero los comandos, luego lo que se puede abrir o
+  // usar. Los archivos se recortan para que la lista vacía no sea interminable;
+  // al escribir, el filtro difuso hace el resto.
+  const extra: CommandItem[] = [];
+  const folder = (value?: string) =>
+    value ? value.split(/[\\/]/).filter(Boolean).slice(-1)[0] : undefined;
+
+  if (opts.onOpenFile && opts.files?.length) {
+    const group = L('Archivos', 'Files');
+    for (const file of opts.files.slice(0, 150)) {
+      extra.push({
+        id: `file:${file.path}`,
+        label: file.path,
+        group,
+        hint: folder(file.projectPath),
+        keywords: `archivo file ${file.path}`,
+        icon: <FileCode className={ico} />,
+        run: () => opts.onOpenFile?.(file.path),
+      });
+    }
+  }
+
+  if (opts.onSelectSession && opts.sessions?.length) {
+    const group = L('Sesiones', 'Sessions');
+    for (const session of opts.sessions.slice(0, 60)) {
+      extra.push({
+        id: `session:${session.id}`,
+        label: session.title || session.id,
+        group,
+        hint: folder(session.project_path),
+        keywords: `sesion session historial hilo ${session.id}`,
+        icon: <History className={ico} />,
+        run: () => opts.onSelectSession?.(session),
+      });
+    }
+  }
+
+  if (opts.onUseTool && opts.tools?.length) {
+    const group = L('Herramientas del agente', 'Agent tools');
+    for (const tool of opts.tools) {
+      extra.push({
+        id: `tool:${tool.name}`,
+        label: tool.name,
+        group,
+        keywords: tool.description,
+        icon: <Wrench className={ico} />,
+        run: () => opts.onUseTool?.(tool.name),
+      });
+    }
+  }
+
+  if (opts.onUseAgent && opts.agents?.length) {
+    const group = L('Subagentes', 'Subagents');
+    for (const agent of opts.agents) {
+      extra.push({
+        id: `agent:${agent.name}`,
+        label: agent.name,
+        group,
+        hint: agent.role,
+        keywords: `${agent.description || ''} ${agent.role || ''} agente subagente`,
+        icon: <Bot className={ico} />,
+        run: () => opts.onUseAgent?.(agent.name),
+      });
+    }
+  }
+
+  return [...paletteCommands, ...extra];
 }

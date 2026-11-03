@@ -69,6 +69,8 @@ interface AgentModeProps {
   onPlanChange?: (plan: Array<{ id: string; text: string; done: boolean }>) => void;
   /** Avisa al pie de que hay una campaña autónoma corriendo en el servidor. */
   onAutonomousRunningChange?: (running: boolean) => void;
+  /** Tarea preparada desde la paleta (herramienta o subagente elegido). */
+  goalRequest?: { text: string; nonce: number } | null;
   lang: Language;
 }
 
@@ -84,6 +86,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
   onRollbackRun,
   onPlanChange,
   onAutonomousRunningChange,
+  goalRequest,
   lang,
 }) => {
   // Los textos que aún estaban sólo en castellano se traducen con este par; el
@@ -128,6 +131,14 @@ export const AgentMode: React.FC<AgentModeProps> = ({
   const [currentCheckpointIndex, setCurrentCheckpointIndex] = useState(0);
   const [subAgents, setSubAgents] = useState<Array<{id: string; name: string; role: string; status: 'idle' | 'running' | 'completed' | 'failed' | 'paused'; progress: number; currentTask: string; tasksCompleted: number; tasksTotal: number; startTime: number; endTime?: number; tokensUsed: number; tokensBudget: number; currentTool?: string; logs: Array<{id: string; timestamp: number; type: 'info' | 'success' | 'error' | 'warning' | 'tool' | 'thought'; message: string; tool?: string; duration?: number}>; color: string}>>([]);
   const [activePanel, setActivePanel] = useState<'plan' | 'timeline' | 'subagents' | 'mcp' | 'plugins' | 'conflict' | 'metrics' | 'sessions'>('plan');
+
+  // La paleta elige una herramienta o un subagente: deja la tarea preparada en
+  // el plan para que el usuario sólo tenga que completarla y arrancar.
+  useEffect(() => {
+    if (!goalRequest?.text) return;
+    setGoal(goalRequest.text);
+    setActivePanel('plan');
+  }, [goalRequest]);
   const [autonomousGoal, setAutonomousGoal] = useState('');
   const [autonomousStatus, setAutonomousStatus] = useState<string | null>(null);
   const launchAutonomous = async () => {

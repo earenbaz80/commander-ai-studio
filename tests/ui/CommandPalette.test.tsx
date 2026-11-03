@@ -66,6 +66,12 @@ describe('CommandPalette', () => {
     expect(getOption('Telemetría y rendimiento')).toBeInTheDocument();
   });
 
+  test('acepta coincidencias difusas por subsecuencia', () => {
+    setup(true);
+    fireEvent.change(getInput(), { target: { value: 'cmpsr' } });
+    expect(getOption('Composer multi-archivo')).toBeInTheDocument();
+  });
+
   test('busca también por palabras clave', () => {
     setup(true);
     fireEvent.change(getInput(), { target: { value: 'ajustes' } });
