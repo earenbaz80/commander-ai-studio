@@ -14,14 +14,14 @@ Revisado contra el árbol: varias fases ya están hechas, así que no hay que re
 | Fase | Estado | Evidencia |
 | --- | --- | --- |
 | 1. Command palette | **Hecho** | `src/components/CommandPalette.tsx` (204 líneas) importado en `App.tsx`; el atajo vive en `src/hooks/useCommandPaletteShortcut.ts` |
-| 2. Layout 3 paneles | Parcial | `useResizableWidth.ts` ya persiste anchos en `localStorage`; faltan splitter y `layoutStore` |
+| 2. Layout 3 paneles | **Hecho** | `src/components/ResizableSplit.tsx` monta el asa y `src/stores/layoutStore.ts` guarda claves y límites; Workbench y Nono ya lo usan |
 | 3. Diff viewer | **Hecho** | `src/components/DiffViewer.tsx` integrado en `AgentApprovalModal.tsx` con aceptación por hunk, sobre `diffLines`/`mergeHunks` de `src/utils/patch.ts` |
 | 4. Status bar | **Hecho** | `src/components/StatusBar.tsx` importado en `App.tsx` |
-| 5. Nono acoplable | Pendiente | `src/features/nono` no tiene `NonoDock.tsx` |
+| 5. Nono acoplable | **Hecho** | `src/features/nono/NonoDock.tsx` monta el asistente acoplado sobre `ResizableSplit`; el toggle ya persistía en `commander_nono_docked` |
 | 6. Streaming de shell.run | **Hecho** | `ShellJobLog.tsx` consulta `shell.job` cada 1000 ms desde el paso `tool_result` de un `shell.run` con `background: true`: salida en vivo, corte al terminar y botón de parar |
 | 7. Sidebar de sesiones | **Hecho** | El historial del `Sidebar` lista las sesiones del servidor agrupadas por proyecto y `handleSelectServerSession` las reanuda con un clic (historial unificado, commit `9f78089`) |
 | 8. Atajos | **Hecho** | `src/hooks/useKeyboardShortcuts.ts` cubre `Ctrl+B`, `Ctrl+/`, `Ctrl+,`, `Ctrl+P`, `Ctrl+Shift+P` (paleta) y ``Ctrl+` `` (Workbench en la terminal); el modal de atajos los documenta |
-| 9. Empty states | Pendiente | — |
+| 9. Empty states | **Hecho** | `src/components/EmptyState.tsx` lo usan `ChatPlayground` (sin sesión), `FileTreeView` (sin proyecto) y `AgentMode` (sin pasos) |
 | 10. Consolidar playgrounds | Pendiente | Hoy son seis: Chat, Compare, Composer, Freeform, HuggingFace, Structured |
 
 Orden sugerido por retorno: **6 → 7 → 8**, y dejar la 10 para el final (toca pantallas que ya funcionan sin añadir capacidad).
