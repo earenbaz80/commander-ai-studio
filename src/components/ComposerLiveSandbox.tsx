@@ -2,15 +2,14 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ProjectFile } from './ComposerPlayground';
 import { 
   RotateCw, 
-  Monitor, 
-  Tablet, 
-  Smartphone, 
   Terminal, 
   Trash2, 
   AlertTriangle, 
   Code2
 } from 'lucide-react';
 import { Language } from '../i18n/translations';
+import { DeviceSelect } from './preview/DeviceSelect';
+import { DEFAULT_DEVICE_ID, findDevice } from '../data/previewDevices';
 
 interface ComposerLiveSandboxProps {
   files: ProjectFile[];
@@ -28,7 +27,7 @@ export const ComposerLiveSandbox: React.FC<ComposerLiveSandboxProps> = ({
   files,
   lang = 'es',
 }) => {
-  const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const [device, setDevice] = useState<string>(DEFAULT_DEVICE_ID);
   const [logs, setLogs] = useState<SandboxConsoleLog[]>([]);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -184,58 +183,20 @@ export const ComposerLiveSandbox: React.FC<ComposerLiveSandboxProps> = ({
     setRuntimeError(null);
   };
 
-  // Device width constraints
-  const getDeviceStyle = () => {
-    switch (device) {
-      case 'mobile':
-        return 'w-[375px] h-[667px] shadow-[0px_0px_20px_rgba(0,255,255,0.4)] border-4 border-[#00ffff] rounded-lg';
-      case 'tablet':
-        return 'w-[768px] h-[1024px] max-h-full shadow-[0px_0px_20px_rgba(0,255,255,0.4)] border-4 border-[#00ffff] rounded-lg';
-      default:
-        return 'w-full h-full border-2 border-[#00ffff]';
-    }
-  };
+  // El viewport del iframe es el del aparato elegido, no el del panel: así las
+  // media queries del CSS se comportan como en ese móvil o tablet de verdad.
+  const viewport = findDevice(device);
+  const frameStyle: React.CSSProperties =
+    viewport.width > 0
+      ? { width: viewport.width, height: viewport.height, flexShrink: 0 }
+      : { width: '100%', height: '100%' };
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-[#000055] font-mono select-none overflow-hidden">
       {/* Sandbox Toolbar */}
       <div className="bg-[#0000aa] border-b-2 border-[#00ffff] p-2 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-[#000080] p-0.5 border border-[#00ffff]">
-            <button
-              type="button"
-              onClick={() => setDevice('desktop')}
-              className={`p-1 text-xs font-bold flex items-center gap-1 ${
-                device === 'desktop' ? 'bg-[#00ffff] text-black' : 'text-[#00ffff] hover:bg-[#000055]'
-              }`}
-              title="Vista de Escritorio (100%)"
-            >
-              <Monitor className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Desktop</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setDevice('tablet')}
-              className={`p-1 text-xs font-bold flex items-center gap-1 ${
-                device === 'tablet' ? 'bg-[#00ffff] text-black' : 'text-[#00ffff] hover:bg-[#000055]'
-              }`}
-              title="Vista de Tablet (768px)"
-            >
-              <Tablet className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Tablet</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setDevice('mobile')}
-              className={`p-1 text-xs font-bold flex items-center gap-1 ${
-                device === 'mobile' ? 'bg-[#00ffff] text-black' : 'text-[#00ffff] hover:bg-[#000055]'
-              }`}
-              title="Vista de Móvil (375px)"
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Mobile</span>
-            </button>
-          </div>
+          <DeviceSelect value={viewport.id} onChange={setDevice} lang={lang} testId="sandbox-device" />
 
           <button
             type="button"
@@ -262,13 +223,14 @@ export const ComposerLiveSandbox: React.FC<ComposerLiveSandboxProps> = ({
       {/* Main Sandbox Area & Bottom Console */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Sandbox Canvas Container */}
-        <div className="flex-1 overflow-auto bg-[#000033] flex items-center justify-center p-2 min-h-0">
+        <div className="flex-1 overflow-auto bg-[#000033] flex p-2 min-h-0">
           <iframe
             key={reloadKey}
             ref={iframeRef}
             srcDoc={bundleHtml}
             sandbox="allow-scripts allow-modals"
-            className={`bg-[#000080] transition-all duration-200 ${getDeviceStyle()}`}
+            style={frameStyle}
+            className="bg-[#000080] border-4 border-[#00ffff] rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.35)] block m-auto"
             title="Commander Live Execution Sandbox"
           />
         </div>

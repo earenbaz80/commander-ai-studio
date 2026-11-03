@@ -3,9 +3,6 @@ import {
   X, 
   Play, 
   RotateCw, 
-  Monitor, 
-  Tablet, 
-  Smartphone, 
   ExternalLink, 
   Copy, 
   Check, 
@@ -14,6 +11,8 @@ import {
   Download
 } from 'lucide-react';
 import { Language } from '../i18n/translations';
+import { DeviceSelect } from './preview/DeviceSelect';
+import { DEFAULT_DEVICE_ID, findDevice } from '../data/previewDevices';
 
 export interface ChatCodeSnippet {
   id: string;
@@ -49,7 +48,7 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
   lang = 'es',
 }) => {
   const [currentIndex, setCurrentIndex] = useState(initialSnippetIndex);
-  const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const [device, setDevice] = useState<string>(DEFAULT_DEVICE_ID);
   const [reloadKey, setReloadKey] = useState(0);
   const [logs, setLogs] = useState<ConsoleMessage[]>([]);
   const [showConsole, setShowConsole] = useState(false);
@@ -425,16 +424,13 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const getDeviceStyle = () => {
-    switch (device) {
-      case 'mobile':
-        return 'w-[390px] h-[780px] max-h-[82vh] border-4 border-[#00ffff] rounded-2xl shadow-[0_0_25px_rgba(0,255,255,0.4)] my-auto';
-      case 'tablet':
-        return 'w-[768px] h-[950px] max-h-[84vh] border-4 border-[#00ffff] rounded-xl shadow-[0_0_25px_rgba(0,255,255,0.4)] my-auto';
-      default:
-        return 'w-full h-full border border-[#00ffff]/40';
-    }
-  };
+  // Igual que en el sandbox del Composer: el iframe mide lo que mide el
+  // aparato, para que las media queries del CSS se apliquen de verdad.
+  const viewport = findDevice(device);
+  const frameStyle: React.CSSProperties =
+    viewport.width > 0
+      ? { width: viewport.width, height: viewport.height, flexShrink: 0 }
+      : { width: '100%', height: '100%' };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 flex flex-col p-2 sm:p-4 font-mono select-none">
@@ -485,38 +481,7 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
         {/* Subbar: Device Switcher & Snippet Selector */}
         <div className="bg-[#0000aa] border-b-2 border-[#00ffff] px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 shrink-0 text-white text-xs">
           {/* Device Responsive Controls */}
-          <div className="flex items-center gap-1 bg-[#000080] p-0.5 border border-[#00ffff]">
-            <button
-              type="button"
-              onClick={() => setDevice('desktop')}
-              className={`px-2 py-0.5 font-bold flex items-center gap-1 text-xs ${
-                device === 'desktop' ? 'bg-[#00ffff] text-black' : 'text-[#00ffff] hover:bg-[#0000aa]'
-              }`}
-            >
-              <Monitor className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Desktop</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setDevice('tablet')}
-              className={`px-2 py-0.5 font-bold flex items-center gap-1 text-xs ${
-                device === 'tablet' ? 'bg-[#00ffff] text-black' : 'text-[#00ffff] hover:bg-[#0000aa]'
-              }`}
-            >
-              <Tablet className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Tablet (768px)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setDevice('mobile')}
-              className={`px-2 py-0.5 font-bold flex items-center gap-1 text-xs ${
-                device === 'mobile' ? 'bg-[#00ffff] text-black' : 'text-[#00ffff] hover:bg-[#0000aa]'
-              }`}
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Móvil (390px)</span>
-            </button>
-          </div>
+          <DeviceSelect value={viewport.id} onChange={setDevice} lang={lang} testId="viewer-device" />
 
           {/* Snippet Tabs Selector (if chat produced multiple snippets) */}
           {snippets.length > 1 && (
@@ -594,13 +559,14 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
         </div>
 
         {/* Viewport & Sandbox Container */}
-        <div className="flex-1 min-h-0 bg-[#000044] flex flex-col items-center justify-center p-2 sm:p-4 overflow-hidden relative">
+        <div className="flex-1 min-h-0 bg-[#000044] flex p-2 sm:p-4 overflow-auto relative">
           <iframe
             key={reloadKey}
             srcDoc={bundledHtml}
             sandbox="allow-scripts allow-forms allow-modals"
             title="Chat Live Sandbox"
-            className={`bg-white transition-all duration-200 ${getDeviceStyle()}`}
+            style={frameStyle}
+            className="bg-white border-4 border-[#00ffff] rounded-2xl shadow-[0_0_25px_rgba(0,255,255,0.4)] block m-auto"
           />
         </div>
 
