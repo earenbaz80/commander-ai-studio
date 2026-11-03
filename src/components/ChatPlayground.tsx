@@ -24,7 +24,7 @@ import { ComposerToolbar, type FontScale } from './chat/ComposerToolbar';
 import { MentionHelpModal } from './chat/MentionHelpModal';
 import { findModel } from './chat/modelGroups';
 
-interface ChatPlaygroundProps {
+export interface ChatPlaygroundProps {
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   parameters: ParameterConfig;

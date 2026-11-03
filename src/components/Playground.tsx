@@ -2,15 +2,20 @@ import React from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 import type { StudioMode } from '../types/studio';
 import type { Language } from '../i18n/translations';
+import { ChatPlayground, type ChatPlaygroundProps } from './ChatPlayground';
+import { FreeformPlayground, type FreeformPlaygroundProps } from './FreeformPlayground';
 
 /**
  * Armazón único de los playgrounds.
  *
  * Los seis modos de prueba (chat, libre, estructurado, composer, comparar y
- * Hugging Face local) comparten ahora una sola barra: se cambia de modo sin
- * volver a la barra lateral y el modelo activo queda siempre a la vista. La
- * lógica de cada pantalla sigue viviendo en su componente; aquí sólo se monta
- * el que esté activo.
+ * Hugging Face local) comparten una sola barra: se cambia de modo sin volver a
+ * la barra lateral y el modelo activo queda siempre a la vista.
+ *
+ * Chat y libre se montan aquí dentro, con las props que ya usaban: App deja de
+ * conocer sus pantallas. Los otros cuatro (composer, comparar, HF y
+ * estructurado, los tres primeros diferidos) siguen llegando por `children`
+ * porque arrastran su propia carga diferida y su propio flujo.
  */
 export const PLAYGROUND_MODES = ['chat', 'freeform', 'structured', 'composer', 'compare', 'huggingface'] as const;
 
@@ -44,7 +49,11 @@ export interface PlaygroundProps {
   selectedModel?: string;
   /** Abre el panel de ajustes del modelo. */
   onOpenSettings?: () => void;
-  children: React.ReactNode;
+  /** Props de la pantalla de chat; sin ellas se pinta `children`. */
+  chat?: ChatPlaygroundProps;
+  /** Props de la pantalla libre; sin ellas se pinta `children`. */
+  freeform?: FreeformPlaygroundProps;
+  children?: React.ReactNode;
 }
 
 export const Playground: React.FC<PlaygroundProps> = ({
@@ -53,6 +62,8 @@ export const Playground: React.FC<PlaygroundProps> = ({
   lang = 'es',
   selectedModel,
   onOpenSettings,
+  chat,
+  freeform,
   children,
 }) => {
   // Fuera de los seis modos (agente, voz…) el contenido lo pinta App.
@@ -61,6 +72,11 @@ export const Playground: React.FC<PlaygroundProps> = ({
   const modelLabel = lang === 'es' ? 'Modelo' : lang === 'de' ? 'Modell' : 'Model';
   const settingsLabel =
     lang === 'es' ? 'Ajustes del modelo' : lang === 'de' ? 'Modell-Einstellungen' : 'Model settings';
+
+  // Pantallas propias primero; el resto llega montado desde fuera.
+  let screen: React.ReactNode = children;
+  if (mode === 'chat' && chat) screen = <ChatPlayground {...chat} />;
+  else if (mode === 'freeform' && freeform) screen = <FreeformPlayground {...freeform} />;
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -108,7 +124,7 @@ export const Playground: React.FC<PlaygroundProps> = ({
         </span>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
+      <div className="flex-1 min-h-0 overflow-hidden">{screen}</div>
     </div>
   );
 };
