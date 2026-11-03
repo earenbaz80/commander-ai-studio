@@ -22,6 +22,7 @@ import { ProviderManager } from './panel/ProviderManager';
 import { DownloadedLocalModel, ParameterConfig, ProviderType, StudioMode } from '../types/studio';
 import { useModelsCatalog } from '../data/modelsLoader';
 import { useConfiguredProviderIds } from '../hooks/useConfiguredProviderIds';
+import { filterModelIds } from '../lib/providerFilters';
 import { Language, TRANSLATIONS } from '../i18n/translations';
 import { MAX_FALLBACK_MODELS } from '../config/geminiModels';
 import { addModel, moveModel } from '../lib/fallbackChain';
@@ -400,7 +401,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   // Sólo se ofrecen modelos de proveedores configurados, más los que ya están
   // descargados de Hugging Face. Mientras carga, o si el servidor no responde,
   // se mantiene la lista base para no dejar el selector vacío.
-  const { ids: configuredProviderIds, loaded: providersLoaded, failed: providersFailed } = useConfiguredProviderIds();
+  const { ids: configuredProviderIds, filters: providerFilters, loaded: providersLoaded, failed: providersFailed } = useConfiguredProviderIds();
   interface SelectGroup {
     id: string;
     label: string;
@@ -420,11 +421,14 @@ export const RightPanel: React.FC<RightPanelProps> = ({
     { id: 'openrouter', label: '🆓 OPENROUTER', models: openrouterList },
     { id: 'custom', label: '🔌 CUSTOM ENDPOINT', models: customList },
   ];
-  const allowedGroups =
-    providersFailed || !providersLoaded
-      ? baseGroups
-      : baseGroups.filter((group) => configuredProviderIds.has(group.id));
-  const downloadedGroup: SelectGroup[] = downloadedModels.length
+  const allowedGroups = (providersFailed || !providersLoaded
+    ? baseGroups
+    : baseGroups.filter((group) => configuredProviderIds.has(group.id)))
+    .map((group) => ({ ...group, models: filterModelIds(group.models, providerFilters[group.id]) }));
+  // Los descargados de HF pertenecen a ese proveedor: si está apagado no se
+  // ofrecen tampoco, igual que si no tuviera credenciales.
+  const hfVisible = providersFailed || !providersLoaded || configuredProviderIds.has('huggingface');
+  const downloadedGroup: SelectGroup[] = downloadedModels.length && hfVisible
     ? [
         {
           id: 'downloaded',

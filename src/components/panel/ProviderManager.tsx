@@ -24,6 +24,7 @@ import {
   Server,
 } from 'lucide-react';
 import { Language } from '../../i18n/translations';
+import { parseFilterList as parseList } from '../../lib/providerFilters';
 
 interface ProviderField {
   name: string;
@@ -48,6 +49,10 @@ interface ProviderEntry {
   source: 'env' | 'file' | 'local' | 'none';
   models: ProviderModel[];
   modelCount: number;
+  totalModels: number;
+  enabled: boolean;
+  whitelist: string[];
+  blacklist: string[];
   defaultModel?: string;
 }
 
@@ -75,6 +80,8 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
   const [testing, setTesting] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message: string }>>({});
   const [notice, setNotice] = useState('');
+  /** Texto de las listas del proveedor abierto, tal cual lo escribe el usuario. */
+  const [filterDraft, setFilterDraft] = useState<Record<string, { whitelist: string; blacklist: string }>>({});
 
   const t = useCallback(
     (es: string, en: string, de: string) => (lang === 'es' ? es : lang === 'de' ? de : en),
@@ -122,6 +129,13 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
     if (provider.id === 'ollama') next.host = 'http://localhost:11434';
     if (provider.id === 'lmstudio') next.host = 'http://localhost:1234/v1';
     setDraft(next);
+    setFilterDraft((prev) => ({
+      ...prev,
+      [provider.id]: {
+        whitelist: provider.whitelist.join(', '),
+        blacklist: provider.blacklist.join(', '),
+      },
+    }));
   };
 
   const save = async (provider: ProviderEntry) => {
@@ -240,6 +254,52 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
     }
   };
 
+  /** PATCH de filtros: no exige credenciales como el POST de configuración. */
+  const patchProvider = async (provider: ProviderEntry, patch: Record<string, unknown>): Promise<boolean> => {
+    setBusy(provider.id);
+    setError('');
+    setNotice('');
+    try {
+      const res = await fetch(`/api/providers/${encodeURIComponent(provider.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!data.success) throw new Error(data.error || t('Error guardando', 'Error saving', 'Fehler beim Speichern'));
+      await load();
+      return true;
+    } catch (e: any) {
+      setError(e?.message || t('Error guardando', 'Error saving', 'Fehler beim Speichern'));
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const toggleEnabled = async (provider: ProviderEntry) => {
+    const turningOn = !provider.enabled;
+    const ok = await patchProvider(provider, { enabled: turningOn });
+    if (!ok) return;
+    setNotice(
+      turningOn
+        ? t(`${provider.name} activado`, `${provider.name} enabled`, `${provider.name} aktiviert`)
+        : t(`${provider.name} apagado: no se ofrecerá`, `${provider.name} disabled: hidden`, `${provider.name} deaktiviert`)
+    );
+  };
+
+  const saveFilters = async (provider: ProviderEntry) => {
+    const current = filterDraft[provider.id] ?? { whitelist: '', blacklist: '' };
+    const ok = await patchProvider(provider, {
+      whitelist: parseList(current.whitelist),
+      blacklist: parseList(current.blacklist),
+    });
+    if (ok) {
+      setNotice(t(`Filtros de ${provider.name} guardados`, `${provider.name} filters saved`, `Filter für ${provider.name} gespeichert`));
+    }
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return providers;
@@ -335,8 +395,13 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
                           : SOURCE_LABEL[provider.source].en}
                     </span>
                   )}
+                  {!provider.enabled && (
+                    <span className="text-[9px] px-1 border border-red-400/60 text-red-300 shrink-0">
+                      {t('apagado', 'off', 'aus')}
+                    </span>
+                  )}
                   <span className="ml-auto text-[10px] text-[var(--nc-text-accent)] tabular-nums shrink-0">
-                    {provider.modelCount} {t('modelos', 'models', 'Modelle')}
+                    {provider.modelCount}/{provider.totalModels} {t('modelos', 'models', 'Modelle')}
                   </span>
                   <ChevronRight className={`w-3.5 h-3.5 text-[var(--nc-text)] shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
                 </button>
@@ -348,6 +413,25 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
                         {t('También por entorno:', 'Also via env:', 'Auch per Umgebung:')} {provider.env.join(' / ')}
                       </div>
                     )}
+
+                    <div className="pt-2 flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => void toggleEnabled(provider)}
+                        disabled={isBusy}
+                        className={`nc-button !px-2 !py-1 text-xs font-bold flex items-center gap-1 ${
+                          provider.enabled
+                            ? 'bg-[var(--nc-bg-panel)] text-emerald-300 border-emerald-400'
+                            : 'bg-[var(--nc-bg-panel)] text-red-300 border-red-400'
+                        }`}
+                      >
+                        {provider.enabled ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+                        {provider.enabled ? t('Activo', 'Enabled', 'Aktiv') : t('Apagado', 'Disabled', 'Inaktiv')}
+                      </button>
+                      <span className="text-[9px] text-[var(--nc-text)]">
+                        {t('Apagado no aparece en los selectores', 'Disabled providers are hidden', 'Deaktivierte Anbieter werden ausgeblendet')}
+                      </span>
+                    </div>
 
                     {provider.fields.map((field) => (
                       <label key={field.name} className="flex items-center gap-2">
@@ -367,6 +451,59 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
                         />
                       </label>
                     ))}
+
+                    <div className="pt-1 space-y-1">
+                      <div className="text-[9px] text-[var(--nc-text)]">
+                        {t(
+                          'Filtros de modelos (separados por comas; * al final casa por prefijo)',
+                          'Model filters (comma separated; trailing * matches a prefix)',
+                          'Modellfilter (durch Kommas getrennt; * am Ende trifft ein Präfix)'
+                        )}
+                      </div>
+                      <label className="flex items-center gap-2">
+                        <span className="text-[10px] text-[var(--nc-text)] w-24 shrink-0 font-bold">
+                          {t('Solo estos', 'Only these', 'Nur diese')}
+                        </span>
+                        <input
+                          type="text"
+                          value={filterDraft[provider.id]?.whitelist ?? ''}
+                          onChange={(e) =>
+                            setFilterDraft((prev) => ({
+                              ...prev,
+                              [provider.id]: { ...(prev[provider.id] ?? { whitelist: '', blacklist: '' }), whitelist: e.target.value },
+                            }))
+                          }
+                          placeholder={t('vacío = todos', 'empty = all', 'leer = alle')}
+                          className="flex-1 bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] text-[var(--nc-text)] text-xs px-2 py-1 font-mono outline-none"
+                        />
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <span className="text-[10px] text-[var(--nc-text)] w-24 shrink-0 font-bold">
+                          {t('Ocultar', 'Hide', 'Ausblenden')}
+                        </span>
+                        <input
+                          type="text"
+                          value={filterDraft[provider.id]?.blacklist ?? ''}
+                          onChange={(e) =>
+                            setFilterDraft((prev) => ({
+                              ...prev,
+                              [provider.id]: { ...(prev[provider.id] ?? { whitelist: '', blacklist: '' }), blacklist: e.target.value },
+                            }))
+                          }
+                          placeholder={t('p. ej. modelo-viejo*', 'e.g. old-model*', 'z. B. altes-modell*')}
+                          className="flex-1 bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] text-[var(--nc-text)] text-xs px-2 py-1 font-mono outline-none"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => void saveFilters(provider)}
+                        disabled={isBusy}
+                        className="nc-button !px-2 !py-1 text-xs font-bold bg-[var(--nc-bg-panel)] text-[var(--nc-text-accent)] border-[var(--nc-text-accent)] flex items-center gap-1"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        {t('Guardar filtros', 'Save filters', 'Filter speichern')}
+                      </button>
+                    </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
                       <button

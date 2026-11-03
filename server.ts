@@ -869,6 +869,37 @@ app.get('/api/providers', async (_req, res) => {
   }
 });
 
+// Filtros del gestor: apagar un proveedor o recortar su catálogo sin borrar las
+// credenciales. Se escribe en la config global, igual que las claves, y no toca
+// el resto del fichero.
+app.patch('/api/providers/:id', async (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!PROVIDER_SPECS.some((spec) => spec.id === id)) {
+      return res.status(404).json({ success: false, error: 'proveedor desconocido' });
+    }
+    const b = req.body || {};
+    const patch: Record<string, unknown> = {};
+    if (typeof b.enabled === 'boolean') patch.enabled = b.enabled;
+    for (const key of ['whitelist', 'blacklist'] as const) {
+      if (!Array.isArray(b[key])) continue;
+      patch[key] = b[key]
+        .filter((v: unknown): v is string => typeof v === 'string')
+        .map((v: string) => v.trim())
+        .filter(Boolean)
+        .slice(0, 500);
+    }
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ success: false, error: 'nada que actualizar' });
+    }
+    const { writeConfig } = await import('./src/config/index');
+    const configPath = writeConfig({ providers: { [id]: patch } } as any, 'global');
+    return res.json({ success: true, configPath, target: 'global' });
+  } catch (e: any) {
+    return res.status(400).json({ success: false, error: e?.message || 'Error guardando filtros' });
+  }
+});
+
 // Elimina un proveedor del fichero de config. Las variables de entorno no se
 // pueden borrar desde aquí: se informa de que siguen suministrando la clave.
 app.delete('/api/providers/:id', (req, res) => {

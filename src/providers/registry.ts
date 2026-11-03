@@ -11,6 +11,7 @@
  * cachea; el resto se puede probar sin red.
  */
 import { CUSTOM_MODELS, GEMINI_MODELS, HUGGINGFACE_MODELS, OLLAMA_MODELS } from '../data/models';
+import { filterModelIds, isProviderEnabled, modelFilterOf } from '../lib/providerFilters';
 
 export type ProviderFieldKind = 'secret' | 'url' | 'text';
 
@@ -126,8 +127,15 @@ export interface ProviderStatus {
 }
 
 export interface ProviderEntry extends ProviderSpec, ProviderStatus {
+  /** Modelos visibles tras aplicar whitelist/blacklist. */
   models: CatalogModel[];
   modelCount: number;
+  /** Modelos del catálogo antes de filtrar. */
+  totalModels: number;
+  /** `false` si el gestor lo apagó: no se ofrece en los selectores. */
+  enabled: boolean;
+  whitelist: string[];
+  blacklist: string[];
 }
 
 const kTokens = (n: unknown): string | undefined => {
@@ -238,7 +246,11 @@ export function buildProviderList(
 
   return PROVIDER_SPECS.map((spec) => {
     const cat = byId.get(spec.id);
-    const models = cat && cat.models.length > 0 ? cat.models : fallbackModels(spec.id);
+    const allModels = cat && cat.models.length > 0 ? cat.models : fallbackModels(spec.id);
+    const filter = modelFilterOf(config, spec.id);
+    // Las listas se aplican aquí y no en la UI: el conteo del gestor, el orden
+    // y los selectores tienen que ver exactamente lo mismo.
+    const models = filterModelIds(allModels, filter);
     const env = [...new Set([...(cat?.env ?? []), ...spec.env])];
     return {
       ...spec,
@@ -246,8 +258,15 @@ export function buildProviderList(
       ...describeProvider(spec, config, envIds),
       models,
       modelCount: models.length,
+      totalModels: allModels.length,
+      enabled: isProviderEnabled(config, spec.id),
+      whitelist: filter.whitelist,
+      blacklist: filter.blacklist,
     };
-  }).sort((a, b) => Number(b.configured) - Number(a.configured) || a.name.localeCompare(b.name));
+  }).sort((a, b) =>
+    Number(b.configured) - Number(a.configured) ||
+    Number(b.enabled) - Number(a.enabled) ||
+    a.name.localeCompare(b.name));
 }
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
