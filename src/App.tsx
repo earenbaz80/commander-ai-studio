@@ -22,19 +22,8 @@ import { WorkbenchPanel } from './components/WorkbenchPanel';
 import { Sidebar } from './components/Sidebar';
 import { RightPanel } from './components/RightPanel';
 import { Playground } from './components/Playground';
-import { StructuredPlayground } from './components/StructuredPlayground';
-// El composer era la única vista que quedaba en el arranque y arrastraba jszip
-// (~95 kB) consigo: pasa a diferida como el resto y se descarga la primera vez
-// que se entra al modo. Ojo: los demás ficheros importan de aquí el tipo
-// `ProjectFile`, que es sólo un tipo y no entra en el bundle.
-const ComposerPlayground = React.lazy(() =>
-  import('./components/ComposerPlayground').then((m) => ({ default: m.ComposerPlayground }))
-);
 // Vistas pesadas y modales bajo demanda: no forman parte del primer pintado.
 // Cada una vive en su propio chunk y se descarga al abrirse por primera vez.
-const HuggingFacePlayground = React.lazy(() =>
-  import('./components/HuggingFacePlayground').then((m) => ({ default: m.HuggingFacePlayground }))
-);
 const CodeModal = React.lazy(() =>
   import('./components/CodeModal').then((m) => ({ default: m.CodeModal }))
 );
@@ -52,9 +41,6 @@ const TelemetryDashboard = React.lazy(() =>
 );
 const VersionHistoryModal = React.lazy(() =>
   import('./components/VersionHistoryModal').then((m) => ({ default: m.VersionHistoryModal }))
-);
-const ComparePlayground = React.lazy(() =>
-  import('./components/ComparePlayground').then((m) => ({ default: m.ComparePlayground }))
 );
 const LiveVoiceModal = React.lazy(() =>
   import('./components/LiveVoiceModal').then((m) => ({ default: m.LiveVoiceModal }))
@@ -1311,56 +1297,39 @@ export default function App() {
               onExecute: handleExecuteFreeform,
               lang: lang as any,
             }}
-          >
-          {mode === 'structured' && (
-            <StructuredPlayground
-              parameters={parameters}
-              selectedModel={selectedModel}
-              selectedProvider={selectedProvider}
-              isGenerating={isGenerating}
-              onExecuteStructured={handleExecuteStructured}
-              lang={lang as any}
-            />
-          )}
-
-          {mode === 'composer' && (
-            <React.Suspense fallback={<LazyFallback lang={lang} />}>
-              <ComposerPlayground
-                parameters={parameters}
-                setParameters={setParameters}
-                selectedModel={selectedModel}
-                lang={lang as any}
-              />
-            </React.Suspense>
-          )}
-
-          {mode === 'compare' && (
-            <React.Suspense fallback={<LazyFallback lang={lang} />}>
-              <ComparePlayground
-                parameters={parameters}
-                setParameters={setParameters}
-                lang={lang as any}
-              />
-            </React.Suspense>
-          )}
-
-          {mode === 'huggingface' && (
-            <React.Suspense fallback={<LazyFallback lang={lang} />}>
-              <HuggingFacePlayground
-              parameters={parameters}
-              setParameters={setParameters}
-              selectedModel={selectedModel}
-              setSelectedModel={setSelectedModel}
-              onExecuteHf={handleExecuteHfTab}
-              isGenerating={isGenerating}
-              downloadedModels={downloadedModels}
-              onAddDownloadedModel={handleAddDownloadedModel}
-              onRemoveDownloadedModel={handleRemoveDownloadedModel}
-              lang={lang as any}
-            />
-            </React.Suspense>
-          )}
-          </Playground>
+            structured={{
+              parameters,
+              selectedModel,
+              selectedProvider,
+              isGenerating,
+              onExecuteStructured: handleExecuteStructured,
+              lang: lang as any,
+            }}
+            composer={{
+              parameters,
+              setParameters,
+              selectedModel,
+              lang: lang as any,
+            }}
+            compare={{
+              parameters,
+              setParameters,
+              lang: lang as any,
+            }}
+            huggingface={{
+              parameters,
+              setParameters,
+              selectedModel,
+              setSelectedModel,
+              onExecuteHf: handleExecuteHfTab,
+              isGenerating,
+              downloadedModels,
+              onAddDownloadedModel: handleAddDownloadedModel,
+              onRemoveDownloadedModel: handleRemoveDownloadedModel,
+              lang: lang as any,
+            }}
+            fallback={<LazyFallback lang={lang} />}
+          />
 
           {mode === 'telemetry' && (
             <React.Suspense fallback={<LazyFallback lang={lang} />}>

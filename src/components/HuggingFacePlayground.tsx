@@ -12,7 +12,7 @@ import { Language } from '../i18n/translations';
 
 
 
-interface HuggingFacePlaygroundProps {
+export interface HuggingFacePlaygroundProps {
 
   parameters: ParameterConfig;
 

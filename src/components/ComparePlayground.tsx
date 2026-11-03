@@ -8,7 +8,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { Language } from '../i18n/translations';
 import { GEMINI_DEFAULT_MODEL, GEMINI_PRO_MODEL } from '../config/geminiModels';
 
-interface ComparePlaygroundProps {
+export interface ComparePlaygroundProps {
   parameters: ParameterConfig;
   setParameters: React.Dispatch<React.SetStateAction<ParameterConfig>>;
   lang?: Language;

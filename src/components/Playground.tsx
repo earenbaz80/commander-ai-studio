@@ -4,18 +4,34 @@ import type { StudioMode } from '../types/studio';
 import type { Language } from '../i18n/translations';
 import { ChatPlayground, type ChatPlaygroundProps } from './ChatPlayground';
 import { FreeformPlayground, type FreeformPlaygroundProps } from './FreeformPlayground';
+import { StructuredPlayground, type StructuredPlaygroundProps } from './StructuredPlayground';
+import type { ComposerPlaygroundProps } from './ComposerPlayground';
+import type { ComparePlaygroundProps } from './ComparePlayground';
+import type { HuggingFacePlaygroundProps } from './HuggingFacePlayground';
+
+// Las tres pantallas pesadas siguen entrando por su propio chunk: el composer
+// arrastra jszip y HF el runtime de Transformers.js, así que se descargan la
+// primera vez que se abre su modo, no al arrancar.
+const ComposerPlayground = React.lazy(() =>
+  import('./ComposerPlayground').then((m) => ({ default: m.ComposerPlayground }))
+);
+const ComparePlayground = React.lazy(() =>
+  import('./ComparePlayground').then((m) => ({ default: m.ComparePlayground }))
+);
+const HuggingFacePlayground = React.lazy(() =>
+  import('./HuggingFacePlayground').then((m) => ({ default: m.HuggingFacePlayground }))
+);
 
 /**
  * Armazón único de los playgrounds.
  *
- * Los seis modos de prueba (chat, libre, estructurado, composer, comparar y
- * Hugging Face local) comparten una sola barra: se cambia de modo sin volver a
- * la barra lateral y el modelo activo queda siempre a la vista.
+ * Los seis modos de prueba comparten una sola barra: se cambia de modo sin
+ * volver a la barra lateral y el modelo activo queda siempre a la vista.
  *
- * Chat y libre se montan aquí dentro, con las props que ya usaban: App deja de
- * conocer sus pantallas. Los otros cuatro (composer, comparar, HF y
- * estructurado, los tres primeros diferidos) siguen llegando por `children`
- * porque arrastran su propia carga diferida y su propio flujo.
+ * Las seis pantallas se montan aquí dentro, cada una con sus propias props, así
+ * que App deja de conocer sus componentes y añadir un playground no obliga a
+ * tocar la raíz. Quien no pase las props de un modo recibe `children`, que se
+ * mantiene como salida de emergencia.
  */
 export const PLAYGROUND_MODES = ['chat', 'freeform', 'structured', 'composer', 'compare', 'huggingface'] as const;
 
@@ -49,10 +65,15 @@ export interface PlaygroundProps {
   selectedModel?: string;
   /** Abre el panel de ajustes del modelo. */
   onOpenSettings?: () => void;
-  /** Props de la pantalla de chat; sin ellas se pinta `children`. */
+  /** Props de cada pantalla; sin ellas se pinta `children`. */
   chat?: ChatPlaygroundProps;
-  /** Props de la pantalla libre; sin ellas se pinta `children`. */
   freeform?: FreeformPlaygroundProps;
+  structured?: StructuredPlaygroundProps;
+  composer?: ComposerPlaygroundProps;
+  compare?: ComparePlaygroundProps;
+  huggingface?: HuggingFacePlaygroundProps;
+  /** Lo que se ve mientras carga una pantalla diferida. */
+  fallback?: React.ReactNode;
   children?: React.ReactNode;
 }
 
@@ -64,6 +85,11 @@ export const Playground: React.FC<PlaygroundProps> = ({
   onOpenSettings,
   chat,
   freeform,
+  structured,
+  composer,
+  compare,
+  huggingface,
+  fallback,
   children,
 }) => {
   // Fuera de los seis modos (agente, voz…) el contenido lo pinta App.
@@ -73,10 +99,29 @@ export const Playground: React.FC<PlaygroundProps> = ({
   const settingsLabel =
     lang === 'es' ? 'Ajustes del modelo' : lang === 'de' ? 'Modell-Einstellungen' : 'Model settings';
 
-  // Pantallas propias primero; el resto llega montado desde fuera.
+  // Pantallas propias primero; `children` queda como salida de emergencia.
   let screen: React.ReactNode = children;
   if (mode === 'chat' && chat) screen = <ChatPlayground {...chat} />;
   else if (mode === 'freeform' && freeform) screen = <FreeformPlayground {...freeform} />;
+  else if (mode === 'structured' && structured) screen = <StructuredPlayground {...structured} />;
+  else if (mode === 'composer' && composer)
+    screen = (
+      <React.Suspense fallback={fallback}>
+        <ComposerPlayground {...composer} />
+      </React.Suspense>
+    );
+  else if (mode === 'compare' && compare)
+    screen = (
+      <React.Suspense fallback={fallback}>
+        <ComparePlayground {...compare} />
+      </React.Suspense>
+    );
+  else if (mode === 'huggingface' && huggingface)
+    screen = (
+      <React.Suspense fallback={fallback}>
+        <HuggingFacePlayground {...huggingface} />
+      </React.Suspense>
+    );
 
   return (
     <div className="flex flex-col h-full min-h-0">
