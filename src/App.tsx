@@ -1424,6 +1424,7 @@ export default function App() {
             onViewHistory={() => setIsVersionHistoryModalOpen(true)}
             onClose={() => setIsInspectorOpen(false)}
             lang={lang as any}
+            downloadedModels={downloadedModels}
             showTooltips={showTooltips}
             onOpenHelp={() => setIsHelpModalOpen(true)}
             onOpenAbout={() => setIsAboutModalOpen(true)}

@@ -22,8 +22,8 @@ export interface DownloadedModelRef {
 /** Proveedores que sirven un modelo local sin pasar por la nube. */
 // El prefijo `freebuff/` entra aquí para que no lo reclame HuggingFace por
 // llevar '/' en el id; no dice nada sobre si el proveedor es gratis.
-const FREE_PROVIDERS = ['ollama', 'openrouter', 'pollinations', 'freebuff'] as const;
-const FREE_MODEL_PREFIXES = ['ollama/', 'openrouter/', 'pollinations/', 'freebuff/'] as const;
+const FREE_PROVIDERS = ['ollama', 'lmstudio', 'openrouter', 'pollinations', 'freebuff'] as const;
+const FREE_MODEL_PREFIXES = ['ollama/', 'lmstudio/', 'openrouter/', 'pollinations/', 'freebuff/'] as const;
 
 export interface RouteInput {
   /** Id del modelo activo, p. ej. `ollama/llama3`, `local/mistral`, o un id plano de Gemini. */
@@ -100,6 +100,8 @@ export function resolveChatRoute({
       endpoint = '/api/freebuff/generate';
     } else if (provider === 'openrouter' || modelId.startsWith('openrouter/')) {
       endpoint = '/api/openrouter/generate';
+    } else if (provider === 'lmstudio' || modelId.startsWith('lmstudio/')) {
+      endpoint = '/api/lmstudio/generate';
     } else if (provider === 'pollinations' || modelId.startsWith('pollinations/')) {
       endpoint = '/api/pollinations/generate';
     } else if (isLocal) {

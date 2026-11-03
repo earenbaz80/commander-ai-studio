@@ -15,16 +15,18 @@ import {
 } from '../../data/models';
 
 export interface ModelGroup {
+  /** Id de proveedor: el selector sólo pinta los que están configurados. */
+  id: string;
   label: string;
   models: AIModel[];
 }
 
 export const MODEL_GROUPS: ModelGroup[] = [
-  { label: 'Google Gemini', models: GEMINI_MODELS },
-  { label: 'HuggingFace (Local)', models: HUGGINGFACE_MODELS },
-  { label: 'Ollama (Local)', models: OLLAMA_MODELS },
-  { label: 'OpenRouter', models: OPENROUTER_FREE_MODELS },
-  { label: 'Personalizado', models: CUSTOM_MODELS },
+  { id: 'google', label: 'Google Gemini', models: GEMINI_MODELS },
+  { id: 'huggingface', label: 'HuggingFace (Local)', models: HUGGINGFACE_MODELS },
+  { id: 'ollama', label: 'Ollama (Local)', models: OLLAMA_MODELS },
+  { id: 'openrouter', label: 'OpenRouter', models: OPENROUTER_FREE_MODELS },
+  { id: 'custom', label: 'Personalizado', models: CUSTOM_MODELS },
 ];
 
 /** Modelo activo en el catálogo global (puede ser `undefined` si es descargado). */

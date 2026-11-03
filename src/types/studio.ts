@@ -15,6 +15,7 @@ export type ProviderType =
   | 'xai'
   | 'anthropic'
   | 'ollama'
+  | 'lmstudio'
   | 'openrouter'
   | 'pollinations'
   | 'custom'
