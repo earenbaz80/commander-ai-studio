@@ -10,7 +10,7 @@
  * Este módulo es puro salvo `getProviderCatalog`, que hace la petición y la
  * cachea; el resto se puede probar sin red.
  */
-import { CUSTOM_MODELS, HUGGINGFACE_MODELS, OLLAMA_MODELS } from '../data/models';
+import { CUSTOM_MODELS, GEMINI_MODELS, HUGGINGFACE_MODELS, OLLAMA_MODELS } from '../data/models';
 
 export type ProviderFieldKind = 'secret' | 'url' | 'text';
 
@@ -178,13 +178,15 @@ export function parseModelsDev(payload: unknown): CatalogProvider[] {
 /** Modelos que el catálogo base conoce y models.dev no publica (HF/Ollama/custom). */
 function fallbackModels(providerId: string): CatalogModel[] {
   const source =
-    providerId === 'huggingface'
-      ? HUGGINGFACE_MODELS
-      : providerId === 'ollama'
-        ? OLLAMA_MODELS
-        : providerId === 'custom'
-          ? CUSTOM_MODELS
-          : [];
+    providerId === 'google'
+      ? GEMINI_MODELS
+      : providerId === 'huggingface'
+        ? HUGGINGFACE_MODELS
+        : providerId === 'ollama'
+          ? OLLAMA_MODELS
+          : providerId === 'custom'
+            ? CUSTOM_MODELS
+            : [];
   return source
     .map((m) => ({
       id: m.id,
@@ -268,7 +270,9 @@ export async function getProviderCatalog(): Promise<CatalogProvider[]> {
     try {
       const res = await fetch('https://models.dev/api.json', {
         headers: { 'User-Agent': 'CommanderAIStudio/2.5' },
-        signal: AbortSignal.timeout(15_000),
+        // models.dev pesa varios MB: 15 s se queda corto en conexiones lentas
+        // y el catálogo llegaba vacío sin más pista que un timeout.
+        signal: AbortSignal.timeout(30_000),
       });
       if (!res.ok) throw new Error(`models.dev HTTP ${res.status}`);
       const data = await res.json();
