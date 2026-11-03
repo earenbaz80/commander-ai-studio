@@ -5,9 +5,11 @@ export interface ResizableWidthOptions {
   defaultWidth: number;
   min: number;
   max: number;
+  /** Paneles anclados a la derecha: crecen al arrastrar hacia la izquierda. */
+  invert?: boolean;
 }
 
-export function useResizableWidth({ key, defaultWidth, min, max }: ResizableWidthOptions) {
+export function useResizableWidth({ key, defaultWidth, min, max, invert = false }: ResizableWidthOptions) {
   const [width, setWidth] = useState<number>(() => {
     try {
       const v = localStorage.getItem(key);
@@ -39,7 +41,7 @@ export function useResizableWidth({ key, defaultWidth, min, max }: ResizableWidt
     const onMove = (e: MouseEvent) => {
       if (!dragging.current) return;
       const delta = e.clientX - startX.current;
-      const next = Math.min(max, Math.max(min, startWidth.current + delta));
+      const next = Math.min(max, Math.max(min, startWidth.current + (invert ? -delta : delta)));
       setWidth(next);
     };
     const onUp = () => {
@@ -55,7 +57,7 @@ export function useResizableWidth({ key, defaultWidth, min, max }: ResizableWidt
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [key, min, max]);
+  }, [key, min, max, invert]);
 
   const onDoubleClick = useCallback(() => {
     setWidth(defaultWidth);

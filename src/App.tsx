@@ -82,6 +82,7 @@ const AgentApprovalModal = React.lazy(() =>
   import('./components/AgentApprovalModal').then((m) => ({ default: m.AgentApprovalModal }))
 );
 import { CommandPalette } from './components/CommandPalette';
+import { NonoDock } from './features/nono/NonoDock';
 import { StatusBar } from './components/StatusBar';
 import { buildPaletteCommands } from './components/paletteCommands';
 import { SymbolSearchModal } from './components/SymbolSearchModal';
@@ -1410,9 +1411,9 @@ export default function App() {
           parameters={parameters}
         />
 
-        {/* Nono acoplado (panel derecho) */}
+        {/* Nono acoplado (panel derecho, ancho arrastrable) */}
         {nonoDocked && showNono && (
-          <div className="shrink-0 h-full border-l-2 border-[#00ffff] overflow-hidden" style={{ width: 320 }}>
+          <NonoDock lang={lang as any}>
             <FloatingAssistant
               ref={nonoRef}
               lang={lang as any}
@@ -1434,7 +1435,7 @@ export default function App() {
               docked={true}
               onToggleDock={() => setNonoDocked(v => { const n = !v; try { localStorage.setItem('commander_nono_docked', String(n)); } catch {} return n; })}
             />
-          </div>
+          </NonoDock>
         )}
 
         {/* Right Parameters Panel (Hidden in Exporter mode to give max space to wizard) */}
