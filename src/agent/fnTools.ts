@@ -126,6 +126,44 @@ export const AGENT_FUNCTION_DECLARATIONS = [
     parameters: { type: 'OBJECT', properties: { path: { type: 'STRING', description: 'Ruta relativa a filtrar (opcional)' } } },
   },
   {
+    name: 'code_analyze',
+    description: 'Análisis nativo sin modelo: diagnósticos TS del archivo, imports sin usar, reglas del repo (color/i18n) y, con symbol, sus referencias.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        path: { type: 'STRING', description: 'Ruta relativa del archivo' },
+        symbol: { type: 'STRING', description: 'Símbolo cuyas referencias se quieren (opcional)' },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'code_refactor',
+    description: 'Renombra un símbolo en todo el proyecto con el language service de TypeScript y devuelve un diff por archivo, sin escribir nada.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        path: { type: 'STRING', description: 'Archivo donde está el símbolo' },
+        newName: { type: 'STRING', description: 'Nombre nuevo (identificador válido)' },
+        symbol: { type: 'STRING', description: 'Símbolo a renombrar' },
+        line: { type: 'NUMBER', description: 'Línea del símbolo (alternativa a symbol)' },
+        column: { type: 'NUMBER', description: 'Columna del símbolo (1-based)' },
+      },
+      required: ['path', 'newName'],
+    },
+  },
+  {
+    name: 'code_fix',
+    description: 'Aplica eslint --fix y prettier a los archivos indicados con los binarios del proyecto y devuelve el diff real de lo que cambió.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        paths: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Rutas relativas a corregir' },
+      },
+      required: ['paths'],
+    },
+  },
+  {
     name: 'task',
     description: 'Lanza un subagente (task tool) con su propio objetivo y contexto. Devuelve la respuesta final del subagente.',
     parameters: {
@@ -286,7 +324,7 @@ const FN_TO_TOOL: Record<string, string> = {
   fs_read: 'fs.read', fs_write: 'fs.write', fs_edit: 'fs.edit', fs_propose_write: 'fs.propose.write', fs_propose_edit: 'fs.propose.edit',
   fs_glob: 'fs.glob', fs_grep: 'fs.grep', shell_run: 'shell.run', shell_job: 'shell.job',
   browser: 'browser', preview: 'preview',
-  read_diagnostics: 'read_diagnostics',
+  read_diagnostics: 'read_diagnostics', code_analyze: 'code.analyze', code_refactor: 'code.refactor', code_fix: 'code.fix',
   task: 'task', spawn_agents: 'spawn_agents', skill: 'skill',
   git_status: 'git.status', git_diff: 'git.diff', git_log: 'git.log', git_commit: 'git.commit', git_worktree: 'git.worktree', git_rebase: 'git.rebase', git_conflict: 'git.conflict',
   web_fetch: 'web.fetch', web_search: 'web.search', code_run: 'code.run', run_file_change_hooks: 'run_file_change_hooks', worktree_create: 'worktree.create',

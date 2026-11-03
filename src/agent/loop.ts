@@ -10,7 +10,16 @@ import { TOOL_REGISTRY } from './registry';
 import { loadMCPServers, mcpListTools, listRegistryServers, listRegistryServerTools } from './mcp';
 import { RESULT_TURN_CHARS, TURN_CHARS, TURNS_BUDGET_CHARS, clipMiddle, compactTurns, serializeResults, createReadIndex, recordRead, ReadIndex } from './contextBudget';
 
-const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.propose.write', 'fs.propose.edit', 'fs.glob', 'fs.grep', 'shell.run', 'shell.job', 'browser', 'preview', 'read_diagnostics', 'task', 'spawn_agents', 'skill', 'git.status', 'git.diff', 'git.log', 'git.commit', 'git.worktree', 'git.rebase', 'git.conflict', 'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list', 'run_file_change_hooks', 'worktree.create'];
+/**
+ * Tools que este bucle acepta ejecutar.
+ *
+ * Sale del registro y no de una lista escrita a mano: antes era una copia
+ * paralela y se quedó sin `shell.job`, `browser`, `preview`, las `git.*`
+ * avanzadas y las `code.*` — el modelo las veía en el esquema y el bucle las
+ * descartaba como «no permitidas», sin ningún error que lo explicara. Una sola
+ * fuente de verdad hace imposible esa deriva.
+ */
+const ALLOWED_TOOLS = Object.keys(TOOL_REGISTRY);
 
 /**
  * Huella estable de una toolCall: misma tool y mismos argumentos (el orden de
