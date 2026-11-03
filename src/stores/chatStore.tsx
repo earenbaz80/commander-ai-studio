@@ -8,6 +8,7 @@ import { createContext, useContext, useReducer, useEffect, useCallback, ReactNod
 import type { StudioMode, ProviderType, ParameterConfig, ChatMessage, DownloadedLocalModel, HistorySession } from '../types/studio';
 import { DEFAULT_MODEL, runDefaultModelMigration } from '../utils/defaultModel';
 import { detectProvider } from '../lib/aiProviders';
+import { DEFAULT_PARAMETERS } from '../hooks/useTabs';
 
 /**
  * Valor o función actualizadora (estilo useState).
@@ -52,33 +53,12 @@ type ChatAction =
   | { type: 'HYDRATE'; payload: Partial<ChatState> }
   | { type: 'RESET_SESSION'; payload?: { projectPath?: string; sessionId?: string } };
 
-const DEFAULT_PARAMETERS: ParameterConfig = {
-  temperature: 0.7,
-  topP: 0.95,
-  topK: 40,
-  maxTokens: 2048,
-  thinkingLevel: 'LOW',
-  responseFormat: 'text',
-  jsonSchema: '',
-  systemInstruction: 'Eres un asistente experto en ingeniería de software, IA y empaquetado nativo.',
-  examples: [],
-  hfDevice: 'webgpu',
-  hfQuantization: 'q4',
-  hfApiToken: '',
-  tools: {
-    googleSearch: true,
-    codeExecution: true,
-    urlContext: true,
-    customFunctions: [],
-  },
-};
-
 const initialState: ChatState = {
   mode: 'chat',
   promptTitle: 'Mi Proyecto Commander AI Studio',
   selectedModel: DEFAULT_MODEL,
   selectedProvider: 'google',
-  parameters: DEFAULT_PARAMETERS,
+  parameters: { ...DEFAULT_PARAMETERS },
   messages: [],
   isGenerating: false,
   downloadedModels: [
