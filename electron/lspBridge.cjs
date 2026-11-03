@@ -156,6 +156,9 @@ function spawnTypeScriptLSP(webContentsId, projectRoot) {
     rootUri: pathToFileURL(projectRoot).href,
     capabilities: {
       textDocument: {
+        // typescript-language-server 6 sólo publica diagnósticos si el cliente
+        // declara esta capacidad (la usa para decidir `diagnosticsSupport`).
+        publishDiagnostics: { relatedInformation: true, versionSupport: false },
         hover: { dynamicRegistration: false },
         definition: { dynamicRegistration: false },
         completion: { dynamicRegistration: false, completionItem: { snippetSupport: true } },

@@ -13,6 +13,7 @@ del editor del Workbench, sin depender del editor del sistema.
 | Referencias | `Shift+F12` | ✅ |
 | Símbolos del documento (outline) | `Ctrl+Shift+O` | ✅ |
 | Rename (workspace edit) | `Ctrl+Shift+R` | ✅ |
+| Símbolos del workspace | `Ctrl+P` | ✅ |
 | Diagnósticos por archivo (gutter) | automático | ✅ |
 | Panel «Problemas» agregado | pestaña Workbench | ✅ |
 
@@ -40,6 +41,9 @@ useLSPClient  ── IPC ──▶  electron/main.cjs  ── stdio ──▶  t
 - `src/components/panel/CodeEditor.tsx`: puente a CodeMirror (`setDiagnostics`,
   autocompletado, overlays de resultado y rename).
 - `src/utils/lspProblems.ts`: store global para el panel «Problemas».
+- `src/components/SymbolSearchModal.tsx`: búsqueda `workspace/symbol` con
+  `Ctrl+P`; al elegir un resultado emite `commander:open-location`, igual que
+  el panel «Problemas».
 
 ### URIs
 
@@ -97,5 +101,7 @@ Checklist:
 - Sólo TypeScript/JavaScript.
 - Los diagnósticos llegan por archivo abierto (`didOpen`); no hay escaneo
   completo del proyecto en segundo plano.
-- `workspace/symbol` (Ctrl+T global) aún no está expuesto.
+- `workspace/symbol` está expuesto con `Ctrl+P`; `Ctrl+T` sigue reservado para
+  abrir una pestaña nueva. La búsqueda cubre el proyecto que haya inicializado
+  el editor, no un workspace multi-root.
 - No verificado en este entorno de CI (requiere Electron real).

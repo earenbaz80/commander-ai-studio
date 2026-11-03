@@ -64,13 +64,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setProviderEnabled: (providerId, enabled) => ipcRenderer.invoke('fallback:setProviderEnabled', providerId, enabled),
   },
 
-  // Shell
-  shell: {
-    openExternal: (url) => shell.openExternal(url),
-    openPath: (path) => shell.openPath(path),
-    showItemInFolder: (path) => shell.showItemInFolder(path),
-  },
-
   // LSP (TypeScript Language Server)
   lsp: {
     initialize: (projectRoot) => ipcRenderer.invoke('lsp:initialize', projectRoot),
@@ -92,9 +85,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
 
-  // Platform info
+  // Platform info. `app` no existe en un preload sandbox: para saber si la app
+  // está empaquetada se consulta `app:getInfo` por IPC.
   platform: process.platform,
-  isPackaged: require('electron').app.isPackaged,
 });
 
 console.log('[Preload] electronAPI exposed to renderer');

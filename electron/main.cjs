@@ -21,7 +21,7 @@ const {
   requestReferences,
   requestDocumentSymbols,
   requestWorkspaceSymbols,
-} = require('./lspBridge');
+} = require('./lspBridge.cjs');
 
 let mainWindow = null;
 let tray = null;

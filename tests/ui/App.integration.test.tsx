@@ -120,7 +120,7 @@ describe('App (integración)', { timeout: 20_000 }, () => {
     // Onboarding ya visto: sin esto aparece el modal de bienvenida
     localStorage.setItem('ai_studio_onboarding_seen', '1');
     // Estos tests cubren la ruta de Gemini; la migración se marca vista para no tocar el modelo de la pestaña.
-    localStorage.setItem('ai_studio_tabs_v1', JSON.stringify([{ id: 'tab-gemini', title: 'Sesión 1', selectedModel: 'gemini-3.5-flash' }]));
+    localStorage.setItem('ai_studio_tabs_v1', JSON.stringify([{ id: 'tab-gemini', title: 'Sesión 1', selectedModel: 'gemini-3.5-flash', projectPath: 'C:/proj' }]));
     localStorage.setItem('ai_studio_active_tab', 'tab-gemini');
     localStorage.setItem('ai_studio_default_model_v3', '1');
     notificationSpies.sendBrowserNotification.mockClear();
@@ -285,6 +285,127 @@ describe('App (integración)', { timeout: 20_000 }, () => {
     const input = screen.getByLabelText('Paleta de comandos');
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(document.querySelector('[data-command-palette]')).toBeNull();
+  });
+
+  test('Ctrl+P abre la búsqueda de símbolos del workspace', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ roots: [] }) });
+    await bootApp();
+
+    fireEvent.keyDown(window, { key: 'p', ctrlKey: true });
+
+    expect(screen.getByLabelText('Buscar símbolo en el workspace')).toBeInTheDocument();
+  });
+
+  test('la paleta abre un archivo del proyecto en el Workbench', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u === '/api/threads') return Promise.resolve({ ok: true, json: async () => ({ threads: [] }) });
+      if (u === '/api/agent/run-tool') {
+        const body = JSON.parse(String(init?.body || '{}'));
+        if (body.toolId === 'fs.glob') {
+          return Promise.resolve({ ok: true, json: async () => ({ ok: true, data: { files: ['README.md', 'src/App.tsx'] } }) });
+        }
+        if (body.toolId === 'fs.read') {
+          return Promise.resolve({ ok: true, json: async () => ({ ok: true, data: { content: '# README de prueba' } }) });
+        }
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ roots: [] }) });
+    });
+    global.fetch = fetchMock as any;
+
+    await bootApp();
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    const input = screen.getByLabelText('Paleta de comandos');
+    fireEvent.change(input, { target: { value: 'README.md' } });
+
+    // Los archivos se cargan al abrir la paleta (fs.glob), no al arrancar.
+    await screen.findByRole('option', { name: /README\.md/ });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    // El evento llega al Workbench, que abre el Editor y hace fs.read.
+    await waitFor(() => {
+      const read = fetchMock.mock.calls.find((call) => {
+        const body = JSON.parse(String((call[1] as RequestInit | undefined)?.body || '{}'));
+        return body.toolId === 'fs.read';
+      });
+      expect(read).toBeTruthy();
+    });
+    const readCall = fetchMock.mock.calls.find((call) => {
+      const body = JSON.parse(String((call[1] as RequestInit | undefined)?.body || '{}'));
+      return body.toolId === 'fs.read';
+    });
+    expect(JSON.parse(String((readCall![1] as RequestInit).body))).toMatchObject({
+      toolId: 'fs.read',
+      input: { path: 'README.md', root: 'C:/proj' },
+    });
+    expect(screen.getByLabelText('Workbench')).toBeInTheDocument();
+  });
+
+  test('la paleta reanuda una sesión del servidor en una pestaña nueva', async () => {
+    const thread = {
+      id: 'sess-restore',
+      title: 'Sesión guardada',
+      project_path: 'C:/proj',
+      status: 'active',
+      model: 'gemini-3.5-flash',
+      agent_mode: 'chat',
+      execution_mode: 'build',
+      turn_state: 'idle',
+      created_at: 1,
+      updated_at: 2,
+      pinned: 0,
+      project_id: null,
+      state_json: null,
+    };
+
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u.startsWith('/api/threads/sess-restore/messages')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            messages: [
+              {
+                seq: 1,
+                thread_id: 'sess-restore',
+                role: 'user',
+                parts_json: JSON.stringify({ text: 'Mensaje restaurado' }),
+                ts: 2,
+              },
+            ],
+          }),
+        });
+      }
+      if (u === '/api/threads') {
+        if ((init?.method || 'GET') === 'GET') {
+          return Promise.resolve({ ok: true, json: async () => ({ threads: [thread] }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({ thread }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ roots: [] }) });
+    });
+    global.fetch = fetchMock as any;
+
+    await bootApp();
+
+    // La sesión llega del servidor y aparece en el historial antes de abrir la paleta.
+    // Puede estar dos veces (pestaña restaurada + historial), así que no se usa
+    // `findByText`, que falla ante duplicados legítimos.
+    await screen.findAllByText('Sesión guardada');
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    const input = screen.getByLabelText('Paleta de comandos');
+    fireEvent.change(input, { target: { value: 'Sesión guardada' } });
+
+    const sessionGroup = await screen.findByRole('group', { name: 'Sesiones' });
+    const option = sessionGroup.querySelector('[role="option"]') as HTMLElement;
+    expect(option).toBeTruthy();
+    fireEvent.click(option);
+
+    await waitFor(() => expect(screen.getByText('Mensaje restaurado')).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledWith('/api/threads/sess-restore/messages?limit=200');
   });
 
   test('la paleta lleva de Composer a agente al elegir un subagente', async () => {
