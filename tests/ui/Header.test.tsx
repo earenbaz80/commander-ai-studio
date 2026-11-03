@@ -11,7 +11,6 @@ const baseProps = () => ({
   setMode: vi.fn(),
   selectedModel: 'gemini-2.5-flash',
   onOpenExport: vi.fn(),
-  onOpenInspector: vi.fn(),
   onToggleSidebar: vi.fn(),
   onToggleWorkbench: vi.fn(),
   onOpenAuth: vi.fn(),
@@ -80,24 +79,24 @@ describe('Header', () => {
     });
   });
 
-  describe('menú de Consola', () => {
-    const openMenu = (container: HTMLElement) => {
-      fireEvent.click(
-        container.querySelector('[data-tooltip="Menú de Configuración & Utilidades"]') as HTMLButtonElement
-      );
-    };
+  describe('configuración directa', () => {
+    test('abre Configuración sin un menú intermedio', () => {
+      const onOpenPreferences = vi.fn();
+      render(<Header {...baseProps()} onOpenPreferences={onOpenPreferences} />);
 
-    test('muestra "Refrescar consola" y "Pantalla completa"', () => {
-      const { container } = render(<Header {...baseProps()} />);
-      openMenu(container);
-      expect(screen.getByText('Refrescar consola')).toBeInTheDocument();
-      expect(screen.getByText('Pantalla completa')).toBeInTheDocument();
+      fireEvent.click(screen.getByLabelText('Abrir configuración'));
+
+      expect(onOpenPreferences).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText('CONFIGURACIÓN Y SETUP')).toBeNull();
     });
 
-    test('"Pantalla completa" no rompe si el entorno no soporta la API', () => {
-      const { container } = render(<Header {...baseProps()} />);
-      openMenu(container);
-      expect(() => fireEvent.click(screen.getByText('Pantalla completa'))).not.toThrow();
+    test('no duplica acciones de consola, cuenta ni preferencias', () => {
+      render(<Header {...baseProps()} onOpenPreferences={vi.fn()} />);
+      expect(screen.queryByText('Refrescar consola')).toBeNull();
+      expect(screen.queryByText('Pantalla completa')).toBeNull();
+      expect(screen.queryByText('Cuenta')).toBeNull();
+      expect(screen.queryByText('Parámetros del modelo')).toBeNull();
+      expect(screen.queryByText('Preferencias')).toBeNull();
     });
   });
 });

@@ -18,6 +18,8 @@ describe('detectProvider', () => {
     expect(P('pollinations/openai')).toBe('pollinations');
     expect(P('custom/mi-modelo')).toBe('custom');
     expect(P('local/qwen2.5-1.5b-instruct-q8_0.gguf')).toBe('local');
+    expect(P('openai/gpt-4.1')).toBe('openai');
+    expect(P('nvidia/meta/llama-3.3-70b-instruct')).toBe('nvidia');
   });
 
   it('sigue detectando modelos HuggingFace org/repo', () => {
@@ -28,6 +30,7 @@ describe('detectProvider', () => {
     expect(P('gemini-2.5-flash')).toBe('google');
     expect(P('claude-3-5-sonnet-20241022')).toBe('anthropic');
     expect(P('grok-3')).toBe('xai');
+    expect(P('gpt-4o')).toBe('openai');
     expect(P('antigravity-preview-09-2026')).toBe('google');
   });
 
@@ -54,6 +57,8 @@ describe('resolveEndpoint', () => {
     expect(resolveEndpoint('openrouter/foo/bar')).toBe('/api/openrouter/generate');
     expect(resolveEndpoint('pollinations/openai')).toBe('/api/pollinations/generate');
     expect(resolveEndpoint('custom/mi-modelo')).toBe('/api/custom/generate');
+    expect(resolveEndpoint('openai/gpt-4.1')).toBe('/api/openai/generate');
+    expect(resolveEndpoint('nvidia/meta/llama-3.3-70b-instruct')).toBe('/api/nvidia/generate');
     expect(resolveEndpoint('local/modelo.gguf')).toBe('/api/local-models/generate');
     expect(resolveEndpoint('org/repo')).toBe('/api/hf/generate');
   });

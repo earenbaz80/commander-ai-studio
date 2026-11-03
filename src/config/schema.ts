@@ -58,6 +58,17 @@ export const ProviderConfigSchema = z.object({
     apiKey: z.string().optional(),
     defaultModel: z.string().default('deepseek/deepseek-chat-v3-0324:free'),
   }).optional(),
+  openai: z.object({
+    ...providerFilters,
+    apiKey: z.string().optional(),
+    defaultModel: z.string().default('gpt-4.1-mini'),
+  }).optional(),
+  // NVIDIA NIM: endpoint OpenAI-compatible en integrate.api.nvidia.com.
+  nvidia: z.object({
+    ...providerFilters,
+    apiKey: z.string().optional(),
+    defaultModel: z.string().default('meta/llama-3.3-70b-instruct'),
+  }).optional(),
   pollinations: z.object({
     ...providerFilters,
     defaultModel: z.string().default('openai'),

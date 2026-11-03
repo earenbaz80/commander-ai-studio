@@ -425,7 +425,9 @@ describe('App (integración)', { timeout: 20_000 }, () => {
     fireEvent.change(input, { target: { value: 'file explorer' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
-    await waitFor(() => expect(screen.getByText('MODO AGENTE')).toBeInTheDocument(), { timeout: 5000 });
-    expect(screen.getByDisplayValue(/Lanza el subagente file-explorer/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('MODO AGENTE')).toBeInTheDocument();
+      expect(screen.getByDisplayValue(/Lanza el subagente file-explorer/)).toBeInTheDocument();
+    }, { timeout: 5000 });
   });
 });

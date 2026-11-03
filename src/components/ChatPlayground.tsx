@@ -22,7 +22,8 @@ import { ChatMessage, ParameterConfig, StudioMode, RunMode } from '../types/stud
 import { Language } from '../i18n/translations';
 import { ComposerToolbar, type FontScale } from './chat/ComposerToolbar';
 import { MentionHelpModal } from './chat/MentionHelpModal';
-import { findModel } from './chat/modelGroups';
+import { buildModelGroups, findModel } from './chat/modelGroups';
+import { useModelsCatalog } from '../data/modelsLoader';
 
 export interface ChatPlaygroundProps {
   messages: ChatMessage[];
@@ -131,8 +132,16 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
     }
   };
 
+  // Catálogo vivo: incluye proveedores configurados después de arrancar
+  // (OpenAI, NVIDIA, LM Studio) y sus modelos reales.
+  const { models: catalog } = useModelsCatalog();
+  const modelGroups = React.useMemo(() => buildModelGroups(catalog), [catalog]);
+
   // Modelo activo en el catálogo (puede ser undefined si fue descargado de HF).
-  const currentModel = findModel(selectedModel);
+  const currentModel = React.useMemo(
+    () => catalog.find((m) => m.id === selectedModel) ?? findModel(selectedModel),
+    [catalog, selectedModel]
+  );
 
   const getMentionToken = (value: string, caret: number): { start: number; query: string } | null => {
     const before = value.slice(0, caret);
@@ -462,6 +471,7 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
           selectedModel={selectedModel}
           onSelectModel={setSelectedModel}
           currentModel={currentModel}
+          modelGroups={modelGroups}
           runMode={runMode}
           onChangeRunMode={changeRunMode}
           fontScale={fontScale}

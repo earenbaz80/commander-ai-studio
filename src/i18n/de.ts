@@ -385,7 +385,7 @@ export const DE_STRINGS: Record<string, string> = {
   'Low latency real-time voice interaction': 'Sprachinteraktion in Echtzeit mit geringer Latenz',
   'Hugging Face Local Transformers': 'Lokale Hugging-Face-Transformer',
   'Run in-browser ONNX weights 100% private': 'ONNX-Gewichte im Browser ausführen, 100 % privat',
-  'Local LLM server & model (Ollama / OpenAI-compatible)': 'Lokaler LLM-Server & Modell (Ollama / OpenAI-kompatibel)',
+  'Local LLM server & model (Ollama, LM Studio or OpenAI-compatible)': 'Lokaler LLM-Server & Modell (Ollama, LM Studio oder OpenAI-kompatibel)',
   'Role preset': 'Rollenvorlage',
   '⚡ ROLE PRESET...': '⚡ ROLLENVORLAGE...',
   'System instruction...': 'Systemanweisung...',

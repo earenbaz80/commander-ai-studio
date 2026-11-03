@@ -176,14 +176,21 @@ test('CI: el gate de producción va antes del lint y node:test antes de Vitest',
     return i;
   };
 
+  // El workflow separa ESLint del check de reglas contra la rama base; el
+  // contrato es que el lint vaya después del audit y antes del typecheck.
+  const lintIndex = pasos.findIndex((p) =>
+    p.split('\n').some((l) => ['run: npm run lint', 'run: npx eslint src'].includes(l.trim()))
+  );
+  assert.ok(lintIndex >= 0, 'falta el paso de lint');
+
   const orden = [
     'npm run check:index',
     'npx tsx scripts/audit-prod.ts',
-    'npm run lint',
+  ].map(posicion).concat(lintIndex, [
     'npm run typecheck',
     'npm run test:node',
     'npm run test',
-  ].map(posicion);
+  ].map(posicion));
 
   // El comentario del workflow dice por qué: el índice barato primero, y
   // node:test antes de Vitest porque en Actions un paso que falla aborta los

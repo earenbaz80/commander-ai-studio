@@ -123,6 +123,17 @@ describe('buildProviderList', () => {
     expect(list.every((p, i) => i === 0 || list[i - 1].configured || !p.configured)).toBe(true);
   });
 
+  test('OpenAI y NVIDIA se configuran con clave y tienen catálogo de respaldo', () => {
+    const list = buildProviderList({}, new Set(), []);
+    for (const id of ['openai', 'nvidia']) {
+      const provider = list.find((p) => p.id === id);
+      expect(provider, `falta ${id}`).toBeTruthy();
+      expect(provider!.fields.map((f) => f.name)).toContain('apiKey');
+      expect(provider!.modelCount).toBeGreaterThan(0);
+      expect(provider!.configured).toBe(false);
+    }
+  });
+
   test('une las variables de entorno del catálogo con las de la spec', () => {
     const list = buildProviderList({}, new Set(), parseModelsDev(payload));
     const anthropic = list.find((p) => p.id === 'anthropic')!;

@@ -56,7 +56,7 @@ export const PROVIDER_CONFIGS: Record<ProviderType, ProviderConfig> = {
   },
   lmstudio: {
     id: 'lmstudio',
-    name: 'LM Studio (OpenAI-compatible)',
+    name: 'LM Studio (local)',
     supportsStreaming: false,
     supportsTools: true,
     supportsThinking: false,
@@ -70,6 +70,22 @@ export const PROVIDER_CONFIGS: Record<ProviderType, ProviderConfig> = {
     supportsThinking: false,
     defaultEndpoint: '/api/openrouter/generate',
   },
+  openai: {
+    id: 'openai',
+    name: 'OpenAI',
+    supportsStreaming: false,
+    supportsTools: true,
+    supportsThinking: true,
+    defaultEndpoint: '/api/openai/generate',
+  },
+  nvidia: {
+    id: 'nvidia',
+    name: 'NVIDIA NIM',
+    supportsStreaming: false,
+    supportsTools: true,
+    supportsThinking: true,
+    defaultEndpoint: '/api/nvidia/generate',
+  },
   pollinations: {
     id: 'pollinations',
     name: 'Pollinations (Free)',
@@ -80,7 +96,7 @@ export const PROVIDER_CONFIGS: Record<ProviderType, ProviderConfig> = {
   },
   custom: {
     id: 'custom',
-    name: 'Custom (OpenAI-compatible)',
+    name: 'OpenAI-compatible',
     supportsStreaming: false,
     supportsTools: true,
     supportsThinking: false,
@@ -137,6 +153,8 @@ export function detectProvider(
   // resolverse antes o nunca se alcanzan.
   if (modelId.startsWith('ollama/')) return 'ollama';
   if (modelId.startsWith('lmstudio/')) return 'lmstudio';
+  if (modelId.startsWith('openai/')) return 'openai';
+  if (modelId.startsWith('nvidia/')) return 'nvidia';
   if (modelId.startsWith('openrouter/')) return 'openrouter';
   if (modelId.startsWith('pollinations/')) return 'pollinations';
   if (modelId.startsWith('custom/')) return 'custom';
@@ -149,6 +167,9 @@ export function detectProvider(
     HUGGINGFACE_MODELS.some((m) => m.id === modelId) ||
     downloadedModels.some((m) => m.hfRepoId === modelId || m.id === modelId);
   if (isHfModel) return 'huggingface';
+
+  // OpenAI sin prefijo (ids planos del catálogo).
+  if (/^(gpt-|o\d)/i.test(modelId)) return 'openai';
 
   // xAI Grok
   if (modelId.startsWith('grok')) return 'xai';

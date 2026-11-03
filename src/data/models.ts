@@ -248,9 +248,9 @@ export const CUSTOM_MODELS: AIModel[] = [
   },
   {
     id: 'custom/custom',
-    name: 'Custom (endpoint propio)',
+    name: 'OpenAI-compatible (endpoint propio)',
     provider: 'custom',
-    description: 'Cualquier modelo OpenAI-compatible: Ollama, LM Studio, OpenCode Zen, etc.',
+    description: 'Endpoint compatible independiente: vLLM, llama.cpp, oMLX, OpenCode Zen, etc.',
     badge: 'Custom',
     contextWindow: 'Variable',
   },

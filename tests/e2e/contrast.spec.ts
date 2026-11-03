@@ -227,16 +227,16 @@ test.describe('Contraste de los temas', () => {
       await auditar(page, `paleta (${tema})`);
 
       const entradaPaleta = page.locator('[data-command-palette] input');
-      await entradaPaleta.fill('preferencias');
+      await entradaPaleta.fill('configuración');
       await page
         .locator('[data-command-palette] button[role="option"]', {
-          hasText: 'Preferencias de la aplicación',
+          hasText: 'Configuración',
         })
         .first()
         .click();
-      await expect(page.getByText('APARIENCIA E IDIOMA')).toBeVisible();
+      await expect(page.getByText('Apariencia e idioma')).toBeVisible();
       await page.waitForTimeout(300);
-      await auditar(page, `preferencias (${tema})`);
+      await auditar(page, `configuración (${tema})`);
 
       await page.getByRole('button', { name: 'Cerrar' }).first().click();
       await page.waitForTimeout(200);

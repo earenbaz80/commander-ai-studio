@@ -5,7 +5,8 @@ import { deText } from '../i18n/de';
  *
  * Permite poner o cambiar el servidor al que se conecta el LLM local:
  *  • Ollama (por defecto http://localhost:11434)
- *  • Endpoint OpenAI-compatible (LM Studio, llama.cpp, vLLM…): baseURL + apiKey opcional.
+ *  • Endpoint OpenAI-compatible (vLLM, llama.cpp, oMLX…): baseURL + apiKey opcional.
+ *    LM Studio tiene su propio modo y su propio host (`LMSTUDIO_HOST`).
  *
  * Guarda en las MISMAS claves que ya usa el resto de la app
  * (`OLLAMA_HOST`, `CUSTOM_BASE_URL`, `CUSTOM_API_KEY`, `CUSTOM_MODEL`),
@@ -27,7 +28,8 @@ import {
 } from '../utils/localLlmApi';
 
 const OLLAMA_DEFAULT = 'http://localhost:11434';
-const OPENAI_DEFAULT = 'http://localhost:1234/v1';
+const LMSTUDIO_DEFAULT = 'http://localhost:1234/v1';
+const OPENAI_DEFAULT = 'http://localhost:8000/v1';
 
 interface LocalLlmModalProps {
   isOpen: boolean;
@@ -38,6 +40,7 @@ interface LocalLlmModalProps {
 export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, lang = 'es' }) => {
   const [runtime, setRuntime] = React.useState<LocalLlmRuntime>('ollama');
   const [ollamaHost, setOllamaHost] = React.useState(OLLAMA_DEFAULT);
+  const [lmstudioHost, setLmstudioHost] = React.useState(LMSTUDIO_DEFAULT);
   const [baseUrl, setBaseUrl] = React.useState(OPENAI_DEFAULT);
   const [apiKey, setApiKey] = React.useState('');
   const [model, setModel] = React.useState('');
@@ -62,6 +65,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
     let alive = true;
     try {
       setOllamaHost(getCachedApiKey('OLLAMA_HOST') || OLLAMA_DEFAULT);
+      setLmstudioHost(getCachedApiKey('LMSTUDIO_HOST') || LMSTUDIO_DEFAULT);
       setBaseUrl(getCachedApiKey('CUSTOM_BASE_URL') || OPENAI_DEFAULT);
       setApiKey(getCachedApiKey('CUSTOM_API_KEY') || '');
       setModel(getCachedApiKey('CUSTOM_MODEL') || '');
@@ -71,14 +75,16 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
     setResult(null);
     setSavedFlash(false);
     (async () => {
-      const [h, b, k, m] = await Promise.all([
+      const [h, ls, b, k, m] = await Promise.all([
         getApiKey('OLLAMA_HOST'),
+        getApiKey('LMSTUDIO_HOST'),
         getApiKey('CUSTOM_BASE_URL'),
         getApiKey('CUSTOM_API_KEY'),
         getApiKey('CUSTOM_MODEL'),
       ]);
       if (!alive) return;
       if (h) setOllamaHost(h);
+      if (ls) setLmstudioHost(ls);
       if (b) setBaseUrl(b);
       if (k) setApiKey(k);
       if (m) setModel(m);
@@ -101,8 +107,9 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
         };
         setDetected(detectedNow);
         // Auto-switch if current runtime not detected but another is
-        if (runtime === 'ollama' && !detectedNow.ollama && (detectedNow.lmstudio || detectedNow.vllm)) {
-          setRuntime('openai');
+        if (runtime === 'ollama' && !detectedNow.ollama) {
+          if (detectedNow.lmstudio) setRuntime('lmstudio');
+          else if (detectedNow.vllm) setRuntime('openai');
         }
       } catch {
         if (alive) setDetected({ ollama: false, lmstudio: false, vllm: false });
@@ -116,9 +123,18 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
-  const currentUrl = runtime === 'ollama' ? ollamaHost : baseUrl;
+  const currentUrl = runtime === 'ollama' ? ollamaHost : runtime === 'lmstudio' ? lmstudioHost : baseUrl;
 
   const runtimeTab = (id: LocalLlmRuntime, labelEs: string, labelEn: string, icon: React.ReactNode) => (
     <button
@@ -186,6 +202,14 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
       await saveApiKey('OLLAMA_HOST', host);
       try {
         localStorage.setItem('OLLAMA_HOST', host);
+      } catch {
+        /* ignorar */
+      }
+    } else if (runtime === 'lmstudio') {
+      const host = lmstudioHost.trim() || LMSTUDIO_DEFAULT;
+      await saveApiKey('LMSTUDIO_HOST', host);
+      try {
+        localStorage.setItem('LMSTUDIO_HOST', host);
       } catch {
         /* ignorar */
       }
@@ -274,8 +298,16 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
   });
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 font-mono select-none">
-      <div className="w-full max-w-md nc-panel border-2 border-[var(--nc-border-light)] p-5 relative shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 font-mono select-none"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md nc-panel border-2 border-[var(--nc-border-light)] p-5 relative shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
 
         {/* Border corner accents */}
         <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-[var(--nc-text-accent)] -mt-0.5 -ml-0.5" />
@@ -313,6 +345,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
         {/* Runtime selector */}
         <div className="flex gap-1 mb-3">
           {runtimeTab('ollama', 'Ollama', 'Ollama', <Cable className="w-3.5 h-3.5" />)}
+          {runtimeTab('lmstudio', 'LM Studio', 'LM Studio', <Server className="w-3.5 h-3.5" />)}
           {runtimeTab(
             'openai',
             'OpenAI-compatible',
@@ -457,6 +490,25 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
                 )}
               </p>
             </div>
+          ) : runtime === 'lmstudio' ? (
+            <div>
+              <label className="text-[10px] text-[var(--nc-text-accent)] font-bold uppercase flex items-center gap-1 mb-1">
+                <Server className="w-3 h-3" /> {t('Servidor LM Studio', 'LM Studio server')}
+              </label>
+              <input
+                value={lmstudioHost}
+                onChange={(e) => setLmstudioHost(e.target.value)}
+                placeholder="http://192.168.1.20:1234/v1"
+                spellCheck={false}
+                className="w-full bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[var(--nc-border-light)]"
+              />
+              <p className="text-[9px] text-[var(--nc-text-dim)] mt-1 leading-snug">
+                {t(
+                  'Acepta http://IP:1234 o http://IP:1234/v1. En el otro equipo activa «Serve on Local Network» en LM Studio y carga un modelo.',
+                  'Accepts http://IP:1234 or http://IP:1234/v1. On the other machine enable “Serve on Local Network” in LM Studio and load a model.'
+                )}
+              </p>
+            </div>
           ) : (
             <>
               <div>
@@ -472,8 +524,8 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
                 />
                 <p className="text-[9px] text-[var(--nc-text-dim)] mt-1">
                   {t(
-                    'LM Studio, llama.cpp, vLLM, oMLX… (termina en /v1).',
-                    'LM Studio, llama.cpp, vLLM, oMLX… (ends in /v1).'
+                    'Endpoint propio (termina en /v1). No comparte host con LM Studio: para ese usa su pestaña.',
+                    'Own endpoint (ends in /v1). It does not share a host with LM Studio: use its tab for that.'
                   )}
                 </p>
               </div>
@@ -559,7 +611,14 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
                   </span>
                 </div>
               ) : (
-                <span>{t('El servidor respondió pero no listó modelos.', 'Server responded but listed no models.')}</span>
+                <span>
+                  {runtime === 'lmstudio'
+                    ? t(
+                        'LM Studio responde, pero no tiene modelos cargados. Carga uno en su pestaña «Chat» y vuelve a probar.',
+                        'LM Studio responds, but no model is loaded. Load one in its Chat tab and test again.'
+                      )
+                    : t('El servidor respondió pero no listó modelos.', 'Server responded but listed no models.')}
+                </span>
               )}
             </div>
           ) : (

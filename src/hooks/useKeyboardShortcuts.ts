@@ -19,7 +19,7 @@ export interface KeyboardShortcutsOptions {
     activeId: string;
   };
   setIsShortcutsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  setIsInspectorOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsPreferencesModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setIsWorkbenchOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setIsCompilerModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -38,7 +38,7 @@ export function useKeyboardShortcuts(opts: KeyboardShortcutsOptions): void {
     parameters,
     tabs,
     setIsShortcutsModalOpen,
-    setIsInspectorOpen,
+    setIsPreferencesModalOpen,
     setIsSidebarOpen,
     setIsWorkbenchOpen,
     setIsCompilerModalOpen,
@@ -72,11 +72,11 @@ export function useKeyboardShortcuts(opts: KeyboardShortcutsOptions): void {
         setIsShortcutsModalOpen((prev) => !prev);
       }
 
-      // 1b. Ctrl+, or Cmd+, to toggle the parameters inspector
+      // 1b. Ctrl+, or Cmd+, abre la única ventana de configuración.
       if (isMetaOrCtrl && e.key === ',' && !e.shiftKey && !e.altKey) {
         if (!isTypingTarget()) {
           e.preventDefault();
-          setIsInspectorOpen((prev) => !prev);
+          setIsPreferencesModalOpen(true);
         }
       }
 
@@ -169,5 +169,5 @@ export function useKeyboardShortcuts(opts: KeyboardShortcutsOptions): void {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [lang, promptTitle, parameters, tabs, setIsShortcutsModalOpen, setIsInspectorOpen, setIsSidebarOpen, setIsWorkbenchOpen, setIsCompilerModalOpen, setIsSymbolSearchOpen, setIsPaletteOpen, handleNewChat, handleSaveVersion, handleGeneralAudit, sendBrowserNotification]);
+  }, [lang, promptTitle, parameters, tabs, setIsShortcutsModalOpen, setIsPreferencesModalOpen, setIsSidebarOpen, setIsWorkbenchOpen, setIsCompilerModalOpen, setIsSymbolSearchOpen, setIsPaletteOpen, handleNewChat, handleSaveVersion, handleGeneralAudit, sendBrowserNotification]);
 }

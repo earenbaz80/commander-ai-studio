@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sliders, MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, Columns, Radio, Code2, Bot, ChevronDown, ChevronRight, Hammer, Server, Play, RefreshCw, Pin, Pencil } from 'lucide-react';
+import { MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, Columns, Radio, Code2, Bot, ChevronDown, ChevronRight, Hammer, Play, RefreshCw, Pin, Pencil } from 'lucide-react';
 import { StudioMode, HistorySession } from '../types/studio';
 import { Language, TRANSLATIONS } from '../i18n/translations';
 import type { ConversationHit } from '../agent/persistence';
@@ -57,10 +57,6 @@ interface SidebarProps {
   onOpenGallery: () => void;
   /** Abre el compilador/exportador nativo (movido desde el menú del header). */
   onOpenCompile?: () => void;
-  /** Abre la configuración del servidor LLM local (Ollama / OpenAI-compatible). */
-  onOpenLocalLlmConfig?: () => void;
-  /** Abre el panel único de ajustes (modelo, parámetros e instrucciones). */
-  onOpenSettings?: () => void;
   lang?: Language;
   isSidebarOpen?: boolean;
   width?: number;
@@ -88,8 +84,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNewPrompt,
   onOpenGallery,
   onOpenCompile,
-  onOpenLocalLlmConfig,
-  onOpenSettings,
   lang = 'es',
   isSidebarOpen = false,
   width,
@@ -291,16 +285,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           open={isGroupOpen('modelos')}
           onToggle={() => toggleGroup('modelos')}
         >
-        {onOpenSettings && (
-          <button
-            onClick={onOpenSettings}
-            className="nc-button flex items-center gap-2.5 text-xs py-1.5"
-            data-tooltip={lang === 'es' ? 'Ajustes del modelo' : lang === 'de' ? 'Modell-Einstellungen' : 'Model settings'}
-            data-tooltip-sub={lang === 'es' ? 'Modelo, parámetros e instrucciones en un solo panel' : lang === 'de' ? 'Modell, Parameter und Anweisungen in einem Panel' : 'Model, parameters and instructions in a single panel'}
-          >
-            <Sliders className="w-6 h-6 text-[var(--nc-text)]" /> {lang === 'es' ? 'Ajustes del modelo' : lang === 'de' ? 'Modell-Einstellungen' : 'Model settings'}
-          </button>
-        )}
         <button 
           onClick={() => setMode('huggingface')} 
           className={`nc-button flex items-center gap-2.5 text-xs py-1.5 ${mode === 'huggingface' ? 'nc-active' : ''}`}
@@ -309,16 +293,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <Cpu className="w-6 h-6" /> {t.modeHuggingFace}
         </button>
-        {onOpenLocalLlmConfig && (
-          <button
-            onClick={onOpenLocalLlmConfig}
-            className="nc-button flex items-center gap-2.5 text-xs py-1.5"
-            data-tooltip={lang === 'es' ? 'Configurar LLM Local' : lang === 'de' ? 'Lokales LLM konfigurieren' : 'Configure Local LLM'}
-            data-tooltip-sub={lang === 'es' ? 'Servidor y modelo del LLM local (Ollama / OpenAI-compatible)' : lang === 'de' ? 'Lokaler LLM-Server & Modell (Ollama / OpenAI-kompatibel)' : 'Local LLM server & model (Ollama / OpenAI-compatible)'}
-          >
-            <Server className="w-6 h-6 text-[var(--nc-text)]" /> {lang === 'es' ? 'Configurar LLM Local' : lang === 'de' ? 'Lokales LLM konfigurieren' : 'Configure Local LLM'}
-          </button>
-        )}
         </NavGroup>
 
         <NavGroup

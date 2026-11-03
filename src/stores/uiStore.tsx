@@ -23,7 +23,6 @@ export interface UIState {
   isCodeModalOpen: boolean;
   isLibraryModalOpen: boolean;
   isPreferencesModalOpen: boolean;
-  isInspectorOpen: boolean;
   isPaletteOpen: boolean;
   isAuthModalOpen: boolean;
   isGalleryModalOpen: boolean;
@@ -32,7 +31,6 @@ export interface UIState {
   isAboutModalOpen: boolean;
   isCompilerModalOpen: boolean;
   isShortcutsModalOpen: boolean;
-  isLocalLlmModalOpen: boolean;
   isBooting: boolean;
   isLiveViewerOpen: boolean;
   
@@ -103,7 +101,6 @@ const initialState: UIState = {
   isCodeModalOpen: false,
   isLibraryModalOpen: false,
   isPreferencesModalOpen: false,
-  isInspectorOpen: false,
   isPaletteOpen: false,
   isAuthModalOpen: false,
   isGalleryModalOpen: false,
@@ -112,7 +109,6 @@ const initialState: UIState = {
   isAboutModalOpen: false,
   isCompilerModalOpen: false,
   isShortcutsModalOpen: false,
-  isLocalLlmModalOpen: false,
   isBooting: true,
   isLiveViewerOpen: false,
   
@@ -405,7 +401,6 @@ interface UIStoreContextValue {
   setIsCodeModalOpen: (open: SetterValue<boolean>) => void;
   setIsLibraryModalOpen: (open: SetterValue<boolean>) => void;
   setIsPreferencesModalOpen: (open: SetterValue<boolean>) => void;
-  setIsInspectorOpen: (open: SetterValue<boolean>) => void;
   setIsPaletteOpen: (open: SetterValue<boolean>) => void;
   setIsAuthModalOpen: (open: SetterValue<boolean>) => void;
   setIsGalleryModalOpen: (open: SetterValue<boolean>) => void;
@@ -414,7 +409,6 @@ interface UIStoreContextValue {
   setIsAboutModalOpen: (open: SetterValue<boolean>) => void;
   setIsCompilerModalOpen: (open: SetterValue<boolean>) => void;
   setIsShortcutsModalOpen: (open: SetterValue<boolean>) => void;
-  setIsLocalLlmModalOpen: (open: SetterValue<boolean>) => void;
   setIsWorkbenchOpen: (open: SetterValue<boolean>) => void;
   setIsSidebarOpen: (open: SetterValue<boolean>) => void;
   setIsLiveViewerOpen: (open: SetterValue<boolean>) => void;
@@ -552,7 +546,6 @@ export function UIStoreProvider({ children }: { children: ReactNode }) {
     setIsCodeModalOpen: useCallback((open: SetterValue<boolean>) => dispatch({ type: 'SET_MODAL', payload: { modal: 'isCodeModalOpen', open } }), []),
     setIsLibraryModalOpen: useCallback((open: SetterValue<boolean>) => dispatch({ type: 'SET_MODAL', payload: { modal: 'isLibraryModalOpen', open } }), []),
     setIsPreferencesModalOpen: useCallback((open: SetterValue<boolean>) => dispatch({ type: 'SET_MODAL', payload: { modal: 'isPreferencesModalOpen', open } }), []),
-    setIsInspectorOpen: useCallback((open: SetterValue<boolean>) => dispatch({ type: 'SET_MODAL', payload: { modal: 'isInspectorOpen', open } }), []),
     setIsPaletteOpen: useCallback((open: SetterValue<boolean>) => dispatch({ type: 'SET_MODAL', payload: { modal: 'isPaletteOpen', open } }), []),
     setIsAuthModalOpen: useCallback((open: SetterValue<boolean>) => dispatch({ type: 'SET_MODAL', payload: { modal: 'isAuthModalOpen', open } }), []),
     setIsGalleryModalOpen: useCallback((open: SetterValue<boolean>) => dispatch({ type: 'SET_MODAL', payload: { modal: 'isGalleryModalOpen', open } }), []),
@@ -561,7 +554,6 @@ export function UIStoreProvider({ children }: { children: ReactNode }) {
     setIsAboutModalOpen: useCallback((open: SetterValue<boolean>) => dispatch({ type: 'SET_MODAL', payload: { modal: 'isAboutModalOpen', open } }), []),
     setIsCompilerModalOpen: useCallback((open: SetterValue<boolean>) => dispatch({ type: 'SET_MODAL', payload: { modal: 'isCompilerModalOpen', open } }), []),
     setIsShortcutsModalOpen: useCallback((open: SetterValue<boolean>) => dispatch({ type: 'SET_MODAL', payload: { modal: 'isShortcutsModalOpen', open } }), []),
-    setIsLocalLlmModalOpen: useCallback((open: SetterValue<boolean>) => dispatch({ type: 'SET_MODAL', payload: { modal: 'isLocalLlmModalOpen', open } }), []),
     setIsWorkbenchOpen: useCallback((open: SetterValue<boolean>) => dispatch({ type: 'SET_WORKBENCH_OPEN', payload: open }), []),
     setIsSidebarOpen: useCallback((open: SetterValue<boolean>) => dispatch({ type: 'SET_SIDEBAR_OPEN', payload: open }), []),
     setIsLiveViewerOpen: useCallback((open: SetterValue<boolean>) => dispatch({ type: 'SET_LIVE_VIEWER', payload: { open } }), []),

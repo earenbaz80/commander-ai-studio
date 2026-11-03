@@ -16,8 +16,6 @@ import {
   Library,
   Settings,
   Search,
-  Palette,
-  Server,
   Puzzle,
   Hammer,
   HelpCircle,
@@ -58,10 +56,8 @@ export interface PaletteCommandsOptions {
   handleNewChat: () => void;
   setIsGalleryModalOpen: (v: boolean) => void;
   setIsLibraryModalOpen: (v: boolean) => void;
-  setIsInspectorOpen: (v: boolean) => void;
   setIsSymbolSearchOpen: (v: boolean) => void;
   setIsPreferencesModalOpen: (v: boolean) => void;
-  setIsLocalLlmModalOpen: (v: boolean) => void;
   setIsExtensionsOpen: (v: boolean) => void;
   setIsCompilerModalOpen: (v: boolean) => void;
   setIsHelpModalOpen: (v: boolean) => void;
@@ -85,8 +81,8 @@ export function buildPaletteCommands(opts: PaletteCommandsOptions): CommandItem[
   const activeHint = (m: StudioMode) => (mode === m ? '●' : undefined);
   const ico = 'w-3.5 h-3.5';
   const {
-    setIsGalleryModalOpen, setIsLibraryModalOpen, setIsInspectorOpen, setIsSymbolSearchOpen,
-    setIsPreferencesModalOpen, setIsLocalLlmModalOpen, setIsExtensionsOpen,
+    setIsGalleryModalOpen, setIsLibraryModalOpen, setIsSymbolSearchOpen,
+    setIsPreferencesModalOpen, setIsExtensionsOpen,
     setIsCompilerModalOpen, setIsHelpModalOpen, setIsAboutModalOpen, setIsWorkbenchOpen, setIsSidebarOpen,
   } = opts;
   const paletteCommands: CommandItem[] = [
@@ -104,10 +100,8 @@ export function buildPaletteCommands(opts: PaletteCommandsOptions): CommandItem[
     { id: 'tool-new-chat', label: L('Nuevo chat', 'New chat'), group: L('Herramientas', 'Tools'), keywords: 'nuevo sesion chat limpiar', icon: <Plus className={ico} />, run: () => handleNewChat() },
     { id: 'tool-gallery', label: L('Galería de proyectos', 'Project gallery'), group: L('Herramientas', 'Tools'), keywords: 'galeria comunidad proyectos', icon: <Library className={ico} />, run: () => setIsGalleryModalOpen(true) },
     { id: 'tool-library', label: L('Librería de prompts', 'Prompt library'), group: L('Herramientas', 'Tools'), keywords: 'libreria plantillas prompts', icon: <Library className={ico} />, run: () => setIsLibraryModalOpen(true) },
-    { id: 'tool-config', label: L('Configuración / Parámetros', 'Settings / Parameters'), group: L('Herramientas', 'Tools'), keywords: 'ajustes parametros inspector config', icon: <Settings className={ico} />, run: () => setIsInspectorOpen(true) },
+    { id: 'tool-settings', label: L('Configuración', 'Settings'), group: L('Herramientas', 'Tools'), keywords: 'ajustes config preferencias parametros modelo proveedores ollama lm studio openai-compatible api keys tema idioma', icon: <Settings className={ico} />, run: () => setIsPreferencesModalOpen(true) },
     { id: 'tool-symbol', label: L('Ir a símbolo del workspace', 'Go to symbol in workspace'), group: L('Herramientas', 'Tools'), keywords: 'simbolo symbol workspace buscar navegar lsp ctrl+p', icon: <Search className={ico} />, run: () => setIsSymbolSearchOpen(true) },
-    { id: 'tool-preferences', label: L('Preferencias de la aplicación', 'App preferences'), group: L('Herramientas', 'Tools'), keywords: 'preferencias tema idioma energia bateria exportacion ajustes', icon: <Palette className={ico} />, run: () => setIsPreferencesModalOpen(true) },
-    { id: 'tool-local-llm', label: L('Configurar LLM local', 'Configure local LLM'), group: L('Herramientas', 'Tools'), keywords: 'llm local ollama servidor huggingface endpoint openai-compatible', icon: <Server className={ico} />, run: () => setIsLocalLlmModalOpen(true) },
     { id: 'tool-extensions', label: lang === 'de' ? 'Erweiterungen (MCP, Skills, Plugins)' : L('Extensiones (MCP, Skills, Plugins)', 'Extensions (MCP, Skills, Plugins)'), group: L('Herramientas', 'Tools'), keywords: 'extensions mcp model context protocol servers servidores skills plugins integraciones importar instalar buscar', icon: <Puzzle className={ico} />, run: () => setIsExtensionsOpen(true) },
     { id: 'tool-compile', label: L('Compilar / Exportar proyecto', 'Compile / Export project'), group: L('Herramientas', 'Tools'), keywords: 'compilar build compilador exportar exe apk electron tauri', icon: <Hammer className={ico} />, run: () => setIsCompilerModalOpen(true) },
     { id: 'tool-help', label: L('Manual de ayuda', 'Help manual'), group: L('Herramientas', 'Tools'), keywords: 'ayuda help manual', icon: <HelpCircle className={ico} />, run: () => setIsHelpModalOpen(true) },

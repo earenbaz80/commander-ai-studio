@@ -119,23 +119,6 @@ describe('Sidebar (panel lateral agrupado)', () => {
     expect(props.setMode).toHaveBeenCalledWith('live_voice');
   });
 
-  test('Configurar LLM Local (grupo Modelos) dispara su manejador', () => {
-    const props = { ...baseProps(), onOpenLocalLlmConfig: vi.fn() };
-    const { container } = render(<Sidebar {...props} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Modelos' }));
-    expect(container.querySelector('[data-tooltip="Configurar LLM Local"]')).toBeTruthy();
-    fireEvent.click(screen.getByText('Configurar LLM Local'));
-    expect(props.onOpenLocalLlmConfig).toHaveBeenCalledTimes(1);
-  });
-
-  test('los ajustes del modelo se abren desde el sidebar', () => {
-    const props = { ...baseProps(), onOpenSettings: vi.fn() };
-    render(<Sidebar {...props} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Modelos' }));
-    fireEvent.click(screen.getByText('Ajustes del modelo'));
-    expect(props.onOpenSettings).toHaveBeenCalledTimes(1);
-  });
-
   test('cerrar oculta el panel completo sin ancho o padding de escritorio', () => {
     const { container, rerender } = render(<Sidebar {...baseProps()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Crear' }));

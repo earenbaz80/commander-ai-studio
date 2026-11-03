@@ -1,6 +1,6 @@
 /**
  * Tests del modal "Servidor LLM local":
- * cambio de servidor (Ollama / OpenAI-compatible), probar conexión y guardado.
+ * cambio de servidor (Ollama / LM Studio / OpenAI-compatible), probar conexión y guardado.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -9,6 +9,12 @@ import { LocalLlmModal } from '../../src/components/LocalLlmModal';
 const mockApi = () => {
   const fn = vi.fn().mockImplementation((url: string, init?: any) => {
     const u = String(url);
+    if (u.startsWith('/api/lmstudio/models')) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ success: true, models: ['lmstudio-model-a'] }),
+      });
+    }
     if (u.startsWith('/api/custom/models')) {
       return Promise.resolve({
         ok: true,
@@ -68,9 +74,9 @@ describe('LocalLlmModal', () => {
     render(<LocalLlmModal isOpen onClose={() => {}} />);
 
     fireEvent.click(screen.getByText('OpenAI-compatible'));
-    expect(screen.getByDisplayValue('http://localhost:1234/v1')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('http://localhost:8000/v1')).toBeInTheDocument();
 
-    const baseUrl = screen.getByDisplayValue('http://localhost:1234/v1');
+    const baseUrl = screen.getByDisplayValue('http://localhost:8000/v1');
     fireEvent.change(baseUrl, { target: { value: 'http://localhost:8080/v1' } });
 
     fireEvent.click(screen.getByText('Probar conexión'));
@@ -85,6 +91,35 @@ describe('LocalLlmModal', () => {
       );
     });
     expect(screen.getByText(/local-model-a · local-model-b/)).toBeInTheDocument();
+  });
+
+  test('LM Studio usa su propio endpoint y guarda LMSTUDIO_HOST', async () => {
+    const fetchMock = mockApi();
+    render(<LocalLlmModal isOpen onClose={() => {}} />);
+
+    fireEvent.click(screen.getByText('LM Studio'));
+    const host = screen.getByDisplayValue('http://localhost:1234/v1');
+    fireEvent.change(host, { target: { value: 'http://192.168.1.20:1234' } });
+
+    fireEvent.click(screen.getByText('Probar conexión'));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/lmstudio/models',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ host: 'http://192.168.1.20:1234' }),
+        })
+      );
+    });
+    expect(screen.getByText(/lmstudio-model-a/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Guardar'));
+    await waitFor(() => {
+      const posts = fetchMock.mock.calls
+        .filter((c: any) => c[0] === '/api/keys' && c[1]?.method === 'POST')
+        .map((c: any) => JSON.parse(c[1].body));
+      expect(posts).toContainEqual({ key: 'LMSTUDIO_HOST', value: 'http://192.168.1.20:1234' });
+    });
   });
 
   test('guardar persiste el servidor en cookies y en localStorage', async () => {
@@ -114,7 +149,7 @@ describe('LocalLlmModal', () => {
     render(<LocalLlmModal isOpen onClose={() => {}} />);
 
     fireEvent.click(screen.getByText('OpenAI-compatible'));
-    fireEvent.change(screen.getByDisplayValue('http://localhost:1234/v1'), {
+    fireEvent.change(screen.getByDisplayValue('http://localhost:8000/v1'), {
       target: { value: 'http://localhost:5000/v1' },
     });
     const modelInput = screen.getByPlaceholderText('llama-3.1-8b');

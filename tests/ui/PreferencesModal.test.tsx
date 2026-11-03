@@ -4,13 +4,15 @@ import { PreferencesModal } from '../../src/components/PreferencesModal';
 import { ATASCO_KEY, PREFERENCIAS_EVENT } from '../../src/components/ServerSubAgents';
 
 /**
- * El umbral de atasco se configura en Preferencias y lo consume el panel de
- * subagentes. Aquí se prueba la mitad de Preferencias: persistir el valor,
+ * El umbral de atasco se configura en Configuración y lo consume el panel de
+ * subagentes. Aquí se prueba la mitad de Configuración: persistir el valor,
  * acotarlo y avisar al panel sin recargar.
  */
 
-const abrir = () =>
-  render(<PreferencesModal isOpen onClose={() => {}} />);
+const abrir = () => {
+  // Toda la configuración está en una sola página: el umbral ya está visible.
+  return render(<PreferencesModal isOpen onClose={() => {}} />);
+};
 
 afterEach(() => {
   localStorage.removeItem(ATASCO_KEY);
@@ -90,5 +92,127 @@ describe('PreferencesModal · umbral de atasco', () => {
     abrir();
 
     expect((screen.getByTestId('stuck-threshold-input') as HTMLInputElement).value).toBe('15');
+  });
+
+  test('muestra todo en una sola página, sin menú de secciones', () => {
+    render(<PreferencesModal isOpen onClose={() => {}} />);
+
+    expect(screen.queryByRole('navigation')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'General' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Modelo' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Proveedores' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Agente' })).toBeInTheDocument();
+  });
+
+  test('la sección Modelo reúne los parámetros de generación', () => {
+    const parametros = {
+      temperature: 0.7,
+      topP: 0.95,
+      topK: 40,
+      maxTokens: 2048,
+      systemInstruction: 'base',
+    } as any;
+    const setParameters = vi.fn();
+
+    render(
+      <PreferencesModal
+        isOpen
+        onClose={() => {}}
+        parameters={parametros}
+        setParameters={setParameters}
+        selectedModel="gemini-3-pro"
+        selectedProvider="google"
+      />
+    );
+    expect(screen.getByRole('slider', { name: 'Temperatura' })).toBeInTheDocument();
+    expect(screen.getByRole('spinbutton', { name: 'Máximo de tokens' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Instrucciones del sistema' })).toHaveValue('base');
+
+    fireEvent.change(screen.getByRole('slider', { name: 'Temperatura' }), { target: { value: '1.2' } });
+    expect(setParameters).toHaveBeenCalledTimes(1);
+    const actualizar = setParameters.mock.calls[0][0] as (prev: any) => any;
+    expect(actualizar(parametros)).toMatchObject({ temperature: 1.2 });
+  });
+
+  test('la sección Modelo incluye herramientas y salida estructurada', () => {
+    const parametros = {
+      temperature: 0.7,
+      topP: 0.95,
+      topK: 40,
+      maxTokens: 2048,
+      responseFormat: 'text',
+      jsonSchema: '',
+      systemInstruction: 'base',
+      examples: [],
+      tools: { googleSearch: true, codeExecution: false, urlContext: true, customFunctions: [] },
+    } as any;
+    const setParameters = vi.fn();
+
+    render(
+      <PreferencesModal
+        isOpen
+        onClose={() => {}}
+        parameters={parametros}
+        setParameters={setParameters}
+        selectedModel="gemini-3-pro"
+        selectedProvider="google"
+      />
+    );
+
+    const busqueda = screen.getByLabelText('Búsqueda web') as HTMLInputElement;
+    expect(busqueda).toBeChecked();
+    fireEvent.click(busqueda);
+
+    const actualizarHerramientas = setParameters.mock.calls[0][0] as (prev: any) => any;
+    expect(actualizarHerramientas(parametros).tools).toMatchObject({
+      googleSearch: false,
+      codeExecution: false,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'JSON' }));
+    const actualizarFormato = setParameters.mock.calls[1][0] as (prev: any) => any;
+    expect(actualizarFormato(parametros).responseFormat).toBe('json');
+  });
+
+  test('los ejemplos few-shot se añaden al prompt sin llamarlo fine-tuning', () => {
+    const parametros = {
+      temperature: 0.7,
+      topP: 0.95,
+      topK: 40,
+      maxTokens: 2048,
+      responseFormat: 'text',
+      jsonSchema: '',
+      systemInstruction: 'base',
+      examples: [],
+      tools: { googleSearch: true, codeExecution: false, urlContext: true, customFunctions: [] },
+    } as any;
+    const setParameters = vi.fn();
+
+    render(
+      <PreferencesModal
+        isOpen
+        onClose={() => {}}
+        parameters={parametros}
+        setParameters={setParameters}
+        selectedModel="gemini-3-pro"
+        selectedProvider="google"
+      />
+    );
+
+    expect(screen.getByText('Ejemplos few-shot')).toBeInTheDocument();
+    expect(screen.queryByText(/fine-tuning/i)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Entrada del ejemplo'), {
+      target: { value: 'Hola' },
+    });
+    fireEvent.change(screen.getByLabelText('Salida del ejemplo'), {
+      target: { value: 'Mundo' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir ejemplo' }));
+
+    const actualizar = setParameters.mock.calls[0][0] as (prev: any) => any;
+    const siguiente = actualizar(parametros);
+    expect(siguiente.examples).toHaveLength(1);
+    expect(siguiente.examples[0]).toMatchObject({ input: 'Hola', output: 'Mundo' });
   });
 });

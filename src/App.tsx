@@ -1,6 +1,7 @@
 import { getCachedApiKey } from './lib/apiKeys';
 
 import { resolveChatRoute } from './lib/aiRouting';
+import { detectProvider } from './lib/aiProviders';
 import { formatErrorMessage } from './utils/errorFormatter';
 import { useAppExecutors } from './hooks/useAppExecutors';
 import { useAppHandlers } from './hooks/useAppHandlers';
@@ -20,7 +21,6 @@ import { Header } from './components/Header';
 import { FloatingAssistant, type FloatingAssistantHandle } from './components/FloatingAssistant';
 import { WorkbenchPanel } from './components/WorkbenchPanel';
 import { Sidebar } from './components/Sidebar';
-import { RightPanel } from './components/RightPanel';
 import { Playground } from './components/Playground';
 // Vistas pesadas y modales bajo demanda: no forman parte del primer pintado.
 // Cada una vive en su propio chunk y se descarga al abrirse por primera vez.
@@ -30,11 +30,7 @@ const CodeModal = React.lazy(() =>
 const PreferencesModal = React.lazy(() =>
   import('./components/PreferencesModal').then((m) => ({ default: m.PreferencesModal }))
 );
-// El gestor se abre desde el panel de ajustes y desde el propio modal de
-// configuración, así que vive en App y no dentro de uno de los dos.
-const ProviderManager = React.lazy(() =>
-  import('./components/panel/ProviderManager').then((m) => ({ default: m.ProviderManager }))
-);
+import type { SettingsSection } from './components/PreferencesModal';
 const LibraryModal = React.lazy(() =>
   import('./components/LibraryModal').then((m) => ({ default: m.LibraryModal }))
 );
@@ -61,9 +57,6 @@ const CompilerModal = React.lazy(() =>
 );
 const KeyboardShortcutsModal = React.lazy(() =>
   import('./components/KeyboardShortcutsModal').then((m) => ({ default: m.KeyboardShortcutsModal }))
-);
-const LocalLlmModal = React.lazy(() =>
-  import('./components/LocalLlmModal').then((m) => ({ default: m.LocalLlmModal }))
 );
 const AgentMode = React.lazy(() =>
   import('./components/AgentMode').then((m) => ({ default: m.AgentMode }))
@@ -149,8 +142,8 @@ export default function App() {
   const setDownloadedModels = chat.setDownloadedModels;
   const [isExtensionsOpen, setIsExtensionsOpen] = useState(false);
   const [isSymbolSearchOpen, setIsSymbolSearchOpen] = useState(false);
-  /** Gestor de proveedores compartido por Preferencias y Ajustes. */
-  const [isProviderManagerOpen, setIsProviderManagerOpen] = useState(false);
+  /** Sección que debe mostrar el único panel de Configuración. */
+  const [preferencesSection, setPreferencesSection] = useState<SettingsSection>('general');
   const agent = useAgent('.', selectedModel);
   /** Campaña autónoma del servidor: corre fuera del orquestador local. */
   const [autonomousRunning, setAutonomousRunning] = useState(false);
@@ -158,9 +151,9 @@ export default function App() {
 
   // Modals
   const {
-    isCodeModalOpen, isLibraryModalOpen, isPreferencesModalOpen, isInspectorOpen, isPaletteOpen,
+    isCodeModalOpen, isLibraryModalOpen, isPreferencesModalOpen, isPaletteOpen,
     isAuthModalOpen, isGalleryModalOpen, isVersionHistoryModalOpen, isHelpModalOpen, isAboutModalOpen,
-    isCompilerModalOpen, isShortcutsModalOpen, isLocalLlmModalOpen, isBooting, isLiveViewerOpen,
+    isCompilerModalOpen, isShortcutsModalOpen, isBooting, isLiveViewerOpen,
     liveViewerSnippets, activeSnippetIndex, isWorkbenchOpen, isSidebarOpen, lang, showTooltips,
     lowResourceMode, powerSaverMode, defaultExportFolder, batteryInfo, isOffline, theme, nonoStatus, projectToast,
     suggestionConfig,
@@ -168,7 +161,6 @@ export default function App() {
   const setIsCodeModalOpen = ui.setIsCodeModalOpen;
   const setIsLibraryModalOpen = ui.setIsLibraryModalOpen;
   const setIsPreferencesModalOpen = ui.setIsPreferencesModalOpen;
-  const setIsInspectorOpen = ui.setIsInspectorOpen;
   const setIsPaletteOpen = ui.setIsPaletteOpen;
   const setIsAuthModalOpen = ui.setIsAuthModalOpen;
   const setIsGalleryModalOpen = ui.setIsGalleryModalOpen;
@@ -177,7 +169,6 @@ export default function App() {
   const setIsAboutModalOpen = ui.setIsAboutModalOpen;
   const setIsCompilerModalOpen = ui.setIsCompilerModalOpen;
   const setIsShortcutsModalOpen = ui.setIsShortcutsModalOpen;
-  const setIsLocalLlmModalOpen = ui.setIsLocalLlmModalOpen;
   const setIsBooting = ui.setBooting;
   const setIsLiveViewerOpen = ui.setIsLiveViewerOpen;
   const setLiveViewerSnippets = ui.setLiveViewerSnippets;
@@ -190,6 +181,17 @@ export default function App() {
   const setPowerSaverMode = ui.setPowerSaverMode;
   const setDefaultExportFolder = ui.setDefaultExportFolder;
   const setTheme = ui.setTheme;
+
+  // Un solo punto de entrada: cada botón contextual abre la sección que le
+  // corresponde, sin abrir un segundo menú de configuración.
+  const openSettings = useCallback(
+    (section: SettingsSection = 'general') => {
+      setPreferencesSection(section);
+      setIsPreferencesModalOpen(true);
+    },
+    [setIsPreferencesModalOpen]
+  );
+
   // Eventos contextuales para Nono (generando, error, cambio de modo…).
   const setNonoStatus = ui.setNonoStatus;
   const setProjectToast = ui.setProjectToast;
@@ -224,14 +226,25 @@ export default function App() {
   const { currentUser, identity, displayName } = useAppAuth({});
 
 
-  // Sincronización automática de selectedProvider según el modelo elegido
+  // Sincronización automática de selectedProvider según el modelo elegido.
+  // Los prefijos de proveedor se resuelven ANTES de la heurística de `/` de
+  // HuggingFace; antes, elegir `nvidia/meta/...` o `lmstudio/...` lo mandaba a HF.
   useEffect(() => {
+    const providerPrefix = /^(ollama|lmstudio|openrouter|pollinations|custom|local|freebuff|openai|nvidia)\//.test(
+      selectedModel
+    );
+    if (providerPrefix) {
+      setSelectedProvider(detectProvider(selectedModel, 'google', downloadedModels));
+      return;
+    }
     const isHfModel =
       selectedModel.includes('/') ||
       HUGGINGFACE_MODELS.some((m) => m.id === selectedModel) ||
       downloadedModels.some((m) => m.hfRepoId === selectedModel || m.id === selectedModel);
     if (isHfModel) {
       setSelectedProvider('huggingface');
+    } else if (/^(gpt-|o\d)/i.test(selectedModel)) {
+      setSelectedProvider('openai');
     } else if (selectedModel.startsWith('claude')) {
       setSelectedProvider('anthropic');
     } else if (selectedModel.startsWith('gemini') || selectedModel.startsWith('antigravity')) {
@@ -1131,7 +1144,7 @@ export default function App() {
     parameters,
     tabs,
     setIsShortcutsModalOpen,
-    setIsInspectorOpen,
+    setIsPreferencesModalOpen,
     setIsSidebarOpen,
     setIsWorkbenchOpen,
     setIsCompilerModalOpen,
@@ -1190,10 +1203,8 @@ export default function App() {
     handleNewChat,
     setIsGalleryModalOpen,
     setIsLibraryModalOpen,
-    setIsInspectorOpen,
     setIsSymbolSearchOpen,
     setIsPreferencesModalOpen,
-    setIsLocalLlmModalOpen,
     setIsExtensionsOpen,
     setIsCompilerModalOpen,
     setIsHelpModalOpen,
@@ -1220,7 +1231,6 @@ export default function App() {
         mode={mode}
         setMode={setMode}
         selectedModel={selectedModel}
-        onOpenInspector={() => setIsInspectorOpen(!isInspectorOpen)}
         onToggleWorkbench={() => setIsWorkbenchOpen((v) => !v)}
         isWorkbenchOpen={isWorkbenchOpen}
         onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -1235,7 +1245,7 @@ export default function App() {
         onOpenHelp={() => setIsHelpModalOpen(true)}
         onOpenAbout={() => setIsAboutModalOpen(true)}
         onOpenCommandPalette={() => setIsPaletteOpen(true)}
-        onOpenPreferences={() => setIsPreferencesModalOpen(true)}
+        onOpenPreferences={() => openSettings('general')}
         onToggleNono={() => setShowNono((v) => !v)}
         isNonoVisible={showNono}
       />
@@ -1308,8 +1318,6 @@ export default function App() {
               onNewPrompt={handleNewChat}
               onOpenGallery={() => setIsGalleryModalOpen(true)}
               onOpenCompile={() => setIsCompilerModalOpen(true)}
-              onOpenLocalLlmConfig={() => setIsLocalLlmModalOpen(true)}
-              onOpenSettings={() => setIsInspectorOpen(true)}
               lang={lang as any}
               width={sidebarResize.width}
               serverSessions={serverSessions}
@@ -1341,7 +1349,6 @@ export default function App() {
             setMode={setMode}
             lang={lang as any}
             selectedModel={selectedModel}
-            onOpenSettings={() => setIsInspectorOpen(true)}
             chat={{
               messages,
               setMessages,
@@ -1354,7 +1361,7 @@ export default function App() {
               lang: lang as any,
               setMode,
               onOpenLiveViewer: handleOpenLiveViewer,
-              onOpenLocalLlmConfig: () => setIsLocalLlmModalOpen(true),
+              onOpenLocalLlmConfig: () => openSettings('proveedores'),
               displayName,
               isAuthenticated: !!currentUser,
             }}
@@ -1481,29 +1488,6 @@ export default function App() {
           </NonoDock>
         )}
 
-        {/* Right Parameters Panel (Hidden in Exporter mode to give max space to wizard) */}
-        {isInspectorOpen && (
-          <RightPanel
-            parameters={parameters}
-            setParameters={setParameters}
-            selectedModel={selectedModel}
-            setSelectedModel={setSelectedModel}
-            selectedProvider={selectedProvider}
-            setSelectedProvider={setSelectedProvider}
-            setMode={setMode}
-            onShowCodeModal={() => setIsCodeModalOpen(true)}
-            onSaveVersion={handleSaveVersion}
-            onViewHistory={() => setIsVersionHistoryModalOpen(true)}
-            onClose={() => setIsInspectorOpen(false)}
-            lang={lang as any}
-            downloadedModels={downloadedModels}
-            showTooltips={showTooltips}
-            onOpenHelp={() => setIsHelpModalOpen(true)}
-            onOpenAbout={() => setIsAboutModalOpen(true)}
-            onOpenCompile={() => setIsCompilerModalOpen(true)}
-            onOpenLocalLlmConfig={() => setIsLocalLlmModalOpen(true)}
-          />
-        )}
       </div>
 
       {/* Code Modal */}
@@ -1562,21 +1546,9 @@ export default function App() {
             setDefaultExportFolder={setDefaultExportFolder}
             selectedModel={selectedModel}
             selectedProvider={selectedProvider}
-            onOpenProviders={() => {
-              // El gestor quedaría detrás de este modal (z-50 < z-9999).
-              setIsPreferencesModalOpen(false);
-              setIsProviderManagerOpen(true);
-            }}
-          />
-        </React.Suspense>
-      )}
-
-      {isProviderManagerOpen && (
-        <React.Suspense fallback={<LazyFallback lang={lang} />}>
-          <ProviderManager
-            isOpen={isProviderManagerOpen}
-            onClose={() => setIsProviderManagerOpen(false)}
-            lang={lang as any}
+            parameters={parameters}
+            setParameters={setParameters}
+            initialSection={preferencesSection}
           />
         </React.Suspense>
       )}
@@ -1686,17 +1658,6 @@ export default function App() {
           <KeyboardShortcutsModal
             isOpen={isShortcutsModalOpen}
             onClose={() => setIsShortcutsModalOpen(false)}
-            lang={lang as any}
-          />
-        </React.Suspense>
-      )}
-
-      {/* Local LLM Server Configuration Modal */}
-      {isLocalLlmModalOpen && (
-        <React.Suspense fallback={<LazyFallback lang={lang} />}>
-          <LocalLlmModal
-            isOpen={isLocalLlmModalOpen}
-            onClose={() => setIsLocalLlmModalOpen(false)}
             lang={lang as any}
           />
         </React.Suspense>
