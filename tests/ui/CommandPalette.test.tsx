@@ -106,6 +106,15 @@ describe('CommandPalette', () => {
     expect(runs.chat).not.toHaveBeenCalled();
   });
 
+  test('Escape cierra aunque el foco no esté en el buscador', () => {
+    const { runs, onClose } = setup(true);
+    // El foco se pierde al mirar la lista o al hacer clic en el pie.
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(runs.chat).not.toHaveBeenCalled();
+  });
+
   test('clic en un comando lo ejecuta y cierra', () => {
     const { runs, onClose } = setup(true);
     fireEvent.click(getOption('Galería de proyectos'));
