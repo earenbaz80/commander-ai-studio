@@ -14,6 +14,46 @@ import { ServerSubAgents } from './ServerSubAgents';
 import { ParallelLaunch } from './ParallelLaunch';
 import { ShellJobLog } from './ShellJobLog';
 import { EmptyState } from './EmptyState';
+import { ensureServerSession, registerServerSession } from '../agent/activeSession';
+
+/** Cada cuánto se mira la cola mientras la campaña corre en el servidor. */
+const CAMPAIGN_POLL_MS = 2500;
+/** Margen para el planificador (60 s de presupuesto) antes de encolar nada. */
+const CAMPAIGN_PLAN_GRACE_MS = 75_000;
+
+/**
+ * Espera a que la campaña del hilo se quede sin tareas `pending`/`claimed`.
+ *
+ * La campaña corre en el servidor y su petición responde al instante, así que el
+ * pie sólo puede saber si sigue viva mirando su cola. Se piden dos lecturas
+ * seguidas sin actividad porque entre terminar una tarea y encolar su recuperación
+ * hay un instante en que la cola parece vacía. Si el planificador no encola nada
+ * (fallo o timeout), se corta pasados los 75 s en vez de dejar el pie encendido.
+ */
+async function waitForCampaign(threadId: string): Promise<void> {
+  const startedAt = Date.now();
+  let sawItems = false;
+  let idleReads = 0;
+  while (true) {
+    await new Promise((r) => setTimeout(r, CAMPAIGN_POLL_MS));
+    try {
+      const res = await fetch(`/api/queue/${encodeURIComponent(threadId)}`);
+      const body: any = await res.json();
+      const items: any[] = Array.isArray(body?.items) ? body.items : [];
+      if (items.length > 0) sawItems = true;
+      const active = items.some((i) => i?.state === 'pending' || i?.state === 'claimed');
+      if (sawItems && !active) {
+        idleReads += 1;
+        if (idleReads >= 2) return;
+      } else {
+        idleReads = 0;
+      }
+      if (!sawItems && Date.now() - startedAt > CAMPAIGN_PLAN_GRACE_MS) return;
+    } catch {
+      return; // sin servidor no hay nada que esperar
+    }
+  }
+}
 
 interface AgentModeProps {
   cwd: string;
@@ -27,6 +67,8 @@ interface AgentModeProps {
   onFork?: (s: AgentSession) => void;
   onRollbackRun?: () => Promise<{ ok: boolean; error?: string; restored?: number; deleted?: number; skipped?: number }>;
   onPlanChange?: (plan: Array<{ id: string; text: string; done: boolean }>) => void;
+  /** Avisa al pie de que hay una campaña autónoma corriendo en el servidor. */
+  onAutonomousRunningChange?: (running: boolean) => void;
   lang: Language;
 }
 
@@ -41,6 +83,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
   onFork,
   onRollbackRun,
   onPlanChange,
+  onAutonomousRunningChange,
   lang,
 }) => {
   // Los textos que aún estaban sólo en castellano se traducen con este par; el
@@ -91,18 +134,31 @@ export const AgentMode: React.FC<AgentModeProps> = ({
     const goal = autonomousGoal.trim();
     if (!goal) return;
     setAutonomousStatus(t('Planificando…', 'Planning…'));
+    onAutonomousRunningChange?.(true);
     try {
       const threadId = `auto-${Date.now()}`;
       await fetch('/api/threads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: threadId, projectPath: cwd, title: goal }) });
-      const res = await fetch(`/api/autonomous/${encodeURIComponent(threadId)}/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ goal }) });
+      // El endpoint es fire-and-forget y exige una sesión padre registrada: sin
+      // ella respondía 400 y la campaña no llegaba a arrancar.
+      let parentSessionId = await ensureServerSession();
+      if (!parentSessionId) parentSessionId = await registerServerSession({ goal, cwd });
+      if (!parentSessionId) {
+        setAutonomousStatus(t('Arranca o continúa una tarea antes de lanzar una campaña.', 'Start or resume a task before launching a campaign.'));
+        return;
+      }
+      const res = await fetch(`/api/autonomous/${encodeURIComponent(threadId)}/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ goal, parentSessionId, cwd }) });
       const data = await res.json();
-      setAutonomousStatus(
-        data?.success
-          ? `${t('Campaña lanzada', 'Campaign launched')} (${data?.result?.completed ?? 0} ${t('tareas', 'tasks')})`
-          : (data?.error || 'Error'),
-      );
+      if (!data?.success) {
+        setAutonomousStatus(data?.error || 'Error');
+        return;
+      }
+      setAutonomousStatus(t('Campaña en marcha…', 'Campaign running…'));
+      await waitForCampaign(threadId);
+      setAutonomousStatus(t('Campaña terminada', 'Campaign finished'));
     } catch (e: any) {
       setAutonomousStatus(e?.message || 'Error');
+    } finally {
+      onAutonomousRunningChange?.(false);
     }
   };
   // `state` viene del orquestador como prop de solo lectura, así que la salida

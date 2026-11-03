@@ -142,6 +142,8 @@ export default function App() {
   const [isExtensionsOpen, setIsExtensionsOpen] = useState(false);
   const [isSymbolSearchOpen, setIsSymbolSearchOpen] = useState(false);
   const agent = useAgent('.', selectedModel);
+  /** Campaña autónoma del servidor: corre fuera del orquestador local. */
+  const [autonomousRunning, setAutonomousRunning] = useState(false);
   const sidebarResize = useResizableWidth({ key: 'commander_sidebar_width', defaultWidth: 256, min: 180, max: 400 });
 
   // Modals
@@ -1351,6 +1353,7 @@ export default function App() {
                 onFork={agent.forkSession}
                 onRollbackRun={agent.rollbackRun}
                 onPlanChange={agent.setPlan}
+                onAutonomousRunningChange={setAutonomousRunning}
                 lang={lang as any}
               />
               {agent.pendingApproval && (
@@ -1687,7 +1690,7 @@ export default function App() {
         lang={lang as any}
       />
       {/* Status bar Norton */}
-      <StatusBar lang={lang as any} model={selectedModel} isGenerating={isGenerating || agent.state.running} />
+      <StatusBar lang={lang as any} model={selectedModel} isGenerating={isGenerating || agent.state.running || autonomousRunning} />
     </div>
   );
 }
