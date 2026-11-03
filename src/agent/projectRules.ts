@@ -125,7 +125,7 @@ export function checkSource(ts: any, file: string, text: string): RuleViolation[
         add(
           'color-token',
           node,
-          `Color literal ${m}: usa la paleta Norton (#000080 / #00ffff / #ffff55) o un token del tema.`,
+          `Color literal ${m}: usa un token del tema o una utilidad existente en lugar del literal.`,
           m
         );
       }

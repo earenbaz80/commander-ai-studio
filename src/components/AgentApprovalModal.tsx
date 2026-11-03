@@ -10,7 +10,8 @@ import type { Language } from '../i18n/translations';
  */
 import { useEffect, useMemo, useState } from 'react';
 import type { ApprovalRequest } from '../agent/types';
-import { readProjectFile } from '../utils/agentToolsApi';
+import { readProjectFile, runAgentTool } from '../utils/agentToolsApi';
+import type { RuleFinding } from '../agent/tools/fs';
 import { applyExactEdit } from '../utils/patch';
 import { DiffViewer } from './DiffViewer';
 
@@ -74,6 +75,46 @@ export function AgentApprovalModal({ approval, onResolve, lang = 'es' }: AgentAp
   const showDiff = isPatchTool && !loading && oldText !== null && proposed !== null;
   const showFallback = !showDiff && !(isPatchTool && loading);
 
+  /**
+   * Reglas del repo que introduce el borrador (color, i18n).
+   *
+   * Las calcula el servidor con `ts.propose`, no el navegador: el parser de
+   * TypeScript vive allí y meterlo en el bundle por dos avisos no tiene
+   * sentido. `diagnose: false` porque aquí sólo interesan las reglas, no el
+   * typecheck, que ya costó su segundo en el flujo del agente.
+   */
+  const [rules, setRules] = useState<RuleFinding[]>([]);
+
+  useEffect(() => {
+    if (!showDiff) {
+      setRules([]);
+      return;
+    }
+    let cancelled = false;
+    const payload =
+      toolId === 'fs.write'
+        ? { path, content: String(input.content ?? ''), diagnose: false }
+        : {
+            path,
+            oldString: String(input.oldString ?? ''),
+            newString: String(input.newString ?? ''),
+            replaceAll: !!input.replaceAll,
+            diagnose: false,
+          };
+    runAgentTool<{ rules?: RuleFinding[] }>(toolId === 'fs.write' ? 'fs.propose.write' : 'fs.propose.edit', payload)
+      .then((res) => {
+        if (!cancelled) setRules(res.ok ? res.data?.rules ?? [] : []);
+      })
+      .catch(() => {
+        if (!cancelled) setRules([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // `input` se reconstruye en cada render: la identidad de la aprobación y la
+    // ruta son las que dicen si el borrador es otro.
+  }, [approval.id, showDiff, toolId, path]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
       <div className="bg-[#000080] border-2 border-[#ffff55] p-4 max-w-2xl w-full max-h-[85vh] overflow-y-auto">
@@ -85,6 +126,23 @@ export function AgentApprovalModal({ approval, onResolve, lang = 'es' }: AgentAp
 
         {isPatchTool && loading && (
           <div className="text-[11px] text-[#00ffff] mb-3">{t('Leyendo archivo…', 'Reading file…')}</div>
+        )}
+
+        {showDiff && rules.length > 0 && (
+          <div className="mb-3 border border-white/40 bg-black/40 p-2">
+            <div className="text-white text-[11px] font-bold mb-1">
+              {t('Reglas del repo que introduce este cambio', 'Repo rules this change introduces')}
+            </div>
+            <ul className="text-[10px] text-white space-y-1">
+              {rules.map((r, i) => (
+                <li key={`${r.rule}-${r.line}-${i}`}>
+                  <span className="underline decoration-dotted">{r.rule}</span>
+                  {` · ${t('línea', 'line')} ${r.line} · ${r.message} `}
+                  <span className="text-white/60">«{r.excerpt}»</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {showDiff && (
