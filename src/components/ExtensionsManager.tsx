@@ -300,7 +300,7 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ isOpen, on
                     <Server className="w-3 h-3 text-[var(--nc-text)] shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="text-[var(--nc-text)] font-bold text-[11px] truncate">{s.name || s.url}</div>
-                      <div className="text-[#aaaaaa] text-[9px] truncate">{s.description || ''}</div>
+                      <div className="text-[var(--nc-text-dim)] text-[9px] truncate">{s.description || ''}</div>
                       <div className="text-xs text-[var(--nc-text-accent)]">{t(lang, 'Registrado · sin verificar', 'Registered · unverified', 'Registriert · ungeprüft')}</div>
                     </div>
                     <button onClick={() => { removeServerFromStorage(s.name || s.id); loadServers(); }} className="text-red-400 hover:text-red-300 p-1" title="Eliminar">
@@ -355,14 +355,14 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ isOpen, on
               <div className="space-y-1 max-h-60 overflow-auto">
                 {skillsLoading && <div className="text-[var(--nc-text)] text-[10px]">{t(lang, 'Cargando...', 'Loading...', 'Ladt...')}</div>}
                 {!skillsLoading && filteredSkills.length === 0 && (
-                  <div className="text-[#aaaaaa] text-[10px] italic">{t(lang, 'Sin skills. Importa desde una carpeta.', 'No skills. Import from a folder.', 'Keine Skills. Aus Ordner importieren.')}</div>
+                  <div className="text-[var(--nc-text-dim)] text-[10px] italic">{t(lang, 'Sin skills. Importa desde una carpeta.', 'No skills. Import from a folder.', 'Keine Skills. Aus Ordner importieren.')}</div>
                 )}
                 {filteredSkills.map((s: any) => (
                   <div key={s.id} className="flex items-center gap-2 p-1.5 border border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)]">
                     <BookOpen className="w-3.5 h-3.5 text-[var(--nc-text-accent)] shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="text-[var(--nc-text)] font-bold text-[11px] truncate">{s.name || s.id}</div>
-                      <div className="text-[#aaaaaa] text-[9px] truncate">{s.description || s.id}</div>
+                      <div className="text-[var(--nc-text-dim)] text-[9px] truncate">{s.description || s.id}</div>
                       <div className="text-xs text-[var(--nc-text-accent)]">{t(lang, 'Registrado · sin verificar', 'Registered · unverified', 'Registriert · ungeprüft')}</div>
                     </div>
                     <span className="text-[9px] text-[var(--nc-text)]/60 px-1 border border-[var(--nc-border-light)]/30">{s.type || 'skill'}</span>
@@ -408,14 +408,14 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ isOpen, on
               <div className="space-y-1 max-h-60 overflow-auto">
                 {pluginsLoading && <div className="text-[var(--nc-text)] text-[10px]">{t(lang, 'Cargando...', 'Loading...', 'Ladt...')}</div>}
                 {!pluginsLoading && plugins.length === 0 && (
-                  <div className="text-[#aaaaaa] text-[10px] italic">{t(lang, 'Sin plugins instalados.', 'No plugins installed.', 'Keine Plugins installiert.')}</div>
+                  <div className="text-[var(--nc-text-dim)] text-[10px] italic">{t(lang, 'Sin plugins instalados.', 'No plugins installed.', 'Keine Plugins installiert.')}</div>
                 )}
                 {plugins.map((p: any) => (
                   <div key={p.id} className="flex items-center gap-2 p-1.5 border border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)]">
                     <Puzzle className="w-3.5 h-3.5 text-[var(--nc-text)] shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="text-[var(--nc-text)] font-bold text-[11px] truncate">{p.name || p.id}</div>
-                      <div className="text-[#aaaaaa] text-[9px] truncate">{p.id} v{p.version || 'unknown'}</div>
+                      <div className="text-[var(--nc-text-dim)] text-[9px] truncate">{p.id} v{p.version || 'unknown'}</div>
                       <div className="text-xs text-[var(--nc-text-accent)]">{t(lang, 'Registrado · sin verificar', 'Registered · unverified', 'Registriert · ungeprüft')}</div>
                     </div>
                     <button onClick={() => uninstallPlugin(p.id)} className="text-red-400 hover:text-red-300 p-1" title={t(lang, 'Desinstalar', 'Uninstall', 'Deinstallieren')}>
@@ -446,7 +446,7 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ isOpen, on
                 {webResults.slice(0, 5).map((r: any, i: number) => (
                   <a key={i} href={r.url} target="_blank" rel="noopener noreferrer" className="block p-1.5 border border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] hover:bg-[var(--nc-bg-deep)] text-[10px]">
                     <div className="text-[var(--nc-text)] font-bold truncate">{r.title || r.url}</div>
-                    <div className="text-[#aaaaaa] truncate">{r.snippet || r.description || ''}</div>
+                    <div className="text-[var(--nc-text-dim)] truncate">{r.snippet || r.description || ''}</div>
                   </a>
                 ))}
               </div>

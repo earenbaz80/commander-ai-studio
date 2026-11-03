@@ -63,8 +63,8 @@ const EXT_COLORS: Record<string, string> = {
   ts: 'text-[var(--nc-text)]', tsx: 'text-[var(--nc-text)]', js: 'text-[var(--nc-text-accent)]', jsx: 'text-[var(--nc-text-accent)]',
   json: 'text-[var(--nc-text-accent)]', md: 'text-[var(--nc-success)]', css: 'text-[#ff88ff]', html: 'text-[#ff9966]',
   svg: 'text-[#ff88cc]', png: 'text-[#ff88cc]', jpg: 'text-[#ff88cc]', ico: 'text-[#ff88cc]',
-  sh: 'text-[var(--nc-success)]', ps1: 'text-[var(--nc-success)]', yml: 'text-[#aaaaaa]', yaml: 'text-[#aaaaaa]',
-  lock: 'text-[#aaaaaa]',
+  sh: 'text-[var(--nc-success)]', ps1: 'text-[var(--nc-success)]', yml: 'text-[var(--nc-text-dim)]', yaml: 'text-[var(--nc-text-dim)]',
+  lock: 'text-[var(--nc-text-dim)]',
 };
 
 const FileRow: React.FC<{

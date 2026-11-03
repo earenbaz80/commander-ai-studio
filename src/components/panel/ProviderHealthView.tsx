@@ -80,7 +80,7 @@ export const ProviderHealthView: React.FC<Props> = ({ lang = 'es' }) => {
                 <td className="p-1 text-right">{m?.requests ?? 0}</td>
                 <td className="p-1 text-right">{m?.errors ?? 0}</td>
                 <td className="p-1 text-right">{m ? (m.errorRate * 100).toFixed(1) + '%' : '-'}</td>
-                <td className="p-1 text-[#aaaaaa] truncate max-w-[180px]">{h.lastError || '-'}</td>
+                <td className="p-1 text-[var(--nc-text-dim)] truncate max-w-[180px]">{h.lastError || '-'}</td>
                 <td className="p-1">
                   {h.circuitOpen && (
                     <button onClick={() => reset(h.providerId)} className="nc-button !px-1 !py-0 text-[9px]">
@@ -92,7 +92,7 @@ export const ProviderHealthView: React.FC<Props> = ({ lang = 'es' }) => {
             );
           })}
           {health.length === 0 && !loading && (
-            <tr><td colSpan={8} className="p-2 text-center text-[#aaaaaa]">{t('Sin datos', 'No data', 'Keine Daten')}</td></tr>
+            <tr><td colSpan={8} className="p-2 text-center text-[var(--nc-text-dim)]">{t('Sin datos', 'No data', 'Keine Daten')}</td></tr>
           )}
         </tbody>
       </table>

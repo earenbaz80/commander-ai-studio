@@ -1153,7 +1153,7 @@ export default function App() {
   });
 
   return (
-    <div className="flex flex-col h-screen bg-[#131314] overflow-hidden">
+    <div className="flex flex-col h-screen bg-[var(--nc-bg-main)] overflow-hidden">
       {/* Top Header */}
       <Header
         mode={mode}

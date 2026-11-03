@@ -264,7 +264,7 @@ export const ComposerLiveSandbox: React.FC<ComposerLiveSandboxProps> = ({
               </div>
             )}
             {logs.length === 0 ? (
-              <div className="text-[#5555aa] italic p-1">
+              <div className="text-[var(--nc-text-dim)] italic p-1">
                 {lang === 'es' ? 'Esperando eventos o salidas de console.log()...' : lang === 'de' ? 'Warte auf console.log()-Ausgabe...' : 'Waiting for console.log() output...'}
               </div>
             ) : (

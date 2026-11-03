@@ -733,183 +733,18 @@ body {
 }
 
 /* ==========================================================================
-   UNIVERSAL THEME OVERRIDES FOR FULL COLOR RE-PALETTING
+   REMAPEOS DE TEMA
+   Los componentes ya usan los tokens --nc-*. Este bloque sólo cubre lo que
+   sigue viniendo de clases literales o de la paleta de Tailwind: utilidades
+   cian/azul/gris, los blancos que no se leen sobre papel y el shell.
    ========================================================================== */
 
-/* 1. MATRIX THEME OVERRIDES */
-html.theme-matrix,
-body.theme-matrix,
-.theme-matrix {
-  background-color: #021a02 !important;
-  color: #33ff33 !important;
-}
-
-.theme-matrix [class*="bg-[#0000aa]"],
-.theme-matrix [class*="bg-[#000080]"],
-.theme-matrix [class*="bg-[#000055]"],
-.theme-matrix [class*="bg-[#000033]"],
-.theme-matrix [class*="bg-[#000022]"],
-.theme-matrix [class*="bg-[#131314]"],
-.theme-matrix [class*="bg-[#18191c]"],
-.theme-matrix [class*="bg-[#1e2026]"],
-.theme-matrix [class*="bg-[#1e1f20]"],
-.theme-matrix [class*="bg-[#282a2d]"] {
+:is(html, body):is(.theme-matrix, .theme-amber, .theme-dos, .theme-light, .theme-solarized) {
   background-color: var(--nc-bg-main) !important;
-}
-
-.theme-matrix [class*="bg-[#00aaaa]"] {
-  background-color: var(--nc-header-bg) !important;
-  color: var(--nc-header-text) !important;
-}
-
-.theme-matrix [class*="text-[#00ffff]"],
-.theme-matrix [class*="text-[#00aaaa]"] {
   color: var(--nc-text) !important;
 }
 
-.theme-matrix [class*="text-[#ffff55]"] {
-  color: var(--nc-text-accent) !important;
-}
-
-.theme-matrix [class*="border-[#00ffff]"],
-.theme-matrix [class*="border-[#00aaaa]"] {
-  border-color: var(--nc-border-light) !important;
-}
-
-.theme-matrix [class*="border-[#000055]"],
-.theme-matrix [class*="border-[#000080]"],
-.theme-matrix [class*="border-[#0000aa]"] {
-  border-color: var(--nc-border-dark) !important;
-}
-
-
-/* 2. AMBER THEME OVERRIDES */
-html.theme-amber,
-body.theme-amber,
-.theme-amber {
-  background-color: #1c0d00 !important;
-  color: #ffb000 !important;
-}
-
-.theme-amber [class*="bg-[#0000aa]"],
-.theme-amber [class*="bg-[#000080]"],
-.theme-amber [class*="bg-[#000055]"],
-.theme-amber [class*="bg-[#000033]"],
-.theme-amber [class*="bg-[#000022]"],
-.theme-amber [class*="bg-[#131314]"],
-.theme-amber [class*="bg-[#18191c]"],
-.theme-amber [class*="bg-[#1e2026]"],
-.theme-amber [class*="bg-[#1e1f20]"],
-.theme-amber [class*="bg-[#282a2d]"] {
-  background-color: var(--nc-bg-main) !important;
-}
-
-.theme-amber [class*="bg-[#00aaaa]"] {
-  background-color: var(--nc-header-bg) !important;
-  color: var(--nc-header-text) !important;
-}
-
-.theme-amber [class*="text-[#00ffff]"],
-.theme-amber [class*="text-[#00aaaa]"] {
-  color: var(--nc-text) !important;
-}
-
-.theme-amber [class*="text-[#ffff55]"] {
-  color: var(--nc-text-accent) !important;
-}
-
-.theme-amber [class*="border-[#00ffff]"],
-.theme-amber [class*="border-[#00aaaa]"] {
-  border-color: var(--nc-border-light) !important;
-}
-
-.theme-amber [class*="border-[#000055]"],
-.theme-amber [class*="border-[#000080]"],
-.theme-amber [class*="border-[#0000aa]"] {
-  border-color: var(--nc-border-dark) !important;
-}
-
-
-/* 3. HIGH CONTRAST DOS OVERRIDES */
-html.theme-dos,
-body.theme-dos,
-.theme-dos {
-  background-color: #000000 !important;
-  color: #ffffff !important;
-}
-
-.theme-dos [class*="bg-[#0000aa]"],
-.theme-dos [class*="bg-[#000080]"],
-.theme-dos [class*="bg-[#000055]"],
-.theme-dos [class*="bg-[#000033]"],
-.theme-dos [class*="bg-[#000022]"],
-.theme-dos [class*="bg-[#131314]"],
-.theme-dos [class*="bg-[#18191c]"],
-.theme-dos [class*="bg-[#1e2026]"],
-.theme-dos [class*="bg-[#1e1f20]"],
-.theme-dos [class*="bg-[#282a2d]"] {
-  background-color: var(--nc-bg-main) !important;
-}
-
-.theme-dos [class*="bg-[#00aaaa]"] {
-  background-color: var(--nc-header-bg) !important;
-  color: var(--nc-header-text) !important;
-}
-
-.theme-dos [class*="text-[#00ffff]"],
-.theme-dos [class*="text-[#00aaaa]"] {
-  color: var(--nc-text) !important;
-}
-
-.theme-dos [class*="text-[#ffff55]"] {
-  color: var(--nc-text-accent) !important;
-}
-
-.theme-dos [class*="border-[#00ffff]"],
-.theme-dos [class*="border-[#00aaaa]"] {
-  border-color: var(--nc-border-light) !important;
-}
-
-.theme-dos [class*="border-[#000055]"],
-.theme-dos [class*="border-[#000080]"],
-.theme-dos [class*="border-[#0000aa]"] {
-  border-color: var(--nc-border-dark) !important;
-}
-
-/* ==========================================================================
-   PALETAS NO-NORTON: SIN RESTOS DE AZUL
-   ========================================================================== */
-
-/* Los temas matriz, ámbar y dos ya remapeaban sus colores, pero quedaban
-   sombras de azul que no estaban tokenizadas (000040, 000045, 00243e,
-   border #004466, cian de Tailwind…). Aquí se cubren todas de una vez para
-   cualquier tema que no sea Norton, incluidos los dos nuevos. */
 :is(.theme-matrix, .theme-amber, .theme-dos, .theme-light, .theme-solarized) :is(
-  [class*="bg-[#000040]"],
-  [class*="bg-[#000044]"],
-  [class*="bg-[#000045]"],
-  [class*="bg-[#000066]"],
-  [class*="bg-[#0000cc]"],
-  [class*="bg-[#00243e]"],
-  [class*="bg-[#000d1a]"],
-  [class*="bg-[#001a33]"]
-) {
-  background-color: var(--nc-bg-panel) !important;
-}
-
-:is(.theme-matrix, .theme-amber, .theme-dos, .theme-light, .theme-solarized) :is(
-  [class*="border-[#004466]"],
-  [class*="border-[#003366]"],
-  [class*="border-[#000066]"],
-  [class*="border-cyan-"],
-  [class*="border-blue-"]
-) {
-  border-color: var(--nc-border-dark) !important;
-}
-
-:is(.theme-matrix, .theme-amber, .theme-dos, .theme-light, .theme-solarized) :is(
-  [class*="text-[#a8c7fa]"],
-  [class*="text-[#000080]"],
   [class*="text-cyan-"],
   [class*="text-blue-"]
 ) {
@@ -923,67 +758,21 @@ body.theme-dos,
   background-color: var(--nc-bg-panel) !important;
 }
 
-/* Los temas nuevos necesitan los mismos remapeos que los tres anteriores
-   (las clases CSS no se heredan entre selectores de tema). */
-:is(.theme-light, .theme-solarized) :is([class*="text-[#00ffff]"], [class*="text-[#00aaaa]"]) {
-  color: var(--nc-text) !important;
-}
-
-:is(.theme-light, .theme-solarized) [class*="text-[#ffff55]"] {
-  color: var(--nc-text-accent) !important;
-}
-
-:is(.theme-light, .theme-solarized) :is(
-  [class*="bg-[#0000aa]"],
-  [class*="bg-[#000080]"],
-  [class*="bg-[#000055]"],
-  [class*="bg-[#000033]"],
-  [class*="bg-[#000022]"],
-  [class*="bg-[#131314]"],
-  [class*="bg-[#18191c]"],
-  [class*="bg-[#1e2026]"],
-  [class*="bg-[#1e1f20]"],
-  [class*="bg-[#282a2d]"]
-) {
-  background-color: var(--nc-bg-main) !important;
-}
-
-:is(.theme-light, .theme-solarized) [class*="bg-[#00aaaa]"] {
-  background-color: var(--nc-header-bg) !important;
-  color: var(--nc-header-text) !important;
-}
-
-:is(.theme-light, .theme-solarized) :is([class*="border-[#00ffff]"], [class*="border-[#00aaaa]"]) {
-  border-color: var(--nc-border-light) !important;
-}
-
-:is(.theme-light, .theme-solarized) :is(
-  [class*="border-[#000055]"],
-  [class*="border-[#000080]"],
-  [class*="border-[#0000aa]"]
+:is(.theme-matrix, .theme-amber, .theme-dos, .theme-light, .theme-solarized) :is(
+  [class*="border-cyan-"],
+  [class*="border-blue-"]
 ) {
   border-color: var(--nc-border-dark) !important;
 }
 
-:is(.theme-light, .theme-solarized) [class*="border-[#ffff55]"] {
-  border-color: var(--nc-text-accent) !important;
+:is(.theme-matrix, .theme-amber, .theme-dos, .theme-light, .theme-solarized) :is(
+  [class*="text-gray-"],
+  [class*="text-slate-"]
+) {
+  color: var(--nc-text-dim) !important;
 }
 
-html.theme-light,
-body.theme-light,
-.theme-light {
-  background-color: #f2f1e6 !important;
-  color: #113b3b !important;
-}
-
-html.theme-solarized,
-body.theme-solarized,
-.theme-solarized {
-  background-color: #002b36 !important;
-  color: #93a1a1 !important;
-}
-
-/* En fondo claro el blanco deja de verse: pasa a la tinta del tema. */
+/* En claro y solarizado el blanco deja de verse sobre el papel. */
 .theme-light :is([class*="text-white"], [class*="text-[#ffffff]"]),
 .theme-solarized :is([class*="text-white"], [class*="text-[#ffffff]"]) {
   color: var(--nc-text) !important;
