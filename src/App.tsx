@@ -75,6 +75,9 @@ import { CommandPalette } from './components/CommandPalette';
 import { NonoDock } from './features/nono/NonoDock';
 import { StatusBar } from './components/StatusBar';
 import { buildPaletteCommands } from './components/paletteCommands';
+import { listProjectFiles } from './utils/agentToolsApi';
+import { AGENT_FUNCTION_DECLARATIONS } from './agent/fnTools';
+import { listTemplates } from './agent/subagentTemplates';
 import { SymbolSearchModal } from './components/SymbolSearchModal';
 
 import { useAgent } from './agent/useAgent';
@@ -245,6 +248,8 @@ export default function App() {
 
   const tabs = useTabs();
   const [serverSessions, setServerSessions] = useState<any[]>([]);
+  const [paletteFiles, setPaletteFiles] = useState<string[]>([]);
+  const [agentGoalRequest, setAgentGoalRequest] = useState<{ text: string; nonce: number } | null>(null);
   const [agentRoots, setAgentRoots] = useState<AgentRoot[]>([]);
   const [isAuditing, setIsAuditing] = useState(false);
 
@@ -333,6 +338,51 @@ export default function App() {
     } catch { /* ignore */ }
   }, [setMessages, setPromptTitle, toChatMessages]);
   const activeTab = tabs.activeTab;
+
+  // La paleta busca también en los archivos del proyecto activo. Se cargan al
+  // abrirla (no al arrancar) y se descarta la respuesta si cambió el proyecto.
+  useEffect(() => {
+    if (!isPaletteOpen) return;
+    const projectPath = activeTab?.projectPath || '';
+    if (!projectPath) { setPaletteFiles([]); return; }
+    let cancelled = false;
+    void listProjectFiles(projectPath).then((res) => {
+      if (!cancelled) setPaletteFiles(res.files.slice(0, 150));
+    });
+    return () => { cancelled = true; };
+  }, [isPaletteOpen, activeTab?.projectPath]);
+
+  const handleOpenPaletteFile = useCallback((path: string) => {
+    setIsWorkbenchOpen(true);
+    // El Workbench escucha este evento aunque esté cerrado; el timeout deja
+    // que se monte el editor antes de pedirle la posición.
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('commander:open-location', {
+        detail: { path, line: 0, character: 0 },
+      }));
+    }, 0);
+  }, []);
+
+  const handleUsePaletteTool = useCallback((name: string) => {
+    const prefix = lang === 'es'
+      ? `Usa la herramienta ${name} para `
+      : lang === 'de'
+        ? `Nutze das Werkzeug ${name}, um `
+        : `Use the ${name} tool to `;
+    setAgentGoalRequest({ text: prefix, nonce: Date.now() });
+    setMode('agent');
+  }, [lang, setMode]);
+
+  const handleUsePaletteAgent = useCallback((name: string) => {
+    const prefix = lang === 'es'
+      ? `Lanza el subagente ${name} para `
+      : lang === 'de'
+        ? `Starte den Subagenten ${name}, um `
+        : `Launch the ${name} subagent to `;
+    setAgentGoalRequest({ text: prefix, nonce: Date.now() });
+    setMode('agent');
+  }, [lang, setMode]);
+
   // Todos los hilos, no sólo los de la pestaña activa: el sidebar los agrupa por
   // proyecto, y así una sesión abierta en otra carpeta no desaparece.
   const refreshServerSessions = useCallback(async () => {
@@ -1150,6 +1200,17 @@ export default function App() {
     setIsAboutModalOpen,
     setIsWorkbenchOpen,
     setIsSidebarOpen,
+    files: paletteFiles.map((path) => ({ path, projectPath: activeTab?.projectPath })),
+    onOpenFile: handleOpenPaletteFile,
+    sessions: serverSessions.map((s: any) => ({ id: s.id, title: s.title, project_path: s.project_path })),
+    onSelectSession: (session) => {
+      const full = serverSessions.find((s: any) => s.id === session.id);
+      if (full) void handleSelectServerSession(full);
+    },
+    tools: AGENT_FUNCTION_DECLARATIONS.map((tool) => ({ name: tool.name, description: tool.description })),
+    onUseTool: handleUsePaletteTool,
+    agents: listTemplates().map((agent) => ({ name: agent.name, description: agent.description, role: agent.role })),
+    onUseAgent: handleUsePaletteAgent,
   });
 
   return (
@@ -1361,6 +1422,7 @@ export default function App() {
                 onRollbackRun={agent.rollbackRun}
                 onPlanChange={agent.setPlan}
                 onAutonomousRunningChange={setAutonomousRunning}
+                goalRequest={agentGoalRequest}
                 lang={lang as any}
               />
               {agent.pendingApproval && (

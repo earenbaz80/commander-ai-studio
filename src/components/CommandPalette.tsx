@@ -8,6 +8,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, CornerDownLeft, X } from 'lucide-react';
 import { Language } from '../i18n/translations';
+import { rankCommands } from './paletteSearch';
 
 export interface CommandItem {
   id: string;
@@ -28,13 +29,6 @@ interface CommandPaletteProps {
   lang?: Language;
 }
 
-/** Normaliza para búsqueda: minúsculas y sin diacríticos. */
-const normalize = (s: string) =>
-  s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
   isOpen,
   onClose,
@@ -46,13 +40,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const filtered = useMemo(() => {
-    const q = normalize(query.trim());
-    if (!q) return commands;
-    return commands.filter((c) =>
-      normalize(`${c.label} ${c.group} ${c.keywords || ''}`).includes(q)
-    );
-  }, [commands, query]);
+  const filtered = useMemo(() => rankCommands(commands, query), [commands, query]);
 
   // Al abrir: limpiar y enfocar el buscador.
   useEffect(() => {
@@ -130,7 +118,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={lang === 'es' ? 'Escribe un comando o modo…' : lang === 'de' ? 'Befehl oder Modus eingeben…' : 'Type a command or mode…'}
+            placeholder={lang === 'es' ? 'Busca comandos, archivos, sesiones, tools o agentes…' : lang === 'de' ? 'Befehle, Dateien, Sitzungen, Tools oder Agenten suchen…' : 'Search commands, files, sessions, tools or agents…'}
             aria-label={lang === 'es' ? 'Paleta de comandos' : lang === 'de' ? 'Befehlspalette' : 'Command palette'}
             className="flex-1 bg-transparent text-white placeholder-gray-400 outline-none text-sm font-mono"
           />
