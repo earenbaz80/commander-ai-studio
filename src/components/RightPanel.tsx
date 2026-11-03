@@ -25,6 +25,7 @@ import { Language, TRANSLATIONS } from '../i18n/translations';
 import { MAX_FALLBACK_MODELS } from '../config/geminiModels';
 import { addModel, moveModel } from '../lib/fallbackChain';
 import { probeFirstResponder, probeModel, type ChainProbeResult } from '../lib/modelProbe';
+import { SYSTEM_PRESETS } from '../data/systemPresets';
 
 interface RightPanelProps {
   parameters: ParameterConfig;
@@ -69,6 +70,10 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   onWidthChange,
 }) => {
   const t = TRANSLATIONS[lang];
+  /** Tres idiomas en una línea: las etiquetas nuevas no necesitan su ternario. */
+  const tx = (es: string, de: string, en: string) => (lang === 'es' ? es : lang === 'de' ? de : en);
+  /** Sección visible: las tres son el mismo sitio de ajustes. */
+  const [settingsTab, setSettingsTab] = useState<'modelo' | 'parametros' | 'instrucciones'>('modelo');
   const [showSafety, setShowSafety] = useState(false);
   const [showExamples, setShowExamples] = useState(false);
   const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false);
@@ -438,7 +443,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
         <div className="bg-[#00aaaa] text-black font-bold px-2 py-1 uppercase tracking-wider flex items-center justify-between border-b border-black">
           <div className="flex items-center gap-1 truncate">
             <Sliders className="w-4 h-4 text-black shrink-0" />
-            <span className="text-xs truncate">{lang === 'es' ? 'CONFIGURACIÓN & PARÁMETROS' : lang === 'de' ? 'KONFIGURATION & PARAMETER' : 'CONFIG & PARAMETERS'}</span>
+            <span className="text-xs truncate">{tx('AJUSTES', 'EINSTELLUNGEN', 'SETTINGS')}</span>
           </div>
           <div className="flex items-center gap-1 shrink-0 ml-2">
             {onClose && (
@@ -455,6 +460,33 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           </div>
         </div>
 
+        {/* Tres pestañas para el mismo sitio de ajustes: el modelo estaba aquí y en el
+            selector del compositor, y las instrucciones vivían en el sidebar. */}
+        <div className="grid grid-cols-3 gap-1" role="tablist" aria-label={tx('Secciones de ajustes', 'Einstellungsbereiche', 'Settings sections')}>
+          {([
+            { id: 'modelo' as const, label: tx('MODELO', 'MODELL', 'MODEL') },
+            { id: 'parametros' as const, label: tx('PARÁMETROS', 'PARAMETER', 'PARAMETERS') },
+            { id: 'instrucciones' as const, label: tx('INSTRUCCIONES', 'ANWEISUNGEN', 'INSTRUCTIONS') },
+          ]).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={settingsTab === tab.id}
+              onClick={() => setSettingsTab(tab.id)}
+              className={`py-1 text-[10px] font-bold border ${
+                settingsTab === tab.id
+                  ? 'bg-[#00ffff] text-black border-white'
+                  : 'bg-[#000080] text-[#00ffff] border-[#00aaaa]'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {settingsTab === 'modelo' && (
+        <>
         {/* 1. Model Selector */}
         <div className="space-y-1.5">
           <label className="text-[11px] font-bold text-[#ffff55] flex items-center justify-between">
@@ -1096,8 +1128,13 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           </button>
         </div>
 
-        {/* 2. System Instruction — trasladada al panel lateral (Sidebar → Instrucciones). */}
+        {/* La instrucción del sistema vive en la pestaña INSTRUCCIONES. */}
 
+        </>
+        )}
+
+        {settingsTab === 'parametros' && (
+        <>
         {/* 3. Ejemplos (Few-Shot / Dataset Grid) */}
         <div className="space-y-1" ref={examplesRef}>
           <button 
@@ -1518,6 +1555,47 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             </div>
           )}
         </div>
+
+        </>
+        )}
+
+        {settingsTab === 'instrucciones' && (
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-[#ffff55] block">
+              {tx('ROL E INSTRUCCIÓN DEL SISTEMA', 'ROLLE & SYSTEMANWEISUNG', 'ROLE & SYSTEM INSTRUCTION')}:
+            </label>
+            <select
+              onChange={(e) => {
+                const preset = SYSTEM_PRESETS.find((p) => p.id === e.target.value);
+                if (preset) setParameters((p) => ({ ...p, systemInstruction: preset.instruction }));
+              }}
+              defaultValue=""
+              aria-label={tx('Preset de rol', 'Rollenvorlage', 'Role preset')}
+              className="w-full bg-[#0000aa] border border-[#00ffff] p-1 text-[10px] text-[#00ffff] font-bold outline-none cursor-pointer"
+            >
+              <option value="" disabled>{tx('⚡ PRESET DE ROL...', '⚡ ROLLENVORLAGE...', '⚡ ROLE PRESET...')}</option>
+              {SYSTEM_PRESETS.map((preset) => (
+                <option key={preset.id} value={preset.id}>{preset.name}</option>
+              ))}
+            </select>
+            <textarea
+              value={parameters.systemInstruction}
+              onChange={(e) => {
+                // Capturar el valor en el evento: React restaura el DOM controlado
+                // después y leer e.target.value dentro del updater daría el previo.
+                const next = e.target.value;
+                setParameters((p) => ({ ...p, systemInstruction: next }));
+              }}
+              rows={6}
+              placeholder={tx('Instrucción del sistema...', 'Systemanweisung...', 'System instruction...')}
+              aria-label={tx('Instrucciones del sistema', 'Systemanweisungen', 'System instructions')}
+              className="w-full bg-[#000080] border border-[#00ffff] p-1.5 text-[10px] text-white outline-none resize-y font-mono leading-snug"
+            />
+            <p className="text-[9px] text-[#00ffff]/70">
+              {tx('Va como rol del sistema en cada mensaje de esta pestaña.', 'Geht bei jeder Nachricht dieses Tabs als Systemrolle mit.', 'Goes as the system role with every message in this tab.')}
+            </p>
+          </div>
+        )}
 
         {/* Acciones del prompt */}
         <div className="bg-[#000080] border-2 border-[#00ffff] p-2 space-y-1">

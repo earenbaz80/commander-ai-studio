@@ -1252,8 +1252,7 @@ export default function App() {
               onOpenGallery={() => setIsGalleryModalOpen(true)}
               onOpenCompile={() => setIsCompilerModalOpen(true)}
               onOpenLocalLlmConfig={() => setIsLocalLlmModalOpen(true)}
-              parameters={parameters}
-              setParameters={setParameters}
+              onOpenSettings={() => setIsInspectorOpen(true)}
               lang={lang as any}
               width={sidebarResize.width}
               serverSessions={serverSessions}

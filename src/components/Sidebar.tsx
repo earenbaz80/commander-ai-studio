@@ -1,8 +1,7 @@
 import React from 'react';
-import { MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, Columns, Radio, Code2, Bot, ChevronDown, ChevronRight, Hammer, Server, Play, RefreshCw, Pin, Pencil } from 'lucide-react';
-import { StudioMode, HistorySession, ParameterConfig } from '../types/studio';
+import { Sliders, MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, Columns, Radio, Code2, Bot, ChevronDown, ChevronRight, Hammer, Server, Play, RefreshCw, Pin, Pencil } from 'lucide-react';
+import { StudioMode, HistorySession } from '../types/studio';
 import { Language, TRANSLATIONS } from '../i18n/translations';
-import { SYSTEM_PRESETS } from '../data/systemPresets';
 import type { ConversationHit } from '../agent/persistence';
 
 /** Sección colapsable del panel lateral (cabecera + items). */
@@ -60,9 +59,8 @@ interface SidebarProps {
   onOpenCompile?: () => void;
   /** Abre la configuración del servidor LLM local (Ollama / OpenAI-compatible). */
   onOpenLocalLlmConfig?: () => void;
-  /** Editor de "Instrucciones del sistema" (trasladado desde el panel de parámetros). */
-  parameters?: ParameterConfig;
-  setParameters?: React.Dispatch<React.SetStateAction<ParameterConfig>>;
+  /** Abre el panel único de ajustes (modelo, parámetros e instrucciones). */
+  onOpenSettings?: () => void;
   lang?: Language;
   isSidebarOpen?: boolean;
   width?: number;
@@ -91,8 +89,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenGallery,
   onOpenCompile,
   onOpenLocalLlmConfig,
-  parameters,
-  setParameters,
+  onOpenSettings,
   lang = 'es',
   isSidebarOpen = false,
   width,
@@ -194,7 +191,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Group openness belongs only to this mount, never to saved preferences.
   const [collapsedGroups, setCollapsedGroups] = React.useState<Record<string, boolean>>({
-    crear: true, agentes: true, modelos: true, instrucciones: true, sistema: true,
+    crear: true, agentes: true, modelos: true, sistema: true,
   });
   const toggleGroup = (id: string) => {
     setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -202,10 +199,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isGroupOpen = (id: string) => !collapsedGroups[id];
   const groupTitles =
     lang === 'es'
-      ? { crear: 'Crear', agentes: 'Agentes', modelos: 'Modelos', instrucciones: 'Instrucciones', sistema: 'Herramientas' }
+      ? { crear: 'Crear', agentes: 'Agentes', modelos: 'Modelos', sistema: 'Herramientas' }
       : lang === 'de'
-        ? { crear: 'Erstellen', agentes: 'Agenten', modelos: 'Modelle', instrucciones: 'Anweisungen', sistema: 'Werkzeuge' }
-        : { crear: 'Create', agentes: 'Agents', modelos: 'Models', instrucciones: 'Instructions', sistema: 'Tools' };
+        ? { crear: 'Erstellen', agentes: 'Agenten', modelos: 'Modelle', sistema: 'Werkzeuge' }
+        : { crear: 'Create', agentes: 'Agents', modelos: 'Models', sistema: 'Tools' };
 
   return (
     <aside 
@@ -294,6 +291,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           open={isGroupOpen('modelos')}
           onToggle={() => toggleGroup('modelos')}
         >
+        {onOpenSettings && (
+          <button
+            onClick={onOpenSettings}
+            className="nc-button flex items-center gap-2.5 text-xs py-1.5"
+            data-tooltip={lang === 'es' ? 'Ajustes del modelo' : lang === 'de' ? 'Modell-Einstellungen' : 'Model settings'}
+            data-tooltip-sub={lang === 'es' ? 'Modelo, parámetros e instrucciones en un solo panel' : lang === 'de' ? 'Modell, Parameter und Anweisungen in einem Panel' : 'Model, parameters and instructions in a single panel'}
+          >
+            <Sliders className="w-6 h-6 text-[#00ffff]" /> {lang === 'es' ? 'Ajustes del modelo' : lang === 'de' ? 'Modell-Einstellungen' : 'Model settings'}
+          </button>
+        )}
         <button 
           onClick={() => setMode('huggingface')} 
           className={`nc-button flex items-center gap-2.5 text-xs py-1.5 ${mode === 'huggingface' ? 'nc-active' : ''}`}
@@ -313,50 +320,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         )}
         </NavGroup>
-
-        {/* ── INSTRUCCIONES: rol / system instruction (trasladado del panel de parámetros) ── */}
-        {parameters && setParameters && (
-          <NavGroup
-            title={groupTitles.instrucciones}
-            open={isGroupOpen('instrucciones')}
-            onToggle={() => toggleGroup('instrucciones')}
-          >
-            <div className="space-y-1.5 pl-0.5">
-              <select
-                onChange={(e) => {
-                  const selectedPreset = SYSTEM_PRESETS.find((p) => p.id === e.target.value);
-                  if (selectedPreset) {
-                    setParameters((p) => ({ ...p, systemInstruction: selectedPreset.instruction }));
-                  }
-                }}
-                defaultValue=""
-                className="w-full bg-[#0000aa] border border-[#00ffff] p-1 text-[10px] text-[#00ffff] font-bold outline-none cursor-pointer"
-                aria-label={lang === 'es' ? 'Preset de rol' : lang === 'de' ? 'Rollenvorlage' : 'Role preset'}
-              >
-                <option value="" disabled>{lang === 'es' ? '⚡ PRESET DE ROL...' : lang === 'de' ? '⚡ ROLLENVORLAGE...' : '⚡ ROLE PRESET...'}</option>
-                {SYSTEM_PRESETS.map((preset) => (
-                  <option key={preset.id} value={preset.id}>
-                    {preset.name}
-                  </option>
-                ))}
-              </select>
-              <textarea
-                value={parameters.systemInstruction}
-                onChange={(e) => {
-                  // Capturar el valor en el momento del evento (React restaura el DOM
-                  // al valor controlado después; leer e.target.value de forma perezosa
-                  // dentro del updater daría el valor previo).
-                  const next = e.target.value;
-                  setParameters((p) => ({ ...p, systemInstruction: next }));
-                }}
-                rows={4}
-                className="w-full bg-[#000080] border border-[#00ffff] p-1.5 text-[10px] text-white outline-none resize-y font-mono leading-snug"
-                placeholder={lang === 'es' ? 'Instrucción del sistema...' : lang === 'de' ? 'Systemanweisung...' : 'System instruction...'}
-                aria-label={lang === 'es' ? 'Instrucciones del sistema' : lang === 'de' ? 'Systemanweisungen' : 'System instructions'}
-              />
-            </div>
-          </NavGroup>
-        )}
 
         <NavGroup
           title={groupTitles.sistema}

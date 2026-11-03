@@ -6,7 +6,6 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { Sidebar } from '../../src/components/Sidebar';
-import { DEFAULT_PARAMETERS } from '../../src/hooks/useTabs';
 
 const baseProps = () => ({
   mode: 'chat' as const,
@@ -129,36 +128,12 @@ describe('Sidebar (panel lateral agrupado)', () => {
     expect(props.onOpenLocalLlmConfig).toHaveBeenCalledTimes(1);
   });
 
-  test('Instrucciones del sistema vive en el sidebar (editor + preset de rol)', () => {
-    const props = {
-      ...baseProps(),
-      parameters: { ...DEFAULT_PARAMETERS, systemInstruction: 'rol actual' },
-      setParameters: vi.fn(),
-    };
+  test('los ajustes del modelo se abren desde el sidebar', () => {
+    const props = { ...baseProps(), onOpenSettings: vi.fn() };
     render(<Sidebar {...props} />);
-
-    expect(screen.getByRole('button', { name: 'Instrucciones' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Instrucciones' }));
-    const ta = screen.getByPlaceholderText(/Instrucción del sistema/) as HTMLTextAreaElement;
-    expect(ta.value).toBe('rol actual');
-
-    // React 19 restaura el DOM al valor controlado tras el evento; la captura
-    // inmediata en el handler garantiza el valor escrito.
-    fireEvent.change(ta, { target: { value: 'nuevo rol' } });
-    expect(props.setParameters).toHaveBeenCalledTimes(1);
-    const updater = props.setParameters.mock.calls[0][0];
-    expect(updater({ ...DEFAULT_PARAMETERS })).toMatchObject({ systemInstruction: 'nuevo rol' });
-
-    // El preset de rol rellena la instrucción al seleccionarlo.
-    fireEvent.change(screen.getByLabelText('Preset de rol'), { target: { value: 'security-auditor' } });
-    expect(props.setParameters).toHaveBeenCalledTimes(2);
-    const presetUpdater = props.setParameters.mock.calls[1][0];
-    expect(presetUpdater({ ...DEFAULT_PARAMETERS }).systemInstruction).toContain('ciberseguridad');
-  });
-
-  test('sin parámetros no se renderiza el grupo Instrucciones', () => {
-    render(<Sidebar {...baseProps()} />);
-    expect(screen.queryByRole('button', { name: 'Instrucciones' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Modelos' }));
+    fireEvent.click(screen.getByText('Ajustes del modelo'));
+    expect(props.onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
   test('cerrar oculta el panel completo sin ancho o padding de escritorio', () => {
