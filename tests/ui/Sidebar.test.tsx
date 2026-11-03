@@ -1,6 +1,7 @@
 /**
  * Tests del Sidebar: agrupación de modos en secciones colapsables,
- * estado activo y grupos plegados al montar.
+ * estado activo, grupos plegados al montar e historial único
+ * (equipo + servidor en la misma lista).
  */
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
@@ -200,11 +201,11 @@ describe('Sidebar (panel lateral agrupado)', () => {
     vi.useRealTimers();
   });
 
-  test('agrupa las sesiones por proyecto y renombra, fija y borra desde la fila', () => {
+  test('un solo historial: las filas del servidor llevan su proyecto y las fijadas suben', () => {
     const onRenameServerSession = vi.fn();
     const onToggleServerSessionPin = vi.fn();
     const onDeleteServerSession = vi.fn();
-    render(
+    const { container } = render(
       <Sidebar
         {...baseProps()}
         serverSessions={[
@@ -218,10 +219,18 @@ describe('Sidebar (panel lateral agrupado)', () => {
       />
     );
 
-    // Cabecera por proyecto con el nombre de la carpeta; sin ruta, «Sin proyecto».
-    expect(screen.getByRole('button', { name: 'Proyecto uno' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Proyecto dos' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Proyecto Sin proyecto' })).toBeInTheDocument();
+    // Ya no hay cabeceras por proyecto: el nombre de la carpeta vive en la fila.
+    expect(screen.queryByRole('button', { name: 'Proyecto uno' })).toBeNull();
+    expect(screen.getAllByTestId('session-row-th-uno')).toHaveLength(1);
+    expect(screen.getByTestId('session-row-th-uno')).toHaveTextContent('uno');
+    expect(screen.getByTestId('session-row-th-dos')).toHaveTextContent('dos');
+    // Una sola lista: fijados arriba y, después, el orden que manda el servidor.
+    expect(
+      Array.from(container.querySelectorAll('[data-testid^="session-row-"]')).map((row) => row.getAttribute('data-testid'))
+    ).toEqual(['session-row-th-dos', 'session-row-th-uno', 'session-row-th-tres']);
+    // Lo que sólo vive en el servidor se marca SRV, no EQ.
+    expect(screen.getByTestId('session-row-th-uno')).toHaveTextContent('SRV');
+    expect(screen.getByTestId('session-row-th-uno')).not.toHaveTextContent('EQ');
 
     // Renombrar: el lápiz abre el campo y Enter guarda recortado.
     fireEvent.click(screen.getByRole('button', { name: 'Renombrar Arreglo' }));
@@ -244,6 +253,35 @@ describe('Sidebar (panel lateral agrupado)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Eliminar Suelto' }));
     expect(onDeleteServerSession).toHaveBeenCalledWith('th-tres');
+  });
+
+  test('una conversación con el mismo id es una sola fila y su borrado alcanza a los dos lados', () => {
+    const onDeleteHistoryItem = vi.fn();
+    const onDeleteServerSession = vi.fn();
+    const onSelectHistoryItem = vi.fn();
+    // Al subir una entrada local la pestaña adopta ese id: la misma charla vive
+    // en los dos sitios y no debe aparecer dos veces.
+    render(
+      <Sidebar
+        {...baseProps()}
+        onSelectHistoryItem={onSelectHistoryItem}
+        recentHistory={[
+          { id: 'th-duplicado', title: 'Misma charla', timestamp: 'hoy', mode: 'chat' },
+        ]}
+        serverSessions={[{ id: 'th-duplicado', title: 'Misma charla', pinned: 0 }]}
+        onDeleteHistoryItem={onDeleteHistoryItem}
+        onDeleteServerSession={onDeleteServerSession}
+      />
+    );
+
+    const rows = screen.getAllByTestId('session-row-th-duplicado');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent('EQ');
+    expect(rows[0]).toHaveTextContent('SRV');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar Misma charla' }));
+    expect(onDeleteHistoryItem).toHaveBeenCalledWith('th-duplicado');
+    expect(onDeleteServerSession).toHaveBeenCalledWith('th-duplicado');
   });
 
   test('el filtro de historial también recorta las sesiones en servidor', () => {
