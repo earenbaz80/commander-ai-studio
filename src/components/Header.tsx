@@ -3,7 +3,7 @@ import { Menu, X, RefreshCw, Maximize2, Minimize2, Settings, PanelLeft, PanelRig
 import { StudioMode } from '../types/studio';
 import { Language, TRANSLATIONS } from '../i18n/translations';
 
-export type ConsoleTheme = 'norton' | 'matrix' | 'amber' | 'dos';
+export type ConsoleTheme = 'norton' | 'matrix' | 'amber' | 'dos' | 'light' | 'solarized';
 
 /** Encabezado de sección dentro del menú hamburguesa. */
 const MenuSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (

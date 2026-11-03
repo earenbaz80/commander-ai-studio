@@ -5,7 +5,7 @@ import { Language } from '../i18n/translations';
 interface RetroBiosBootProps {
   onComplete: () => void;
   lang?: Language;
-  theme?: 'norton' | 'matrix' | 'amber' | 'dos';
+  theme?: 'norton' | 'matrix' | 'amber' | 'dos' | 'light' | 'solarized';
 }
 
 export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
@@ -22,6 +22,19 @@ export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
     matrix: { bg: 'bg-black', text: 'text-[#00ff00]', primary: 'text-[#00ff00]', border: 'border-[#00ff00]' },
     amber: { bg: 'bg-black', text: 'text-[#ffb000]', primary: 'text-[#ffb000]', border: 'border-[#ffb000]' },
     dos: { bg: 'bg-black', text: 'text-gray-300', primary: 'text-white', border: 'border-white' },
+    // Los temas nuevos se pintan con los tokens para no repetir literales.
+    light: {
+      bg: 'bg-[var(--nc-bg-main)]',
+      text: 'text-[var(--nc-text)]',
+      primary: 'text-[var(--nc-text-accent)]',
+      border: 'border-[var(--nc-border-light)]',
+    },
+    solarized: {
+      bg: 'bg-[var(--nc-bg-main)]',
+      text: 'text-[var(--nc-text)]',
+      primary: 'text-[var(--nc-text-accent)]',
+      border: 'border-[var(--nc-border-light)]',
+    },
   }[theme] || { bg: 'bg-black', text: 'text-white', primary: 'text-[#00ffff]', border: 'border-[#00ffff]' };
 
   const bootSteps = [

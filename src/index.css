@@ -515,6 +515,38 @@ code::-webkit-scrollbar-track,
   --nc-shadow: #222222;
 }
 
+/* Claro tipo papel: fondo hueso, tinta verde-azulada y ámbar oscuro para que
+   los acentos sigan leyéndose sin el amarillo fluorescente de Norton. */
+.theme-light {
+  color-scheme: light;
+  --nc-bg-main: #f2f1e6;
+  --nc-bg-panel: #fffef8;
+  --nc-text: #113b3b;
+  --nc-text-accent: #8a4b00;
+  --nc-header-bg: #b9d8d8;
+  --nc-header-text: #062b2b;
+  --nc-border-light: #2f7a7a;
+  --nc-border-dark: #cfcec2;
+  --nc-active-bg: #cf9b00;
+  --nc-active-text: #1b1b1b;
+  --nc-shadow: #c9c8ba;
+}
+
+/* Solarizado (Solarized Dark): base03/base02 con cian y ámbar clásicos. */
+.theme-solarized {
+  --nc-bg-main: #002b36;
+  --nc-bg-panel: #073642;
+  --nc-text: #93a1a1;
+  --nc-text-accent: #b58900;
+  --nc-header-bg: #268bd2;
+  --nc-header-text: #002b36;
+  --nc-border-light: #2aa198;
+  --nc-border-dark: #0b4a5a;
+  --nc-active-bg: #b58900;
+  --nc-active-text: #002b36;
+  --nc-shadow: #001f27;
+}
+
 @layer utilities {
   .nc-container {
     background-color: var(--nc-bg-main);
@@ -799,6 +831,123 @@ body.theme-dos,
 .theme-dos [class*="border-[#000055]"],
 .theme-dos [class*="border-[#000080]"],
 .theme-dos [class*="border-[#0000aa]"] {
+  border-color: var(--nc-border-dark) !important;
+}
+
+/* ==========================================================================
+   PALETAS NO-NORTON: SIN RESTOS DE AZUL
+   ========================================================================== */
+
+/* Los temas matriz, ámbar y dos ya remapeaban sus colores, pero quedaban
+   sombras de azul que no estaban tokenizadas (000040, 000045, 00243e,
+   border #004466, cian de Tailwind…). Aquí se cubren todas de una vez para
+   cualquier tema que no sea Norton, incluidos los dos nuevos. */
+:is(.theme-matrix, .theme-amber, .theme-dos, .theme-light, .theme-solarized) :is(
+  [class*="bg-[#000040]"],
+  [class*="bg-[#000044]"],
+  [class*="bg-[#000045]"],
+  [class*="bg-[#000066]"],
+  [class*="bg-[#0000cc]"],
+  [class*="bg-[#00243e]"],
+  [class*="bg-[#000d1a]"],
+  [class*="bg-[#001a33]"]
+) {
+  background-color: var(--nc-bg-panel) !important;
+}
+
+:is(.theme-matrix, .theme-amber, .theme-dos, .theme-light, .theme-solarized) :is(
+  [class*="border-[#004466]"],
+  [class*="border-[#003366]"],
+  [class*="border-[#000066]"],
+  [class*="border-cyan-"],
+  [class*="border-blue-"]
+) {
+  border-color: var(--nc-border-dark) !important;
+}
+
+:is(.theme-matrix, .theme-amber, .theme-dos, .theme-light, .theme-solarized) :is(
+  [class*="text-[#a8c7fa]"],
+  [class*="text-[#000080]"],
+  [class*="text-cyan-"],
+  [class*="text-blue-"]
+) {
+  color: var(--nc-text) !important;
+}
+
+:is(.theme-matrix, .theme-amber, .theme-dos, .theme-light, .theme-solarized) :is(
+  [class*="bg-cyan-"],
+  [class*="bg-blue-"]
+) {
+  background-color: var(--nc-bg-panel) !important;
+}
+
+/* Los temas nuevos necesitan los mismos remapeos que los tres anteriores
+   (las clases CSS no se heredan entre selectores de tema). */
+:is(.theme-light, .theme-solarized) :is([class*="text-[#00ffff]"], [class*="text-[#00aaaa]"]) {
+  color: var(--nc-text) !important;
+}
+
+:is(.theme-light, .theme-solarized) [class*="text-[#ffff55]"] {
+  color: var(--nc-text-accent) !important;
+}
+
+:is(.theme-light, .theme-solarized) :is(
+  [class*="bg-[#0000aa]"],
+  [class*="bg-[#000080]"],
+  [class*="bg-[#000055]"],
+  [class*="bg-[#000033]"],
+  [class*="bg-[#000022]"],
+  [class*="bg-[#131314]"],
+  [class*="bg-[#18191c]"],
+  [class*="bg-[#1e2026]"],
+  [class*="bg-[#1e1f20]"],
+  [class*="bg-[#282a2d]"]
+) {
+  background-color: var(--nc-bg-main) !important;
+}
+
+:is(.theme-light, .theme-solarized) [class*="bg-[#00aaaa]"] {
+  background-color: var(--nc-header-bg) !important;
+  color: var(--nc-header-text) !important;
+}
+
+:is(.theme-light, .theme-solarized) :is([class*="border-[#00ffff]"], [class*="border-[#00aaaa]"]) {
+  border-color: var(--nc-border-light) !important;
+}
+
+:is(.theme-light, .theme-solarized) :is(
+  [class*="border-[#000055]"],
+  [class*="border-[#000080]"],
+  [class*="border-[#0000aa]"]
+) {
+  border-color: var(--nc-border-dark) !important;
+}
+
+:is(.theme-light, .theme-solarized) [class*="border-[#ffff55]"] {
+  border-color: var(--nc-text-accent) !important;
+}
+
+html.theme-light,
+body.theme-light,
+.theme-light {
+  background-color: #f2f1e6 !important;
+  color: #113b3b !important;
+}
+
+html.theme-solarized,
+body.theme-solarized,
+.theme-solarized {
+  background-color: #002b36 !important;
+  color: #93a1a1 !important;
+}
+
+/* En fondo claro el blanco deja de verse: pasa a la tinta del tema. */
+.theme-light :is([class*="text-white"], [class*="text-[#ffffff]"]),
+.theme-solarized :is([class*="text-white"], [class*="text-[#ffffff]"]) {
+  color: var(--nc-text) !important;
+}
+
+.theme-light [class*="border-white"] {
   border-color: var(--nc-border-dark) !important;
 }
 

@@ -45,7 +45,7 @@ export interface UIState {
   isSidebarOpen: boolean;
   
   // Theme & Appearance
-  theme: 'norton' | 'matrix' | 'amber' | 'dos';
+  theme: 'norton' | 'matrix' | 'amber' | 'dos' | 'light' | 'solarized';
   lang: Language;
   showTooltips: boolean;
   
@@ -83,7 +83,7 @@ type UIAction =
   | { type: 'SET_LIVE_VIEWER'; payload: { snippets?: SetterValue<ChatCodeSnippet[]>; index?: SetterValue<number>; open?: SetterValue<boolean> } }
   | { type: 'TOGGLE_WORKBENCH' }
   | { type: 'TOGGLE_SIDEBAR' }
-  | { type: 'SET_THEME'; payload: SetterValue<'norton' | 'matrix' | 'amber' | 'dos'> }
+  | { type: 'SET_THEME'; payload: SetterValue<'norton' | 'matrix' | 'amber' | 'dos' | 'light' | 'solarized'> }
   | { type: 'SET_LANG'; payload: SetterValue<Language> }
   | { type: 'TOGGLE_TOOLTIPS' }
   | { type: 'SET_TOOLTIPS'; payload: SetterValue<boolean> }
@@ -195,7 +195,7 @@ function applyThemeToDOM(theme: string) {
   const themeClass = theme === 'norton' ? '' : `theme-${theme}`;
   
   // Remove previous theme class
-  ['theme-norton', 'theme-matrix', 'theme-amber', 'theme-dos'].forEach((cls) => {
+  ['theme-norton', 'theme-matrix', 'theme-amber', 'theme-dos', 'theme-light', 'theme-solarized'].forEach((cls) => {
     root.classList.remove(cls);
     body.classList.remove(cls);
   });
@@ -389,7 +389,7 @@ interface UIStoreContextValue {
   closeModal: (modal: ModalKey) => void;
   toggleWorkbench: () => void;
   toggleSidebar: () => void;
-  setTheme: (theme: SetterValue<'norton' | 'matrix' | 'amber' | 'dos'>) => void;
+  setTheme: (theme: SetterValue<'norton' | 'matrix' | 'amber' | 'dos' | 'light' | 'solarized'>) => void;
   setLang: (lang: SetterValue<Language>) => void;
   toggleTooltips: () => void;
   setShowTooltips: (show: SetterValue<boolean>) => void;
@@ -530,7 +530,7 @@ export function UIStoreProvider({ children }: { children: ReactNode }) {
     closeModal: useCallback((modal: ModalKey) => dispatch({ type: 'SET_MODAL', payload: { modal, open: false } }), []),
     toggleWorkbench: useCallback(() => dispatch({ type: 'TOGGLE_WORKBENCH' }), []),
     toggleSidebar: useCallback(() => dispatch({ type: 'TOGGLE_SIDEBAR' }), []),
-    setTheme: useCallback((theme: SetterValue<'norton' | 'matrix' | 'amber' | 'dos'>) => dispatch({ type: 'SET_THEME', payload: theme }), []),
+    setTheme: useCallback((theme: SetterValue<'norton' | 'matrix' | 'amber' | 'dos' | 'light' | 'solarized'>) => dispatch({ type: 'SET_THEME', payload: theme }), []),
     setLang: useCallback((lang: SetterValue<Language>) => dispatch({ type: 'SET_LANG', payload: lang }), []),
     toggleTooltips: useCallback(() => dispatch({ type: 'TOGGLE_TOOLTIPS' }), []),
     setShowTooltips: useCallback((show: SetterValue<boolean>) => dispatch({ type: 'SET_TOOLTIPS', payload: show }), []),
