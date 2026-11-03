@@ -85,6 +85,28 @@ describe('useLSPClient', () => {
     });
   });
 
+  test('normaliza un CompletionList a un array de items', async () => {
+    const { api } = makeLspMock();
+    (api.completion as any).mockResolvedValue({
+      success: true,
+      result: { isIncomplete: false, items: [{ label: 'saludo', kind: 3 }] },
+    });
+    (window as any).electronAPI = { lsp: api };
+
+    const { result } = renderHook(() =>
+      useLSPClient({
+        filePath: 'C:/proj/src/a.ts',
+        languageId: 'typescript',
+        projectRoot: 'C:/proj',
+        getText: () => 'saludo.',
+      })
+    );
+
+    await waitFor(() => expect(api.initialize).toHaveBeenCalled());
+    const items = await result.current.requestCompletion(0, 7);
+    expect(items).toEqual([{ label: 'saludo', kind: 3 }]);
+  });
+
   test('filtra diagnósticos por uri normalizada (Windows)', async () => {
     const { api, listeners } = makeLspMock();
     (window as any).electronAPI = { lsp: api };

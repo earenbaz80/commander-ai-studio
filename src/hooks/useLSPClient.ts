@@ -130,7 +130,12 @@ interface LspApi {
     line: number;
     character: number;
     triggerKind?: number;
-  }) => Promise<{ success: boolean; result: LSPCompletionItem[] | null; error?: string }>;
+  }) => Promise<{
+    success: boolean;
+    // LSP permite devolver un array o un CompletionList ({ items }).
+    result: LSPCompletionItem[] | { items?: LSPCompletionItem[] } | null;
+    error?: string;
+  }>;
   rename: (params: {
     filePath: string;
     line: number;
@@ -308,7 +313,8 @@ export function useLSPClient({
       if (!api || !initialized) return null;
       try {
         const result = await api.completion({ filePath, line, character, triggerKind });
-        return result.success ? result.result : null;
+        if (!result.success || !result.result) return null;
+        return Array.isArray(result.result) ? result.result : result.result.items ?? null;
       } catch {
         return null;
       }

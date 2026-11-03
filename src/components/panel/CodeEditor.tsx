@@ -310,7 +310,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     filePath: absFilePath || 'untitled.ts',
     languageId: language || 'typescript',
     projectRoot: projectPath,
-    getText: () => view.current?.state.doc.toString() || value,
+    // `value` es la fuente de verdad al abrir: al cambiar de archivo el
+    // documento de CodeMirror todavía puede tener el texto anterior.
+    getText: () => value,
     onDiagnostics: setLspDiagnostics,
   });
 

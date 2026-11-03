@@ -195,7 +195,6 @@ const de = lang === 'de';
     async (rawPath: string) => {
       const p = rawPath.trim();
       if (!p || !projectPath) return;
-      setSelectedPath(p);
       setLocalName('');
       setLoading(true);
       setError('');
@@ -203,12 +202,16 @@ const de = lang === 'de';
       const res = await readProjectFile(p, 2_000_000, projectPath);
       setLoading(false);
       if (res.error) {
-        setError(res.error);
+        // Ruta y contenido se actualizan juntos: si se marca la ruta antes de
+        // leer, el LSP abre el archivo nuevo con el texto del anterior.
+        setSelectedPath(p);
         setContent('');
         setSavedContent('');
+        setError(res.error);
         return;
       }
       const text = res.content ?? '';
+      setSelectedPath(p);
       setContent(text);
       setSavedContent(text);
       try {
