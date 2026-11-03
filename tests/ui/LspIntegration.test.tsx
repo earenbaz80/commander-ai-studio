@@ -103,6 +103,9 @@ describe('useLSPClient', () => {
     );
 
     await waitFor(() => expect(api.initialize).toHaveBeenCalled());
+    // `initialize` resuelve antes de que el hook marque `initialized`; esperar
+    // sólo a la llamada hacía que la petición saliera como null en paralelo.
+    await waitFor(() => expect(result.current.initialized).toBe(true));
     const items = await result.current.requestCompletion(0, 7);
     expect(items).toEqual([{ label: 'saludo', kind: 3 }]);
   });
