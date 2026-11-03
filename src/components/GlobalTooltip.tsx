@@ -1,5 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
+/**
+ * Tooltip global para cualquier elemento con `data-tooltip` o `title`.
+ *
+ * La posición se calcula centrada en el elemento con `translateX(-50%)`, y
+ * después se mide el tooltip ya pintado para corregir el desplazamiento si se
+ * sale por cualquier borde. Antes se limitaba la coordenada con un ancho fijo
+ * de 240 px, pero el tooltip puede medir hasta 320: en los botones pegados a la
+ * izquierda el recorte dejaba media caja fuera de pantalla.
+ */
 export const GlobalTooltip: React.FC = () => {
   const [tooltip, setTooltip] = useState<{
     text: string;
@@ -14,6 +23,37 @@ export const GlobalTooltip: React.FC = () => {
     y: 0,
     visible: false,
   });
+  /** Corrección acumulada tras medir el tooltip en pantalla. */
+  const [shift, setShift] = useState({ x: 0, y: 0 });
+  const tooltipRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!tooltip.visible) {
+      setShift({ x: 0, y: 0 });
+      return;
+    }
+    const el = tooltipRef.current;
+    if (!el) return;
+
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    let dx = 0;
+    let dy = 0;
+
+    if (rect.left < margin) dx = margin - rect.left;
+    else if (rect.right > window.innerWidth - margin) dx = window.innerWidth - margin - rect.right;
+
+    if (rect.top < margin) dy = margin - rect.top;
+    else if (rect.bottom > window.innerHeight - margin) dy = window.innerHeight - margin - rect.bottom;
+
+    if (dx !== 0 || dy !== 0) {
+      // Se suma a lo ya corregido: así converge en una pasada y no oscila.
+      setShift((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
+    }
+    // No depende de `shift` a propósito: con la corrección aplicada no hace
+    // falta volver a medir, y añadirlo provocaría un bucle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tooltip.visible, tooltip.text, tooltip.x, tooltip.y]);
 
   useEffect(() => {
     let timeoutId: any = null;
@@ -77,7 +117,7 @@ export const GlobalTooltip: React.FC = () => {
 
       // Calculate position
       const rect = target.getBoundingClientRect();
-      const x = Math.min(Math.max(16, rect.left + rect.width / 2), window.innerWidth - 240);
+      const x = Math.min(Math.max(16, rect.left + rect.width / 2), window.innerWidth - 16);
       let y = rect.bottom + 8;
       if (y + 60 > window.innerHeight) {
         y = Math.max(10, rect.top - 48);
@@ -85,6 +125,8 @@ export const GlobalTooltip: React.FC = () => {
 
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
+        // Cada tooltip nuevo empieza sin corrección y se mide al pintarse.
+        setShift({ x: 0, y: 0 });
         setTooltip({
           text: text || '',
           subtext: subtextAttr || undefined,
@@ -132,10 +174,11 @@ export const GlobalTooltip: React.FC = () => {
 
   return (
     <div
+      ref={tooltipRef}
       style={{
         left: `${tooltip.x}px`,
         top: `${tooltip.y}px`,
-        transform: 'translateX(-50%)',
+        transform: `translateX(-50%) translate(${shift.x}px, ${shift.y}px)`,
       }}
       className="fixed z-[10001] pointer-events-none transition-opacity duration-100 ease-out font-mono select-none"
     >

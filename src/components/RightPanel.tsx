@@ -510,7 +510,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
 
         {/* Tres pestañas para el mismo sitio de ajustes: el modelo estaba aquí y en el
             selector del compositor, y las instrucciones vivían en el sidebar. */}
-        <div className="grid grid-cols-3 gap-1" role="tablist" aria-label={tx('Secciones de ajustes', 'Einstellungsbereiche', 'Settings sections')}>
+        <div className="grid grid-cols-3 gap-1 min-w-0" role="tablist" aria-label={tx('Secciones de ajustes', 'Einstellungsbereiche', 'Settings sections')}>
           {([
             { id: 'modelo' as const, label: tx('MODELO', 'MODELL', 'MODEL') },
             { id: 'parametros' as const, label: tx('PARÁMETROS', 'PARAMETER', 'PARAMETERS') },
@@ -522,7 +522,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               role="tab"
               aria-selected={settingsTab === tab.id}
               onClick={() => setSettingsTab(tab.id)}
-              className={`py-1 text-[10px] font-bold border ${
+              title={tab.label}
+              className={`min-w-0 truncate px-1 py-1 text-[10px] font-bold border ${
                 settingsTab === tab.id
                   ? 'bg-[#00ffff] text-black border-white'
                   : 'bg-[#000080] text-[#00ffff] border-[#00aaaa]'
