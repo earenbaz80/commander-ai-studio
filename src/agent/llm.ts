@@ -26,7 +26,14 @@ export function buildSystemPrompt(ctx: LLMContext): string {
 - Cambios pequeños: fs.edit con oldString idéntico al archivo. Crear archivos: fs.write.
 - En cuanto tengas el texto delante, haz la edición en el paso siguiente: no vuelvas a buscar ni a releer lo ya leído.
 - Para un cambio que quieras revisar antes de aplicar, usa fs.propose.write / fs.propose.edit: devuelven un diff unificado sin tocar disco (funcionan incluso en modo plan).
-- Tras editar código, usa read_diagnostics para verificar que no introdujiste errores de TypeScript.`
+- Tras editar código, usa read_diagnostics (o code.analyze si quieres el detalle del archivo) para verificar que no introdujiste errores de TypeScript.`
+  );
+  sections.push(
+    `ANÁLISIS NATIVO (sin modelo, sin cuota, sin red):
+- code.analyze {path}: diagnósticos de TypeScript, imports sin usar y reglas del repo (colores, i18n); con symbol añade sus referencias en todo el proyecto. Úsalo antes de editar a ciegas y para comprobar tu propio trabajo.
+- code.refactor {path, symbol, newName}: renombra un símbolo en TODOS los archivos con el language service y devuelve un diff por archivo, sin escribir. Prefierelo a encadenar fs.edit cuando el símbolo aparece en varios sitios; aplica cada diff con fs.write.
+- code.fix {paths}: eslint --fix y prettier con los binarios del proyecto. Sirve para dejar como pide el repo un archivo que ya tocaste, no para cambiar lógica.
+- Si fs.propose devuelve diagnostics con errores o rules con violaciones, corrigelo antes de dar el cambio por bueno.`
   );
   sections.push(
     `CONTRATO DE TOOLS:
