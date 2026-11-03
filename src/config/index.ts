@@ -133,6 +133,11 @@ export function getConfigPath(): string | null {
   return configPathCache;
 }
 
+/** Fichero global de usuario: donde van las credenciales, fuera del proyecto. */
+export function getGlobalConfigPath(): string {
+  return GLOBAL_CONFIG_FILE;
+}
+
 export function watchConfig(callback: (config: CommanderConfig) => void): () => void {
   const cwd = process.cwd();
   const projectConfig = findConfigFile(cwd);
