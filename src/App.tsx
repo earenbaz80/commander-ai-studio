@@ -1687,7 +1687,7 @@ export default function App() {
         lang={lang as any}
       />
       {/* Status bar Norton */}
-      <StatusBar lang={lang as any} model={selectedModel} isGenerating={isGenerating} />
+      <StatusBar lang={lang as any} model={selectedModel} isGenerating={isGenerating || agent.state.running} />
     </div>
   );
 }
