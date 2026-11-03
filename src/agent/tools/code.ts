@@ -45,12 +45,25 @@ export interface CodeRefactorInput {
   symbol?: string;
   line?: number;
   column?: number;
+  /** Typechequear el resultado del renombrado. Por defecto sí; `false` lo desactiva. */
+  diagnose?: boolean;
 }
 export interface CodeRefactorOutput {
   symbol: string;
   newName: string;
   locations: number;
-  files: { path: string; changed: boolean; additions: number; deletions: number; diff: string }[];
+  files: {
+    path: string;
+    changed: boolean;
+    additions: number;
+    deletions: number;
+    diff: string;
+    /** Contenido resultante, listo para `fs.write` (omitido en archivos enormes). */
+    content?: string;
+    /** Errores de tipos que dejaría el renombrado en ese archivo. */
+    diagnostics?: { file: string; line: number; column: number; severity: 'error' | 'warning'; code: string; message: string }[];
+    checked?: boolean;
+  }[];
 }
 
 export const codeRefactorTool: ToolDefinition<CodeRefactorInput, CodeRefactorOutput> = {

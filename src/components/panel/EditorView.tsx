@@ -27,6 +27,7 @@ import {
   Download,
   Upload,
   RefreshCw,
+  Search,
   Loader2,
   FileCode,
   FilePlus,
@@ -37,6 +38,7 @@ import {
   X,
 } from 'lucide-react';
 import { listProjectFiles, readProjectFile, writeProjectFile } from '../../utils/agentToolsApi';
+import { CodeReviewModal } from './CodeReviewModal';
 import { AI_ENABLED_KEY } from '../../utils/inlineAi';
 import type { Language } from '../../i18n/translations';
 // CodeMirror se carga bajo demanda (solo al abrir la pestaña Editor) para no
@@ -152,6 +154,8 @@ export const EditorView: React.FC<{
     }
   });
   const [showProjectSaveAs, setShowProjectSaveAs] = useState(false);
+  /** Archivo abierto en el modal de revisión (análisis, formato y renombrado). */
+  const [reviewPath, setReviewPath] = useState<string | null>(null);
   const [projectNewPath, setProjectNewPath] = useState('');
   const [reveal, setReveal] = useState<{ line: number; character: number; nonce: number } | null>(
     null
@@ -514,6 +518,21 @@ const de = lang === 'de';
             >
               <RefreshCw className="w-3 h-3" />
             </button>
+            <button
+              onClick={() => setReviewPath(selectedPath.trim())}
+              disabled={!selectedPath.trim()}
+              className="p-1 text-yellow-300 hover:bg-white/10 rounded disabled:opacity-30"
+              title={
+                es
+                  ? 'Revisar el archivo: análisis, formato y renombrado (sin modelo)'
+                  : de
+                  ? 'Datei prüfen: Analyse, Format und Umbenennen (ohne Modell)'
+                  : 'Review file: analysis, format and rename (no model)'
+              }
+              data-testid="editor-review"
+            >
+              <Search className="w-3.5 h-3.5" />
+            </button>
           </>
         ) : (
           <span className="flex-1 min-w-0 text-[10px] font-mono text-[#00ffff]/60 truncate">
@@ -705,6 +724,19 @@ const de = lang === 'de';
           <span>{content.length} B</span>
         </span>
       </div>
+
+      {reviewPath && (
+        <CodeReviewModal
+          path={reviewPath}
+          projectPath={projectPath}
+          lang={lang}
+          onClose={() => setReviewPath(null)}
+          onFileChanged={async (changed) => {
+            await openFile(changed);
+            loadFiles();
+          }}
+        />
+      )}
     </div>
   );
 };
