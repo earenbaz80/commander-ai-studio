@@ -52,6 +52,7 @@ export const AGENT_TOOLS = new Set([
   'shell.run', 'shell.job',
   'browser', 'preview',
   'read_diagnostics',
+  'code.analyze', 'code.refactor', 'code.fix',
   'task', 'spawn_agents', 'skill', 'run_file_change_hooks',
   'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list',
   'git.status', 'git.diff', 'git.log', 'git.commit',

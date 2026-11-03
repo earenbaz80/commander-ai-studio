@@ -11,6 +11,8 @@ import {
 } from './security';
 import { diffLines, toUnifiedDiff } from './src/utils/patch';
 import { diagnoseProposed } from './src/agent/proposedDiagnostics';
+import { analyzeSource, findReferences, invalidateCodeIntel, planRename, rulesFor } from './src/agent/codeIntel';
+import { newViolations } from './src/agent/projectRules';
 import { splitPipeline } from './src/agent/shellCommand';
 import { listJobs, readJobLog, runPipeline, startJob, stopJob } from './shellJobs';
 import { assertSafeOutboundUrl, safeFetch } from './ssrf';
@@ -429,6 +431,42 @@ function proposal(p: string, before: string, after: string, exists: boolean) {
  * Hooks de cambio de archivo: corre el formateador (prettier) sobre el archivo
  * recién escrito/editado. Nunca bloquea la operación: si falla, se reporta.
  */
+/**
+ * Corre una herramienta del propio proyecto con `node` en vez de `npx`.
+ *
+ * `npx` puede decidir bajar el paquete si no lo encuentra y aquí no hay red que
+ * asumir; además en Windows `execFileSync('npx')` no resuelve el `.cmd` sin
+ * shell. Ejecutando el entrypoint con `process.execPath` no hace falta shell,
+ * funciona igual en los tres sistemas y no toca la red.
+ */
+async function runProjectBin(
+  root: string,
+  pkg: string,
+  entry: string,
+  args: string[],
+): Promise<{ ran: boolean; exitCode?: number; output?: string; error?: string }> {
+  const bin = path.join(root, 'node_modules', pkg, entry);
+  if (!fs.existsSync(bin)) return { ran: false, error: `${pkg} no está instalado en el proyecto (npm i -D ${pkg}).` };
+  const { execFile } = await import('child_process');
+  return new Promise((resolve) => {
+    execFile(
+      process.execPath,
+      [bin, ...args],
+      { cwd: root, timeout: 90_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true },
+      (err, stdout, stderr) => {
+        const exitCode = err ? (typeof (err as any).code === 'number' ? (err as any).code : 1) : 0;
+        const output = `${String(stdout || '')}${stderr ? `\n${String(stderr)}` : ''}`.trim().slice(0, 2000);
+        resolve({
+          ran: true,
+          exitCode,
+          ...(output ? { output } : {}),
+          ...(err && (err as any).code === undefined ? { error: String(err.message || err).slice(0, 500) } : {}),
+        });
+      },
+    );
+  });
+}
+
 async function runFileChangeHooks(absPath: string, root: string): Promise<{ ran: boolean; output?: string; error?: string }> {
   const ext = path.extname(absPath).toLowerCase();
   if (!['.ts', '.tsx', '.js', '.jsx', '.css', '.json', '.md'].includes(ext)) {
@@ -582,6 +620,7 @@ export async function executeAgentTool(
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, content, 'utf8');
     try { invalidateIndex(rootAbs); } catch { /* ignore */ }
+    invalidateCodeIntel(rootAbs);
     // Hooks de cambio de archivo: formateador sobre el archivo recién escrito.
     const hooks = await runFileChangeHooks(target, rootAbs);
     return { ok: true, data: { path: p, bytes: content.length, hooks } };
@@ -615,6 +654,7 @@ export async function executeAgentTool(
     } catch { /* ignore */ }
     fs.writeFileSync(target, updated, 'utf8');
     try { invalidateIndex(rootAbs); } catch { /* ignore */ }
+    invalidateCodeIntel(rootAbs);
     // Hooks de cambio de archivo: formateador sobre el archivo recién editado.
     const hooks = await runFileChangeHooks(target, rootAbs);
     return { ok: true, data: { path: p, replaced: count, hooks } };
@@ -641,8 +681,11 @@ export async function executeAgentTool(
       ? before.split(oldStr).join(newStr)
       : before.replace(oldStr, () => newStr);
     const data: any = proposal(p, before, after, true);
-    if (data.changed && input.diagnose === true) {
+    if (data.changed && input.diagnose !== false) {
       data.diagnostics = diagnoseProposed(permRoot, p, after);
+      // Sólo las reglas que el cambio INTRODUCE: la deuda previa del archivo no
+      // es del cambio y señalarla convertiría el aviso en ruido.
+      data.rules = newViolations(rulesFor(permRoot, p, before), rulesFor(permRoot, p, after));
     }
     return { ok: true, data };
   }
@@ -658,8 +701,9 @@ export async function executeAgentTool(
     const isFile = fs.existsSync(target) && !fs.statSync(target).isDirectory();
     const before = isFile ? fs.readFileSync(target, 'utf8') : '';
     const data: any = proposal(p, before, content, isFile);
-    if (data.changed && input.diagnose === true) {
+    if (data.changed && input.diagnose !== false) {
       data.diagnostics = diagnoseProposed(permRoot, p, content);
+      data.rules = newViolations(rulesFor(permRoot, p, before), rulesFor(permRoot, p, content));
     }
     return { ok: true, data };
   }
@@ -789,6 +833,81 @@ export async function executeAgentTool(
   if (toolId === 'read_diagnostics') {
     const only = input.path ? String(input.path).slice(0, 500) : undefined;
     return runReadDiagnostics(rootHint, only);
+  }
+
+  // ── Análisis nativo: el compilador, no un modelo ──
+  //
+  // Estas tres tools existen para que la parte verificable del trabajo no pase
+  // por el proveedor del LLM: funcionan sin clave, sin cuota y sin red, y su
+  // resultado se puede comprobar. `code.analyze` sólo lee y por eso entra en
+  // modo plan sin necesidad de `isReadOnlyCall`; `code.refactor` no escribe (su
+  // salida son diffs) y `code.fix` sí, así que está en `EXEC_TOOLS`.
+  if (toolId === 'code.analyze') {
+    const p = String(input.path || '').slice(0, 500);
+    if (!p) return { ok: false, error: 'path requerido' };
+    const pathErr = enforcePath(perms, p, 'read');
+    if (pathErr) return { ok: false, error: pathErr, status: 403 };
+    const res = analyzeSource(permRoot, p);
+    if (!res.ok) return { ok: false, error: res.error || res.note || 'no se pudo analizar' };
+    const data: any = { ...res.data };
+    if (input.symbol) {
+      const refs = findReferences(permRoot, p, String(input.symbol).slice(0, 200));
+      data.references = refs.ok ? refs.data : { error: refs.error || refs.note };
+    }
+    return { ok: true, data };
+  }
+
+  if (toolId === 'code.refactor') {
+    const p = String(input.path || '').slice(0, 500);
+    const newName = String(input.newName || '').trim().slice(0, 200);
+    if (!p || !newName) return { ok: false, error: 'path y newName requeridos' };
+    const pathErr = enforcePath(perms, p, 'read');
+    if (pathErr) return { ok: false, error: pathErr, status: 403 };
+    const res = planRename(permRoot, p, {
+      newName,
+      symbol: input.symbol ? String(input.symbol).slice(0, 200) : undefined,
+      line: Number(input.line) || undefined,
+      column: Number(input.column) || undefined,
+    });
+    if (!res.ok) return { ok: false, error: res.error || res.note || 'no se pudo renombrar' };
+    return {
+      ok: true,
+      data: {
+        ...res.data,
+        hint: 'Esta tool no escribe: aplica cada diff con fs.write (o pide aprobación).',
+      },
+    };
+  }
+
+  if (toolId === 'code.fix') {
+    const raw = Array.isArray(input.paths) ? input.paths : input.path ? [input.path] : [];
+    const paths = raw.map((x: unknown) => String(x).slice(0, 500)).slice(0, 30);
+    if (paths.length === 0) return { ok: false, error: 'paths requerido' };
+    const rootAbs = permRoot;
+    const files: any[] = [];
+    for (const p of paths) {
+      const pathErr = enforcePath(perms, p, 'write');
+      if (pathErr) return { ok: false, error: pathErr, status: 403 };
+      const target = agentSafePath(p, rootHint);
+      if (!fs.existsSync(target) || fs.statSync(target).isDirectory()) {
+        return { ok: false, error: `No existe: ${p}` };
+      }
+      const before = fs.readFileSync(target, 'utf8');
+      const rel = path.relative(rootAbs, target).split(path.sep).join('/');
+      // ESLint primero y Prettier al final: el formateador manda en el estilo.
+      const eslint = await runProjectBin(rootAbs, 'eslint', 'bin/eslint.js', ['--fix', '--no-warn-ignored', rel]);
+      const prettier = await runProjectBin(rootAbs, 'prettier', 'bin/prettier.cjs', ['--write', rel]);
+      const after = fs.readFileSync(target, 'utf8');
+      if (after !== before) {
+        try {
+          if (rel) snapshotPath(rootAbs, rel, `code.fix ${p}`, 'code.fix');
+        } catch { /* ignore */ }
+        invalidateIndex(rootAbs);
+        invalidateCodeIntel(rootAbs);
+      }
+      files.push({ ...proposal(p, before, after, true), eslint, prettier });
+    }
+    return { ok: true, data: { files } };
   }
 
   if (toolId === 'shell.run') {

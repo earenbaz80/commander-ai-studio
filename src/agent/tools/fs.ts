@@ -93,12 +93,22 @@ export interface FsGlobOutput {
 }
 
 /**
- * Resultado del typecheck del borrador (`diagnose: true`).
+ * Resultado del typecheck del borrador (por defecto; `diagnose: false` lo desactiva).
  *
  * Se declara aquí, y no importando el de `agentTools.ts`, porque ese módulo es
  * del servidor: importarlo desde el cliente arrastraría `fs` y `child_process`
  * al bundle.
  */
+/** Violación de una regla del repo (color, i18n) detectada en un borrador. */
+export interface RuleFinding {
+  rule: string;
+  file: string;
+  line: number;
+  column: number;
+  message: string;
+  excerpt: string;
+}
+
 export interface ProposedDiagnosticsSummary {
   /** `false` si no se pudo comprobar (sin tsconfig, sin typescript…): ver `note`. */
   checked: boolean;
@@ -119,7 +129,10 @@ export interface ProposedDiagnosticsSummary {
 export interface FsProposeWriteInput {
   path: string;
   content: string;
-  /** Typechequear el contenido propuesto sin escribirlo. Lento: úsalo si el cambio es dudoso. */
+  /**
+   * Typechequear el contenido propuesto sin escribirlo. Por defecto sí; `false`
+   * lo desactiva (útil en cambios triviales o en archivos enormes).
+   */
   diagnose?: boolean;
 }
 export interface FsProposeWriteOutput {
@@ -130,15 +143,17 @@ export interface FsProposeWriteOutput {
   deletions: number;
   diff: string;
   hint?: string;
-  /** Presente sólo con `diagnose: true` y si hay algo que cambiar. */
+  /** Presente con `diagnose` activo y si hay algo que cambiar. */
   diagnostics?: ProposedDiagnosticsSummary;
+  /** Violaciones de las reglas del repo que introduce el cambio (no la deuda previa). */
+  rules?: RuleFinding[];
 }
 export const fsProposeWriteTool: ToolDefinition<FsProposeWriteInput, FsProposeWriteOutput> = {
   id: 'fs.propose.write',
   description:
     'Proponer escribir un archivo (crear o sobreescribir) SIN tocar disco. Devuelve un diff unificado ' +
-    'para que el usuario decida si se aplica. Funciona en modo plan. Con diagnose:true typechequea ' +
-    'el contenido propuesto sin escribirlo.',
+    'para que el usuario decida si se aplica. Funciona en modo plan. Typechequea el contenido ' +
+    'propuesto sin escribirlo (diagnose:false lo desactiva) y señala las reglas del repo que añade.',
   danger: false,
   requiresApproval: () => false,
   run: async (input) => callServer('fs.propose.write', input),
@@ -160,14 +175,17 @@ export interface FsProposeEditOutput {
   deletions: number;
   diff: string;
   hint?: string;
-  /** Presente sólo con `diagnose: true` y si hay algo que cambiar. */
+  /** Presente con `diagnose` activo y si hay algo que cambiar. */
   diagnostics?: ProposedDiagnosticsSummary;
+  /** Violaciones de las reglas del repo que introduce el cambio (no la deuda previa). */
+  rules?: RuleFinding[];
 }
 export const fsProposeEditTool: ToolDefinition<FsProposeEditInput, FsProposeEditOutput> = {
   id: 'fs.propose.edit',
   description:
     'Proponer un edit (str_replace) SIN tocar disco. Devuelve un diff unificado para revisión. ' +
-    'Funciona en modo plan. Con diagnose:true typechequea el resultado sin escribirlo.',
+    'Funciona en modo plan. Typechequea el resultado sin escribirlo (diagnose:false lo desactiva) ' +
+    'y señala las reglas del repo que añade.',
   danger: false,
   requiresApproval: () => false,
   run: async (input) => callServer('fs.propose.edit', input),
