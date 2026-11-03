@@ -24,7 +24,7 @@ import {
   Activity,
 } from 'lucide-react';
 import { FileTreeView } from './panel/FileTreeView';
-import { LivePreview, LiveConsole, NetworkMonitor } from './RightPanel';
+import { LivePreview, LiveConsole, NetworkMonitor } from './WorkbenchPreview';
 import { EditorView } from './panel/EditorView';
 import { ProviderHealthView } from './panel/ProviderHealthView';
 import { TabsView } from './panel/TabsView';
