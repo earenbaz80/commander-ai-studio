@@ -41,7 +41,7 @@ export interface ProjectFile {
   isNew?: boolean;
 }
 
-interface ComposerPlaygroundProps {
+export interface ComposerPlaygroundProps {
   parameters: ParameterConfig;
   setParameters: React.Dispatch<React.SetStateAction<ParameterConfig>>;
   selectedModel: string;

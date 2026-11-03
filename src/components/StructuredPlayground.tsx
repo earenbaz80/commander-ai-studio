@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { StructuredExample, ParameterConfig, ProviderType } from '../types/studio';
 import { Language } from '../i18n/translations';
 
-interface StructuredPlaygroundProps {
+export interface StructuredPlaygroundProps {
   parameters: ParameterConfig;
   selectedModel: string;
   selectedProvider: ProviderType;
