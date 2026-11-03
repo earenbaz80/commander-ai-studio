@@ -30,6 +30,11 @@ const CodeModal = React.lazy(() =>
 const PreferencesModal = React.lazy(() =>
   import('./components/PreferencesModal').then((m) => ({ default: m.PreferencesModal }))
 );
+// El gestor se abre desde el panel de ajustes y desde el propio modal de
+// configuración, así que vive en App y no dentro de uno de los dos.
+const ProviderManager = React.lazy(() =>
+  import('./components/panel/ProviderManager').then((m) => ({ default: m.ProviderManager }))
+);
 const LibraryModal = React.lazy(() =>
   import('./components/LibraryModal').then((m) => ({ default: m.LibraryModal }))
 );
@@ -141,6 +146,8 @@ export default function App() {
   const setDownloadedModels = chat.setDownloadedModels;
   const [isExtensionsOpen, setIsExtensionsOpen] = useState(false);
   const [isSymbolSearchOpen, setIsSymbolSearchOpen] = useState(false);
+  /** Gestor de proveedores compartido por Preferencias y Ajustes. */
+  const [isProviderManagerOpen, setIsProviderManagerOpen] = useState(false);
   const agent = useAgent('.', selectedModel);
   /** Campaña autónoma del servidor: corre fuera del orquestador local. */
   const [autonomousRunning, setAutonomousRunning] = useState(false);
@@ -1491,6 +1498,23 @@ export default function App() {
             batteryInfo={batteryInfo}
             defaultExportFolder={defaultExportFolder}
             setDefaultExportFolder={setDefaultExportFolder}
+            selectedModel={selectedModel}
+            selectedProvider={selectedProvider}
+            onOpenProviders={() => {
+              // El gestor quedaría detrás de este modal (z-50 < z-9999).
+              setIsPreferencesModalOpen(false);
+              setIsProviderManagerOpen(true);
+            }}
+          />
+        </React.Suspense>
+      )}
+
+      {isProviderManagerOpen && (
+        <React.Suspense fallback={<LazyFallback lang={lang} />}>
+          <ProviderManager
+            isOpen={isProviderManagerOpen}
+            onClose={() => setIsProviderManagerOpen(false)}
+            lang={lang as any}
           />
         </React.Suspense>
       )}

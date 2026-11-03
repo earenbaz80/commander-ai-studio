@@ -117,7 +117,7 @@ export const ToolsConfigSchema = z.object({
 });
 
 export const UIConfigSchema = z.object({
-  theme: z.enum(['norton', 'matrix', 'amber', 'dos']).default('norton'),
+  theme: z.enum(['norton', 'matrix', 'amber', 'dos', 'light', 'solarized']).default('norton'),
   language: z.enum(['es', 'en', 'de']).default('es'),
   showTooltips: z.boolean().default(true),
   lowResourceMode: z.boolean().default(false),
