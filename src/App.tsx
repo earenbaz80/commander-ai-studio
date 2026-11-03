@@ -21,9 +21,7 @@ import { FloatingAssistant, type FloatingAssistantHandle } from './components/Fl
 import { WorkbenchPanel } from './components/WorkbenchPanel';
 import { Sidebar } from './components/Sidebar';
 import { RightPanel } from './components/RightPanel';
-import { ChatPlayground } from './components/ChatPlayground';
 import { Playground } from './components/Playground';
-import { FreeformPlayground } from './components/FreeformPlayground';
 import { StructuredPlayground } from './components/StructuredPlayground';
 // El composer era la única vista que quedaba en el arranque y arrastraba jszip
 // (~95 kB) consigo: pasa a diferida como el resto y se descarga la primera vez
@@ -1288,38 +1286,32 @@ export default function App() {
             lang={lang as any}
             selectedModel={selectedModel}
             onOpenSettings={() => setIsInspectorOpen(true)}
+            chat={{
+              messages,
+              setMessages,
+              parameters,
+              selectedModel,
+              setSelectedModel,
+              isGenerating,
+              onSendMessage: handleSendMessage,
+              onClearChat: () => setMessages([]),
+              lang: lang as any,
+              setMode,
+              onOpenLiveViewer: handleOpenLiveViewer,
+              onOpenLocalLlmConfig: () => setIsLocalLlmModalOpen(true),
+              displayName,
+              isAuthenticated: !!currentUser,
+            }}
+            freeform={{
+              parameters,
+              setParameters,
+              selectedModel,
+              selectedProvider,
+              isGenerating,
+              onExecute: handleExecuteFreeform,
+              lang: lang as any,
+            }}
           >
-          {mode === 'chat' && (
-            <ChatPlayground
-              messages={messages}
-              setMessages={setMessages}
-              parameters={parameters}
-              selectedModel={selectedModel}
-              setSelectedModel={setSelectedModel}
-              isGenerating={isGenerating}
-              onSendMessage={handleSendMessage}
-              onClearChat={() => setMessages([])}
-              lang={lang as any}
-              setMode={setMode}
-              onOpenLiveViewer={handleOpenLiveViewer}
-              onOpenLocalLlmConfig={() => setIsLocalLlmModalOpen(true)}
-              displayName={displayName}
-              isAuthenticated={!!currentUser}
-            />
-          )}
-
-          {mode === 'freeform' && (
-            <FreeformPlayground
-              parameters={parameters}
-              setParameters={setParameters}
-              selectedModel={selectedModel}
-              selectedProvider={selectedProvider}
-              isGenerating={isGenerating}
-              onExecute={handleExecuteFreeform}
-              lang={lang as any}
-            />
-          )}
-
           {mode === 'structured' && (
             <StructuredPlayground
               parameters={parameters}

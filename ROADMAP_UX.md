@@ -22,7 +22,7 @@ Revisado contra el árbol: varias fases ya están hechas, así que no hay que re
 | 7. Sidebar de sesiones | **Hecho** | El historial del `Sidebar` lista las sesiones del servidor agrupadas por proyecto y `handleSelectServerSession` las reanuda con un clic (historial unificado, commit `9f78089`) |
 | 8. Atajos | **Hecho** | `src/hooks/useKeyboardShortcuts.ts` cubre `Ctrl+B`, `Ctrl+/`, `Ctrl+,`, `Ctrl+P`, `Ctrl+Shift+P` (paleta) y ``Ctrl+` `` (Workbench en la terminal); el modal de atajos los documenta |
 | 9. Empty states | **Hecho** | `src/components/EmptyState.tsx` lo usan `ChatPlayground` (sin sesión), `FileTreeView` (sin proyecto) y `AgentMode` (sin pasos) |
-| 10. Consolidar playgrounds | Parcial | `src/components/Playground.tsx` ya es el armazón único: barra de modos, modelo activo a la vista y montaje del activo. Falta absorber la lógica de cada pantalla (Composer y Compare son multi-modelo) |
+| 10. Consolidar playgrounds | Parcial | `src/components/Playground.tsx` es el armazón único (barra de modos, modelo a la vista) y ya monta Chat y Libre dentro; App dejó de conocer esas dos pantallas. Quedan estructurado, composer, comparar y HF, que traen carga diferida y flujos propios |
 
 Orden sugerido por retorno: **6 → 7 → 8**, y dejar la 10 para el final (toca pantallas que ya funcionan sin añadir capacidad).
 

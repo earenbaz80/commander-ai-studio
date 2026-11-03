@@ -4,7 +4,7 @@ import { Sparkles } from 'lucide-react';
 import { ParameterConfig, ProviderType } from '../types/studio';
 import { Language } from '../i18n/translations';
 
-interface FreeformPlaygroundProps {
+export interface FreeformPlaygroundProps {
   parameters: ParameterConfig;
   setParameters: React.Dispatch<React.SetStateAction<ParameterConfig>>;
   selectedModel: string;
