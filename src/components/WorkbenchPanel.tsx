@@ -195,14 +195,15 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
       className="w-full h-full nc-panel border-l-2 border-[#00ffff] flex flex-col min-h-0 overflow-hidden z-20 font-mono"
       aria-label={lang === 'es' ? 'Workbench' : lang === 'de' ? 'Workbench' : 'Workbench'}
     >
-      {/* Menú de selección */}
-      <div className="flex items-center gap-0.5 px-1 py-1 bg-[#00aaaa] border-b-2 border-[#000055] shrink-0">
+      {/* Menú de selección: con el panel estrecho las vistas no caben, así que
+          la fila se desplaza en horizontal en vez de quedar recortada. */}
+      <div className="flex items-center gap-0.5 px-1 py-1 bg-[#00aaaa] border-b-2 border-[#000055] shrink-0 min-w-0 overflow-x-auto nc-x-scroll">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActive(tab.id)}
             title={lang === 'es' ? tab.tip : lang === 'de' ? tab.tipDe : tab.tipEn}
-            className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-bold rounded-sm border transition-colors ${
+            className={`flex shrink-0 items-center gap-1.5 px-2 py-1 text-[11px] font-bold rounded-sm border whitespace-nowrap transition-colors ${
               active === tab.id
                 ? 'bg-[#000080] text-[#00ffff] border-[#00ffff]'
                 : 'text-black hover:bg-black/10 border-transparent'
