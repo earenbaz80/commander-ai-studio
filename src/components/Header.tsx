@@ -8,7 +8,7 @@ export type ConsoleTheme = 'norton' | 'matrix' | 'amber' | 'dos' | 'light' | 'so
 /** Encabezado de sección dentro del menú hamburguesa. */
 const MenuSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <div className="mb-1">
-    <div className="text-[10px] font-bold text-[#ffff55] uppercase tracking-wider px-2 pt-2 pb-1 border-b border-[#00ffff]/25 mt-1">
+    <div className="text-[10px] font-bold text-[var(--nc-text-accent)] uppercase tracking-wider px-2 pt-2 pb-1 border-b border-[var(--nc-border-light)]/25 mt-1">
       {title}
     </div>
     <div className="flex flex-col">{children}</div>
@@ -30,7 +30,7 @@ const MenuButton: React.FC<{
     type="button"
     onClick={onClick}
     className={`nc-button w-full text-left my-0.5 flex items-start gap-2 text-xs ${
-      accent ? 'bg-[#ffff55] text-black hover:bg-white font-bold' : ''
+      accent ? 'bg-[var(--nc-active-bg)] text-black hover:bg-white font-bold' : ''
     }`}
   >
     <span className="mt-0.5 shrink-0">{icon}</span>
@@ -38,12 +38,12 @@ const MenuButton: React.FC<{
       <span className="flex items-center gap-2">
         <span className="truncate">{children}</span>
         {kbd && (
-          <kbd className="ml-auto shrink-0 text-[9px] font-mono px-1 py-0.5 border border-[#00ffff]/40 text-[#00ffff]/70 rounded-sm">
+          <kbd className="ml-auto shrink-0 text-[9px] font-mono px-1 py-0.5 border border-[var(--nc-border-light)]/40 text-[var(--nc-text)]/70 rounded-sm">
             {kbd}
           </kbd>
         )}
       </span>
-      {desc && <span className="block text-[10px] text-[#00ffff]/50 truncate">{desc}</span>}
+      {desc && <span className="block text-[10px] text-[var(--nc-text)]/50 truncate">{desc}</span>}
     </span>
   </button>
 );
@@ -217,7 +217,7 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
         <button
           onClick={onToggleWorkbench}
-          className={`nc-button !px-1 !py-0.5 !mx-0 shrink-0 ${isWorkbenchOpen ? 'bg-[#000080] text-[#00ffff]' : ''}`}
+          className={`nc-button !px-1 !py-0.5 !mx-0 shrink-0 ${isWorkbenchOpen ? 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)]' : ''}`}
           data-tooltip="Workbench (Panel Derecho)"
           data-tooltip-sub="Archivos, pestañas, terminal y navegador integrados"
         >
@@ -226,7 +226,7 @@ export const Header: React.FC<HeaderProps> = ({
         {onToggleNono && (
           <button
             onClick={onToggleNono}
-            className={`nc-button !px-1 !py-0.5 !mx-0 shrink-0 ${isNonoVisible ? 'bg-[#000080] text-[#00ffff]' : ''}`}
+            className={`nc-button !px-1 !py-0.5 !mx-0 shrink-0 ${isNonoVisible ? 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)]' : ''}`}
             data-tooltip={isNonoVisible ? 'Ocultar asistente Nono' : 'Mostrar asistente Nono'}
             data-tooltip-sub="Activa o desactiva el flotante en pantalla"
           >
@@ -242,7 +242,7 @@ export const Header: React.FC<HeaderProps> = ({
             aria-label="Abrir paleta de comandos"
           >
             <Search className="w-4 h-4" />
-            <kbd className="hidden lg:inline text-[9px] border border-[#00ffff]/50 px-1 text-[#00ffff] rounded-sm">
+            <kbd className="hidden lg:inline text-[9px] border border-[var(--nc-border-light)]/50 px-1 text-[var(--nc-text)] rounded-sm">
               Ctrl K
             </kbd>
           </button>
@@ -262,7 +262,7 @@ export const Header: React.FC<HeaderProps> = ({
               : "Clic para iniciar sesión, registrarse o continuar como invitado"
           }
         >
-          <User className="w-3.5 h-3.5 text-[#ffff55] user-led-blink" />
+          <User className="w-3.5 h-3.5 text-[var(--nc-text-accent)] user-led-blink" />
           <span className="max-w-[100px] truncate font-bold hidden sm:inline">
             {currentUser
               ? (currentUser.displayName || currentUser.email?.split('@')[0])
@@ -285,7 +285,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={handleMinimize}
-            className="nc-button !px-1 !py-0.5 !mx-0 text-xs hover:bg-[#00ffff] hover:text-black font-bold"
+            className="nc-button !px-1 !py-0.5 !mx-0 text-xs hover:bg-[var(--nc-highlight-bg)] hover:text-black font-bold"
             data-tooltip="Minimizar Ventana"
           >
             <Minus className="w-3.5 h-3.5" />
@@ -293,7 +293,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={handleMaximize}
-            className="nc-button !px-1 !py-0.5 !mx-0 text-xs hover:bg-[#ffff55] hover:text-black font-bold"
+            className="nc-button !px-1 !py-0.5 !mx-0 text-xs hover:bg-[var(--nc-active-bg)] hover:text-black font-bold"
             data-tooltip="Pantalla Completa / Maximizar"
           >
             <Square className="w-3 h-3" />
@@ -310,9 +310,9 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {menuOpen && (
-        <div ref={menuRef} className="absolute top-12 right-2 nc-panel p-2 w-80 z-50 shadow-2xl border-2 border-[#00ffff] bg-[#000080] app-no-drag max-h-[85vh] overflow-y-auto">
+        <div ref={menuRef} className="absolute top-12 right-2 nc-panel p-2 w-80 z-50 shadow-2xl border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] app-no-drag max-h-[85vh] overflow-y-auto">
           {/* Cabecera del menú */}
-          <div className="flex items-center justify-between text-[11px] font-bold text-[#ffff55] px-2 py-1 border-b-2 border-[#00ffff]/40 mb-1 uppercase tracking-wider bg-[#0000aa]">
+          <div className="flex items-center justify-between text-[11px] font-bold text-[var(--nc-text-accent)] px-2 py-1 border-b-2 border-[var(--nc-border-light)]/40 mb-1 uppercase tracking-wider bg-[var(--nc-bg-main)]">
             <span>── {t.setupMenu} ──</span>
             <button
               type="button"
@@ -328,7 +328,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* ── AJUSTES ── */}
           <MenuSection title={lang === 'es' ? 'Ajustes' : lang === 'de' ? 'Einstellungen' : 'Settings'}>
             <MenuButton
-              icon={<Settings className="w-4 h-4 text-[#ffff55]" />}
+              icon={<Settings className="w-4 h-4 text-[var(--nc-text-accent)]" />}
               onClick={() => { onOpenInspector(); setMenuOpen(false); }}
               desc={lang === 'es' ? 'Modelo, temperatura, tokens y exportación' : lang === 'de' ? 'Modell, Temperatur, Token & Export' : 'Model, temperature, tokens & export'}
               kbd="Ctrl ,"
@@ -337,7 +337,7 @@ export const Header: React.FC<HeaderProps> = ({
             </MenuButton>
             {onOpenPreferences && (
               <MenuButton
-                icon={<Palette className="w-4 h-4 text-[#ffff55]" />}
+                icon={<Palette className="w-4 h-4 text-[var(--nc-text-accent)]" />}
                 onClick={() => { onOpenPreferences(); setMenuOpen(false); }}
                 desc={lang === 'es' ? 'Tema, idioma, tamaño de texto, energía y carpetas' : lang === 'de' ? 'Design, Sprache, Textgröße, Energie & Ordner' : 'Theme, language, text size, power & folders'}
               >
@@ -349,7 +349,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* ── CONSOLA ── */}
           <MenuSection title={lang === 'es' ? 'Consola' : lang === 'de' ? 'Konsole' : 'Console'}>
             <MenuButton
-              icon={<RefreshCw className="w-4 h-4 text-[#00ffff]" />}
+              icon={<RefreshCw className="w-4 h-4 text-[var(--nc-text)]" />}
               onClick={handleReloadConsole}
               desc={lang === 'es' ? 'Recarga la interfaz y reinicia el estado' : lang === 'de' ? 'Lädt die Oberfläche neu und setzt den Zustand zurück' : 'Reloads the UI and resets state'}
             >
@@ -358,8 +358,8 @@ export const Header: React.FC<HeaderProps> = ({
             <MenuButton
               icon={
                 isFullscreen
-                  ? <Minimize2 className="w-4 h-4 text-[#00ffff]" />
-                  : <Maximize2 className="w-4 h-4 text-[#00ffff]" />
+                  ? <Minimize2 className="w-4 h-4 text-[var(--nc-text)]" />
+                  : <Maximize2 className="w-4 h-4 text-[var(--nc-text)]" />
               }
               onClick={() => { handleToggleFullscreen(); setMenuOpen(false); }}
               desc={lang === 'es' ? 'Alterna la pantalla completa del navegador' : lang === 'de' ? 'Vollbild im Browser umschalten' : 'Toggle browser fullscreen'}
@@ -373,7 +373,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* ── CUENTA ── */}
           <MenuSection title={lang === 'es' ? 'Cuenta' : lang === 'de' ? 'Konto' : 'Account'}>
             <MenuButton
-              icon={<ShieldCheck className="w-4 h-4 text-[#ffff55]" />}
+              icon={<ShieldCheck className="w-4 h-4 text-[var(--nc-text-accent)]" />}
               onClick={() => { onOpenAuth(); setMenuOpen(false); }}
             >
               {t.loginRegister}
@@ -384,7 +384,7 @@ export const Header: React.FC<HeaderProps> = ({
           <MenuSection title={lang === 'es' ? 'Ayuda' : lang === 'de' ? 'Hilfe' : 'Help'}>
             {onOpenHelp && (
               <MenuButton
-                icon={<HelpCircle className="w-4 h-4 text-[#00ffff]" />}
+                icon={<HelpCircle className="w-4 h-4 text-[var(--nc-text)]" />}
                 onClick={() => { onOpenHelp(); setMenuOpen(false); }}
               >
                 {t.helpManual}
@@ -392,7 +392,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
             {onOpenAbout && (
               <MenuButton
-                icon={<Info className="w-4 h-4 text-[#00ffff]" />}
+                icon={<Info className="w-4 h-4 text-[var(--nc-text)]" />}
                 onClick={() => { onOpenAbout(); setMenuOpen(false); }}
               >
                 {t.aboutApp}

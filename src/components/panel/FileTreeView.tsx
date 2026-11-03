@@ -60,10 +60,10 @@ function buildTree(paths: string[]): TreeNode {
 }
 
 const EXT_COLORS: Record<string, string> = {
-  ts: 'text-[#00ffff]', tsx: 'text-[#00ffff]', js: 'text-[#ffff55]', jsx: 'text-[#ffff55]',
-  json: 'text-[#ffff55]', md: 'text-[#88ff88]', css: 'text-[#ff88ff]', html: 'text-[#ff9966]',
+  ts: 'text-[var(--nc-text)]', tsx: 'text-[var(--nc-text)]', js: 'text-[var(--nc-text-accent)]', jsx: 'text-[var(--nc-text-accent)]',
+  json: 'text-[var(--nc-text-accent)]', md: 'text-[var(--nc-success)]', css: 'text-[#ff88ff]', html: 'text-[#ff9966]',
   svg: 'text-[#ff88cc]', png: 'text-[#ff88cc]', jpg: 'text-[#ff88cc]', ico: 'text-[#ff88cc]',
-  sh: 'text-[#88ff88]', ps1: 'text-[#88ff88]', yml: 'text-[#aaaaaa]', yaml: 'text-[#aaaaaa]',
+  sh: 'text-[var(--nc-success)]', ps1: 'text-[var(--nc-success)]', yml: 'text-[#aaaaaa]', yaml: 'text-[#aaaaaa]',
   lock: 'text-[#aaaaaa]',
 };
 
@@ -75,18 +75,18 @@ const FileRow: React.FC<{
 }> = ({ node, depth, selected, onSelect }) => {
   const [open, setOpen] = useState(depth < 2);
   const ext = node.name.split('.').pop()?.toLowerCase() || '';
-  const color = EXT_COLORS[ext] || 'text-[#00ffff]/80';
+  const color = EXT_COLORS[ext] || 'text-[var(--nc-text)]/80';
 
   if (node.isDir) {
     return (
       <>
         <button
           onClick={() => setOpen((o) => !o)}
-          className="w-full flex items-center gap-1 px-1 py-[3px] text-left text-[11px] font-mono hover:bg-[#0000aa] text-[#00ffff]"
+          className="w-full flex items-center gap-1 px-1 py-[3px] text-left text-[11px] font-mono hover:bg-[var(--nc-bg-hover)] text-[var(--nc-text)]"
           style={{ paddingLeft: `${depth * 10 + 4}px` }}
         >
           {open ? <ChevronDown className="w-3 h-3 shrink-0" /> : <ChevronRight className="w-3 h-3 shrink-0" />}
-          {open ? <FolderOpen className="w-3.5 h-3.5 shrink-0 text-[#ffff55]" /> : <Folder className="w-3.5 h-3.5 shrink-0 text-[#ffff55]" />}
+          {open ? <FolderOpen className="w-3.5 h-3.5 shrink-0 text-[var(--nc-text-accent)]" /> : <Folder className="w-3.5 h-3.5 shrink-0 text-[var(--nc-text-accent)]" />}
           <span className="truncate">{node.name}</span>
         </button>
         {open &&
@@ -100,8 +100,8 @@ const FileRow: React.FC<{
   return (
     <button
       onClick={() => onSelect(node)}
-      className={`w-full flex items-center gap-1 px-1 py-[3px] text-left text-[11px] font-mono hover:bg-[#0000aa] ${
-        selected === node.path ? 'bg-[#0000aa] text-white' : 'text-[#00ffff]/90'
+      className={`w-full flex items-center gap-1 px-1 py-[3px] text-left text-[11px] font-mono hover:bg-[var(--nc-bg-hover)] ${
+        selected === node.path ? 'bg-[var(--nc-bg-main)] text-white' : 'text-[var(--nc-text)]/90'
       }`}
       style={{ paddingLeft: `${depth * 10 + 16}px` }}
       title={node.path}
@@ -164,14 +164,14 @@ export const FileTreeView: React.FC<{ projectPath: string }> = ({ projectPath })
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Barra superior */}
-      <div className="flex items-center gap-1 px-2 py-1 border-b border-[#004466] bg-[#00243e] shrink-0">
-        <code className="flex-1 text-[10px] text-[#ffff55] font-mono truncate" title={projectPath}>
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] shrink-0">
+        <code className="flex-1 text-[10px] text-[var(--nc-text-accent)] font-mono truncate" title={projectPath}>
           {projectPath.split(/[\\/]/).slice(-2).join('/')}
         </code>
-        <span className="text-[10px] text-[#00ffff]/50 font-mono">{files.length}</span>
+        <span className="text-[10px] text-[var(--nc-text)]/50 font-mono">{files.length}</span>
         <button
           onClick={load}
-          className="p-1 text-[#00ffff] hover:bg-[#0000aa] rounded"
+          className="p-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] rounded"
           title="Refrescar"
         >
           {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
@@ -180,13 +180,13 @@ export const FileTreeView: React.FC<{ projectPath: string }> = ({ projectPath })
 
       {/* Contenido: árbol + previsualización */}
       <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
-        <div className={`overflow-y-auto py-1 ${selected ? 'md:w-1/2 border-b md:border-b-0 md:border-r border-[#004466]' : 'flex-1'}`}>
+        <div className={`overflow-y-auto py-1 ${selected ? 'md:w-1/2 border-b md:border-b-0 md:border-r border-[var(--nc-border-dark)]' : 'flex-1'}`}>
           {loading && files.length === 0 ? (
-            <div className="flex items-center justify-center py-6 text-[#00ffff]/60 text-[11px] font-mono gap-2">
+            <div className="flex items-center justify-center py-6 text-[var(--nc-text)]/60 text-[11px] font-mono gap-2">
               <Loader2 className="w-3.5 h-3.5 animate-spin" /> Leyendo proyecto...
             </div>
           ) : error ? (
-            <div className="p-3 text-[11px] text-[#ff5555] font-mono">⚠️ {error}</div>
+            <div className="p-3 text-[11px] text-[var(--nc-danger)] font-mono">⚠️ {error}</div>
           ) : (
             tree.children.map((node) => (
               <FileRow key={node.path} node={node} depth={0} selected={selected} onSelect={(n) => openFile(n.path)} />
@@ -195,20 +195,20 @@ export const FileTreeView: React.FC<{ projectPath: string }> = ({ projectPath })
         </div>
 
         {selected && (
-          <div className="flex-1 min-h-0 flex flex-col bg-[#000d1a]">
-            <div className="flex items-center justify-between px-2 py-1 border-b border-[#004466] bg-[#00243e] shrink-0">
-              <span className="text-[10px] text-[#00ffff] font-mono truncate">{selected}</span>
-              <button onClick={() => { setSelected(null); setContent(''); }} className="text-[#00ffff] hover:text-white">
+          <div className="flex-1 min-h-0 flex flex-col bg-[var(--nc-bg-deep)]">
+            <div className="flex items-center justify-between px-2 py-1 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] shrink-0">
+              <span className="text-[10px] text-[var(--nc-text)] font-mono truncate">{selected}</span>
+              <button onClick={() => { setSelected(null); setContent(''); }} className="text-[var(--nc-text)] hover:text-white">
                 <X className="w-3 h-3" />
               </button>
             </div>
             <div className="flex-1 overflow-auto p-2">
               {contentLoading ? (
-                <div className="flex items-center gap-2 text-[11px] text-[#00ffff]/60 font-mono">
+                <div className="flex items-center gap-2 text-[11px] text-[var(--nc-text)]/60 font-mono">
                   <Loader2 className="w-3 h-3 animate-spin" /> Cargando...
                 </div>
               ) : (
-                <pre className="text-[10.5px] leading-relaxed font-mono text-[#00ffff]/90 whitespace-pre-wrap break-all">
+                <pre className="text-[10.5px] leading-relaxed font-mono text-[var(--nc-text)]/90 whitespace-pre-wrap break-all">
                   {content}
                 </pre>
               )}

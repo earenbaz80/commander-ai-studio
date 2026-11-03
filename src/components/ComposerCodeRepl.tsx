@@ -127,23 +127,23 @@ return {
   };
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row min-h-0 bg-[#000055] font-mono select-none overflow-hidden p-2 gap-2">
+    <div className="flex-1 flex flex-col md:flex-row min-h-0 bg-[var(--nc-bg-deep)] font-mono select-none overflow-hidden p-2 gap-2">
       {/* Left Code Editor & Controls */}
-      <div className="flex-1 bg-[#0000aa] border-2 border-[#00ffff] flex flex-col min-h-0">
+      <div className="flex-1 bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] flex flex-col min-h-0">
         {/* REPL Header */}
-        <div className="bg-[#00aaaa] text-black px-2 py-1 font-bold flex items-center justify-between border-b border-black shrink-0">
+        <div className="bg-[var(--nc-header-bg)] text-black px-2 py-1 font-bold flex items-center justify-between border-b border-black shrink-0">
           <div className="flex items-center gap-1.5 text-xs">
             <Cpu className="w-4 h-4 text-black" />
             <span>{lang === 'es' ? 'MOTOR REPL DE EJECUCIÓN REAL (JS/TS)' : lang === 'de' ? 'ECHTE CODEAUSFÜHRUNG-REPL (JS/TS)' : 'REAL CODE EXECUTION REPL (JS/TS)'}</span>
           </div>
-          <span className="bg-[#0000aa] text-[#ffff55] px-1.5 py-0.5 text-[10px] font-bold border border-black">
+          <span className="bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] px-1.5 py-0.5 text-[10px] font-bold border border-black">
             ASYNC RUNTIME
           </span>
         </div>
 
         {/* Preset Task Buttons */}
-        <div className="p-1.5 bg-[#000080] border-b border-[#00ffff] flex items-center gap-1 overflow-x-auto shrink-0">
-          <span className="text-[10px] text-[#ffff55] font-bold shrink-0">SNIPPETS:</span>
+        <div className="p-1.5 bg-[var(--nc-bg-panel)] border-b border-[var(--nc-border-light)] flex items-center gap-1 overflow-x-auto shrink-0">
+          <span className="text-[10px] text-[var(--nc-text-accent)] font-bold shrink-0">SNIPPETS:</span>
           <button
             type="button"
             onClick={() =>
@@ -160,7 +160,7 @@ workspace.files.forEach(f => {
 });
 return "Validación completada";`)
             }
-            className="nc-button !py-0.5 !px-1.5 text-[9px] text-[#00ffff] hover:text-white shrink-0"
+            className="nc-button !py-0.5 !px-1.5 text-[9px] text-[var(--nc-text)] hover:text-white shrink-0"
           >
             Validar JSONs
           </button>
@@ -177,7 +177,7 @@ const time = performance.now() - start;
 console.log(\`Total de líneas analizadas: \${lines} en \${time.toFixed(3)} ms\`);
 return { lines, executionTimeMs: time };`)
             }
-            className="nc-button !py-0.5 !px-1.5 text-[9px] text-[#00ffff] hover:text-white shrink-0"
+            className="nc-button !py-0.5 !px-1.5 text-[9px] text-[var(--nc-text)] hover:text-white shrink-0"
           >
             Contador de Líneas & Benchmark
           </button>
@@ -190,14 +190,14 @@ const text = await res.text();
 console.log("Zen recibido de GitHub:", text);
 return { zen: text };`)
             }
-            className="nc-button !py-0.5 !px-1.5 text-[9px] text-[#00ffff] hover:text-white shrink-0"
+            className="nc-button !py-0.5 !px-1.5 text-[9px] text-[var(--nc-text)] hover:text-white shrink-0"
           >
             Prueba HTTP Fetch
           </button>
         </div>
 
         {/* Textarea */}
-        <div className="flex-1 p-2 min-h-0 bg-[#000055]">
+        <div className="flex-1 p-2 min-h-0 bg-[var(--nc-bg-deep)]">
           <textarea
             value={code}
             onChange={(e) => setCode(e.target.value)}
@@ -208,21 +208,21 @@ return { zen: text };`)
               }
             }}
             placeholder="// Escribe código JavaScript asíncrono para ejecutar en tiempo real..."
-            className="w-full h-full bg-[#000033] border border-[#00ffff] p-2 text-xs text-white font-mono outline-none resize-none leading-relaxed"
+            className="w-full h-full bg-[var(--nc-bg-deep)] border border-[var(--nc-border-light)] p-2 text-xs text-white font-mono outline-none resize-none leading-relaxed"
             spellCheck={false}
           />
         </div>
 
         {/* Action Button */}
-        <div className="p-2 bg-[#000080] border-t border-[#00ffff] flex items-center justify-between shrink-0">
-          <span className="text-[10px] text-[#a8c7fa]">
-            Presiona <kbd className="bg-[#0000aa] px-1 border border-white">Ctrl + Enter</kbd> para ejecutar.
+        <div className="p-2 bg-[var(--nc-bg-panel)] border-t border-[var(--nc-border-light)] flex items-center justify-between shrink-0">
+          <span className="text-[10px] text-[var(--nc-text)]">
+            Presiona <kbd className="bg-[var(--nc-bg-main)] px-1 border border-white">Ctrl + Enter</kbd> para ejecutar.
           </span>
           <button
             type="button"
             onClick={handleExecute}
             disabled={isRunning || !code.trim()}
-            className="bg-[#00ffff] text-black font-bold px-4 py-1.5 text-xs hover:bg-white transition-colors flex items-center gap-1.5 border border-black shadow"
+            className="bg-[var(--nc-highlight-bg)] text-black font-bold px-4 py-1.5 text-xs hover:bg-white transition-colors flex items-center gap-1.5 border border-black shadow"
           >
             <Play className="w-3.5 h-3.5 fill-black" />
             <span>{isRunning ? 'EJECUTANDO...' : 'EJECUTAR CÓDIGO REAL'}</span>
@@ -231,8 +231,8 @@ return { zen: text };`)
       </div>
 
       {/* Right Execution Output Log */}
-      <div className="w-full md:w-96 bg-[#0000aa] border-2 border-[#00ffff] flex flex-col min-h-0">
-        <div className="bg-[#00aaaa] text-black px-2 py-1 font-bold flex items-center justify-between border-b border-black shrink-0">
+      <div className="w-full md:w-96 bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] flex flex-col min-h-0">
+        <div className="bg-[var(--nc-header-bg)] text-black px-2 py-1 font-bold flex items-center justify-between border-b border-black shrink-0">
           <div className="flex items-center gap-1.5 text-xs">
             <Terminal className="w-4 h-4 text-black" />
             <span>RESULTADOS DE EJECUCIÓN</span>
@@ -250,7 +250,7 @@ return { zen: text };`)
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2 space-y-2 bg-[#000033]">
+        <div className="flex-1 overflow-y-auto p-2 space-y-2 bg-[var(--nc-bg-deep)]">
           {history.length === 0 ? (
             <div className="text-center p-6 text-[#5555aa] italic text-xs">
               No hay ejecuciones recientes. Haz clic en "EJECUTAR CÓDIGO REAL" para procesar datos.
@@ -260,7 +260,7 @@ return { zen: text };`)
               <div
                 key={item.id}
                 className={`p-2 border text-xs font-mono space-y-1 ${
-                  item.isError ? 'bg-[#330000] border-red-500' : 'bg-[#000055] border-[#00ffff]'
+                  item.isError ? 'bg-[#330000] border-red-500' : 'bg-[var(--nc-bg-deep)] border-[var(--nc-border-light)]'
                 }`}
               >
                 <div className="flex items-center justify-between text-[10px]">
@@ -268,13 +268,13 @@ return { zen: text };`)
                     {item.isError ? (
                       <AlertCircle className="w-3 h-3 text-red-400" />
                     ) : (
-                      <CheckCircle className="w-3 h-3 text-[#55ff55]" />
+                      <CheckCircle className="w-3 h-3 text-[var(--nc-success)]" />
                     )}
-                    <span className={item.isError ? 'text-red-400 font-bold' : 'text-[#55ff55] font-bold'}>
+                    <span className={item.isError ? 'text-red-400 font-bold' : 'text-[var(--nc-success)] font-bold'}>
                       {item.isError ? 'ERROR' : 'ÉXITO'}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 text-[#ffff55]">
+                  <div className="flex items-center gap-1 text-[var(--nc-text-accent)]">
                     <Clock className="w-3 h-3" />
                     <span>{item.latencyMs} ms</span>
                     <span className="text-[#888888]">[{item.timestamp}]</span>
@@ -283,8 +283,8 @@ return { zen: text };`)
 
                 {item.output && (
                   <div>
-                    <span className="text-[9px] text-[#ffff55] font-bold">SALIDA DE CONSOLA:</span>
-                    <pre className="bg-[#000022] p-1.5 text-[#00ffff] text-[10px] overflow-x-auto whitespace-pre-wrap border border-black">
+                    <span className="text-[9px] text-[var(--nc-text-accent)] font-bold">SALIDA DE CONSOLA:</span>
+                    <pre className="bg-[var(--nc-bg-deep)] p-1.5 text-[var(--nc-text)] text-[10px] overflow-x-auto whitespace-pre-wrap border border-black">
                       {item.output}
                     </pre>
                   </div>
@@ -292,8 +292,8 @@ return { zen: text };`)
 
                 {item.returnVal && (
                   <div>
-                    <span className="text-[9px] text-[#55ff55] font-bold">VALOR DE RETORNO:</span>
-                    <pre className="bg-[#000022] p-1.5 text-[#55ff55] text-[10px] overflow-x-auto whitespace-pre-wrap border border-black">
+                    <span className="text-[9px] text-[var(--nc-success)] font-bold">VALOR DE RETORNO:</span>
+                    <pre className="bg-[var(--nc-bg-deep)] p-1.5 text-[var(--nc-success)] text-[10px] overflow-x-auto whitespace-pre-wrap border border-black">
                       {item.returnVal}
                     </pre>
                   </div>

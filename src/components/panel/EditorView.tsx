@@ -464,10 +464,10 @@ const de = lang === 'de';
   }, [selectedPath, localName]);
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-[#000d1a]">
+    <div className="flex flex-col h-full min-h-0 bg-[var(--nc-bg-deep)]">
       {/* Barra superior */}
-      <div className="flex items-center gap-1 px-2 py-1 border-b border-[#004466] bg-[#00243e] shrink-0">
-        <FileCode className="w-3.5 h-3.5 text-[#ffff55] shrink-0" />
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] shrink-0">
+        <FileCode className="w-3.5 h-3.5 text-[var(--nc-text-accent)] shrink-0" />
         {projectPath ? (
           <>
             <input
@@ -480,7 +480,7 @@ const de = lang === 'de';
               spellCheck={false}
               autoComplete="off"
               placeholder="Ruta del archivo del proyecto (p. ej. src/App.tsx)"
-              className="flex-1 min-w-0 bg-transparent text-[11px] font-mono text-[#00ffff] outline-none placeholder:text-[#00ffff]/30"
+              className="flex-1 min-w-0 bg-transparent text-[11px] font-mono text-[var(--nc-text)] outline-none placeholder:text-[var(--nc-text)]/30"
             />
             <datalist id="editor-file-list">
               {files.map((f) => (
@@ -490,7 +490,7 @@ const de = lang === 'de';
             <button
               onClick={() => openFile(selectedPath)}
               disabled={loading || !selectedPath.trim()}
-              className="p-1 text-[#00ffff] hover:bg-[#0000aa] rounded disabled:opacity-30"
+              className="p-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] rounded disabled:opacity-30"
               title="Abrir del proyecto (Enter)"
             >
               {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FolderOpen className="w-3.5 h-3.5" />}
@@ -498,7 +498,7 @@ const de = lang === 'de';
             <button
               onClick={handleSave}
               disabled={saving || !selectedPath.trim() || !dirty}
-              className="p-1 text-[#88ff88] hover:bg-[#0000aa] rounded disabled:opacity-30"
+              className="p-1 text-[var(--nc-success)] hover:bg-[var(--nc-bg-hover)] rounded disabled:opacity-30"
               title="Guardar en el proyecto (Ctrl+S)"
             >
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
@@ -506,14 +506,14 @@ const de = lang === 'de';
             <button
               onClick={openProjectSaveAs}
               disabled={saving || !content.length}
-              className="p-1 text-[#ffff55] hover:bg-[#0000aa] rounded disabled:opacity-30"
+              className="p-1 text-[var(--nc-text-accent)] hover:bg-[var(--nc-bg-hover)] rounded disabled:opacity-30"
               title="Guardar como otro archivo del proyecto (Ctrl+Shift+S)"
             >
               <FilePlus className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={loadFiles}
-              className="p-1 text-[#00ffff] hover:bg-[#0000aa] rounded"
+              className="p-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] rounded"
               title="Refrescar lista de archivos"
             >
               <RefreshCw className="w-3 h-3" />
@@ -535,7 +535,7 @@ const de = lang === 'de';
             </button>
           </>
         ) : (
-          <span className="flex-1 min-w-0 text-[10px] font-mono text-[#00ffff]/60 truncate">
+          <span className="flex-1 min-w-0 text-[10px] font-mono text-[var(--nc-text)]/60 truncate">
             Bloc de notas local — escribe directo y guarda en tu disco (txt, html u otro).
           </span>
         )}
@@ -544,7 +544,7 @@ const de = lang === 'de';
         <span className="flex items-center gap-1 shrink-0 ml-1">
           <button
             onClick={toggleAi}
-            className={`p-1 rounded ${aiEnabled ? 'text-[#ffff55] bg-[#0000aa]' : 'text-[#00ffff]/40 hover:bg-[#0000aa]'}`}
+            className={`p-1 rounded ${aiEnabled ? 'text-[var(--nc-text-accent)] bg-[var(--nc-bg-main)]' : 'text-[var(--nc-text)]/40 hover:bg-[var(--nc-bg-hover)]'}`}
             title={
               aiEnabled
                 ? 'Autocompletado IA ACTIVADO · Tab acepta · clic para desactivar'
@@ -557,14 +557,14 @@ const de = lang === 'de';
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="p-1 text-[#00ffff] hover:bg-[#0000aa] rounded"
+            className="p-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] rounded"
             title="Abrir archivo local desde tu disco"
           >
             <Upload className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={openLocalScratchpad}
-            className="p-1 text-[#ffff55] hover:bg-[#0000aa] rounded"
+            className="p-1 text-[var(--nc-text-accent)] hover:bg-[var(--nc-bg-hover)] rounded"
             title="Guardar archivo en tu disco"
           >
             <Download className="w-3.5 h-3.5" />
@@ -582,8 +582,8 @@ const de = lang === 'de';
 
       {/* Fila de guardado local */}
       {showLocalSave && (
-        <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#004466] bg-[#001a2e] shrink-0">
-          <Download className="w-3.5 h-3.5 text-[#ffff55] shrink-0" />
+        <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--nc-border-dark)] bg-[#001a2e] shrink-0">
+          <Download className="w-3.5 h-3.5 text-[var(--nc-text-accent)] shrink-0" />
           <input
             ref={localNameRef}
             value={localFilename}
@@ -594,11 +594,11 @@ const de = lang === 'de';
             spellCheck={false}
             autoComplete="off"
             placeholder="nombre.txt (txt, html, md, json…)"
-            className="flex-1 min-w-0 bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-0.5 text-[11px] font-mono outline-none placeholder:text-[#00ffff]/30"
+            className="flex-1 min-w-0 bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-0.5 text-[11px] font-mono outline-none placeholder:text-[var(--nc-text)]/30"
           />
           <button
             onClick={handleSaveLocal}
-            className="nc-button !px-2 !py-0.5 text-[10px] bg-[#00ffff] text-black font-bold hover:bg-white flex items-center gap-1 shrink-0"
+            className="nc-button !px-2 !py-0.5 text-[10px] bg-[var(--nc-highlight-bg)] text-black font-bold hover:bg-white flex items-center gap-1 shrink-0"
             title="Descargar el archivo con este nombre"
           >
             <Download className="w-3 h-3" />
@@ -606,7 +606,7 @@ const de = lang === 'de';
           </button>
           <button
             onClick={() => setShowLocalSave(false)}
-            className="p-0.5 text-[#ff5555] hover:bg-[#0000aa] rounded shrink-0"
+            className="p-0.5 text-[var(--nc-danger)] hover:bg-[var(--nc-bg-hover)] rounded shrink-0"
             title="Cerrar fila de guardado"
           >
             <X className="w-3 h-3" />
@@ -616,8 +616,8 @@ const de = lang === 'de';
 
       {/* Fila de "Guardar como" en el proyecto */}
       {showProjectSaveAs && (
-        <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#004466] bg-[#001a2e] shrink-0">
-          <FilePlus className="w-3.5 h-3.5 text-[#ffff55] shrink-0" />
+        <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--nc-border-dark)] bg-[#001a2e] shrink-0">
+          <FilePlus className="w-3.5 h-3.5 text-[var(--nc-text-accent)] shrink-0" />
           <input
             ref={projectNameRef}
             value={projectNewPath}
@@ -628,12 +628,12 @@ const de = lang === 'de';
             spellCheck={false}
             autoComplete="off"
             placeholder="nueva/ruta/archivo.ts"
-            className="flex-1 min-w-0 bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-0.5 text-[11px] font-mono outline-none placeholder:text-[#00ffff]/30"
+            className="flex-1 min-w-0 bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-0.5 text-[11px] font-mono outline-none placeholder:text-[var(--nc-text)]/30"
           />
           <button
             onClick={handleSaveAsProject}
             disabled={saving || !projectNewPath.trim()}
-            className="nc-button !px-2 !py-0.5 text-[10px] bg-[#ffff55] text-black font-bold hover:bg-white flex items-center gap-1 shrink-0 disabled:opacity-40"
+            className="nc-button !px-2 !py-0.5 text-[10px] bg-[var(--nc-active-bg)] text-black font-bold hover:bg-white flex items-center gap-1 shrink-0 disabled:opacity-40"
             title="Guardar en el proyecto con este nombre"
           >
             <Save className="w-3 h-3" />
@@ -641,7 +641,7 @@ const de = lang === 'de';
           </button>
           <button
             onClick={() => setShowProjectSaveAs(false)}
-            className="p-0.5 text-[#ff5555] hover:bg-[#0000aa] rounded shrink-0"
+            className="p-0.5 text-[var(--nc-danger)] hover:bg-[var(--nc-bg-hover)] rounded shrink-0"
             title="Cerrar fila de guardado"
           >
             <X className="w-3 h-3" />
@@ -651,7 +651,7 @@ const de = lang === 'de';
 
       {/* Mensaje de error */}
       {error && (
-        <div className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-mono text-[#ff5555] bg-[#330000] border-b border-[#004466] shrink-0">
+        <div className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-mono text-[var(--nc-danger)] bg-[#330000] border-b border-[var(--nc-border-dark)] shrink-0">
           <AlertTriangle className="w-3 h-3 shrink-0" />
           <span className="truncate">{error}</span>
         </div>
@@ -661,7 +661,7 @@ const de = lang === 'de';
       <div className="flex-1 min-h-0 overflow-hidden">
         <React.Suspense
           fallback={
-            <div className="h-full flex items-center justify-center text-[10px] text-[#00ffff]/40 font-mono">
+            <div className="h-full flex items-center justify-center text-[10px] text-[var(--nc-text)]/40 font-mono">
               CARGANDO EDITOR…
             </div>
           }
@@ -691,28 +691,28 @@ const de = lang === 'de';
       </div>
 
       {/* Barra de estado */}
-      <div className="flex items-center gap-2 px-2 py-0.5 border-t border-[#004466] bg-[#00243e] text-[10px] font-mono text-[#00ffff]/60 shrink-0">
+      <div className="flex items-center gap-2 px-2 py-0.5 border-t border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] text-[10px] font-mono text-[var(--nc-text)]/60 shrink-0">
         {dirty ? (
-          <span className="flex items-center gap-1 text-[#ffff55]">
+          <span className="flex items-center gap-1 text-[var(--nc-text-accent)]">
             <CircleDot className="w-3 h-3" /> sin guardar
           </span>
         ) : (
-          <span className="flex items-center gap-1 text-[#88ff88]">
+          <span className="flex items-center gap-1 text-[var(--nc-success)]">
             <CheckCircle2 className="w-3 h-3" /> sincronizado
           </span>
         )}
         {localName ? (
-          <span className="text-[#ffff55] truncate">
+          <span className="text-[var(--nc-text-accent)] truncate">
             <FilePlus className="w-3 h-3 inline mr-1" />
             {localName}
           </span>
         ) : (
-          selectedPath && <span className="text-[#88ff88] truncate">{selectedPath}</span>
+          selectedPath && <span className="text-[var(--nc-success)] truncate">{selectedPath}</span>
         )}
-        {status && <span className="text-[#88ff88] truncate">{status}</span>}
-        <span className="ml-auto flex items-center gap-2 text-[#00ffff]/50">
+        {status && <span className="text-[var(--nc-success)] truncate">{status}</span>}
+        <span className="ml-auto flex items-center gap-2 text-[var(--nc-text)]/50">
           <span
-            className={aiEnabled ? 'text-[#ffff55]' : ''}
+            className={aiEnabled ? 'text-[var(--nc-text-accent)]' : ''}
             title={aiEnabled ? 'Autocompletado IA activo (Tab acepta)' : 'Autocompletado IA desactivado'}
           >
             IA:{aiEnabled ? 'auto' : 'off'}

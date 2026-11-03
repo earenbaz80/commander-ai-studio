@@ -30,9 +30,9 @@ function toRelative(absPath: string, root: string): string {
 }
 
 const SEV = {
-  1: { Icon: AlertCircle, cls: 'text-[#ff5555]', label: 'Error' },
-  2: { Icon: AlertTriangle, cls: 'text-[#ffff55]', label: 'Aviso' },
-  3: { Icon: Info, cls: 'text-[#00ffff]', label: 'Info' },
+  1: { Icon: AlertCircle, cls: 'text-[var(--nc-danger)]', label: 'Error' },
+  2: { Icon: AlertTriangle, cls: 'text-[var(--nc-text-accent)]', label: 'Aviso' },
+  3: { Icon: Info, cls: 'text-[var(--nc-text)]', label: 'Info' },
 } as const;
 
 function severityOf(severity: number) {
@@ -59,11 +59,11 @@ export const ProblemsView: React.FC<ProblemsViewProps> = ({ projectPath, lang = 
 
   const header = useMemo(
     () => (
-      <div className="flex items-center gap-2 px-2 py-1.5 bg-[#000080] border-b border-[#00ffff]/40 shrink-0 text-[10px]">
-        <span className="text-[#ff5555] font-bold">{counts.error} âœ•</span>
-        <span className="text-[#ffff55] font-bold">{counts.warning} âš </span>
-        <span className="text-[#00ffff] font-bold">{counts.info} â„¹</span>
-        <span className="ml-auto text-[#00ffff]/50">{counts.total} {lang === 'es' ? 'total' : lang === 'de' ? 'gesamt' : 'total'}</span>
+      <div className="flex items-center gap-2 px-2 py-1.5 bg-[var(--nc-bg-panel)] border-b border-[var(--nc-border-light)]/40 shrink-0 text-[10px]">
+        <span className="text-[var(--nc-danger)] font-bold">{counts.error} âœ•</span>
+        <span className="text-[var(--nc-text-accent)] font-bold">{counts.warning} âš </span>
+        <span className="text-[var(--nc-text)] font-bold">{counts.info} â„¹</span>
+        <span className="ml-auto text-[var(--nc-text)]/50">{counts.total} {lang === 'es' ? 'total' : lang === 'de' ? 'gesamt' : 'total'}</span>
       </div>
     ),
     [counts, lang]
@@ -74,14 +74,14 @@ export const ProblemsView: React.FC<ProblemsViewProps> = ({ projectPath, lang = 
       {header}
       <div className="flex-1 min-h-0 overflow-auto">
         {groups.length === 0 ? (
-          <div className="flex items-center gap-2 px-3 py-4 text-[#88ff88]">
+          <div className="flex items-center gap-2 px-3 py-4 text-[var(--nc-success)]">
             <CheckCircle2 className="w-4 h-4" />
             {lang === 'es' ? 'Sin problemas' : lang === 'de' ? 'Keine Probleme' : 'No problems'}
           </div>
         ) : (
           groups.map((group) => (
-            <div key={group.path} className="border-b border-[#004466]/40">
-              <div className="sticky top-0 px-2 py-1 bg-[#000033] text-[#00ffff] truncate">
+            <div key={group.path} className="border-b border-[var(--nc-border-dark)]/40">
+              <div className="sticky top-0 px-2 py-1 bg-[var(--nc-bg-deep)] text-[var(--nc-text)] truncate">
                 {toRelative(group.path, projectPath)} ({group.problems.length})
               </div>
               <ul>
@@ -92,11 +92,11 @@ export const ProblemsView: React.FC<ProblemsViewProps> = ({ projectPath, lang = 
                       <button
                         type="button"
                         onClick={() => open(p)}
-                        className="w-full text-left px-3 py-1 flex items-start gap-2 hover:bg-[#00ffff]/10"
+                        className="w-full text-left px-3 py-1 flex items-start gap-2 hover:bg-[var(--nc-highlight-bg)]/10"
                       >
                         <Icon className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${cls}`} />
                         <span className="text-[#c8c8c8] break-words">{p.message}</span>
-                        <span className="ml-auto shrink-0 text-[#00ffff]/50">
+                        <span className="ml-auto shrink-0 text-[var(--nc-text)]/50">
                           {p.line + 1}:{p.character + 1}
                         </span>
                       </button>

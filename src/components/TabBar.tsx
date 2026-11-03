@@ -66,7 +66,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   const active = tabs.find((t) => t.id === activeId);
 
   return (
-    <div className="flex items-stretch gap-1 border-b-2 border-[#00ffff] bg-[#000044] px-1 py-1 shrink-0 select-none">
+    <div className="flex items-stretch gap-1 border-b-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-deep)] px-1 py-1 shrink-0 select-none">
       {/* Pestañas */}
       <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0">
         {tabs.map((tab) => {
@@ -82,8 +82,8 @@ export const TabBar: React.FC<TabBarProps> = ({
               title={`${tab.title}\n${lang === 'es' ? 'Doble clic para renombrar · clic derecho para cerrar' : lang === 'de' ? 'Doppelklick zum Umbenennen · Rechtsklick zum Schließen' : 'Double-click to rename · right-click to close'}`}
               className={`group flex items-center gap-1.5 px-2.5 py-1 border text-[11px] font-mono cursor-pointer whitespace-nowrap transition-colors shrink-0 max-w-[220px] ${
                 isActive
-                  ? 'bg-[#00ffff] text-black font-bold border-[#00ffff]'
-                  : 'bg-[#000080] text-[#00ffff] border-[#00ffff]/40 hover:border-[#00ffff]'
+                  ? 'bg-[var(--nc-highlight-bg)] text-black font-bold border-[var(--nc-border-light)]'
+                  : 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border-[var(--nc-border-light)]/40 hover:border-[var(--nc-border-light)]'
               }`}
             >
               {isEditing ? (
@@ -97,7 +97,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                     if (e.key === 'Escape') setEditing(null);
                   }}
                   onClick={(e) => e.stopPropagation()}
-                  className="bg-[#000044] text-white border border-[#ffff55] px-1 text-[11px] outline-none w-24 font-mono"
+                  className="bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-text-accent)] px-1 text-[11px] outline-none w-24 font-mono"
                 />
               ) : (
                 <>
@@ -112,7 +112,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onClose(tab.id); }}
                   className={`shrink-0 font-bold leading-none ${
-                    isActive ? 'text-black hover:text-[#aa0000]' : 'text-[#00ffff]/70 hover:text-[#ff5555]'
+                    isActive ? 'text-black hover:text-[#aa0000]' : 'text-[var(--nc-text)]/70 hover:text-[var(--nc-danger)]'
                   }`}
                   title={lang === 'es' ? 'Cerrar pestaña' : lang === 'de' ? 'Tab schließen' : 'Close tab'}
                 >
@@ -125,7 +125,7 @@ export const TabBar: React.FC<TabBarProps> = ({
 
         <button
           onClick={onNewTab}
-          className="nc-button !px-1.5 !py-1 shrink-0 bg-[#000080] text-[#00ffff] border-[#00ffff]/40 hover:border-[#00ffff]"
+          className="nc-button !px-1.5 !py-1 shrink-0 bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border-[var(--nc-border-light)]/40 hover:border-[var(--nc-border-light)]"
           title={lang === 'es' ? 'Nueva pestaña (Ctrl+T)' : lang === 'de' ? 'Neuer Tab (Strg+T)' : 'New tab (Ctrl+T)'}
         >
           <Plus className="w-3.5 h-3.5" />
@@ -133,7 +133,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         {onToggleIsolate && (
           <button
             onClick={onToggleIsolate}
-            className={`nc-button !px-1.5 !py-1 shrink-0 ${isolateSessions ? 'bg-[#00aa00] text-black border-[#00ff00]' : 'bg-[#000080] text-[#00ffff] border-[#00ffff]/40'}`}
+            className={`nc-button !px-1.5 !py-1 shrink-0 ${isolateSessions ? 'bg-[#00aa00] text-black border-[var(--nc-success)]' : 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border-[var(--nc-border-light)]/40'}`}
             title={lang === 'es' ? 'Aislar sesiones' : lang === 'de' ? 'Sitzungen isolieren' : 'Isolate sessions'}
           >
             <span className="text-[9px] font-mono">{isolateSessions ? 'ISO' : 'SHR'}</span>
@@ -146,7 +146,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         <select
           value={active?.projectPath || ''}
           onChange={(e) => onSelectProject(e.target.value)}
-          className="bg-[#000080] border border-[#00ffff]/50 text-[#00ffff] text-[10px] font-mono px-1.5 py-1 outline-none focus:border-[#00ffff] max-w-[180px] cursor-pointer"
+          className="bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)]/50 text-[var(--nc-text)] text-[10px] font-mono px-1.5 py-1 outline-none focus:border-[var(--nc-border-light)] max-w-[180px] cursor-pointer"
           title={lang === 'es' ? 'Proyecto de la pestaña activa' : lang === 'de' ? 'Projekt des aktiven Tabs' : 'Active tab project'}
         >
           <option value="">
@@ -161,37 +161,37 @@ export const TabBar: React.FC<TabBarProps> = ({
 
         <button
           onClick={() => setMenuOpen((v) => !v)}
-          className="nc-button !px-1.5 !py-1 bg-[#000080] text-[#00ffff] border-[#00ffff]/40 hover:border-[#00ffff]"
+          className="nc-button !px-1.5 !py-1 bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border-[var(--nc-border-light)]/40 hover:border-[var(--nc-border-light)]"
           title={lang === 'es' ? 'Gestionar proyectos' : lang === 'de' ? 'Projekte verwalten' : 'Manage projects'}
         >
           <FolderPlus className="w-3.5 h-3.5" />
         </button>
 
         {menuOpen && (
-          <div className="absolute right-0 top-full mt-1 z-50 nc-panel border-2 border-[#00ffff] bg-[#000044] p-2 w-80 shadow-lg">
-            <div className="text-[10px] font-bold text-[#ffff55] mb-2 uppercase">
+          <div className="absolute right-0 top-full mt-1 z-50 nc-panel border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-deep)] p-2 w-80 shadow-lg">
+            <div className="text-[10px] font-bold text-[var(--nc-text-accent)] mb-2 uppercase">
               {lang === 'es' ? 'Proyectos' : lang === 'de' ? 'Projekte' : 'Projects'}
             </div>
 
             <div className="max-h-48 overflow-y-auto mb-2">
               {roots.length === 0 ? (
-                <div className="text-[10px] text-[#00aaaa] italic p-1">
+                <div className="text-[10px] text-[var(--nc-text-dim)] italic p-1">
                   {lang === 'es' ? 'Sin proyectos' : lang === 'de' ? 'Keine Projekte' : 'No projects'}
                 </div>
               ) : roots.map((r) => (
-                <div key={r.path} className="flex items-center gap-1 p-1 hover:bg-[#000080] group">
+                <div key={r.path} className="flex items-center gap-1 p-1 hover:bg-[var(--nc-bg-hover)] group">
                   <span
-                    className="text-[10px] text-[#00ffff] font-mono truncate flex-1 cursor-pointer"
+                    className="text-[10px] text-[var(--nc-text)] font-mono truncate flex-1 cursor-pointer"
                     title={r.path}
                     onClick={() => { onSelectProject(r.path); setMenuOpen(false); }}
                   >
                     {r.name}
-                    {r.cwd && <span className="text-[#ffff55]"> (cwd)</span>}
+                    {r.cwd && <span className="text-[var(--nc-text-accent)]"> (cwd)</span>}
                   </span>
                   {r.removable && (
                     <button
                       onClick={() => onRemoveProject(r.path)}
-                      className="text-[#ff5555] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="text-[var(--nc-danger)] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
                       title={lang === 'es' ? 'Quitar de la lista' : lang === 'de' ? 'Aus Liste entfernen' : 'Remove from list'}
                     >
                       <Trash2 className="w-3 h-3" />
@@ -204,20 +204,20 @@ export const TabBar: React.FC<TabBarProps> = ({
             <div className="flex flex-col gap-1">
               <button
                 onClick={() => { onCreateProject(); setMenuOpen(false); }}
-                className="nc-button !py-1 text-[10px] bg-[#ffff55] text-black font-bold hover:bg-white"
+                className="nc-button !py-1 text-[10px] bg-[var(--nc-active-bg)] text-black font-bold hover:bg-white"
               >
                 <FolderPlus className="w-3 h-3" /> {lang === 'es' ? 'Nuevo proyecto' : lang === 'de' ? 'Neues Projekt' : 'New project'}
               </button>
               <button
                 onClick={() => { onAddDirectory(); setMenuOpen(false); }}
-                className="nc-button !py-1 text-[10px] bg-[#000080] text-[#00ffff] hover:border-[#00ffff]"
+                className="nc-button !py-1 text-[10px] bg-[var(--nc-bg-panel)] text-[var(--nc-text)] hover:border-[var(--nc-border-light)]"
               >
                 <FolderOpen className="w-3 h-3" /> {lang === 'es' ? 'Añadir directorio' : lang === 'de' ? 'Verzeichnis hinzufügen' : 'Add directory'}
               </button>
               {tabs.length > 1 && active && (
                 <button
                   onClick={() => { onCloseOthers(active.id); setMenuOpen(false); }}
-                  className="nc-button !py-1 text-[10px] bg-[#000080] text-[#ffaa00] hover:border-[#ffaa00]"
+                  className="nc-button !py-1 text-[10px] bg-[var(--nc-bg-panel)] text-[#ffaa00] hover:border-[#ffaa00]"
                 >
                   {lang === 'es' ? 'Cerrar otras pestañas' : lang === 'de' ? 'Andere Tabs schließen' : 'Close other tabs'}
                 </button>

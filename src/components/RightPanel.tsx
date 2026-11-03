@@ -456,14 +456,14 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   return (
     <aside 
       ref={panelRef} 
-      className="shrink-0 bg-[#0000aa] border-l-2 border-[#00ffff] flex flex-col overflow-y-auto h-full min-h-0 text-xs text-[#00ffff] font-mono p-2 z-30 resize-x min-w-[200px] max-w-[480px]"
+      className="shrink-0 bg-[var(--nc-bg-main)] border-l-2 border-[var(--nc-border-light)] flex flex-col overflow-y-auto h-full min-h-0 text-xs text-[var(--nc-text)] font-mono p-2 z-30 resize-x min-w-[200px] max-w-[480px]"
       style={{ width: panelWidth, minWidth: 280, maxWidth: 800 }}
       aria-label={lang === 'es' ? 'Panel de configuración' : lang === 'de' ? 'Konfigurationspanel' : 'Configuration panel'}
     >
       {/* Resize handle */}
       <div
         ref={resizeHandleRef}
-        className="w-full h-1 cursor-col-resize bg-transparent hover:bg-[#00ffff]/30 transition-colors -ml-2"
+        className="w-full h-1 cursor-col-resize bg-transparent hover:bg-[var(--nc-highlight-bg)]/30 transition-colors -ml-2"
         onMouseDown={(e) => {
           e.preventDefault();
           setIsResizing(true);
@@ -487,12 +487,12 @@ export const RightPanel: React.FC<RightPanelProps> = ({
         aria-label={lang === 'es' ? 'Redimensionar panel' : lang === 'de' ? 'Panel skalieren' : 'Resize panel'}
         title={lang === 'es' ? 'Arrastrar para redimensionar' : lang === 'de' ? 'Zum Skalieren ziehen' : 'Drag to resize'}
       >
-        <div className="mx-auto w-8 h-0.5 bg-[#00ffff]/30 hover:bg-[#00ffff] transition-colors rounded" />
+        <div className="mx-auto w-8 h-0.5 bg-[var(--nc-highlight-bg)]/30 hover:bg-[var(--nc-highlight-bg)] transition-colors rounded" />
       </div>
       
-      <div className="border-2 border-[#00ffff] bg-[#000080] p-3 space-y-4 flex-1 min-h-0">
+      <div className="border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] p-3 space-y-4 flex-1 min-h-0">
         {/* Panel Header */}
-        <div className="bg-[#00aaaa] text-black font-bold px-2 py-1 uppercase tracking-wider flex items-center justify-between border-b border-black">
+        <div className="bg-[var(--nc-header-bg)] text-black font-bold px-2 py-1 uppercase tracking-wider flex items-center justify-between border-b border-black">
           <div className="flex items-center gap-1 truncate">
             <Sliders className="w-4 h-4 text-black shrink-0" />
             <span className="text-xs truncate">{tx('AJUSTES', 'EINSTELLUNGEN', 'SETTINGS')}</span>
@@ -532,8 +532,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               title={tab.label}
               className={`shrink-0 whitespace-nowrap px-2 py-1 text-[10px] font-bold border ${
                 settingsTab === tab.id
-                  ? 'bg-[#00ffff] text-black border-white'
-                  : 'bg-[#000080] text-[#00ffff] border-[#00aaaa]'
+                  ? 'bg-[var(--nc-highlight-bg)] text-black border-white'
+                  : 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border-[var(--nc-border-mid)]'
               }`}
             >
               {tab.label}
@@ -545,14 +545,14 @@ export const RightPanel: React.FC<RightPanelProps> = ({
         <>
         {/* 1. Model Selector */}
         <div className="space-y-1.5">
-          <label className="text-[11px] font-bold text-[#ffff55] flex items-center justify-between">
+          <label className="text-[11px] font-bold text-[var(--nc-text-accent)] flex items-center justify-between">
             <span>{t.modelSelector}:</span>
           </label>
 
           <select
             value={selectedModel}
             onChange={(e) => handleModelChange(e.target.value)}
-            className={`w-full bg-[#0000aa] border-2 border-[#00ffff] p-1.5 text-xs font-bold outline-none cursor-pointer ${
+            className={`w-full bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-1.5 text-xs font-bold outline-none cursor-pointer ${
               selectedModel.startsWith('ollama/') && ollamaOffline
                 ? 'text-red-400'
                 : 'text-green-600'
@@ -579,13 +579,13 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             ))}
           </select>
 
-          <div className="bg-[#0000aa] border border-[#00aaaa] p-2 text-[10px] text-[#ffffff]">
+          <div className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-mid)] p-2 text-[10px] text-[#ffffff]">
             {currentModelObj?.description}
             {currentModelObj?.supportsTools === true && (
-              <div className="mt-1 text-[#ffff55] font-bold">⚙ TOOL-CALLING: disponible</div>
+              <div className="mt-1 text-[var(--nc-text-accent)] font-bold">⚙ TOOL-CALLING: disponible</div>
             )}
             {currentModelObj?.provider === 'ollama' && ollamaOffline && (
-              <div className="mt-1 text-[#ffff55] font-bold">
+              <div className="mt-1 text-[var(--nc-text-accent)] font-bold">
                 ⚠ OLLAMA NO DISPONIBLE{ollamaStatus?.host ? ` (${ollamaStatus.host})` : ''}: arráncalo o ajusta el host en «CONFIGURAR LLM LOCAL (Ollama / OpenAI)».
               </div>
             )}
@@ -593,7 +593,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           
           <ApiKeyInput provider="google" onSave={(k) => saveApiKey('GEMINI_API_KEY', k)} />
           {toolsMemory?.marked && (
-            <div className="text-[9px] text-[#ffff55] px-1" title={toolsMemory.expiresAt ? new Date(toolsMemory.expiresAt).toLocaleString() : undefined}>
+            <div className="text-[9px] text-[var(--nc-text-accent)] px-1" title={toolsMemory.expiresAt ? new Date(toolsMemory.expiresAt).toLocaleString() : undefined}>
               {(() => {
                 const minutes = toolsMemory.expiresAt
                   ? Math.max(0, Math.ceil((toolsMemory.expiresAt - now) / 60000))
@@ -607,7 +607,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             </div>
           )}
           {toolsMemory?.keyKnown && !toolsMemory.marked && (
-            <div className="text-[9px] text-[#00ffff] px-1">
+            <div className="text-[9px] text-[var(--nc-text)] px-1">
               {lang === 'es'
                 ? '✓ Búsqueda de Google y ejecución de código: se piden en cada mensaje'
                 : lang === 'de'
@@ -616,7 +616,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             </div>
           )}
           {toolsExpiryNotice && (
-            <div className="text-[9px] text-[#00ff00] px-1" role="status" aria-live="polite">
+            <div className="text-[9px] text-[var(--nc-success)] px-1" role="status" aria-live="polite">
               {lang === 'es'
                 ? '⏱ La marca caducó: la búsqueda de Google se vuelve a pedir desde ahora.'
                 : lang === 'de'
@@ -645,7 +645,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               }
             }}
             disabled={toolsRetry === 'working'}
-            className="nc-button w-full text-left flex items-center gap-1.5 text-[10px] bg-[#0000aa] border-[#00ffff] mt-1"
+            className="nc-button w-full text-left flex items-center gap-1.5 text-[10px] bg-[var(--nc-bg-main)] border-[var(--nc-border-light)] mt-1"
             title={
               lang === 'es'
                 ? 'Borra la memoria de «esta key no admite búsqueda de Google» y vuelve a intentarlo'
@@ -654,7 +654,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 : 'Clears “this key has no Google Search” and tries again'
             }
           >
-            <Globe className="w-3.5 h-3.5 text-[#ffff55]" />
+            <Globe className="w-3.5 h-3.5 text-[var(--nc-text-accent)]" />
             <span>
               {toolsRetry === 'working'
                 ? (lang === 'es' ? 'REINICIANDO PRUEBA…' : lang === 'de' ? 'TEST WIRD ZURÜCKGESETZT…' : 'RESETTING TEST…')
@@ -662,7 +662,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             </span>
           </button>
           {toolsRetry === 'done' && (
-            <div className="text-[9px] text-[#00ff00] px-1">
+            <div className="text-[9px] text-[var(--nc-success)] px-1">
               {lang === 'es'
                 ? '✓ Se probará de nuevo en el próximo mensaje.'
                 : lang === 'de'
@@ -671,7 +671,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             </div>
           )}
           {toolsRetry === 'error' && (
-            <div className="text-[9px] text-[#ff5555] px-1">
+            <div className="text-[9px] text-[var(--nc-danger)] px-1">
               {lang === 'es'
                 ? '✗ No se pudo reiniciar la prueba.'
                 : lang === 'de'
@@ -681,7 +681,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           )}
           {/* Cuánto dura la marca. Se guarda en commander.json, así que la
               siguiente marca nace ya con el valor elegido. */}
-          <div className="mt-1 px-1 text-[9px] text-[#ffff55]">
+          <div className="mt-1 px-1 text-[9px] text-[var(--nc-text-accent)]">
             {lang === 'es'
               ? 'DURACIÓN DE LA MARCA (MINUTOS):'
               : lang === 'de'
@@ -706,7 +706,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                   ? 'Minuten, die die Markierung ohne integrierte Tools gilt'
                   : 'Minutes the built-in-tools mark lasts'
               }
-              className="w-16 bg-[#000040] border border-[#00ffff] text-[#00ffff] text-[10px] px-1 py-0.5 font-mono"
+              className="w-16 bg-[var(--nc-bg-deep)] border border-[var(--nc-border-light)] text-[var(--nc-text)] text-[10px] px-1 py-0.5 font-mono"
             />
             <button
               type="button"
@@ -732,7 +732,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 }
               }}
               disabled={ttlSave === 'working' || ttlMinutes == null}
-              className="nc-button text-[10px] bg-[#0000aa] border-[#00ffff] px-2"
+              className="nc-button text-[10px] bg-[var(--nc-bg-main)] border-[var(--nc-border-light)] px-2"
               title={
                 lang === 'es'
                   ? 'Guarda la duración en commander.json (1–1440 minutos)'
@@ -747,7 +747,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             </button>
           </div>
           {ttlSave === 'done' && (
-            <div className="text-[9px] text-[#00ff00] px-1">
+            <div className="text-[9px] text-[var(--nc-success)] px-1">
               {lang === 'es'
                 ? `✓ Guardado: la próxima marca durará ${ttlMinutes} min.`
                 : lang === 'de'
@@ -756,7 +756,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             </div>
           )}
           {ttlSave === 'error' && (
-            <div className="text-[9px] text-[#ff5555] px-1">
+            <div className="text-[9px] text-[var(--nc-danger)] px-1">
               {lang === 'es'
                 ? '✗ Valor no válido o no se pudo guardar (1–1440 min).'
                 : lang === 'de'
@@ -768,7 +768,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               repetirla en cada petición. El orden es la prioridad, así que se
               cambia con flechas: reescribir el texto entero para subir un
               modelo una posición era la forma fácil de equivocarse. */}
-          <div className="mt-2 px-1 text-[9px] text-[#ffff55]">
+          <div className="mt-2 px-1 text-[9px] text-[var(--nc-text-accent)]">
             {lang === 'es'
               ? `CADENA DE RESPALDO (MÁX. ${MAX_FALLBACK_MODELS}, EN ORDEN):`
               : lang === 'de'
@@ -776,7 +776,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               : `FALLBACK CHAIN (MAX. ${MAX_FALLBACK_MODELS}, IN ORDER):`}
           </div>
           <div
-            className="border border-[#00ffff] bg-[#000040] px-1 py-0.5"
+            className="border border-[var(--nc-border-light)] bg-[var(--nc-bg-deep)] px-1 py-0.5"
             aria-label={
               lang === 'es'
                 ? 'Modelos de respaldo de Gemini en orden'
@@ -786,7 +786,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             }
           >
             {fallbackRows.length === 0 && !(fallbackState?.configured && fallbackState.models.length === 0) && (
-              <div className="text-[9px] text-[#00ffff]/70 py-0.5">
+              <div className="text-[9px] text-[var(--nc-text)]/70 py-0.5">
                 {lang === 'es'
                   ? '· Sin modelos de respaldo.'
                   : lang === 'de'
@@ -797,9 +797,9 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             {fallbackRows.map((modelId, index) => (
               <div
                 key={`${modelId}-${index}`}
-                className="flex items-center gap-1 text-[10px] py-0.5 border-b border-[#00ffff]/20 last:border-b-0"
+                className="flex items-center gap-1 text-[10px] py-0.5 border-b border-[var(--nc-border-light)]/20 last:border-b-0"
               >
-                <span className="text-[#ffff55] w-3 shrink-0">{index + 1}.</span>
+                <span className="text-[var(--nc-text-accent)] w-3 shrink-0">{index + 1}.</span>
                 {/* Partido en dos líneas, no truncado: con el panel estrecho
                     dos ids que sólo se distinguen por el sufijo quedaban
                     idénticos y no se sabía cuál se estaba moviendo. */}
@@ -839,12 +839,12 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                     className={
                       'w-3 shrink-0 text-center ' +
                       (probeResults[modelId].status === 'ok'
-                        ? 'text-[#00ff00]'
+                        ? 'text-[var(--nc-success)]'
                         : probeResults[modelId].status === 'working'
-                        ? 'text-[#00ffff]'
+                        ? 'text-[var(--nc-text)]'
                         : probeResults[modelId].status === 'substituted'
-                        ? 'text-[#ffff55]'
-                        : 'text-[#ff5555]')
+                        ? 'text-[var(--nc-text-accent)]'
+                        : 'text-[var(--nc-danger)]')
                     }
                   >
                     {probeResults[modelId].status === 'ok'
@@ -941,7 +941,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                   ? 'Kennung des Modells, das ans Ende der Kette kommt'
                   : 'Id of the model added to the end of the chain'
               }
-              className="flex-1 min-w-0 bg-[#000040] border border-[#00ffff] text-[#00ffff] text-[10px] px-1 py-0.5 font-mono"
+              className="flex-1 min-w-0 bg-[var(--nc-bg-deep)] border border-[var(--nc-border-light)] text-[var(--nc-text)] text-[10px] px-1 py-0.5 font-mono"
             />
             <button
               type="button"
@@ -951,7 +951,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 !fallbackNew.trim() ||
                 fallbackRows.length >= MAX_FALLBACK_MODELS
               }
-              className="nc-button text-[10px] bg-[#0000aa] border-[#00ffff] px-2 disabled:opacity-30"
+              className="nc-button text-[10px] bg-[var(--nc-bg-main)] border-[var(--nc-border-light)] px-2 disabled:opacity-30"
               title={
                 lang === 'es'
                   ? 'Añade el modelo al final; luego colócalo con las flechas'
@@ -969,7 +969,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             type="button"
             onClick={() => void probeFallbackChain()}
             disabled={chainProbe?.running === true || fallbackRows.length === 0}
-            className="nc-button w-full text-left flex items-center gap-1.5 text-[10px] bg-[#0000aa] border-[#00ffff] mt-1 disabled:opacity-30"
+            className="nc-button w-full text-left flex items-center gap-1.5 text-[10px] bg-[var(--nc-bg-main)] border-[var(--nc-border-light)] mt-1 disabled:opacity-30"
             title={
               lang === 'es'
                 ? 'Prueba la cadena en orden y para en el primero que responda; no guarda nada'
@@ -978,7 +978,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 : 'Tests the chain in order and stops at the first answer; saves nothing'
             }
           >
-            <FlaskConical className="w-3.5 h-3.5 text-[#ffff55]" />
+            <FlaskConical className="w-3.5 h-3.5 text-[var(--nc-text-accent)]" />
             <span>
               {chainProbe?.running
                 ? lang === 'es'
@@ -1000,10 +1000,10 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               className={
                 'text-[9px] px-1 ' +
                 (chainProbe.result.answeredIndex === 0
-                  ? 'text-[#00ff00]'
+                  ? 'text-[var(--nc-success)]'
                   : chainProbe.result.answeredIndex > 0
-                  ? 'text-[#ffff55]'
-                  : 'text-[#ff5555]')
+                  ? 'text-[var(--nc-text-accent)]'
+                  : 'text-[var(--nc-danger)]')
               }
             >
               {chainProbe.result.answeredIndex < 0
@@ -1030,7 +1030,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               type="button"
               onClick={() => void saveFallbackModels(fallbackRows)}
               disabled={fallbackSave === 'working'}
-              className="nc-button text-[10px] bg-[#0000aa] border-[#00ffff] px-2"
+              className="nc-button text-[10px] bg-[var(--nc-bg-main)] border-[var(--nc-border-light)] px-2"
               title={
                 lang === 'es'
                   ? 'Guarda la cadena en commander.json; se usará cuando la petición no traiga la suya'
@@ -1047,7 +1047,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               type="button"
               onClick={() => void saveFallbackModels(fallbackState?.defaultModels ?? [])}
               disabled={fallbackSave === 'working' || !fallbackState}
-              className="nc-button text-[10px] bg-[#0000aa] border-[#00ffff] px-2"
+              className="nc-button text-[10px] bg-[var(--nc-bg-main)] border-[var(--nc-border-light)] px-2"
               title={
                 lang === 'es'
                   ? 'Vuelve a la cadena de respaldo de fábrica'
@@ -1060,7 +1060,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             </button>
           </div>
           {fallbackState && !fallbackState.configured && (
-            <div className="text-[9px] text-[#00ffff] px-1">
+            <div className="text-[9px] text-[var(--nc-text)] px-1">
               {lang === 'es'
                 ? '· Sin guardar: se usa la cadena de fábrica.'
                 : lang === 'de'
@@ -1069,7 +1069,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             </div>
           )}
           {fallbackState?.configured && fallbackState.models.length === 0 && (
-            <div className="text-[9px] text-[#ffff55] px-1">
+            <div className="text-[9px] text-[var(--nc-text-accent)] px-1">
               {lang === 'es'
                 ? '⚑ Respaldo desactivado: si el modelo falla, el error se muestra en vez de cambiarlo por detrás.'
                 : lang === 'de'
@@ -1078,7 +1078,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             </div>
           )}
           {fallbackSave === 'done' && (
-            <div className="text-[9px] text-[#00ff00] px-1" role="status" aria-live="polite">
+            <div className="text-[9px] text-[var(--nc-success)] px-1" role="status" aria-live="polite">
               {lang === 'es'
                 ? `✓ Guardada: ${fallbackState?.models.length ?? 0} modelo(s) de respaldo.`
                 : lang === 'de'
@@ -1093,12 +1093,12 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               className={
                 'text-[9px] px-1 ' +
                 (lastProbe.status === 'ok'
-                  ? 'text-[#00ff00]'
+                  ? 'text-[var(--nc-success)]'
                   : lastProbe.status === 'working'
-                  ? 'text-[#00ffff]'
+                  ? 'text-[var(--nc-text)]'
                   : lastProbe.status === 'substituted'
-                  ? 'text-[#ffff55]'
-                  : 'text-[#ff5555]')
+                  ? 'text-[var(--nc-text-accent)]'
+                  : 'text-[var(--nc-danger)]')
               }
             >
               {lastProbe.status === 'ok'
@@ -1112,10 +1112,10 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             </div>
           )}
           {fallbackError && (
-            <div className="text-[9px] text-[#ff5555] px-1">{fallbackError}</div>
+            <div className="text-[9px] text-[var(--nc-danger)] px-1">{fallbackError}</div>
           )}
           {fallbackSave === 'error' && !fallbackError && (
-            <div className="text-[9px] text-[#ff5555] px-1">
+            <div className="text-[9px] text-[var(--nc-danger)] px-1">
               {lang === 'es'
                 ? '✗ No se pudo guardar la cadena.'
                 : lang === 'de'
@@ -1130,19 +1130,19 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           <button
             type="button"
             onClick={() => onOpenLocalLlmConfig?.()}
-            className="nc-button w-full text-left flex items-center gap-1.5 text-[10px] bg-[#0000aa] border-[#00ffff] mt-1.5"
+            className="nc-button w-full text-left flex items-center gap-1.5 text-[10px] bg-[var(--nc-bg-main)] border-[var(--nc-border-light)] mt-1.5"
             title={lang === 'es' ? 'Configurar el servidor y modelo del LLM local' : lang === 'de' ? 'Lokalen LLM-Server & Modell konfigurieren' : 'Configure local LLM server & model'}
           >
-            <Server className="w-3.5 h-3.5 text-[#ffff55]" />
+            <Server className="w-3.5 h-3.5 text-[var(--nc-text-accent)]" />
             <span>{lang === 'es' ? 'CONFIGURAR LLM LOCAL (Ollama / OpenAI)' : lang === 'de' ? 'LOKALES LLM KONFIGURIEREN (Ollama / OpenAI)' : 'CONFIGURE LOCAL LLM (Ollama / OpenAI)'}</span>
           </button>
           <button
             type="button"
             onClick={() => setIsProviderManagerOpen(true)}
-            className="nc-button w-full text-left flex items-center gap-1.5 text-[10px] bg-[#0000aa] border-[#00ffff] mt-1.5"
+            className="nc-button w-full text-left flex items-center gap-1.5 text-[10px] bg-[var(--nc-bg-main)] border-[var(--nc-border-light)] mt-1.5"
             title={lang === 'es' ? 'Gestionar todos los proveedores (API keys, hosts, modelos)' : lang === 'de' ? 'Alle Anbieter verwalten (API-Keys, Hosts, Modelle)' : 'Manage all providers (API keys, hosts, models)'}
           >
-            <Settings className="w-3.5 h-3.5 text-[#ffff55]" />
+            <Settings className="w-3.5 h-3.5 text-[var(--nc-text-accent)]" />
             <span>{lang === 'es' ? 'GESTIONAR PROVEEDORES' : lang === 'de' ? 'ANBIETER VERWALTEN' : 'MANAGE PROVIDERS'}</span>
           </button>
         </div>
@@ -1162,35 +1162,35 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               e.stopPropagation();
               setShowExamples((prev) => !prev);
             }}
-            className="w-full flex items-center justify-between text-[11px] font-bold text-[#ffff55] border-2 border-[#00ffff] p-1 bg-[#0000aa]"
+            className="w-full flex items-center justify-between text-[11px] font-bold text-[var(--nc-text-accent)] border-2 border-[var(--nc-border-light)] p-1 bg-[var(--nc-bg-main)]"
           >
             <span>{showExamples ? (lang === 'es' ? '▲ OCULTAR EJEMPLOS' : lang === 'de' ? '▲ BEISPIELE AUSBLENDEN' : '▲ HIDE EXAMPLES') : (lang === 'es' ? '▼ EJEMPLOS (FEW-SHOT GRID)' : lang === 'de' ? '▼ FEW-SHOT-BEISPIELE' : '▼ FEW-SHOT EXAMPLES')}</span>
-            <span className="text-[9px] text-[#00ffff] bg-[#000080] px-1">
+            <span className="text-[9px] text-[var(--nc-text)] bg-[var(--nc-bg-panel)] px-1">
               {parameters.examples.length}
             </span>
           </button>
           
           {showExamples && (
-            <div className="bg-[#0000aa] border-2 border-[#00ffff] p-2 space-y-2">
+            <div className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-2 space-y-2">
               <button
                 type="button"
                 onClick={() => setIsDatasetModalOpen(true)}
-                className="w-full bg-[#ffff55] text-black font-bold py-1 px-2 text-[10px] flex items-center justify-center gap-1.5 hover:bg-white border border-black"
+                className="w-full bg-[var(--nc-active-bg)] text-black font-bold py-1 px-2 text-[10px] flex items-center justify-center gap-1.5 hover:bg-white border border-black"
               >
-                <Database className="w-3.5 h-3.5 text-[#000080]" />
+                <Database className="w-3.5 h-3.5 text-[var(--nc-active-text)]" />
                 <span>{lang === 'es' ? '🧪 ABRIR EDITOR DE DATASET & FINE-TUNING' : lang === 'de' ? '🧪 DATASET- & FINE-TUNING-EDITOR ÖFFNEN' : '🧪 OPEN DATASET & FINE-TUNING EDITOR'}</span>
               </button>
 
               {parameters.examples.map((ex) => (
-                <div key={ex.id} className="border border-[#00ffff] p-1 bg-[#000080]">
-                  <div className="text-[9px] text-[#00ffff] nc-x-scroll nc-x-nowrap">IN: {ex.input}</div>
-                  <div className="text-[9px] text-[#ffff55] nc-x-scroll nc-x-nowrap">OUT: {ex.output}</div>
+                <div key={ex.id} className="border border-[var(--nc-border-light)] p-1 bg-[var(--nc-bg-panel)]">
+                  <div className="text-[9px] text-[var(--nc-text)] nc-x-scroll nc-x-nowrap">IN: {ex.input}</div>
+                  <div className="text-[9px] text-[var(--nc-text-accent)] nc-x-scroll nc-x-nowrap">OUT: {ex.output}</div>
                 </div>
               ))}
               <div className="space-y-1">
                 <input 
                   placeholder={lang === 'es' ? "Agregar input rápido..." : lang === 'de' ? 'Schnelle Eingabe hinzufügen...' : "Add quick input..."}
-                  className="w-full bg-[#000080] border border-[#00ffff] text-[10px] text-white p-1 outline-none"
+                  className="w-full bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] text-[10px] text-white p-1 outline-none"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && e.currentTarget.value) {
                       const input = e.currentTarget.value;
@@ -1212,8 +1212,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({
 
         {/* 4. Thinking Level (Gemini 3) */}
         {selectedModel.startsWith('gemini-3') && (
-          <div className="border border-[#00ffff] bg-[#0000aa] p-2 space-y-1">
-            <label className="text-[11px] font-bold text-[#ffff55] block">
+          <div className="border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] p-2 space-y-1">
+            <label className="text-[11px] font-bold text-[var(--nc-text-accent)] block">
               {t.thinkingLevel}:
             </label>
             <div className="grid grid-cols-3 gap-1">
@@ -1223,8 +1223,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                   onClick={() => setParameters((p) => ({ ...p, thinkingLevel: lvl }))}
                   className={`py-1 text-[10px] font-bold border transition-colors ${
                     parameters.thinkingLevel === lvl
-                      ? 'bg-[#ffff55] text-black border-[#ffffff]'
-                      : 'bg-[#000080] text-[#00ffff] border-[#00aaaa]'
+                      ? 'bg-[var(--nc-active-bg)] text-black border-[#ffffff]'
+                      : 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border-[var(--nc-border-mid)]'
                   }`}
                 >
                   {lvl}
@@ -1235,13 +1235,13 @@ export const RightPanel: React.FC<RightPanelProps> = ({
         )}
 
         {/* 5. Stop Sequences */}
-        <div className="border border-[#00ffff] bg-[#0000aa] p-2 space-y-1">
-          <label className="text-[11px] font-bold text-[#ffff55] block">
+        <div className="border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] p-2 space-y-1">
+          <label className="text-[11px] font-bold text-[var(--nc-text-accent)] block">
             {lang === 'es' ? 'SECUENCIAS DE PARADA (STOP SEQUENCES):' : lang === 'de' ? 'STOPPSEQUENZEN:' : 'STOP SEQUENCES:'}
           </label>
           <div className="flex flex-wrap gap-1 mb-1">
             {(parameters.stopSequences || []).map((seq, idx) => (
-              <span key={idx} className="bg-[#000080] border border-[#00ffff] text-[#ffff55] text-[9px] px-1.5 py-0.5 flex items-center gap-1 font-mono">
+              <span key={idx} className="bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] text-[var(--nc-text-accent)] text-[9px] px-1.5 py-0.5 flex items-center gap-1 font-mono">
                 {JSON.stringify(seq)}
                 <button
                   type="button"
@@ -1259,7 +1259,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           <input
             type="text"
             placeholder={lang === 'es' ? "Escribe secuencia y presiona Enter (ej: END, ###)..." : lang === 'de' ? 'Sequenz eingeben und Enter drücken (z. B. END, ###)...' : "Type sequence and press Enter (e.g. END, ###)..."}
-            className="w-full bg-[#000080] border border-[#00ffff] p-1 text-[10px] text-white outline-none font-mono"
+            className="w-full bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] p-1 text-[10px] text-white outline-none font-mono"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && e.currentTarget.value) {
                 const val = e.currentTarget.value;
@@ -1275,7 +1275,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
 
         {/* 6. Hugging Face Device */}
         {selectedProvider === 'huggingface' && (
-          <div className="border border-[#ffff55] bg-[#0000aa] p-2 space-y-2 text-[#ffff55]">
+          <div className="border border-[var(--nc-text-accent)] bg-[var(--nc-bg-main)] p-2 space-y-2 text-[var(--nc-text-accent)]">
             <label className="text-[11px] font-bold block">
               {lang === 'es' ? 'DISPOSITIVO HUGGING FACE:' : lang === 'de' ? 'HUGGING-FACE-GERÄT:' : 'HUGGING FACE DEVICE:'}
             </label>
@@ -1285,7 +1285,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                   key={dev}
                   onClick={() => setParameters((p) => ({ ...p, hfDevice: dev }))}
                   className={`py-1 font-bold border ${
-                    parameters.hfDevice === dev ? 'bg-[#ffff55] text-black border-white' : 'bg-[#000080] text-[#00ffff]'
+                    parameters.hfDevice === dev ? 'bg-[var(--nc-active-bg)] text-black border-white' : 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)]'
                   }`}
                 >
                   {dev.toUpperCase()}
@@ -1297,12 +1297,12 @@ export const RightPanel: React.FC<RightPanelProps> = ({
 
         {/* 7. Temperature Slider */}
         <div className="space-y-1">
-          <div className="flex justify-between text-[11px] font-bold text-[#ffff55]">
+          <div className="flex justify-between text-[11px] font-bold text-[var(--nc-text-accent)]">
             <span>{t.temperature}:</span>
             <span>{parameters.temperature.toFixed(2)}</span>
           </div>
           {showTooltips && (
-            <div className="text-[9px] text-[#00aaaa] italic bg-[#000080] p-1 border border-[#000055]">
+            <div className="text-[9px] text-[var(--nc-text-dim)] italic bg-[var(--nc-bg-panel)] p-1 border border-[var(--nc-border-dark)]">
               💡 {t.tt_temperature}
             </div>
           )}
@@ -1316,13 +1316,13 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               const next = parseFloat(e.target.value);
               setParameters((p) => ({ ...p, temperature: next }));
             }}
-            className="w-full bg-[#0000aa] accent-[#00ffff] h-2 border border-[#00ffff] cursor-pointer"
+            className="w-full bg-[var(--nc-bg-main)] accent-[#00ffff] h-2 border border-[var(--nc-border-light)] cursor-pointer"
             title={showTooltips ? t.tt_temperature : undefined}
           />
         </div>
 
         {/* 8. Top P & Top K */}
-        <div className="grid grid-cols-2 gap-2 text-[11px] font-bold text-[#ffff55]">
+        <div className="grid grid-cols-2 gap-2 text-[11px] font-bold text-[var(--nc-text-accent)]">
           <div>
             <span>TOP P: {parameters.topP.toFixed(2)}</span>
             <input
@@ -1335,7 +1335,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 const next = parseFloat(e.target.value);
                 setParameters((p) => ({ ...p, topP: next }));
               }}
-              className="w-full bg-[#0000aa] accent-[#00ffff] h-2 border border-[#00ffff] cursor-pointer"
+              className="w-full bg-[var(--nc-bg-main)] accent-[#00ffff] h-2 border border-[var(--nc-border-light)] cursor-pointer"
               title={showTooltips ? t.tt_topP : undefined}
             />
           </div>
@@ -1351,22 +1351,22 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 const next = parseInt(e.target.value);
                 setParameters((p) => ({ ...p, topK: next }));
               }}
-              className="w-full bg-[#0000aa] accent-[#00ffff] h-2 border border-[#00ffff] cursor-pointer"
+              className="w-full bg-[var(--nc-bg-main)] accent-[#00ffff] h-2 border border-[var(--nc-border-light)] cursor-pointer"
               title={showTooltips ? t.tt_topK : undefined}
             />
           </div>
         </div>
 
         {/* 9. Format Toggle & Structured Output Designer */}
-        <div className="pt-2 border-t border-[#00aaaa] space-y-2">
-          <div className="flex items-center justify-between font-bold text-[#ffff55]">
+        <div className="pt-2 border-t border-[var(--nc-border-mid)] space-y-2">
+          <div className="flex items-center justify-between font-bold text-[var(--nc-text-accent)]">
             <span>{lang === 'es' ? 'FORMATO DE SALIDA:' : lang === 'de' ? 'AUSGABEFORMAT:' : 'OUTPUT FORMAT:'}</span>
             <div className="flex gap-1">
               <button
                 type="button"
                 onClick={() => setParameters((p) => ({ ...p, responseFormat: 'text' }))}
                 className={`px-2 py-0.5 text-[10px] border ${
-                  parameters.responseFormat === 'text' ? 'bg-[#00ffff] text-black font-bold' : 'bg-[#0000aa] text-white'
+                  parameters.responseFormat === 'text' ? 'bg-[var(--nc-highlight-bg)] text-black font-bold' : 'bg-[var(--nc-bg-main)] text-white'
                 }`}
               >
                 {lang === 'es' ? 'TEXTO' : lang === 'de' ? 'TEXT' : 'TEXT'}
@@ -1378,7 +1378,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                   setIsSchemaModalOpen(true);
                 }}
                 className={`px-2 py-0.5 text-[10px] border ${
-                  parameters.responseFormat === 'json' ? 'bg-[#ffff55] text-black font-bold' : 'bg-[#0000aa] text-white'
+                  parameters.responseFormat === 'json' ? 'bg-[var(--nc-active-bg)] text-black font-bold' : 'bg-[var(--nc-bg-main)] text-white'
                 }`}
               >
                 JSON (SCHEMA)
@@ -1387,17 +1387,17 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           </div>
 
           {parameters.responseFormat === 'json' && (
-            <div className="bg-[#0000aa] border border-[#00ffff] p-2 space-y-1.5">
+            <div className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] p-2 space-y-1.5">
               <div className="flex items-center justify-between text-[10px]">
-                <span className="text-[#ffff55] font-bold">{lang === 'es' ? 'ESQUEMA ESTRUCTURADO:' : lang === 'de' ? 'STRUKTURIERTES SCHEMA:' : 'STRUCTURED SCHEMA:'}</span>
-                <span className="text-[#00ffff] font-mono text-[9px]">
+                <span className="text-[var(--nc-text-accent)] font-bold">{lang === 'es' ? 'ESQUEMA ESTRUCTURADO:' : lang === 'de' ? 'STRUKTURIERTES SCHEMA:' : 'STRUCTURED SCHEMA:'}</span>
+                <span className="text-[var(--nc-text)] font-mono text-[9px]">
                   {parameters.jsonSchema ? (lang === 'es' ? '✓ DEFINIDO' : lang === 'de' ? '✓ DEFINIERT' : '✓ DEFINED') : 'DEFAULT'}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => setIsSchemaModalOpen(true)}
-                className="nc-button w-full text-center text-[10px] py-1 bg-[#00aaaa] text-black font-bold flex items-center justify-center gap-1.5"
+                className="nc-button w-full text-center text-[10px] py-1 bg-[var(--nc-header-bg)] text-black font-bold flex items-center justify-center gap-1.5"
               >
                 <FileJson className="w-3.5 h-3.5" />
                 <span>{lang === 'es' ? 'DISEÑADOR VISUAL JSON SCHEMA' : lang === 'de' ? 'VISUELLER JSON-SCHEMA-EDITOR' : 'VISUAL JSON SCHEMA DESIGNER'}</span>
@@ -1417,10 +1417,10 @@ export const RightPanel: React.FC<RightPanelProps> = ({
 
         {/* 10. Tools & Grounding (Commander AI Studio Capabilities) */}
         {selectedProvider === 'google' && (
-          <div className="pt-2 border-t border-[#00aaaa] space-y-2">
-            <div className="text-[11px] font-bold text-[#ffff55] flex items-center justify-between">
+          <div className="pt-2 border-t border-[var(--nc-border-mid)] space-y-2">
+            <div className="text-[11px] font-bold text-[var(--nc-text-accent)] flex items-center justify-between">
               <span>{selectedModel === 'antigravity-preview-09-2026' ? '🔍 ANTIGRAVITY TOOL MATRIX:' : (lang === 'es' ? 'HERRAMIENTAS & GROUNDING:' : lang === 'de' ? 'TOOLS & GROUNDING:' : 'TOOLS & GROUNDING:')}</span>
-              <span className="text-[9px] text-[#00ffff]">{selectedModel === 'antigravity-preview-09-2026' ? '[REMOTE SANDBOX]' : '[COMMANDER TOOLS]'}</span>
+              <span className="text-[9px] text-[var(--nc-text)]">{selectedModel === 'antigravity-preview-09-2026' ? '[REMOTE SANDBOX]' : '[COMMANDER TOOLS]'}</span>
             </div>
 
             <div className="space-y-1.5">
@@ -1438,8 +1438,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 }))}
                 className={`w-full flex items-center justify-between p-1.5 border text-[10px] font-bold transition-colors ${
                   parameters.tools?.googleSearch
-                    ? 'bg-[#00ffff] text-black border-white'
-                    : 'bg-[#0000aa] text-[#00ffff] border-[#00aaaa]'
+                    ? 'bg-[var(--nc-highlight-bg)] text-black border-white'
+                    : 'bg-[var(--nc-bg-main)] text-[var(--nc-text)] border-[var(--nc-border-mid)]'
                 }`}
                 data-tooltip={selectedModel === 'antigravity-preview-09-2026' ? 'google_search (Antigravity)' : 'Búsqueda Web en Vivo'}
                 data-tooltip-sub={selectedModel === 'antigravity-preview-09-2026' ? 'Permite al agente buscar información actualizada en Google Search' : 'Conecta el modelo a internet para responder consultas recientes'}
@@ -1465,8 +1465,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 }))}
                 className={`w-full flex items-center justify-between p-1.5 border text-[10px] font-bold transition-colors ${
                   parameters.tools?.codeExecution
-                    ? 'bg-[#ffff55] text-black border-white'
-                    : 'bg-[#0000aa] text-[#ffff55] border-[#00aaaa]'
+                    ? 'bg-[var(--nc-active-bg)] text-black border-white'
+                    : 'bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] border-[var(--nc-border-mid)]'
                 }`}
                 data-tooltip={selectedModel === 'antigravity-preview-09-2026' ? 'code_execution (Python Sandbox)' : 'Sandbox de Ejecución de Código'}
                 data-tooltip-sub={selectedModel === 'antigravity-preview-09-2026' ? 'Permite al agente ejecutar scripts de Python/Bash reales en su contenedor' : 'Habilita al modelo a probar y ejecutar algoritmos en Python'}
@@ -1494,7 +1494,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                   className={`w-full flex items-center justify-between p-1.5 border text-[10px] font-bold transition-colors ${
                     (parameters.tools?.urlContext ?? true)
                       ? 'bg-[#ff88ff] text-black border-white'
-                      : 'bg-[#0000aa] text-[#ff88ff] border-[#00aaaa]'
+                      : 'bg-[var(--nc-bg-main)] text-[#ff88ff] border-[var(--nc-border-mid)]'
                   }`}
                   data-tooltip="url_context (Inspección Web)"
                   data-tooltip-sub="Permite al agente visitar y extraer contenido de enlaces web específicos"
@@ -1512,8 +1512,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                   onClick={() => setIsFunctionModalOpen(true)}
                   className={`w-full flex items-center justify-between p-1.5 border text-[10px] font-bold transition-colors ${
                     (parameters.tools?.customFunctions?.length || 0) > 0
-                      ? 'bg-[#00aaaa] text-black border-white'
-                      : 'bg-[#0000aa] text-[#00ffff] border-[#00aaaa]'
+                      ? 'bg-[var(--nc-header-bg)] text-black border-white'
+                      : 'bg-[var(--nc-bg-main)] text-[var(--nc-text)] border-[var(--nc-border-mid)]'
                   }`}
                 >
                   <div className="flex items-center gap-1.5">
@@ -1535,13 +1535,13 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               e.stopPropagation();
               setShowSafety((prev) => !prev);
             }}
-            className="w-full flex items-center justify-between text-[11px] font-bold text-[#ffff55] border-2 border-[#00ffff] p-1 bg-[#0000aa]"
+            className="w-full flex items-center justify-between text-[11px] font-bold text-[var(--nc-text-accent)] border-2 border-[var(--nc-border-light)] p-1 bg-[var(--nc-bg-main)]"
           >
             <span>{showSafety ? (lang === 'es' ? '▲ OCULTAR FILTROS DE SEGURIDAD' : lang === 'de' ? '▲ SICHERHEITSFILTER AUSBLENDEN' : '▲ HIDE SAFETY FILTERS') : (lang === 'es' ? '▼ FILTROS DE SEGURIDAD (SAFETY SLIDERS)' : lang === 'de' ? '▼ SICHERHEITSFILTER (SCHIEBEREGLER)' : '▼ SAFETY FILTERS (SLIDERS)')}</span>
           </button>
           
           {showSafety && (
-            <div className="bg-[#0000aa] border-2 border-[#00ffff] p-2 space-y-2.5 text-[10px]">
+            <div className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-2 space-y-2.5 text-[10px]">
               {[
                 { label: lang === 'es' ? 'ACOSO (HARASSMENT)' : lang === 'de' ? 'BELÄSTIGUNG' : 'HARASSMENT', key: 'safetyHarassment' },
                 { label: lang === 'es' ? 'DISCURSO DE ODIO (HATE SPEECH)' : lang === 'de' ? 'HASSREDE' : 'HATE SPEECH', key: 'safetyHateSpeech' },
@@ -1549,9 +1549,9 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 { label: lang === 'es' ? 'CONTENIDO PELIGROSO' : lang === 'de' ? 'GEFÄHRLICHE INHALTE' : 'DANGEROUS CONTENT', key: 'safetyDangerousContent' },
               ].map((cat) => (
                 <div key={cat.key} className="space-y-1">
-                  <div className="flex justify-between font-bold text-[#00ffff]">
+                  <div className="flex justify-between font-bold text-[var(--nc-text)]">
                     <span>{cat.label}:</span>
-                    <span className="text-[#ffff55]">{(parameters as any)[cat.key]}</span>
+                    <span className="text-[var(--nc-text-accent)]">{(parameters as any)[cat.key]}</span>
                   </div>
                   <div className="grid grid-cols-4 gap-0.5">
                     {(['BLOCK_NONE', 'BLOCK_FEW', 'BLOCK_SOME', 'BLOCK_MOST'] as const).map((val) => (
@@ -1561,8 +1561,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                         onClick={() => setParameters((p) => ({ ...p, [cat.key]: val }))}
                         className={`py-0.5 text-[8px] font-bold border ${
                           (parameters as any)[cat.key] === val
-                            ? 'bg-[#ffff55] text-black border-white'
-                            : 'bg-[#000080] text-white border-[#00aaaa]'
+                            ? 'bg-[var(--nc-active-bg)] text-black border-white'
+                            : 'bg-[var(--nc-bg-panel)] text-white border-[var(--nc-border-mid)]'
                         }`}
                       >
                         {val.replace('BLOCK_', '')}
@@ -1580,7 +1580,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
 
         {settingsTab === 'instrucciones' && (
           <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-[#ffff55] block">
+            <label className="text-[11px] font-bold text-[var(--nc-text-accent)] block">
               {tx('ROL E INSTRUCCIÓN DEL SISTEMA', 'ROLLE & SYSTEMANWEISUNG', 'ROLE & SYSTEM INSTRUCTION')}:
             </label>
             <select
@@ -1590,7 +1590,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               }}
               defaultValue=""
               aria-label={tx('Preset de rol', 'Rollenvorlage', 'Role preset')}
-              className="w-full bg-[#0000aa] border border-[#00ffff] p-1 text-[10px] text-[#00ffff] font-bold outline-none cursor-pointer"
+              className="w-full bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] p-1 text-[10px] text-[var(--nc-text)] font-bold outline-none cursor-pointer"
             >
               <option value="" disabled>{tx('⚡ PRESET DE ROL...', '⚡ ROLLENVORLAGE...', '⚡ ROLE PRESET...')}</option>
               {SYSTEM_PRESETS.map((preset) => (
@@ -1608,23 +1608,23 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               rows={6}
               placeholder={tx('Instrucción del sistema...', 'Systemanweisung...', 'System instruction...')}
               aria-label={tx('Instrucciones del sistema', 'Systemanweisungen', 'System instructions')}
-              className="w-full bg-[#000080] border border-[#00ffff] p-1.5 text-[10px] text-white outline-none resize-y font-mono leading-snug"
+              className="w-full bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] p-1.5 text-[10px] text-white outline-none resize-y font-mono leading-snug"
             />
-            <p className="text-[9px] text-[#00ffff]/70">
+            <p className="text-[9px] text-[var(--nc-text)]/70">
               {tx('Va como rol del sistema en cada mensaje de esta pestaña.', 'Geht bei jeder Nachricht dieses Tabs als Systemrolle mit.', 'Goes as the system role with every message in this tab.')}
             </p>
           </div>
         )}
 
         {/* Acciones del prompt */}
-        <div className="bg-[#000080] border-2 border-[#00ffff] p-2 space-y-1">
-          <div className="text-[10px] font-bold text-[#ffff55] mb-1 flex items-center justify-between">
+        <div className="bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] p-2 space-y-1">
+          <div className="text-[10px] font-bold text-[var(--nc-text-accent)] mb-1 flex items-center justify-between">
             <span>── {t.projectActions} ──</span>
             {onClose && (
               <button 
                 type="button" 
                 onClick={onClose} 
-                className="text-[#ff5555] hover:text-white font-bold cursor-pointer text-[10px]"
+                className="text-[var(--nc-danger)] hover:text-white font-bold cursor-pointer text-[10px]"
                 title={lang === 'es' ? 'Plegar panel' : lang === 'de' ? 'Panel einklappen' : 'Fold panel'}
               >
                 [{lang === 'es' ? 'PLEGAR ✖' : lang === 'de' ? 'EINKLAPPEN ✖' : 'FOLD ✖'}]
@@ -1716,15 +1716,15 @@ export const LivePreview: React.FC<{
 
   return (
     <div className="flex flex-col h-full bg-white">
-      <div className="flex items-center gap-2 p-2 border-b border-[#004466] bg-[#00243e]">
-        <span className="text-[10px] font-mono text-[#00ffff] flex-1 truncate">{mode === 'iframe' ? 'Iframe Preview' : 'Local HTML Preview'}</span>
+      <div className="flex items-center gap-2 p-2 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)]">
+        <span className="text-[10px] font-mono text-[var(--nc-text)] flex-1 truncate">{mode === 'iframe' ? 'Iframe Preview' : 'Local HTML Preview'}</span>
         <input
           type="text"
           value={previewUrl}
           onChange={(e) => setPreviewUrl(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && setMode('iframe')}
           placeholder="http://localhost:3001"
-          className="flex-1 bg-[#000d1a] text-[10px] font-mono text-[#00ffff] px-2 py-1 rounded border border-[#004466] outline-none focus:border-[#00ffff]"
+          className="flex-1 bg-[var(--nc-bg-deep)] text-[10px] font-mono text-[var(--nc-text)] px-2 py-1 rounded border border-[var(--nc-border-dark)] outline-none focus:border-[var(--nc-border-light)]"
         />
         <button
           onClick={() => { setMode(mode === 'iframe' ? 'local' : 'iframe'); reloadKey.current += 1; }}
@@ -1757,7 +1757,7 @@ export const LivePreview: React.FC<{
             onLoad={() => setIsLoading(false)}
           />
         ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-center p-4 text-[#00ffff]/50">
+          <div className="flex flex-col items-center justify-center h-full gap-2 text-center p-4 text-[var(--nc-text)]/50">
             <span className="text-[11px] font-mono">{PREVIEW_EMPTY_HINT}</span>
           </div>
         )}

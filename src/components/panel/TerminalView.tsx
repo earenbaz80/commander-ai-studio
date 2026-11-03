@@ -99,34 +99,34 @@ export const TerminalView: React.FC<{ projectPath: string }> = ({ projectPath })
   const quickCommands = ['ls', 'pwd', 'git status', 'node -v', 'npm run lint'];
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-[#000d1a]">
+    <div className="flex flex-col h-full min-h-0 bg-[var(--nc-bg-deep)]">
       {/* Salida */}
       <div className="flex-1 min-h-0 overflow-y-auto p-2 font-mono text-[11px] leading-relaxed">
         {lines.map((line) => (
           <div key={line.id} className="whitespace-pre-wrap break-all">
             {line.kind === 'prompt' && (
-              <div className="flex gap-1.5 text-[#00ffff]">
-                <span className="text-[#ffff55] shrink-0">❯</span>
+              <div className="flex gap-1.5 text-[var(--nc-text)]">
+                <span className="text-[var(--nc-text-accent)] shrink-0">❯</span>
                 <span className="text-white">{line.text}</span>
               </div>
             )}
-            {line.kind === 'stdout' && <div className="text-[#00ffff]/90 pl-4">{line.text}</div>}
+            {line.kind === 'stdout' && <div className="text-[var(--nc-text)]/90 pl-4">{line.text}</div>}
             {line.kind === 'stderr' && <div className="text-[#ff9966] pl-4">{line.text}</div>}
             {line.kind === 'error' && (
-              <div className="flex gap-1.5 text-[#ff5555] pl-4">
+              <div className="flex gap-1.5 text-[var(--nc-danger)] pl-4">
                 <ShieldAlert className="w-3 h-3 shrink-0 mt-[3px]" />
                 <span>{line.text}</span>
               </div>
             )}
             {line.kind === 'info' && (
-              <div className={`pl-4 ${line.meta ? 'text-[#00ffff]/35 text-[10px]' : 'text-[#ffff55]/50 italic'}`}>
+              <div className={`pl-4 ${line.meta ? 'text-[var(--nc-text)]/35 text-[10px]' : 'text-[var(--nc-text-accent)]/50 italic'}`}>
                 {line.text}{line.meta ? ` ${line.meta}` : ''}
               </div>
             )}
           </div>
         ))}
         {running && (
-          <div className="flex items-center gap-2 text-[#ffff55] pl-4 py-1">
+          <div className="flex items-center gap-2 text-[var(--nc-text-accent)] pl-4 py-1">
             <Loader2 className="w-3 h-3 animate-spin" /> ejecutando...
           </div>
         )}
@@ -134,20 +134,20 @@ export const TerminalView: React.FC<{ projectPath: string }> = ({ projectPath })
       </div>
 
       {/* Comandos rápidos */}
-      <div className="flex flex-wrap gap-1 px-2 pt-1 border-t border-[#004466] shrink-0">
+      <div className="flex flex-wrap gap-1 px-2 pt-1 border-t border-[var(--nc-border-dark)] shrink-0">
         {quickCommands.map((cmd) => (
           <button
             key={cmd}
             onClick={() => execute(cmd)}
             disabled={running}
-            className="text-[10px] font-mono px-1.5 py-0.5 bg-[#00243e] text-[#00ffff] border border-[#004466] rounded hover:bg-[#0000aa] disabled:opacity-40"
+            className="text-[10px] font-mono px-1.5 py-0.5 bg-[var(--nc-bg-deep)] text-[var(--nc-text)] border border-[var(--nc-border-dark)] rounded hover:bg-[var(--nc-bg-hover)] disabled:opacity-40"
           >
             {cmd}
           </button>
         ))}
         <button
           onClick={() => setLines([])}
-          className="text-[10px] font-mono px-1.5 py-0.5 text-[#ff5555] border border-[#004466] rounded hover:bg-[#330000] ml-auto"
+          className="text-[10px] font-mono px-1.5 py-0.5 text-[var(--nc-danger)] border border-[var(--nc-border-dark)] rounded hover:bg-[#330000] ml-auto"
           title="Limpiar (Ctrl+L)"
         >
           <Trash2 className="w-3 h-3" />
@@ -155,8 +155,8 @@ export const TerminalView: React.FC<{ projectPath: string }> = ({ projectPath })
       </div>
 
       {/* Input */}
-      <div className="flex items-center gap-1.5 p-2 border-t border-[#004466] bg-[#00243e] shrink-0">
-        <Terminal className="w-3.5 h-3.5 text-[#ffff55] shrink-0" />
+      <div className="flex items-center gap-1.5 p-2 border-t border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] shrink-0">
+        <Terminal className="w-3.5 h-3.5 text-[var(--nc-text-accent)] shrink-0" />
         <input
           ref={inputRef}
           value={input}
@@ -166,12 +166,12 @@ export const TerminalView: React.FC<{ projectPath: string }> = ({ projectPath })
           placeholder="Escribe un comando y pulsa Enter (↑ historial)"
           spellCheck={false}
           autoComplete="off"
-          className="flex-1 bg-transparent text-[11px] font-mono text-[#00ffff] outline-none placeholder:text-[#00ffff]/30 disabled:opacity-50"
+          className="flex-1 bg-transparent text-[11px] font-mono text-[var(--nc-text)] outline-none placeholder:text-[var(--nc-text)]/30 disabled:opacity-50"
         />
         <button
           onClick={() => execute(input)}
           disabled={running || !input.trim()}
-          className="p-1 text-[#00ffff] hover:bg-[#0000aa] rounded disabled:opacity-30"
+          className="p-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] rounded disabled:opacity-30"
           title="Ejecutar"
         >
           <CornerDownLeft className="w-3.5 h-3.5" />

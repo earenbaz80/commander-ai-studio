@@ -20,19 +20,19 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
       keys: ['Ctrl', '/'],
       cmdKeys: ['⌘', '/'],
       action: lang === 'es' ? 'Mostrar / ocultar este menú de atajos' : lang === 'de' ? 'Dieses Tastenkürzel-Menü umschalten' : 'Toggle this keyboard shortcuts menu',
-      icon: <Keyboard className="w-4 h-4 text-[#00ffff]" />,
+      icon: <Keyboard className="w-4 h-4 text-[var(--nc-text)]" />,
     },
     {
       keys: ['Ctrl', 'K'],
       cmdKeys: ['⌘', 'K'],
       action: lang === 'es' ? 'Abrir la Paleta de Comandos' : lang === 'de' ? 'Befehlspalette öffnen' : 'Open the Command Palette',
-      icon: <Search className="w-4 h-4 text-[#ffff55]" />,
+      icon: <Search className="w-4 h-4 text-[var(--nc-text-accent)]" />,
     },
     {
       keys: ['Ctrl', 'Shift', 'P'],
       cmdKeys: ['⌘', '⇧', 'P'],
       action: lang === 'es' ? 'Abrir la Paleta de Comandos (atajo alternativo)' : lang === 'de' ? 'Befehlspalette öffnen (Alternativtasten)' : 'Open the Command Palette (alternate binding)',
-      icon: <Search className="w-4 h-4 text-[#ffff55]" />,
+      icon: <Search className="w-4 h-4 text-[var(--nc-text-accent)]" />,
     },
     {
       keys: ['Ctrl', 'P'],
@@ -44,13 +44,13 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
       keys: ['Ctrl', 'B'],
       cmdKeys: ['⌘', 'B'],
       action: lang === 'es' ? 'Mostrar / ocultar barra lateral' : lang === 'de' ? 'Seitenleiste umschalten' : 'Toggle Sidebar panel',
-      icon: <Sidebar className="w-4 h-4 text-[#ffff55]" />,
+      icon: <Sidebar className="w-4 h-4 text-[var(--nc-text-accent)]" />,
     },
     {
       keys: ['Ctrl', 'Alt', 'B'],
       cmdKeys: ['⌘', '⌥', 'B'],
       action: lang === 'es' ? 'Mostrar / ocultar el Workbench' : lang === 'de' ? 'Workbench-Panel umschalten' : 'Toggle the Workbench panel',
-      icon: <PanelRight className="w-4 h-4 text-[#00ffff]" />,
+      icon: <PanelRight className="w-4 h-4 text-[var(--nc-text)]" />,
     },
     {
       keys: ['Ctrl', '`'],
@@ -80,13 +80,13 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
       keys: ['Ctrl', 'Alt', 'C'],
       cmdKeys: ['⌘', '⌥', 'C'],
       action: lang === 'es' ? 'Abrir el Compilador nativo' : lang === 'de' ? 'Nativen Compiler öffnen' : 'Open the Native Compiler',
-      icon: <Hammer className="w-4 h-4 text-[#ffff55]" />,
+      icon: <Hammer className="w-4 h-4 text-[var(--nc-text-accent)]" />,
     },
     {
       keys: ['Ctrl', 'T'],
       cmdKeys: ['⌘', 'T'],
       action: lang === 'es' ? 'Nueva pestaña de sesión' : lang === 'de' ? 'Neuer Sitzungs-Tab' : 'New session tab',
-      icon: <Layers className="w-4 h-4 text-[#00ffff]" />,
+      icon: <Layers className="w-4 h-4 text-[var(--nc-text)]" />,
     },
     {
       keys: ['Ctrl', 'W'],
@@ -98,7 +98,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
       keys: ['Ctrl', 'Shift', 'G'],
       cmdKeys: ['⌘', '⇧', 'G'],
       action: lang === 'es' ? 'Ejecutar auditoría general del proyecto' : lang === 'de' ? 'Allgemeine Projektprüfung ausführen' : 'Run a general project audit',
-      icon: <ShieldCheck className="w-4 h-4 text-[#88ff88]" />,
+      icon: <ShieldCheck className="w-4 h-4 text-[var(--nc-success)]" />,
     },
     {
       keys: ['Enter'],
@@ -116,18 +116,18 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 font-mono select-none">
-      <div className="w-full max-w-lg nc-panel border-2 border-[#00ffff] p-6 relative shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+      <div className="w-full max-w-lg nc-panel border-2 border-[var(--nc-border-light)] p-6 relative shadow-2xl animate-in fade-in zoom-in-95 duration-150">
         
         {/* Border corner accents */}
-        <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-[#ffff55] -mt-0.5 -ml-0.5" />
-        <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-[#ffff55] -mt-0.5 -mr-0.5" />
-        <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-[#ffff55] -mb-0.5 -ml-0.5" />
-        <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-[#ffff55] -mb-0.5 -mr-0.5" />
+        <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-[var(--nc-text-accent)] -mt-0.5 -ml-0.5" />
+        <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-[var(--nc-text-accent)] -mt-0.5 -mr-0.5" />
+        <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-[var(--nc-text-accent)] -mb-0.5 -ml-0.5" />
+        <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-[var(--nc-text-accent)] -mb-0.5 -mr-0.5" />
 
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b-2 border-[#00ffff] pb-3 mb-4">
+        <div className="flex items-center justify-between border-b-2 border-[var(--nc-border-light)] pb-3 mb-4">
           <div className="flex items-center gap-2">
-            <Keyboard className="w-5 h-5 text-[#ffff55] animate-bounce" />
+            <Keyboard className="w-5 h-5 text-[var(--nc-text-accent)] animate-bounce" />
             <span className="text-sm font-bold text-white uppercase tracking-wider">
               {lang === 'es' ? '── ATAJOS DE TECLADO POWER USER ──' : lang === 'de' ? '── TASTENKÜRZEL FÜR POWER-NUTZER ──' : '── POWER USER KEYBOARD SHORTCUTS ──'}
             </span>
@@ -141,8 +141,8 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
         </div>
 
         {/* Modal Info Tip */}
-        <div className="bg-[#000080] border border-[#00ffff]/40 p-2 text-[10px] text-[#00ffff] mb-4 flex items-start gap-2">
-          <HelpCircle className="w-4 h-4 text-[#ffff55] shrink-0" />
+        <div className="bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)]/40 p-2 text-[10px] text-[var(--nc-text)] mb-4 flex items-start gap-2">
+          <HelpCircle className="w-4 h-4 text-[var(--nc-text-accent)] shrink-0" />
           <p className="leading-tight">
             {lang === 'es' 
               ? 'Atajos globales diseñados para maximizar tu productividad. Puedes presionar Ctrl+/ (o Cmd+/) en cualquier momento para invocar o cerrar esta guía de referencia.'
@@ -155,7 +155,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
           {shortcuts.map((shortcut, idx) => (
             <div 
               key={idx} 
-              className="flex items-center justify-between p-2 bg-[#0000aa] border border-[#00aaaa]/30 hover:border-[#ffff55]/50 transition-colors"
+              className="flex items-center justify-between p-2 bg-[var(--nc-bg-main)] border border-[var(--nc-border-mid)]/30 hover:border-[var(--nc-text-accent)]/50 transition-colors"
             >
               <div className="flex items-center gap-2.5 min-w-0">
                 <span className="shrink-0">{shortcut.icon}</span>
@@ -169,7 +169,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
                   ? shortcut.cmdKeys.map((key, keyIdx) => (
                       <kbd 
                         key={keyIdx} 
-                        className="bg-[#000080] text-[#00ffff] border border-[#00ffff] px-1.5 py-0.5 text-[9px] font-bold rounded shadow font-mono"
+                        className="bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border border-[var(--nc-border-light)] px-1.5 py-0.5 text-[9px] font-bold rounded shadow font-mono"
                       >
                         {key}
                       </kbd>
@@ -177,7 +177,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
                   : shortcut.keys.map((key, keyIdx) => (
                       <kbd 
                         key={keyIdx} 
-                        className="bg-[#000080] text-[#00ffff] border border-[#00ffff] px-1.5 py-0.5 text-[9px] font-bold rounded shadow font-mono"
+                        className="bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border border-[var(--nc-border-light)] px-1.5 py-0.5 text-[9px] font-bold rounded shadow font-mono"
                       >
                         {key}
                       </kbd>
@@ -189,7 +189,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
         </div>
 
         {/* Footer info */}
-        <div className="text-center mt-5 text-[9px] text-[#00aaaa] uppercase font-mono tracking-wider pt-2 border-t border-[#000055]">
+        <div className="text-center mt-5 text-[9px] text-[var(--nc-text-dim)] uppercase font-mono tracking-wider pt-2 border-t border-[var(--nc-border-dark)]">
           {lang === 'es' ? 'COMMANDER AI STUDIO - MODO CONSOLA' : lang === 'de' ? 'COMMANDER AI STUDIO - KONSOLENMODUS' : 'COMMANDER AI STUDIO - CONSOLE MODE'}
         </div>
       </div>

@@ -129,8 +129,8 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
       }}
       className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-bold border transition-colors ${
         runtime === id
-          ? 'bg-[#00ffff] text-black border-[#00ffff]'
-          : 'bg-[#0000aa] text-[#00ffff] border-[#00aaaa]/40 hover:border-[#00ffff]'
+          ? 'bg-[var(--nc-highlight-bg)] text-black border-[var(--nc-border-light)]'
+          : 'bg-[var(--nc-bg-main)] text-[var(--nc-text)] border-[var(--nc-border-mid)]/40 hover:border-[var(--nc-border-light)]'
       }`}
       aria-pressed={runtime === id}
     >
@@ -225,34 +225,34 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
       : 0;
 
     return (
-      <div className="bg-[#0000aa] border border-[#00ffff]/40 p-2 space-y-1.5">
+      <div className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)]/40 p-2 space-y-1.5">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
-              <span className="text-[#ffff55] font-bold text-[10px] truncate">{model.name}</span>
+              <span className="text-[var(--nc-text-accent)] font-bold text-[10px] truncate">{model.name}</span>
               {model.tags?.map((tag) => (
-                <span key={tag} className="px-1 py-0.5 text-[8px] bg-[#002200] border border-[#00ffff]/40 text-[#00ffff] rounded">{tag}</span>
+                <span key={tag} className="px-1 py-0.5 text-[8px] bg-[#002200] border border-[var(--nc-border-light)]/40 text-[var(--nc-text)] rounded">{tag}</span>
               ))}
             </div>
-            <div className="text-[9px] text-[#00aaaa] mt-0.5 truncate">{model.description}</div>
-            <div className="text-[8px] text-[#00ffff]/50 mt-0.5">{model.size}</div>
+            <div className="text-[9px] text-[var(--nc-text-dim)] mt-0.5 truncate">{model.description}</div>
+            <div className="text-[8px] text-[var(--nc-text)]/50 mt-0.5">{model.size}</div>
           </div>
         </div>
 
         {isPulling ? (
           <div className="space-y-1">
             <div className="flex items-center justify-between text-[9px] font-mono">
-              <span className="text-[#ffff55]">{progress?.status || t('Descargando…', 'Downloading…')}</span>
-              <span className="text-[#00ffff]">{pct}%</span>
+              <span className="text-[var(--nc-text-accent)]">{progress?.status || t('Descargando…', 'Downloading…')}</span>
+              <span className="text-[var(--nc-text)]">{pct}%</span>
             </div>
-            <div className="bg-[#000045] border border-[#00ffff]/40 h-1.5 rounded overflow-hidden">
+            <div className="bg-[var(--nc-bg-deep)] border border-[var(--nc-border-light)]/40 h-1.5 rounded overflow-hidden">
               <div
-                className="bg-[#00ffff] h-full transition-all duration-300"
+                className="bg-[var(--nc-highlight-bg)] h-full transition-all duration-300"
                 style={{ width: `${pct}%` }}
               />
             </div>
             {progress?.digest && (
-              <div className="text-[8px] text-[#00ffff]/50 font-mono truncate">
+              <div className="text-[8px] text-[var(--nc-text)]/50 font-mono truncate">
                 {t('Capa:', 'Layer:')} {progress.digest.slice(0, 12)}…
               </div>
             )}
@@ -262,7 +262,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
             type="button"
             onClick={onPullStart}
             disabled={isPulling}
-            className="w-full bg-[#ffff55] text-black font-bold py-1.5 text-[10px] hover:bg-white flex items-center justify-center gap-1"
+            className="w-full bg-[var(--nc-active-bg)] text-black font-bold py-1.5 text-[10px] hover:bg-white flex items-center justify-center gap-1"
             title={t('Descargar este modelo a Ollama', 'Pull this model to Ollama')}
           >
             <Download className="w-3.5 h-3.5" />
@@ -275,18 +275,18 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 font-mono select-none">
-      <div className="w-full max-w-md nc-panel border-2 border-[#00ffff] p-5 relative shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-md nc-panel border-2 border-[var(--nc-border-light)] p-5 relative shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
 
         {/* Border corner accents */}
-        <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-[#ffff55] -mt-0.5 -ml-0.5" />
-        <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-[#ffff55] -mt-0.5 -mr-0.5" />
-        <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-[#ffff55] -mb-0.5 -ml-0.5" />
-        <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-[#ffff55] -mb-0.5 -mr-0.5" />
+        <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-[var(--nc-text-accent)] -mt-0.5 -ml-0.5" />
+        <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-[var(--nc-text-accent)] -mt-0.5 -mr-0.5" />
+        <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-[var(--nc-text-accent)] -mb-0.5 -ml-0.5" />
+        <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-[var(--nc-text-accent)] -mb-0.5 -mr-0.5" />
 
         {/* Header */}
-        <div className="flex items-center justify-between border-b-2 border-[#00ffff] pb-3 mb-4">
+        <div className="flex items-center justify-between border-b-2 border-[var(--nc-border-light)] pb-3 mb-4">
           <div className="flex items-center gap-2">
-            <Server className="w-5 h-5 text-[#ffff55] animate-pulse" />
+            <Server className="w-5 h-5 text-[var(--nc-text-accent)] animate-pulse" />
             <span className="text-sm font-bold text-white uppercase tracking-wider">
               {t('── SERVIDOR LLM LOCAL ──', '── LOCAL LLM SERVER ──')}
             </span>
@@ -300,8 +300,8 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
         </div>
 
         {/* Intro */}
-        <div className="bg-[#000080] border border-[#00ffff]/40 p-2 text-[10px] text-[#00ffff] mb-3 flex items-start gap-2">
-          <Cpu className="w-4 h-4 text-[#ffff55] shrink-0" />
+        <div className="bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)]/40 p-2 text-[10px] text-[var(--nc-text)] mb-3 flex items-start gap-2">
+          <Cpu className="w-4 h-4 text-[var(--nc-text-accent)] shrink-0" />
           <p className="leading-tight">
             {t(
               'Configura o cambia el servidor donde corre tu LLM local. Se guarda y lo usan todos los modos de conversación.',
@@ -324,12 +324,12 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
         {/* Auto-detection status */}
         {detected && (
           <div className="flex flex-wrap gap-1 mb-3 text-[9px] font-mono">
-            {autoDetecting && <span className="text-[#ffff55] animate-pulse">{t('🔍 Detectando servidores…', '🔍 Detecting servers…')}</span>}
+            {autoDetecting && <span className="text-[var(--nc-text-accent)] animate-pulse">{t('🔍 Detectando servidores…', '🔍 Detecting servers…')}</span>}
             {!autoDetecting && (
               <>
-                {detected.ollama && <span className="px-2 py-0.5 bg-[#002200] border border-[#00aa00] text-[#00ff00] rounded">✅ Ollama (11434)</span>}
-                {detected.lmstudio && <span className="px-2 py-0.5 bg-[#002200] border border-[#00aa00] text-[#00ff00] rounded">✅ LM Studio (1234)</span>}
-                {detected.vllm && <span className="px-2 py-0.5 bg-[#002200] border border-[#00aa00] text-[#00ff00] rounded">✅ vLLM (8000)</span>}
+                {detected.ollama && <span className="px-2 py-0.5 bg-[#002200] border border-[#00aa00] text-[var(--nc-success)] rounded">✅ Ollama (11434)</span>}
+                {detected.lmstudio && <span className="px-2 py-0.5 bg-[#002200] border border-[#00aa00] text-[var(--nc-success)] rounded">✅ LM Studio (1234)</span>}
+                {detected.vllm && <span className="px-2 py-0.5 bg-[#002200] border border-[#00aa00] text-[var(--nc-success)] rounded">✅ vLLM (8000)</span>}
                 {!detected.ollama && !detected.lmstudio && !detected.vllm && <span className="px-2 py-0.5 bg-[#220000] border border-[#aa0000] text-[#ff0000] rounded">{t('❌ Ningún servidor detectado', '❌ No servers detected')}</span>}
               </>
             )}
@@ -338,16 +338,16 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
 
         {/* Pull Models Tab (solo Ollama) */}
         {runtime === 'ollama' && detected?.ollama && (
-          <div className="mb-3 border border-[#00ffff]/40 bg-[#000080] rounded overflow-hidden">
+          <div className="mb-3 border border-[var(--nc-border-light)]/40 bg-[var(--nc-bg-panel)] rounded overflow-hidden">
             {/* Tab buttons */}
-            <div className="flex border-b border-[#00ffff]/40 bg-[#0000aa]">
+            <div className="flex border-b border-[var(--nc-border-light)]/40 bg-[var(--nc-bg-main)]">
               <button
                 type="button"
                 onClick={() => setPullTab('popular')}
-                className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-bold border-r border-[#00ffff]/40 transition-colors ${
+                className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-bold border-r border-[var(--nc-border-light)]/40 transition-colors ${
                   pullTab === 'popular'
-                    ? 'bg-[#00ffff] text-black'
-                    : 'bg-[#0000aa] text-[#00ffff] hover:bg-[#0000cc]'
+                    ? 'bg-[var(--nc-highlight-bg)] text-black'
+                    : 'bg-[var(--nc-bg-main)] text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)]'
                 }`}
                 aria-pressed={pullTab === 'popular'}
               >
@@ -359,8 +359,8 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
                 onClick={() => { setPullTab('installed'); handleTest(); }}
                 className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-bold transition-colors ${
                   pullTab === 'installed'
-                    ? 'bg-[#00ffff] text-black'
-                    : 'bg-[#0000aa] text-[#00ffff] hover:bg-[#0000cc]'
+                    ? 'bg-[var(--nc-highlight-bg)] text-black'
+                    : 'bg-[var(--nc-bg-main)] text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)]'
                 }`}
                 aria-pressed={pullTab === 'installed'}
               >
@@ -373,7 +373,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
             {pullTab === 'popular' && (
               <div className="p-3 space-y-2 max-h-[300px] overflow-y-auto">
                 <div className="flex gap-1 mb-2">
-                  <Search className="w-3.5 h-3.5 text-[#00ffff]/70 mt-1 shrink-0" />
+                  <Search className="w-3.5 h-3.5 text-[var(--nc-text)]/70 mt-1 shrink-0" />
                   <input
                     type="text"
                     value={pullSearch}
@@ -381,7 +381,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
                     placeholder={t('Buscar modelo (ej: coder, reasoning, tiny…)', 'Search model (e.g. coder, reasoning, tiny…)')}
 
                     spellCheck={false}
-                    className="flex-1 bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[#00ffff]"
+                    className="flex-1 bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[var(--nc-border-light)]"
                   />
                 </div>
                 <div className="space-y-1.5 max-h-[240px] overflow-y-auto">
@@ -410,20 +410,20 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
             {pullTab === 'installed' && result?.ok && result.models && (
               <div className="p-3 space-y-2 max-h-[300px] overflow-y-auto">
                 {result.models.length === 0 ? (
-                  <p className="text-[10px] text-[#00ffff]/60 text-center py-4">
+                  <p className="text-[10px] text-[var(--nc-text)]/60 text-center py-4">
                     {t('No hay modelos instalados. Usa la pestaña "Descargar modelos" para añadir.', 'No models installed. Use "Pull Models" tab to add.')}
                   </p>
                 ) : (
                   result.models.map((m: string) => (
                     <div
                       key={m}
-                      className="flex items-center justify-between bg-[#0000aa] border border-[#00ffff]/40 px-2 py-1.5 text-[10px] font-mono"
+                      className="flex items-center justify-between bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)]/40 px-2 py-1.5 text-[10px] font-mono"
                     >
-                      <span className="text-[#00ffff] truncate max-w-[200px]">{m}</span>
+                      <span className="text-[var(--nc-text)] truncate max-w-[200px]">{m}</span>
                       <button
                         type="button"
                         onClick={() => handleDeleteModel(m)}
-                        className="text-[#ff5555] hover:text-white px-1.5 py-0.5 text-[9px] border border-[#ff5555]/40 rounded"
+                        className="text-[var(--nc-danger)] hover:text-white px-1.5 py-0.5 text-[9px] border border-[var(--nc-danger)]/40 rounded"
                         title={t('Eliminar modelo', 'Delete model')}
                       >
                         <Trash2 className="w-3 h-3" />
@@ -440,7 +440,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
         <div className="space-y-2">
           {runtime === 'ollama' ? (
             <div>
-              <label className="text-[10px] text-[#ffff55] font-bold uppercase flex items-center gap-1 mb-1">
+              <label className="text-[10px] text-[var(--nc-text-accent)] font-bold uppercase flex items-center gap-1 mb-1">
                 <Cable className="w-3 h-3" /> {t('Servidor Ollama', 'Ollama server')}
               </label>
               <input
@@ -448,9 +448,9 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
                 onChange={(e) => setOllamaHost(e.target.value)}
                 placeholder="http://localhost:11434"
                 spellCheck={false}
-                className="w-full bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[#00ffff]"
+                className="w-full bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[var(--nc-border-light)]"
               />
-              <p className="text-[9px] text-[#00aaaa] mt-1">
+              <p className="text-[9px] text-[var(--nc-text-dim)] mt-1">
                 {t(
                   'Modelos gratis en tu máquina. Ej.: ollama pull llama3.2',
                   'Free models on your machine. E.g.: ollama pull llama3.2'
@@ -460,7 +460,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
           ) : (
             <>
               <div>
-                <label className="text-[10px] text-[#ffff55] font-bold uppercase flex items-center gap-1 mb-1">
+                <label className="text-[10px] text-[var(--nc-text-accent)] font-bold uppercase flex items-center gap-1 mb-1">
                   <PlugZap className="w-3 h-3" /> {t('Base URL (OpenAI-compatible)', 'Base URL (OpenAI-compatible)')}
                 </label>
                 <input
@@ -468,9 +468,9 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
                   onChange={(e) => setBaseUrl(e.target.value)}
                   placeholder="http://localhost:1234/v1"
                   spellCheck={false}
-                  className="w-full bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[#00ffff]"
+                  className="w-full bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[var(--nc-border-light)]"
                 />
-                <p className="text-[9px] text-[#00aaaa] mt-1">
+                <p className="text-[9px] text-[var(--nc-text-dim)] mt-1">
                   {t(
                     'LM Studio, llama.cpp, vLLM, oMLX… (termina en /v1).',
                     'LM Studio, llama.cpp, vLLM, oMLX… (ends in /v1).'
@@ -478,7 +478,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
                 </p>
               </div>
               <div>
-                <label className="text-[10px] text-[#00ffff] uppercase font-bold mb-1 block">
+                <label className="text-[10px] text-[var(--nc-text)] uppercase font-bold mb-1 block">
                   {t('Modelo', 'Model')}
                 </label>
                 <input
@@ -486,11 +486,11 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
                   onChange={(e) => setModel(e.target.value)}
                   placeholder="llama-3.1-8b"
                   spellCheck={false}
-                  className="w-full bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[#00ffff]"
+                  className="w-full bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[var(--nc-border-light)]"
                 />
               </div>
               <div>
-                <label className="text-[10px] text-[#00ffff] uppercase font-bold mb-1 block">
+                <label className="text-[10px] text-[var(--nc-text)] uppercase font-bold mb-1 block">
                   {t('API key (opcional)', 'API key (optional)')}
                 </label>
                 <input
@@ -499,7 +499,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
                   type="password"
                   placeholder=""
                   autoComplete="off"
-                  className="w-full bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[#00ffff] placeholder:text-[#00ffff]/20"
+                  className="w-full bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[var(--nc-border-light)] placeholder:text-[var(--nc-text)]/20"
                 />
               </div>
             </>
@@ -511,7 +511,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
           <button
             onClick={handleTest}
             disabled={testing || !currentUrl.trim()}
-            className="nc-button flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] bg-[#000080] text-[#00ffff] border border-[#00ffff] font-bold hover:text-white disabled:opacity-40"
+            className="nc-button flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border border-[var(--nc-border-light)] font-bold hover:text-white disabled:opacity-40"
             title={t('Probar conexión', 'Test connection')}
           >
             {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Cable className="w-3.5 h-3.5" />}
@@ -519,7 +519,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
           </button>
           <button
             onClick={handleSave}
-            className="nc-button flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] bg-[#00ffff] text-black font-bold hover:bg-white"
+            className="nc-button flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] bg-[var(--nc-highlight-bg)] text-black font-bold hover:bg-white"
             title={t('Guardar configuración', 'Save configuration')}
           >
             <Save className="w-3.5 h-3.5" />
@@ -539,7 +539,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
         {/* Result */}
         {result &&
           (result.ok ? (
-            <div className="mt-3 bg-[#003300] border border-[#00ff00]/50 text-[#88ff88] p-2 text-[10px] leading-relaxed">
+            <div className="mt-3 bg-[#003300] border border-[var(--nc-success)]/50 text-[var(--nc-success)] p-2 text-[10px] leading-relaxed">
               <div className="flex items-center gap-1.5 font-bold mb-1">
                 <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                 {t('¡Conexión exitosa!', 'Connection successful!')}
@@ -552,7 +552,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
                       `${result.models!.length} modelo(s) detectado(s):`,
                       `${result.models!.length} model(s) found:`
                     )}
-                    <span className="block mt-0.5 text-[#ffff55] max-h-16 overflow-y-auto">
+                    <span className="block mt-0.5 text-[var(--nc-text-accent)] max-h-16 overflow-y-auto">
                       {result.models!.slice(0, 12).join(' · ')}
                       {(result.models!.length || 0) > 12 ? ' …' : ''}
                     </span>
@@ -563,14 +563,14 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
               )}
             </div>
           ) : (
-            <div className="mt-3 bg-[#330000] border border-[#ff5555]/50 text-[#ff8888] p-2 text-[10px] flex items-start gap-1.5 leading-relaxed">
+            <div className="mt-3 bg-[#330000] border border-[var(--nc-danger)]/50 text-[#ff8888] p-2 text-[10px] flex items-start gap-1.5 leading-relaxed">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
               <span>{result.error || t('No se pudo conectar', 'Could not connect')}</span>
             </div>
           ))}
 
         {savedFlash && (
-          <div className="mt-3 bg-[#003300] border border-[#00ff00]/50 text-[#88ff88] p-1.5 text-[10px] flex items-center gap-1.5 animate-in fade-in duration-150">
+          <div className="mt-3 bg-[#003300] border border-[var(--nc-success)]/50 text-[var(--nc-success)] p-1.5 text-[10px] flex items-center gap-1.5 animate-in fade-in duration-150">
             <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
             {t(
               '✓ Configuración guardada. Ya la usa el chat.',
@@ -580,7 +580,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
         )}
 
         {/* Footer */}
-        <div className="text-center mt-4 text-[9px] text-[#00aaaa] uppercase font-mono tracking-wider pt-2 border-t border-[#000055]">
+        <div className="text-center mt-4 text-[9px] text-[var(--nc-text-dim)] uppercase font-mono tracking-wider pt-2 border-t border-[var(--nc-border-dark)]">
           {t('COMMANDER AI STUDIO - LLM LOCAL', 'COMMANDER AI STUDIO - LOCAL LLM')}
         </div>
       </div>

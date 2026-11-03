@@ -73,14 +73,14 @@ export function CheckpointsView({ projectPath, lang = 'es' }: CheckpointsViewPro
 
   return (
     <div className="flex flex-col h-full min-h-0 text-[11px] font-mono">
-      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-[#004466] shrink-0">
-        <History className="w-3.5 h-3.5 text-[#00ffff]" />
-        <span className="font-bold text-[#00ffff]">{lang === 'es' ? 'Puntos de control' : lang === 'de' ? 'Checkpoints' : 'Checkpoints'}</span>
+      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-[var(--nc-border-dark)] shrink-0">
+        <History className="w-3.5 h-3.5 text-[var(--nc-text)]" />
+        <span className="font-bold text-[var(--nc-text)]">{lang === 'es' ? 'Puntos de control' : lang === 'de' ? 'Checkpoints' : 'Checkpoints'}</span>
         <button
           onClick={() => void onCreate()}
           title={lang === 'es' ? 'Crear punto de control' : lang === 'de' ? 'Checkpoint erstellen' : 'Create checkpoint'}
           aria-label={lang === 'es' ? 'Crear punto de control' : lang === 'de' ? 'Checkpoint erstellen' : 'Create checkpoint'}
-          className="ml-auto p-1 text-black/80 hover:text-[#ffff55]"
+          className="ml-auto p-1 text-black/80 hover:text-[var(--nc-text-accent)]"
         >
           <Plus className="w-3.5 h-3.5" />
         </button>
@@ -88,17 +88,17 @@ export function CheckpointsView({ projectPath, lang = 'es' }: CheckpointsViewPro
           onClick={() => void load()}
           title={lang === 'es' ? 'Refrescar' : lang === 'de' ? 'Aktualisieren' : 'Refresh'}
           aria-label={lang === 'es' ? 'Refrescar' : lang === 'de' ? 'Aktualisieren' : 'Refresh'}
-          className="p-1 text-black/80 hover:text-[#00ffff]"
+          className="p-1 text-black/80 hover:text-[var(--nc-text)]"
         >
           <RefreshCw className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      {status && <div className="px-2 py-1 text-[#ffff55] border-b border-[#004466] shrink-0">{status}</div>}
-      {error && <div className="px-2 py-1 text-red-300 border-b border-[#004466] shrink-0">{error}</div>}
+      {status && <div className="px-2 py-1 text-[var(--nc-text-accent)] border-b border-[var(--nc-border-dark)] shrink-0">{status}</div>}
+      {error && <div className="px-2 py-1 text-red-300 border-b border-[var(--nc-border-dark)] shrink-0">{error}</div>}
 
       <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1.5">
-        {loading && <div className="text-[#00ffff]">{lang === 'es' ? 'Cargando…' : lang === 'de' ? 'Wird geladen…' : 'Loading…'}</div>}
+        {loading && <div className="text-[var(--nc-text)]">{lang === 'es' ? 'Cargando…' : lang === 'de' ? 'Wird geladen…' : 'Loading…'}</div>}
 
         {!loading && items.length === 0 && (
           <div className="text-white/60 leading-relaxed">
@@ -111,13 +111,13 @@ export function CheckpointsView({ projectPath, lang = 'es' }: CheckpointsViewPro
 
         {!loading &&
           items.map((cp) => (
-            <div key={cp.id} className="border border-[#004466] bg-[#000022] p-1.5">
+            <div key={cp.id} className="border border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] p-1.5">
               <div className="flex items-center gap-2">
-                <span className="text-[#ffff55] truncate flex-1" title={cp.label}>
+                <span className="text-[var(--nc-text-accent)] truncate flex-1" title={cp.label}>
                   {cp.label}
                 </span>
                 {cp.tool && (
-                  <span className="text-[9px] px-1 border border-[#00ffff]/40 text-[#00ffff]">{cp.tool}</span>
+                  <span className="text-[9px] px-1 border border-[var(--nc-border-light)]/40 text-[var(--nc-text)]">{cp.tool}</span>
                 )}
               </div>
               <div className="flex items-center gap-2 mt-1 text-[9px] text-white/60">
@@ -134,7 +134,7 @@ export function CheckpointsView({ projectPath, lang = 'es' }: CheckpointsViewPro
                     </span>
                     <button
                       onClick={() => void onRestore(cp.id)}
-                      className="nc-button text-[10px] px-2 py-0.5 bg-[#ffff55] text-black font-bold"
+                      className="nc-button text-[10px] px-2 py-0.5 bg-[var(--nc-active-bg)] text-black font-bold"
                     >
                       {lang === 'es' ? 'Sí' : lang === 'de' ? 'Ja' : 'Yes'}
                     </button>

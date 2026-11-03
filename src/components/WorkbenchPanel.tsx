@@ -192,12 +192,12 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
   return (
     <ResizableSplit id="workbench" side="right" lang={lang}>
     <aside
-      className="w-full h-full nc-panel border-l-2 border-[#00ffff] flex flex-col min-h-0 overflow-hidden z-20 font-mono"
+      className="w-full h-full nc-panel border-l-2 border-[var(--nc-border-light)] flex flex-col min-h-0 overflow-hidden z-20 font-mono"
       aria-label={lang === 'es' ? 'Workbench' : lang === 'de' ? 'Workbench' : 'Workbench'}
     >
       {/* Menú de selección: con el panel estrecho las vistas no caben, así que
           la fila se desplaza en horizontal en vez de quedar recortada. */}
-      <div className="flex items-center gap-0.5 px-1 py-1 bg-[#00aaaa] border-b-2 border-[#000055] shrink-0 min-w-0 overflow-x-auto nc-x-scroll">
+      <div className="flex items-center gap-0.5 px-1 py-1 bg-[var(--nc-header-bg)] border-b-2 border-[var(--nc-border-dark)] shrink-0 min-w-0 overflow-x-auto nc-x-scroll">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -205,7 +205,7 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
             title={lang === 'es' ? tab.tip : lang === 'de' ? tab.tipDe : tab.tipEn}
             className={`flex shrink-0 items-center gap-1.5 px-2 py-1 text-[11px] font-bold rounded-sm border whitespace-nowrap transition-colors ${
               active === tab.id
-                ? 'bg-[#000080] text-[#00ffff] border-[#00ffff]'
+                ? 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border-[var(--nc-border-light)]'
                 : 'text-black hover:bg-black/10 border-transparent'
             }`}
           >
@@ -221,7 +221,7 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
         <button
           onClick={onClose}
           title={lang === 'es' ? 'Cerrar panel' : lang === 'de' ? 'Panel schließen' : 'Close panel'}
-          className="ml-auto p-1 text-black hover:text-[#ff5555] rounded"
+          className="ml-auto p-1 text-black hover:text-[var(--nc-danger)] rounded"
         >
           <X className="w-4 h-4" />
         </button>
@@ -249,14 +249,14 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
             <div className="flex items-center gap-1 px-2 pt-1 shrink-0">
               <button
                 onClick={() => setTerminalMode('pty')}
-                className={'px-1.5 py-0.5 text-[9px] font-bold border rounded ' + (terminalMode === 'pty' ? 'bg-[#00ffff] text-black border-[#00ffff]' : 'text-[#00ffff] border-[#004466] hover:border-[#00ffff]')}
+                className={'px-1.5 py-0.5 text-[9px] font-bold border rounded ' + (terminalMode === 'pty' ? 'bg-[var(--nc-highlight-bg)] text-black border-[var(--nc-border-light)]' : 'text-[var(--nc-text)] border-[var(--nc-border-dark)] hover:border-[var(--nc-border-light)]')}
                 title={lang === 'es' ? 'Shell persistente real (xterm.js + WebSocket)' : lang === 'de' ? 'Echte persistente Shell (xterm.js + WebSocket)' : 'Real persistent shell (xterm.js + WebSocket)'}
               >
                 {lang === 'es' ? 'PTY' : 'PTY'}
               </button>
               <button
                 onClick={() => setTerminalMode('simple')}
-                className={'px-1.5 py-0.5 text-[9px] font-bold border rounded ' + (terminalMode === 'simple' ? 'bg-[#00ffff] text-black border-[#00ffff]' : 'text-[#00ffff] border-[#004466] hover:border-[#00ffff]')}
+                className={'px-1.5 py-0.5 text-[9px] font-bold border rounded ' + (terminalMode === 'simple' ? 'bg-[var(--nc-highlight-bg)] text-black border-[var(--nc-border-light)]' : 'text-[var(--nc-text)] border-[var(--nc-border-dark)] hover:border-[var(--nc-border-light)]')}
                 title={lang === 'es' ? 'Comando por comando (siempre disponible)' : lang === 'de' ? 'Ein Befehl nach dem anderen (immer verfügbar)' : 'One command at a time (always available)'}
               >
                 {lang === 'es' ? 'Simple' : lang === 'de' ? 'Einfach' : 'Simple'}
@@ -264,7 +264,7 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
             </div>
             <div className="flex-1 min-h-0 flex flex-col">
               {terminalMode === 'pty' ? (
-                <React.Suspense fallback={<div className="flex-1 flex items-center justify-center text-[#00ffff] text-[10px] font-mono">{lang === 'es' ? 'CARGANDO TERMINAL...' : lang === 'de' ? 'TERMINAL WIRD GELADEN...' : 'LOADING TERMINAL...'}</div>}>
+                <React.Suspense fallback={<div className="flex-1 flex items-center justify-center text-[var(--nc-text)] text-[10px] font-mono">{lang === 'es' ? 'CARGANDO TERMINAL...' : lang === 'de' ? 'TERMINAL WIRD GELADEN...' : 'LOADING TERMINAL...'}</div>}>
                   <XTerminal projectPath={projectPath} lang={lang} />
                 </React.Suspense>
               ) : (
@@ -279,12 +279,12 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
         {active === 'problems' && <ProblemsView projectPath={projectPath} lang={lang} />}
         {active === 'preview' && (
           <div className="flex flex-col h-full min-h-0">
-            <div className="flex gap-0.5 px-2 py-1 border-b border-[#00ffff]/30 bg-[#00aaaa]">
+            <div className="flex gap-0.5 px-2 py-1 border-b border-[var(--nc-border-light)]/30 bg-[var(--nc-header-bg)]">
               {(['preview','console','network'] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setPreviewTab(tab)}
-                  className={`px-2 py-0.5 text-[9px] font-bold rounded transition-colors ${previewTab === tab ? 'bg-[#00ffff] text-black' : 'bg-[#000080] text-[#00ffff] hover:bg-[#0000aa]'}`}
+                  className={`px-2 py-0.5 text-[9px] font-bold rounded transition-colors ${previewTab === tab ? 'bg-[var(--nc-highlight-bg)] text-black' : 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)]'}`}
                 >
                   {tab}
                 </button>

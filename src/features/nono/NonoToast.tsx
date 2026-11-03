@@ -12,19 +12,19 @@ export interface NonoToast {
 }
 
 const TOAST_STYLES: Record<NonoToast['type'], string> = {
-  info: 'bg-[#001a33] border-[#00ffff] text-[#00ffff]',
-  success: 'bg-[#00243e] border-[#00ff66] text-[#00ff66]',
-  error: 'bg-[#240000] border-[#ff5555] text-[#ff5555]',
-  warning: 'bg-[#2a1a00] border-[#ffff55] text-[#ffff55]',
-  action: 'bg-[#001633] border-[#00ffff] text-[#00ffff]',
+  info: 'bg-[var(--nc-bg-deep)] border-[var(--nc-border-light)] text-[var(--nc-text)]',
+  success: 'bg-[var(--nc-bg-deep)] border-[var(--nc-success)] text-[var(--nc-success)]',
+  error: 'bg-[#240000] border-[var(--nc-danger)] text-[var(--nc-danger)]',
+  warning: 'bg-[#2a1a00] border-[var(--nc-text-accent)] text-[var(--nc-text-accent)]',
+  action: 'bg-[var(--nc-bg-deep)] border-[var(--nc-border-light)] text-[var(--nc-text)]',
 };
 
 const ICONS: Record<NonoToast['type'], React.ReactNode> = {
-  info: <span className="text-[#00ffff]">●</span>,
-  success: <span className="text-[#00ff66]">✓</span>,
-  error: <span className="text-[#ff5555]">✕</span>,
-  warning: <span className="text-[#ffff55]">⚠</span>,
-  action: <span className="text-[#00ffff]">→</span>,
+  info: <span className="text-[var(--nc-text)]">●</span>,
+  success: <span className="text-[var(--nc-success)]">✓</span>,
+  error: <span className="text-[var(--nc-danger)]">✕</span>,
+  warning: <span className="text-[var(--nc-text-accent)]">⚠</span>,
+  action: <span className="text-[var(--nc-text)]">→</span>,
 };
 
 /**

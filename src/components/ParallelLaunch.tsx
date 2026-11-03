@@ -252,7 +252,7 @@ export function ParallelLaunch({ cwd, running = false, lang = 'es' }: ParallelLa
       </div>
 
       {running && (
-        <div className="text-[10px] text-[#ffff55] mt-1" data-testid="parallel-blocked">
+        <div className="text-[10px] text-[var(--nc-text-accent)] mt-1" data-testid="parallel-blocked">
           {t(
             'Hay una tarea en curso: su stream es el que se ve abajo. Detenla para lanzar otra tanda.',
             'A task is running: the stream below belongs to it. Stop it to launch another batch.',

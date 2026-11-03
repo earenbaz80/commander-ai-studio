@@ -182,13 +182,13 @@ export const GlobalTooltip: React.FC = () => {
       }}
       className="fixed z-[10001] pointer-events-none transition-opacity duration-100 ease-out font-mono select-none"
     >
-      <div className="bg-[#000080] border-2 border-[#00ffff] px-2.5 py-1 text-white text-xs shadow-[4px_4px_0px_#000000] flex flex-col items-center max-w-xs text-center animate-in fade-in zoom-in-95">
-        <div className="flex items-center gap-1.5 text-[#ffff55] font-bold text-[11px] leading-tight">
-          <span className="text-[#00ffff]">►</span>
+      <div className="bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] px-2.5 py-1 text-white text-xs shadow-[4px_4px_0px_#000000] flex flex-col items-center max-w-xs text-center animate-in fade-in zoom-in-95">
+        <div className="flex items-center gap-1.5 text-[var(--nc-text-accent)] font-bold text-[11px] leading-tight">
+          <span className="text-[var(--nc-text)]">►</span>
           <span>{tooltip.text}</span>
         </div>
         {tooltip.subtext && (
-          <div className="text-[#a8c7fa] text-[9px] mt-0.5 leading-snug">
+          <div className="text-[var(--nc-text)] text-[9px] mt-0.5 leading-snug">
             {tooltip.subtext}
           </div>
         )}

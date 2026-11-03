@@ -40,7 +40,7 @@ export const ResizableSplit: React.FC<ResizableSplitProps> = ({ id, side, lang =
       title={hint}
       onMouseDown={onMouseDown}
       onDoubleClick={onDoubleClick}
-      className="w-1 shrink-0 cursor-col-resize bg-[#00ffff]/25 hover:bg-[#00ffff] transition-colors"
+      className="w-1 shrink-0 cursor-col-resize bg-[var(--nc-highlight-bg)]/25 hover:bg-[var(--nc-highlight-bg)] transition-colors"
     />
   );
 

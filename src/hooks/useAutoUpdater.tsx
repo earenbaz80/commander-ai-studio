@@ -152,15 +152,15 @@ export function UpdateNotification() {
   if (downloaded) {
     return (
       <div className="fixed bottom-4 right-4 z-50 animate-slide-in">
-        <div className="bg-[#000080] border-2 border-[#ffff55] rounded-lg p-4 max-w-md shadow-[0_0_30px_rgba(255,255,85,0.3)]">
+        <div className="bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-text-accent)] rounded-lg p-4 max-w-md shadow-[0_0_30px_rgba(255,255,85,0.3)]">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1">
-              <div className="flex items-center gap-2 text-[#ffff55] font-bold text-sm mb-2">
+              <div className="flex items-center gap-2 text-[var(--nc-text-accent)] font-bold text-sm mb-2">
                 <span className="flex items-center gap-1">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M4 16H3a2 2 0 01-2-2V6a2 2 0 012-2h16a2 2 0 012 2v9a2 2 0 01-2 2h-1" stroke="currentColor" /></svg>
                   <span className="font-bold text-[12px]">Actualización disponible</span>
                 </span>
-                <span className="bg-[#ffff55] text-black text-[10px] px-1.5 py-0.5 rounded font-bold">Lista para instalar</span>
+                <span className="bg-[var(--nc-active-bg)] text-black text-[10px] px-1.5 py-0.5 rounded font-bold">Lista para instalar</span>
               </div>
               <p className="text-[#e3e2e6] text-[11px] mb-3 line-clamp-2">
                 Update ready to install.
@@ -172,16 +172,16 @@ export function UpdateNotification() {
                       window.electronAPI.update.install();
                     }
                   }}
-                  className="flex-1 bg-[#ffff55] text-black font-bold py-1.5 px-3 rounded text-[11px] hover:bg-[#ffff00] transition-colors"
+                  className="flex-1 bg-[var(--nc-active-bg)] text-black font-bold py-1.5 px-3 rounded text-[11px] hover:bg-[#ffff00] transition-colors"
                 >
                   Instalar y reiniciar
                 </button>
-                <button className="px-3 py-1.5 bg-[#0000aa] border border-[#00ffff] text-[#00ffff] hover:bg-[#0000cc] rounded text-[11px]">
+                <button className="px-3 py-1.5 bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] rounded text-[11px]">
                   Luego
                 </button>
               </div>
             </div>
-            <button className="absolute top-1 right-1 text-[#00ffff]/50 hover:text-white text-[12px] w-6 h-6 flex items-center justify-center">×</button>
+            <button className="absolute top-1 right-1 text-[var(--nc-text)]/50 hover:text-white text-[12px] w-6 h-6 flex items-center justify-center">×</button>
           </div>
         </div>
       </div>
@@ -191,13 +191,13 @@ export function UpdateNotification() {
   if (updateInfo && !downloading && !downloaded) {
     return (
       <div className="fixed bottom-4 right-4 z-50 animate-slide-in">
-        <div className="bg-[#000080] border-2 border-[#00ffff] rounded-lg p-4 max-w-md shadow-[0_0_30px_rgba(0,255,255,0.3)]">
+        <div className="bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] rounded-lg p-4 max-w-md shadow-[0_0_30px_rgba(0,255,255,0.3)]">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1">
-              <div className="flex items-center gap-2 text-[#00ffff] font-bold text-sm mb-2">
+              <div className="flex items-center gap-2 text-[var(--nc-text)] font-bold text-sm mb-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M4 16H3a2 2 0 01-2-2V6a2 2 0 012-2h16a2 2 0 012 2v9a2 2 0 01-2 2h-1" stroke="currentColor" /></svg>
                 <span className="font-bold">Actualización disponible</span>
-                <span className="bg-[#00ffff] text-black text-[10px] px-1.5 py-0.5 rounded font-bold">v{updateInfo.version}</span>
+                <span className="bg-[var(--nc-highlight-bg)] text-black text-[10px] px-1.5 py-0.5 rounded font-bold">v{updateInfo.version}</span>
               </div>
               <p className="text-[#e3e2e6] text-[11px] mb-3 line-clamp-2">
                 {updateInfo.releaseNotes || 'Una nueva versión está disponible con mejoras y correcciones.'}
@@ -209,16 +209,16 @@ export function UpdateNotification() {
                       window.electronAPI.update.download();
                     }
                   }}
-                  className="flex-1 bg-[#00ffff] text-black font-bold py-1.5 px-3 rounded text-[11px] hover:bg-[#00dddd] transition-colors"
+                  className="flex-1 bg-[var(--nc-highlight-bg)] text-black font-bold py-1.5 px-3 rounded text-[11px] hover:bg-[#00dddd] transition-colors"
                 >
                   Descargar actualización
                 </button>
-                <button className="px-3 py-1.5 bg-[#0000aa] border border-[#00ffff] text-[#00ffff] hover:bg-[#0000cc] rounded text-[11px]">
+                <button className="px-3 py-1.5 bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] rounded text-[11px]">
                   Luego
                 </button>
               </div>
             </div>
-            <button className="absolute top-1 right-1 text-[#00ffff]/50 hover:text-white text-[12px] w-6 h-6 flex items-center justify-center">×</button>
+            <button className="absolute top-1 right-1 text-[var(--nc-text)]/50 hover:text-white text-[12px] w-6 h-6 flex items-center justify-center">×</button>
           </div>
         </div>
       </div>
@@ -228,18 +228,18 @@ export function UpdateNotification() {
   if (downloading) {
     return (
       <div className="fixed bottom-4 right-4 z-50 animate-slide-in">
-        <div className="bg-[#000080] border-2 border-[#ffff55] rounded-lg p-4 max-w-md shadow-[0_0_30px_rgba(255,255,85,0.4)]">
-          <div className="flex items-center gap-2 text-[#ffff55] font-bold text-sm mb-2">
+        <div className="bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-text-accent)] rounded-lg p-4 max-w-md shadow-[0_0_30px_rgba(255,255,85,0.4)]">
+          <div className="flex items-center gap-2 text-[var(--nc-text-accent)] font-bold text-sm mb-2">
             <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M4 16H3a2 2 0 01-2-2V6a2 2 0 012-2h16a2 2 0 012 2v9a2 2 0 01-2 2h-1" stroke="currentColor" /></svg>
             <span>Descargando actualización...</span>
           </div>
-          <div className="w-full bg-[#000080] border border-[#ffff55] rounded h-2 overflow-hidden">
+          <div className="w-full bg-[var(--nc-bg-panel)] border border-[var(--nc-text-accent)] rounded h-2 overflow-hidden">
             <div
-              className="bg-[#ffff55] h-full transition-all duration-300"
+              className="bg-[var(--nc-active-bg)] h-full transition-all duration-300"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <p className="text-[#ffff55] text-[11px] text-right mt-1">{Math.round(progress)}%</p>
+          <p className="text-[var(--nc-text-accent)] text-[11px] text-right mt-1">{Math.round(progress)}%</p>
         </div>
       </div>
     );

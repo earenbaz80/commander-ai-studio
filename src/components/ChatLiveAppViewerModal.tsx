@@ -373,7 +373,7 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
 
     const htmlBodyContent = isHtmlBlock 
       ? code 
-      : `<div id="app" class="p-4"><div class="text-[#ffff55] font-mono text-sm">▶ Script ejecutado: Revisa los logs en la consola inferior</div></div><script>${code}</script>`;
+      : `<div id="app" class="p-4"><div class="text-[var(--nc-text-accent)] font-mono text-sm">▶ Script ejecutado: Revisa los logs en la consola inferior</div></div><script>${code}</script>`;
 
     return `<!DOCTYPE html>
 <html lang="es">
@@ -435,7 +435,7 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 bg-black/85 flex flex-col p-2 sm:p-4 font-mono select-none">
       {/* Modal Main Frame */}
-      <div className="nc-panel flex-1 flex flex-col bg-[#000080] border-2 border-[#00ffff] shadow-[12px_12px_0px_#000055] overflow-hidden">
+      <div className="nc-panel flex-1 flex flex-col bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] shadow-[12px_12px_0px_var(--nc-shadow)] overflow-hidden">
         
         {/* Top Retro Norton Title Bar */}
         <div className="nc-header px-3 py-1.5 flex items-center justify-between border-b-2 border-black shrink-0">
@@ -450,7 +450,7 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
             <button
               type="button"
               onClick={() => setReloadKey((prev) => prev + 1)}
-              className="nc-button !px-2 !py-0.5 text-xs bg-[#00aaaa] text-black font-bold flex items-center gap-1 hover:bg-[#00ffff]"
+              className="nc-button !px-2 !py-0.5 text-xs bg-[var(--nc-header-bg)] text-black font-bold flex items-center gap-1 hover:bg-[var(--nc-highlight-bg)]"
               title={lang === 'es' ? "Reiniciar / Recargar App" : lang === 'de' ? 'App neu laden' : "Reload App"}
             >
               <RotateCw className="w-3.5 h-3.5" />
@@ -460,7 +460,7 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
             <button
               type="button"
               onClick={handleOpenInNewWindow}
-              className="nc-button !px-2 !py-0.5 text-xs bg-[#0000aa] text-[#00ffff] font-bold flex items-center gap-1 hover:bg-[#0000ff]"
+              className="nc-button !px-2 !py-0.5 text-xs bg-[var(--nc-bg-main)] text-[var(--nc-text)] font-bold flex items-center gap-1 hover:bg-[#0000ff]"
               title={lang === 'es' ? "Abrir en Pestaña / Ventana Externa" : lang === 'de' ? 'In neuem Fenster öffnen' : "Open in new window"}
             >
               <ExternalLink className="w-3.5 h-3.5" />
@@ -479,14 +479,14 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
         </div>
 
         {/* Subbar: Device Switcher & Snippet Selector */}
-        <div className="bg-[#0000aa] border-b-2 border-[#00ffff] px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 shrink-0 text-white text-xs">
+        <div className="bg-[var(--nc-bg-main)] border-b-2 border-[var(--nc-border-light)] px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 shrink-0 text-white text-xs">
           {/* Device Responsive Controls */}
           <DeviceSelect value={viewport.id} onChange={setDevice} lang={lang} testId="viewer-device" />
 
           {/* Snippet Tabs Selector (if chat produced multiple snippets) */}
           {snippets.length > 1 && (
             <div className="flex items-center gap-1 overflow-x-auto max-w-md py-0.5">
-              <span className="text-[11px] text-[#ffff55] font-bold shrink-0">
+              <span className="text-[11px] text-[var(--nc-text-accent)] font-bold shrink-0">
                 {lang === 'es' ? 'Archivos / Snippets:' : lang === 'de' ? 'Snippets:' : 'Snippets:'}
               </span>
               {snippets.map((snip, idx) => (
@@ -499,8 +499,8 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
                   }}
                   className={`px-2 py-0.5 text-[11px] border truncate max-w-[140px] font-bold ${
                     currentIndex === idx 
-                      ? 'bg-[#ffff55] text-black border-white' 
-                      : 'bg-[#000080] text-[#00ffff] border-[#00ffff]/40 hover:border-[#00ffff]'
+                      ? 'bg-[var(--nc-active-bg)] text-black border-white' 
+                      : 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border-[var(--nc-border-light)]/40 hover:border-[var(--nc-border-light)]'
                   }`}
                   title={snip.title || `Código ${idx + 1}`}
                 >
@@ -516,7 +516,7 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
               <button
                 type="button"
                 onClick={() => onSendToComposer(activeSnippet.code, activeSnippet.language)}
-                className="nc-button !px-2 !py-0.5 text-xs bg-[#00aaaa] text-black hover:bg-[#00ffff] font-bold flex items-center gap-1"
+                className="nc-button !px-2 !py-0.5 text-xs bg-[var(--nc-header-bg)] text-black hover:bg-[var(--nc-highlight-bg)] font-bold flex items-center gap-1"
                 title="Editar este código en el editor multi-archivo Commander Composer"
               >
                 <FileCode className="w-3.5 h-3.5" />
@@ -527,7 +527,7 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
             <button
               type="button"
               onClick={handleDownloadHtml}
-              className="nc-button !px-2 !py-0.5 text-xs bg-[#000080] text-[#00ffff] hover:text-white font-bold flex items-center gap-1 border-[#00ffff]"
+              className="nc-button !px-2 !py-0.5 text-xs bg-[var(--nc-bg-panel)] text-[var(--nc-text)] hover:text-white font-bold flex items-center gap-1 border-[var(--nc-border-light)]"
               title="Descargar archivo HTML autónomo"
             >
               <Download className="w-3.5 h-3.5" />
@@ -537,7 +537,7 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
             <button
               type="button"
               onClick={handleCopyCode}
-              className="nc-button !px-2 !py-0.5 text-xs bg-[#000080] text-[#00ffff] font-bold flex items-center gap-1 border-[#00ffff]"
+              className="nc-button !px-2 !py-0.5 text-xs bg-[var(--nc-bg-panel)] text-[var(--nc-text)] font-bold flex items-center gap-1 border-[var(--nc-border-light)]"
               title="Copiar código fuente"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -548,7 +548,7 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
               type="button"
               onClick={() => setShowConsole(!showConsole)}
               className={`nc-button !px-2 !py-0.5 text-xs flex items-center gap-1 ${
-                showConsole ? 'nc-active' : 'bg-[#000080] text-[#ffff55]'
+                showConsole ? 'nc-active' : 'bg-[var(--nc-bg-panel)] text-[var(--nc-text-accent)]'
               }`}
               title="Mostrar u ocultar consola de ejecución"
             >
@@ -559,23 +559,23 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
         </div>
 
         {/* Viewport & Sandbox Container */}
-        <div className="flex-1 min-h-0 bg-[#000044] flex p-2 sm:p-4 overflow-auto relative">
+        <div className="flex-1 min-h-0 bg-[var(--nc-bg-deep)] flex p-2 sm:p-4 overflow-auto relative">
           <iframe
             key={reloadKey}
             srcDoc={bundledHtml}
             sandbox="allow-scripts allow-forms allow-modals"
             title="Chat Live Sandbox"
             style={frameStyle}
-            className="bg-white border-4 border-[#00ffff] rounded-2xl shadow-[0_0_25px_rgba(0,255,255,0.4)] block m-auto"
+            className="bg-white border-4 border-[var(--nc-border-light)] rounded-2xl shadow-[0_0_25px_rgba(0,255,255,0.4)] block m-auto"
           />
         </div>
 
         {/* Bottom Expandable Sandbox Console Drawer */}
         {showConsole && (
-          <div className="h-44 shrink-0 bg-[#000033] border-t-2 border-[#00ffff] flex flex-col font-mono text-xs">
-            <div className="bg-[#0000aa] px-3 py-1 flex items-center justify-between text-[#ffff55] font-bold border-b border-black">
+          <div className="h-44 shrink-0 bg-[var(--nc-bg-deep)] border-t-2 border-[var(--nc-border-light)] flex flex-col font-mono text-xs">
+            <div className="bg-[var(--nc-bg-main)] px-3 py-1 flex items-center justify-between text-[var(--nc-text-accent)] font-bold border-b border-black">
               <div className="flex items-center gap-1.5">
-                <Terminal className="w-3.5 h-3.5 text-[#00ffff]" />
+                <Terminal className="w-3.5 h-3.5 text-[var(--nc-text)]" />
                 <span>CONSOLA DEL VISOR EN VIVO ({logs.length} EVENTOS)</span>
               </div>
               <div className="flex items-center gap-2">
@@ -589,7 +589,7 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowConsole(false)}
-                  className="text-[10px] text-[#00ffff] hover:text-white"
+                  className="text-[10px] text-[var(--nc-text)] hover:text-white"
                 >
                   [OCULTAR ▲]
                 </button>

@@ -320,9 +320,9 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
             data-nono-suggestion={showProjectSuggestion ? 'true' : undefined}
             aria-live="polite"
           >
-            <p className="text-right text-[#00ffff] font-bold text-xs leading-snug" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.9), 0 0 3px rgba(0,0,0,0.95), 0 0 16px rgba(0,255,255,0.4)' }}>
+            <p className="text-right text-[var(--nc-text)] font-bold text-xs leading-snug" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.9), 0 0 3px rgba(0,0,0,0.95), 0 0 16px rgba(0,255,255,0.4)' }}>
               {floatingMessage}
-              {typingCaret && <span className="ml-0.5 inline-block h-3.5 w-[2px] animate-pulse bg-[#00ffff] align-middle" />}
+              {typingCaret && <span className="ml-0.5 inline-block h-3.5 w-[2px] animate-pulse bg-[var(--nc-highlight-bg)] align-middle" />}
             </p>
           </div>
         );
@@ -330,23 +330,23 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
 
       {/* Panel de chat */}
       {isOpen && (
-        <div className={`nono-panel ${docked ? 'relative w-full h-full' : 'fixed z-[9999] w-80 max-w-[calc(100vw-2rem)]'} bg-[#001a33] border-2 border-[#00ffff] rounded-lg shadow-[0_0_30px_rgba(0,255,255,0.3)] flex flex-col overflow-hidden`} style={docked ? undefined : panelStyle}>
-          <div className="flex items-center justify-between px-3 py-2 bg-[#00aaaa] border-b-2 border-[#000055] shrink-0">
+        <div className={`nono-panel ${docked ? 'relative w-full h-full' : 'fixed z-[9999] w-80 max-w-[calc(100vw-2rem)]'} bg-[var(--nc-bg-deep)] border-2 border-[var(--nc-border-light)] rounded-lg shadow-[0_0_30px_rgba(0,255,255,0.3)] flex flex-col overflow-hidden`} style={docked ? undefined : panelStyle}>
+          <div className="flex items-center justify-between px-3 py-2 bg-[var(--nc-header-bg)] border-b-2 border-[var(--nc-border-dark)] shrink-0">
             <div className="flex items-center gap-2">
               <span className="text-black font-bold text-sm">Nono</span>
               <span className="text-[10px] text-black/60">{isTyping ? '...' : 'online'}</span>
             </div>
             {actionFeedback && (
-              <span className="ml-auto mr-1 text-[10px] text-[#ffff55] animate-pulse">{actionFeedback}</span>
+              <span className="ml-auto mr-1 text-[10px] text-[var(--nc-text-accent)] animate-pulse">{actionFeedback}</span>
             )}
-            {onToggleDock && <button onClick={onToggleDock} aria-label={docked ? 'Desacoplar' : 'Acoplar'} className="text-black hover:text-[#000080] font-bold leading-none px-1" title={docked ? 'Modo flotante' : 'Acoplar a panel'}><PanelRight className="w-4 h-4" /></button>}
+            {onToggleDock && <button onClick={onToggleDock} aria-label={docked ? 'Desacoplar' : 'Acoplar'} className="text-black hover:text-[var(--nc-active-text)] font-bold leading-none px-1" title={docked ? 'Modo flotante' : 'Acoplar a panel'}><PanelRight className="w-4 h-4" /></button>}
             <button onClick={() => { if (docked && onToggleDock) onToggleDock(); else setIsOpen(false); }} aria-label="Cerrar" className="text-black hover:text-red-500 font-bold leading-none px-1"><X className="w-4 h-4" /></button>
           </div>
 
-          <div className="flex items-center gap-1 px-2 py-1 bg-[#00243e] border-b border-[#004466] shrink-0">
-            <button onClick={handleClearChat} aria-label="Limpiar chat" className="text-[#00ffff] hover:bg-[#000080] border border-[#004466] rounded px-1.5 py-0.5 text-[10px] font-bold"><Trash2 className="w-3.5 h-3.5" /></button>
-            <button onClick={handleCopyLast} aria-label="Copiar último" className="text-[#00ffff] hover:bg-[#000080] border border-[#004466] rounded px-1.5 py-0.5 text-[10px] font-bold"><Clipboard className="w-3.5 h-3.5" /></button>
-            {onNewPrompt && <button onClick={handleNewPromptClick} aria-label="Nuevo chat" className="text-[#ffff55] hover:bg-[#000080] border border-[#004466] rounded px-1.5 py-0.5 text-[10px] font-bold"><Plus className="w-3.5 h-3.5" /></button>}
+          <div className="flex items-center gap-1 px-2 py-1 bg-[var(--nc-bg-deep)] border-b border-[var(--nc-border-dark)] shrink-0">
+            <button onClick={handleClearChat} aria-label="Limpiar chat" className="text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] border border-[var(--nc-border-dark)] rounded px-1.5 py-0.5 text-[10px] font-bold"><Trash2 className="w-3.5 h-3.5" /></button>
+            <button onClick={handleCopyLast} aria-label="Copiar último" className="text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] border border-[var(--nc-border-dark)] rounded px-1.5 py-0.5 text-[10px] font-bold"><Clipboard className="w-3.5 h-3.5" /></button>
+            {onNewPrompt && <button onClick={handleNewPromptClick} aria-label="Nuevo chat" className="text-[var(--nc-text-accent)] hover:bg-[var(--nc-bg-hover)] border border-[var(--nc-border-dark)] rounded px-1.5 py-0.5 text-[10px] font-bold"><Plus className="w-3.5 h-3.5" /></button>}
             <button
               onClick={() => updateUI('forceMotion', !memory.ui.forceMotion)}
               aria-label={memory.ui.forceMotion ? 'Animar siempre: activado' : 'Animar siempre: desactivado'}
@@ -364,7 +364,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
                       'Immer animieren, auch wenn das System weniger Bewegung möchte'
                     )
               }
-              className={`ml-auto flex items-center gap-1 border rounded px-1.5 py-0.5 text-[10px] font-bold ${memory.ui.forceMotion ? 'bg-[#ffff55] text-black border-[#ffff55]' : 'text-[#00ffff] hover:bg-[#000080] border-[#004466]'}`}
+              className={`ml-auto flex items-center gap-1 border rounded px-1.5 py-0.5 text-[10px] font-bold ${memory.ui.forceMotion ? 'bg-[var(--nc-active-bg)] text-black border-[var(--nc-text-accent)]' : 'text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] border-[var(--nc-border-dark)]'}`}
             >
               <Activity className="w-3.5 h-3.5" />
               {lang === 'es' ? 'animar' : lang === 'de' ? 'animieren' : 'animate'}
@@ -372,7 +372,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
           </div>
 
           {(onOpenWorkbench || onOpenCompile || onOpenGallery || onOpenSearch) && (
-            <div className="flex flex-wrap gap-1 px-2 py-1 bg-[#001633] border-b border-[#004466] shrink-0">
+            <div className="flex flex-wrap gap-1 px-2 py-1 bg-[var(--nc-bg-deep)] border-b border-[var(--nc-border-dark)] shrink-0">
               {onOpenWorkbench && <ActionChip icon={PanelRight} label={lang === 'es' ? 'Workbench' : 'Workbench'} onClick={() => { onOpenWorkbench(); setExpression('happy'); }} />}
               {onOpenCompile && <ActionChip icon={Hammer} label={lang === 'es' ? 'Compilar' : 'Compile'} onClick={() => { onOpenCompile(); setExpression('happy'); }} color="yellow" />}
               {onOpenGallery && <ActionChip icon={Library} label={lang === 'es' ? 'Galería' : 'Gallery'} onClick={() => { onOpenGallery(); setExpression('happy'); }} />}
@@ -381,31 +381,31 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
           )}
 
           {suggestions.length > 0 && (
-            <div className="px-2 py-1 bg-[#001633] border-b border-[#004466] shrink-0 space-y-1">
+            <div className="px-2 py-1 bg-[var(--nc-bg-deep)] border-b border-[var(--nc-border-dark)] shrink-0 space-y-1">
               {suggestions.map((s) => (
-                <div key={s.id} className="flex items-center justify-between gap-2 text-[10px] text-[#ffff55] bg-[#000d1a] border border-[#004466] rounded px-2 py-1">
+                <div key={s.id} className="flex items-center justify-between gap-2 text-[10px] text-[var(--nc-text-accent)] bg-[var(--nc-bg-deep)] border border-[var(--nc-border-dark)] rounded px-2 py-1">
                   <span>{s.text}</span>
-                  <button onClick={() => dismiss(s.id)} aria-label="Descartar" className="text-[#00ffff] hover:text-red-400 font-bold leading-none">×</button>
+                  <button onClick={() => dismiss(s.id)} aria-label="Descartar" className="text-[var(--nc-text)] hover:text-red-400 font-bold leading-none">×</button>
                 </div>
               ))}
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-[#000d1a]">
+          <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-[var(--nc-bg-deep)]">
             {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.fromUser ? 'justify-end' : 'justify-start'}`}>
-                <div className={`nc-x-scroll max-w-[85%] px-3 py-1.5 rounded-lg text-xs ${msg.fromUser ? 'bg-[#ffff55] text-black font-bold' : 'bg-[#00243e] text-[#00ffff] border border-[#004466]'}`}>
+                <div data-testid={msg.fromUser ? 'nono-user-bubble' : 'nono-message-bubble'} className={`nc-x-scroll max-w-[85%] px-3 py-1.5 rounded-lg text-xs ${msg.fromUser ? 'bg-[var(--nc-active-bg)] text-black font-bold' : 'bg-[var(--nc-bg-deep)] text-[var(--nc-text)] border border-[var(--nc-border-dark)]'}`}>
                   <p>{msg.text}</p>
                   <span className="text-[9px] opacity-50 block text-right">{msg.timestamp}</span>
                 </div>
               </div>
             ))}
-            {isTyping && <div className="flex justify-start"><div className="bg-[#00243e] text-[#00ffff] border border-[#004466] px-3 py-1.5 rounded-lg text-xs"><span className="animate-pulse">● ● ●</span></div></div>}
+            {isTyping && <div className="flex justify-start"><div className="bg-[var(--nc-bg-deep)] text-[var(--nc-text)] border border-[var(--nc-border-dark)] px-3 py-1.5 rounded-lg text-xs"><span className="animate-pulse">● ● ●</span></div></div>}
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="flex gap-1 p-2 bg-[#001a33] border-t border-[#004466] shrink-0">
-            <input ref={inputRef} type="text" value={inputValue} onChange={e => setInputValue(e.target.value)} onKeyDown={handleKeyDown} placeholder={lang === 'es' ? 'Escribe...' : lang === 'de' ? 'Eingabe...' : 'Type...'} className="flex-1 bg-[#000080] text-[#00ffff] text-xs px-2 py-1.5 rounded border border-[#004466] outline-none placeholder:text-[#00ffff]/40 focus:border-[#00ffff]" />
+          <div className="flex gap-1 p-2 bg-[var(--nc-bg-deep)] border-t border-[var(--nc-border-dark)] shrink-0">
+            <input ref={inputRef} type="text" value={inputValue} onChange={e => setInputValue(e.target.value)} onKeyDown={handleKeyDown} placeholder={lang === 'es' ? 'Escribe...' : lang === 'de' ? 'Eingabe...' : 'Type...'} className="flex-1 bg-[var(--nc-bg-panel)] text-[var(--nc-text)] text-xs px-2 py-1.5 rounded border border-[var(--nc-border-dark)] outline-none placeholder:text-[var(--nc-text)]/40 focus:border-[var(--nc-border-light)]" />
             <button onClick={handleSend} aria-label="Enviar" className="nc-button !px-2 !py-1 text-xs font-bold flex items-center gap-1"><Send className="w-3.5 h-3.5" /></button>
           </div>
         </div>
@@ -461,7 +461,7 @@ FloatingAssistant.displayName = 'FloatingAssistant';
 /** Chip de acción reutilizable */
 interface ActionChipProps { icon: LucideIcon; label: string; onClick: () => void; color?: 'cyan' | 'yellow'; }
 const ActionChip = ({ icon: Icon, label, onClick, color = 'cyan' }: ActionChipProps) => (
-  <button onClick={onClick} className={`flex items-center gap-1 text-[9px] font-bold ${color === 'yellow' ? 'text-[#ffff55]' : 'text-[#00ffff]'} bg-[#0000aa] hover:bg-[#00aaaa] hover:text-black border border-[#00ffff]/60 rounded px-1.5 py-0.5`}>
+  <button onClick={onClick} className={`flex items-center gap-1 text-[9px] font-bold ${color === 'yellow' ? 'text-[var(--nc-text-accent)]' : 'text-[var(--nc-text)]'} bg-[var(--nc-bg-main)] hover:bg-[var(--nc-header-bg)] hover:text-black border border-[var(--nc-border-light)]/60 rounded px-1.5 py-0.5`}>
     <Icon className="w-3 h-3" /> {label}
   </button>
 );

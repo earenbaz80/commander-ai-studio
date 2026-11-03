@@ -59,9 +59,9 @@ const TimelineItem: React.FC<{
 }> = ({ checkpoint, index, isCurrent, lang, isRollingBack, onRollbackTo }) => {
   const getGitStatusColor = (status: string) => {
     switch (status) {
-      case 'clean': return 'text-[#88ff88]';
-      case 'dirty': return 'text-[#ffff55]';
-      case 'conflict': return 'text-[#ff5555]';
+      case 'clean': return 'text-[var(--nc-success)]';
+      case 'dirty': return 'text-[var(--nc-text-accent)]';
+      case 'conflict': return 'text-[var(--nc-danger)]';
       default: return 'text-white/60';
     }
   };
@@ -92,23 +92,23 @@ const TimelineItem: React.FC<{
   };
 
   return (
-    <div className={`relative group flex flex-col p-3 bg-[#000040] border rounded transition-all duration-200 ${
-      isCurrent ? 'border-[#00ffff] bg-[#000080]/20' : 
-      'border-[#00ffff]/20 hover:border-[#00ffff]/40'
+    <div className={`relative group flex flex-col p-3 bg-[var(--nc-bg-deep)] border rounded transition-all duration-200 ${
+      isCurrent ? 'border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)]/20' : 
+      'border-[var(--nc-border-light)]/20 hover:border-[var(--nc-border-light)]/40'
     }`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] font-mono text-[#00ffff]/60 font-bold">
+            <span className="text-[10px] font-mono text-[var(--nc-text)]/60 font-bold">
               #{index}
             </span>
             <span className="text-[11px] text-white font-bold truncate">
               {checkpoint.label}
             </span>
-            <span className="text-[10px] text-[#00ffff]/60">
+            <span className="text-[10px] text-[var(--nc-text)]/60">
               {formatTime(checkpoint.timestamp)}
             </span>
-            <span className="text-[10px] text-[#00ffff]/40">
+            <span className="text-[10px] text-[var(--nc-text)]/40">
               {formatDate(checkpoint.timestamp)}
             </span>
           </div>
@@ -152,14 +152,14 @@ const TimelineItem: React.FC<{
         </div>
       </div>
 
-      <div className="hidden group-hover:block mt-3 pt-3 border-t border-[#00ffff]/10">
+      <div className="hidden group-hover:block mt-3 pt-3 border-t border-[var(--nc-border-light)]/10">
         <div className="grid grid-cols-2 gap-4 text-[10px]">
           <div>
-            <span className="text-[#00ffff]/60">{lang === 'es' ? 'Tamaño:' : lang === 'de' ? 'Größe:' : 'Size:'}</span>
+            <span className="text-[var(--nc-text)]/60">{lang === 'es' ? 'Tamaño:' : lang === 'de' ? 'Größe:' : 'Size:'}</span>
             <span className="ml-1 font-mono">{formatBytes(checkpoint.size)}</span>
           </div>
           <div>
-            <span className="text-[#00ffff]/60">{lang === 'es' ? 'Herramientas:' : lang === 'de' ? 'Tools:' : 'Tools:'}</span>
+            <span className="text-[var(--nc-text)]/60">{lang === 'es' ? 'Herramientas:' : lang === 'de' ? 'Tools:' : 'Tools:'}</span>
             <span className="ml-1 font-mono">
               {checkpoint.toolsUsed.length ? checkpoint.toolsUsed.join(', ') : '—'}
             </span>
@@ -322,20 +322,20 @@ const RollbackTimeline: React.FC<RollbackTimelineProps> = ({
     <button
       type="button"
       onClick={() => setState(prev => ({ ...prev, selectedRange: [0, checkpoints.length - 1] }))}
-      className="text-[10px] text-[#00ffff]/70 hover:text-[#00ffff] underline"
+      className="text-[10px] text-[var(--nc-text)]/70 hover:text-[var(--nc-text)] underline"
     >
       {lang === 'es' ? 'Seleccionar todo' : lang === 'de' ? 'Alle auswählen' : 'Select all'}
     </button>
   );
 
   return (
-    <div className="flex flex-col h-full bg-[#000030] border-l-2 border-[#00ffff]/20 overflow-hidden">
-      <div className="p-3 border-b-2 border-[#00ffff]/20 bg-[#000040] shrink-0">
+    <div className="flex flex-col h-full bg-[#000030] border-l-2 border-[var(--nc-border-light)]/20 overflow-hidden">
+      <div className="p-3 border-b-2 border-[var(--nc-border-light)]/20 bg-[var(--nc-bg-deep)] shrink-0">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <Clock className="w-5 h-5 text-[#ffff55]" />
-            <span className="text-[#ffff55] font-bold text-sm">{t.checkpoints}</span>
-            <span className="text-[#00ffff] text-xs px-2 py-0.5 bg-[#000040] rounded">
+            <Clock className="w-5 h-5 text-[var(--nc-text-accent)]" />
+            <span className="text-[var(--nc-text-accent)] font-bold text-sm">{t.checkpoints}</span>
+            <span className="text-[var(--nc-text)] text-xs px-2 py-0.5 bg-[var(--nc-bg-deep)] rounded">
               {checkpoints.length}
             </span>
           </div>
@@ -394,11 +394,11 @@ const RollbackTimeline: React.FC<RollbackTimelineProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-[#00ffff]/60">{t.speed}:</span>
+            <span className="text-[10px] text-[var(--nc-text)]/60">{t.speed}:</span>
             <select
               value={state.playbackSpeed}
               onChange={(e) => handleSpeedChange(Number(e.target.value))}
-              className="bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1 text-[10px] font-mono outline-none"
+              className="bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1 text-[10px] font-mono outline-none"
             >
               <option value={0.5}>0.5x</option>
               <option value={1}>1x</option>
@@ -408,11 +408,11 @@ const RollbackTimeline: React.FC<RollbackTimelineProps> = ({
           </div>
 
           <div className="flex items-center gap-2 ml-auto">
-            <span className="text-[10px] text-[#00ffff]/60">{t.filter}:</span>
+            <span className="text-[10px] text-[var(--nc-text)]/60">{t.filter}:</span>
             <select
               value={state.filter}
               onChange={(e) => setState(prev => ({ ...prev, filter: e.target.value as typeof prev.filter }))}
-              className="bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1 text-[10px] font-mono outline-none"
+              className="bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1 text-[10px] font-mono outline-none"
             >
               <option value="all">{lang === 'es' ? 'Todo' : lang === 'de' ? 'Alle' : 'All'}</option>
               <option value="tools">{lang === 'es' ? 'Herramientas' : lang === 'de' ? 'Tools' : 'Tools'}</option>
@@ -424,17 +424,17 @@ const RollbackTimeline: React.FC<RollbackTimelineProps> = ({
 
         <div className="mt-2">
           <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[#00ffff]/40" />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--nc-text)]/40" />
             <input
               type="text"
               placeholder={t.search}
               value={state.searchQuery}
               onChange={(e) => setState(prev => ({ ...prev, searchQuery: e.target.value }))}
-              className="w-full bg-[#000045] text-white border border-[#00ffff]/50 px-8 py-1.5 text-xs font-mono outline-none pl-8"
+              className="w-full bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-8 py-1.5 text-xs font-mono outline-none pl-8"
             />
           </div>
           {checkpoints.length > 0 && (
-            <div className="flex items-center gap-2 mt-1 text-[10px] text-[#00ffff]/50">
+            <div className="flex items-center gap-2 mt-1 text-[10px] text-[var(--nc-text)]/50">
               <span>{t.selectionHint}</span>
               {selectAll}
             </div>
@@ -444,14 +444,14 @@ const RollbackTimeline: React.FC<RollbackTimelineProps> = ({
 
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {checkpoints.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center text-[#00ffff]/50">
-            <Clock className="w-12 h-12 mb-2 text-[#00ffff]/30" />
+          <div className="h-full flex flex-col items-center justify-center text-center text-[var(--nc-text)]/50">
+            <Clock className="w-12 h-12 mb-2 text-[var(--nc-text)]/30" />
             <p className="text-xs">{t.noCheckpoints}</p>
-            <p className="text-[10px] text-[#00ffff]/30 mt-1">{t.noCheckpointsHint}</p>
+            <p className="text-[10px] text-[var(--nc-text)]/30 mt-1">{t.noCheckpointsHint}</p>
           </div>
         ) : filteredCheckpoints.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center text-[#00ffff]/50">
-            <Search className="w-12 h-12 mb-2 text-[#00ffff]/30" />
+          <div className="h-full flex flex-col items-center justify-center text-center text-[var(--nc-text)]/50">
+            <Search className="w-12 h-12 mb-2 text-[var(--nc-text)]/30" />
             <p className="text-xs">{t.noCheckpoints}</p>
           </div>
         ) : (
@@ -477,9 +477,9 @@ const RollbackTimeline: React.FC<RollbackTimelineProps> = ({
       </div>
 
       {state.selectedRange && (
-        <div className="p-3 border-t-2 border-[#ffff55] bg-[#000040] shrink-0">
+        <div className="p-3 border-t-2 border-[var(--nc-text-accent)] bg-[var(--nc-bg-deep)] shrink-0">
           <div className="flex items-center justify-between">
-            <span className="text-[#ffff55] font-bold text-xs">
+            <span className="text-[var(--nc-text-accent)] font-bold text-xs">
               {t.compareMode}: {state.selectedRange[0]} → {state.selectedRange[1]}
             </span>
             <div className="flex gap-2">
@@ -506,7 +506,7 @@ const RollbackTimeline: React.FC<RollbackTimelineProps> = ({
       )}
 
       {isRollingBack && (
-        <div className="px-3 py-1 text-[10px] text-[#ffff55] bg-[#000040] border-t border-[#ffff55]/40">
+        <div className="px-3 py-1 text-[10px] text-[var(--nc-text-accent)] bg-[var(--nc-bg-deep)] border-t border-[var(--nc-text-accent)]/40">
           {t.rollingBack}
         </div>
       )}

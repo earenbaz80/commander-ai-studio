@@ -38,22 +38,22 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isS
     <div className="font-mono text-xs leading-relaxed space-y-2 select-text">
       {/* Reasoning / Thinking Accordion (Google AI Studio / DeepSeek Feature) */}
       {thinkingText && (
-        <div className="bg-[#000080] border border-[#00ffff] p-2 text-xs mb-2">
+        <div className="bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] p-2 text-xs mb-2">
           <button
             type="button"
             onClick={() => setShowThinking(!showThinking)}
-            className="w-full flex items-center justify-between font-bold text-[#ffff55] text-[11px] select-none text-left"
+            className="w-full flex items-center justify-between font-bold text-[var(--nc-text-accent)] text-[11px] select-none text-left"
           >
             <div className="flex items-center gap-1.5">
-              <Brain className="w-3.5 h-3.5 text-[#ffff55]" />
+              <Brain className="w-3.5 h-3.5 text-[var(--nc-text-accent)]" />
               <span>PROCESO DE PENSAMIENTO / RAZONAMIENTO DEL MODELO</span>
             </div>
-            <span className="text-[10px] text-[#00ffff]">
+            <span className="text-[10px] text-[var(--nc-text)]">
               {showThinking ? '[OCULTAR ▲]' : '[VER PENSAMIENTO ▼]'}
             </span>
           </button>
           {showThinking && (
-            <div className="mt-2 text-[11px] text-white/85 font-mono whitespace-pre-wrap pl-2.5 border-l-2 border-[#ffff55] bg-[#0000aa]/60 p-2 max-h-60 overflow-y-auto">
+            <div className="mt-2 text-[11px] text-white/85 font-mono whitespace-pre-wrap pl-2.5 border-l-2 border-[var(--nc-text-accent)] bg-[var(--nc-bg-main)]/60 p-2 max-h-60 overflow-y-auto">
               {thinkingText}
             </div>
           )}
@@ -70,9 +70,9 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isS
 
           return (
             <div key={index} className="my-2.5 bg-[#0e0f14] border-2 border-black rounded overflow-hidden shadow-lg">
-              <div className="bg-[#1c1d29] px-3 py-1.5 flex items-center justify-between border-b border-[#2d2f42] text-[11px] font-mono text-[#a8c7fa] select-none">
+              <div className="bg-[#1c1d29] px-3 py-1.5 flex items-center justify-between border-b border-[#2d2f42] text-[11px] font-mono text-[var(--nc-text)] select-none">
                 <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider">
-                  <Code2 className="w-3.5 h-3.5 text-[#00ffff]" />
+                  <Code2 className="w-3.5 h-3.5 text-[var(--nc-text)]" />
                   <span>{lang}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -80,17 +80,17 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isS
                     <button
                       type="button"
                       onClick={() => onRunCode(code, lang)}
-                      className="nc-button text-[11px] py-0.5 px-2.5 flex items-center gap-1 bg-[#ffff55] text-black hover:bg-white font-bold border-white shadow-[1px_1px_0px_#000000]"
+                      className="nc-button text-[11px] py-0.5 px-2.5 flex items-center gap-1 bg-[var(--nc-active-bg)] text-black hover:bg-white font-bold border-white shadow-[1px_1px_0px_#000000]"
                       title="Ejecutar en el Visor de App en Vivo"
                     >
-                      <Play className="w-3 h-3 text-[#000080] fill-[#000080]" />
+                      <Play className="w-3 h-3 text-[var(--nc-active-text)] fill-[var(--nc-active-text)]" />
                       <span>Ejecutar en Vivo</span>
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={() => handleCopyCode(code, index)}
-                    className="nc-button text-[11px] py-0.5 px-2 flex items-center gap-1 bg-[#000080] text-[#00ffff] border-[#00ffff]"
+                    className="nc-button text-[11px] py-0.5 px-2 flex items-center gap-1 bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border-[var(--nc-border-light)]"
                   >
                     {copiedIndex === index ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
                     <span>{copiedIndex === index ? 'Copiado!' : 'Copiar Código'}</span>
@@ -114,21 +114,21 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isS
               // Headings
               if (trimmed.startsWith('### ')) {
                 return (
-                  <h3 key={pIdx} className="text-sm font-bold text-[#ffff55] mt-2 mb-1 border-b border-[#00ffff]/30 pb-0.5">
+                  <h3 key={pIdx} className="text-sm font-bold text-[var(--nc-text-accent)] mt-2 mb-1 border-b border-[var(--nc-border-light)]/30 pb-0.5">
                     {trimmed.replace('### ', '')}
                   </h3>
                 );
               }
               if (trimmed.startsWith('## ')) {
                 return (
-                  <h2 key={pIdx} className="text-base font-bold text-[#00ffff] mt-3 mb-1 border-b border-[#00ffff] pb-0.5">
+                  <h2 key={pIdx} className="text-base font-bold text-[var(--nc-text)] mt-3 mb-1 border-b border-[var(--nc-border-light)] pb-0.5">
                     {trimmed.replace('## ', '')}
                   </h2>
                 );
               }
               if (trimmed.startsWith('# ')) {
                 return (
-                  <h1 key={pIdx} className="text-lg font-bold text-[#ffff55] mt-3 mb-1.5 border-b-2 border-[#00ffff] pb-1">
+                  <h1 key={pIdx} className="text-lg font-bold text-[var(--nc-text-accent)] mt-3 mb-1.5 border-b-2 border-[var(--nc-border-light)] pb-1">
                     {trimmed.replace('# ', '')}
                   </h1>
                 );
@@ -173,7 +173,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isS
       })}
 
       {isStreaming && (
-        <span className="inline-block w-2 h-4 bg-[#ffff55] ml-1 animate-pulse align-middle" />
+        <span className="inline-block w-2 h-4 bg-[var(--nc-active-bg)] ml-1 animate-pulse align-middle" />
       )}
     </div>
   );
@@ -187,7 +187,7 @@ function renderInlineFormatting(text: string): React.ReactNode {
   return codeParts.map((cPart, cIdx) => {
     if (cPart.startsWith('`') && cPart.endsWith('`')) {
       return (
-        <code key={cIdx} className="bg-[#000080] text-[#ffff55] px-1 py-0.5 rounded border border-[#00ffff] text-[11px] font-mono mx-0.5">
+        <code key={cIdx} className="bg-[var(--nc-bg-panel)] text-[var(--nc-text-accent)] px-1 py-0.5 rounded border border-[var(--nc-border-light)] text-[11px] font-mono mx-0.5">
           {cPart.slice(1, -1)}
         </code>
       );
@@ -198,7 +198,7 @@ function renderInlineFormatting(text: string): React.ReactNode {
     return boldParts.map((bPart, bIdx) => {
       if (bPart.startsWith('**') && bPart.endsWith('**')) {
         return (
-          <strong key={bIdx} className="font-bold text-[#ffff55]">
+          <strong key={bIdx} className="font-bold text-[var(--nc-text-accent)]">
             {bPart.slice(2, -2)}
           </strong>
         );

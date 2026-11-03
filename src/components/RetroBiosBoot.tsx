@@ -18,8 +18,8 @@ export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
   const [bootFinished, setBootFinished] = useState(false);
 
   const themeColors = {
-    norton: { bg: 'bg-[#000080]', text: 'text-white', primary: 'text-[#ffff55]', border: 'border-[#00ffff]' },
-    matrix: { bg: 'bg-black', text: 'text-[#00ff00]', primary: 'text-[#00ff00]', border: 'border-[#00ff00]' },
+    norton: { bg: 'bg-[var(--nc-bg-panel)]', text: 'text-white', primary: 'text-[var(--nc-text-accent)]', border: 'border-[var(--nc-border-light)]' },
+    matrix: { bg: 'bg-black', text: 'text-[var(--nc-success)]', primary: 'text-[var(--nc-success)]', border: 'border-[var(--nc-success)]' },
     amber: { bg: 'bg-black', text: 'text-[#ffb000]', primary: 'text-[#ffb000]', border: 'border-[#ffb000]' },
     dos: { bg: 'bg-black', text: 'text-gray-300', primary: 'text-white', border: 'border-white' },
     // Los temas nuevos se pintan con los tokens para no repetir literales.
@@ -35,7 +35,7 @@ export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
       primary: 'text-[var(--nc-text-accent)]',
       border: 'border-[var(--nc-border-light)]',
     },
-  }[theme] || { bg: 'bg-black', text: 'text-white', primary: 'text-[#00ffff]', border: 'border-[#00ffff]' };
+  }[theme] || { bg: 'bg-black', text: 'text-white', primary: 'text-[var(--nc-text)]', border: 'border-[var(--nc-border-light)]' };
 
   const bootSteps = [
     { text: 'COMMANDER AI BIOS V1.09.26 (C) 1986-2026 COMMANDER CORP', wait: 200 },
@@ -146,7 +146,7 @@ export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
       title="Haz clic o presiona ESC para entrar directamente al Studio"
     >
       {/* BIOS Header */}
-      <div className="flex justify-between items-start border-b border-[#00ffff]/30 pb-4 mb-6">
+      <div className="flex justify-between items-start border-b border-[var(--nc-border-light)]/30 pb-4 mb-6">
         <div>
           <h1 className={`text-base font-bold ${themeColors.primary} flex items-center gap-2`}>
             <Terminal className="w-5 h-5 animate-pulse" />
@@ -162,7 +162,7 @@ export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
               e.stopPropagation();
               onComplete();
             }}
-            className="bg-[#00aaaa] text-black px-2 py-0.5 font-bold text-[10px] hover:bg-[#00ffff] transition-colors"
+            className="bg-[var(--nc-header-bg)] text-black px-2 py-0.5 font-bold text-[10px] hover:bg-[var(--nc-highlight-bg)] transition-colors"
           >
             [ SALTAR INICIO - ESC ]
           </button>
@@ -171,16 +171,16 @@ export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
       </div>
 
       {/* Diagnostic Logs Screen */}
-      <div className="flex-1 overflow-y-auto space-y-2 text-xs bg-black/30 p-4 border border-[#00ffff]/10 leading-relaxed font-mono">
+      <div className="flex-1 overflow-y-auto space-y-2 text-xs bg-black/30 p-4 border border-[var(--nc-border-light)]/10 leading-relaxed font-mono">
         {logs.map((log, idx) => (
           <div key={idx} className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-1 duration-100">
-            <span className="text-[#00ffff]/50 shrink-0">&gt;&gt;</span>
+            <span className="text-[var(--nc-text)]/50 shrink-0">&gt;&gt;</span>
             <span className={idx === logs.length - 1 ? 'font-bold' : ''}>{log}</span>
           </div>
         ))}
         {!bootFinished && (
           <div className="flex items-center gap-2 text-white">
-            <span className="text-[#00ffff]/50 shrink-0">&gt;&gt;</span>
+            <span className="text-[var(--nc-text)]/50 shrink-0">&gt;&gt;</span>
             <span className="bg-white/80 w-2 h-4 animate-pulse" />
           </div>
         )}
@@ -190,16 +190,16 @@ export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
       <div className="mt-6 space-y-3">
         <div className="flex justify-between items-center text-xs font-mono">
           <span className="font-bold flex items-center gap-1.5 uppercase">
-            <Cpu className="w-4 h-4 text-[#ffff55] animate-spin" style={{ animationDuration: '3s' }} />
+            <Cpu className="w-4 h-4 text-[var(--nc-text-accent)] animate-spin" style={{ animationDuration: '3s' }} />
             {lang === 'es' ? 'Inicializando Componentes de Interfaz...' : lang === 'de' ? 'Benutzeroberflächen-Module werden initialisiert...' : 'Initializing User Interface Modules...'}
           </span>
-          <span className="font-bold text-[#ffff55]">{progress}%</span>
+          <span className="font-bold text-[var(--nc-text-accent)]">{progress}%</span>
         </div>
 
         {/* Outer Retro Loading Bar */}
-        <div className="w-full bg-black/40 border-2 border-[#00ffff]/40 p-0.5">
+        <div className="w-full bg-black/40 border-2 border-[var(--nc-border-light)]/40 p-0.5">
           <div 
-            className="h-4 bg-[#ffff55] transition-all duration-150 ease-out relative"
+            className="h-4 bg-[var(--nc-active-bg)] transition-all duration-150 ease-out relative"
             style={{ width: `${progress}%` }}
           >
             {/* Glossy terminal scanline inside the loading bar */}

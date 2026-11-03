@@ -159,7 +159,7 @@ const SubAgentCard: React.FC<{
           <button
             type="button"
             onClick={() => onAction(agent.id, 'resume')}
-            className="flex-1 nc-button text-[10px] py-1 flex items-center justify-center gap-1 bg-[#00ffff] text-black"
+            className="flex-1 nc-button text-[10px] py-1 flex items-center justify-center gap-1 bg-[var(--nc-highlight-bg)] text-black"
             disabled={!isRunning}
           >
             <Play className="w-3.5 h-3.5" />
@@ -184,7 +184,7 @@ const SubAgentCard: React.FC<{
           <button
             type="button"
             onClick={() => onAction(agent.id, 'restart')}
-            className="flex-1 nc-button text-[10px] py-1 flex items-center justify-center gap-1 bg-[#00ffff] text-black"
+            className="flex-1 nc-button text-[10px] py-1 flex items-center justify-center gap-1 bg-[var(--nc-highlight-bg)] text-black"
             disabled={!isRunning}
           >
             <Play className="w-3.5 h-3.5" />
@@ -209,7 +209,7 @@ const SubAgentCard: React.FC<{
         <button
           type="button"
           onClick={() => onAction(agent.id, 'restart')}
-          className="flex-1 nc-button text-[10px] py-1 flex items-center justify-center gap-1 bg-[#ffff55] text-black"
+          className="flex-1 nc-button text-[10px] py-1 flex items-center justify-center gap-1 bg-[var(--nc-active-bg)] text-black"
           disabled={!isRunning}
         >
           <RotateCcw className="w-3.5 h-3.5" />
@@ -228,12 +228,12 @@ const SubAgentCard: React.FC<{
   };
 
   return (
-    <div className={`group relative bg-[#000040] border rounded-lg overflow-hidden transition-all duration-200 ${
-      agent.status === 'running' ? 'border-[#00ffff] bg-[#000080]/20' : 
-      agent.status === 'failed' ? 'border-[#ff5555] bg-[#ff0000]/10' :
+    <div className={`group relative bg-[var(--nc-bg-deep)] border rounded-lg overflow-hidden transition-all duration-200 ${
+      agent.status === 'running' ? 'border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)]/20' : 
+      agent.status === 'failed' ? 'border-[var(--nc-danger)] bg-[#ff0000]/10' :
       agent.status === 'completed' ? 'border-[#88ff88] bg-[#008800]/10' :
-      agent.status === 'paused' ? 'border-[#ffff55] bg-[#ffff00]/10' :
-      'border-[#00ffff]/20 hover:border-[#00ffff]/40'
+      agent.status === 'paused' ? 'border-[var(--nc-text-accent)] bg-[#ffff00]/10' :
+      'border-[var(--nc-border-light)]/20 hover:border-[var(--nc-border-light)]/40'
     }`}>
       {/* Header */}
       <div className="p-3 flex items-center justify-between">
@@ -246,15 +246,15 @@ const SubAgentCard: React.FC<{
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-[9px] font-mono text-[#00ffff]/50">#{index + 1}</span>
+              <span className="text-[9px] font-mono text-[var(--nc-text)]/50">#{index + 1}</span>
               <span className="text-xs font-bold text-white truncate">{agent.name}</span>
-              <span className="text-[9px] text-white/50 px-1.5 py-0.5 rounded bg-[#000040]">{agent.role}</span>
+              <span className="text-[9px] text-white/50 px-1.5 py-0.5 rounded bg-[var(--nc-bg-deep)]">{agent.role}</span>
             </div>
             <div className="flex items-center gap-1 text-[9px] text-white/60">
               <span className="flex items-center gap-0.5">
                 <span style={{ color: status.color }}>{statusConfig[agent.status].label}</span>
               </span>
-              <span className="text-[#00ffff]/60 font-mono">{agent.tasksCompleted}/{agent.tasksTotal}</span>
+              <span className="text-[var(--nc-text)]/60 font-mono">{agent.tasksCompleted}/{agent.tasksTotal}</span>
             </div>
           </div>
         </div>
@@ -263,7 +263,7 @@ const SubAgentCard: React.FC<{
           <button
             type="button"
             onClick={onToggleExpand}
-            className="p-1 text-[#00ffff]/60 hover:text-[#00ffff] rounded"
+            className="p-1 text-[var(--nc-text)]/60 hover:text-[var(--nc-text)] rounded"
             title={isExpanded ? 'Contraer' : 'Expandir'}
             aria-expanded={isExpanded}
           >
@@ -272,7 +272,7 @@ const SubAgentCard: React.FC<{
           <button
             type="button"
             onClick={() => onViewLogs()}
-            className="p-1 text-[#00ffff]/60 hover:text-[#00ffff] rounded"
+            className="p-1 text-[var(--nc-text)]/60 hover:text-[var(--nc-text)] rounded"
             title="Ver logs"
           >
             <MessageSquare className="w-4 h-4" />
@@ -280,7 +280,7 @@ const SubAgentCard: React.FC<{
           <button
             type="button"
             onClick={() => {}}
-            className="p-1 text-[#ffff55]/60 hover:text-[#ffff55] rounded"
+            className="p-1 text-[var(--nc-text-accent)]/60 hover:text-[var(--nc-text-accent)] rounded"
             title="Configurar"
           >
             <Settings className="w-3.5 h-3.5" />
@@ -300,7 +300,7 @@ const SubAgentCard: React.FC<{
       <div className="px-3 pb-2">
         <div className="flex items-center justify-between text-[9px] mb-1">
           <span className="text-white/60">{Math.round(agent.progress)}%</span>
-          <span className="text-[#00ffff]/60 font-mono">{agent.progress}%</span>
+          <span className="text-[var(--nc-text)]/60 font-mono">{agent.progress}%</span>
         </div>
         <div className="h-1.5 bg-[#000020] rounded-full overflow-hidden">
           <div
@@ -315,10 +315,10 @@ const SubAgentCard: React.FC<{
       </div>
 
       {/* Current Task */}
-      <div className="px-3 pb-2 border-t border-[#00ffff]/10">
+      <div className="px-3 pb-2 border-t border-[var(--nc-border-light)]/10">
         <div className="flex items-center gap-1 text-[9px] mb-1">
-          <Zap className="w-3 h-3 text-[#ffff55]" />
-          <span className="text-[#ffff55] font-bold text-[9px]">Current task:</span>
+          <Zap className="w-3 h-3 text-[var(--nc-text-accent)]" />
+          <span className="text-[var(--nc-text-accent)] font-bold text-[9px]">Current task:</span>
         </div>
         <p className="text-[10px] text-white/80 truncate ml-4">
           {agent.currentTask || 'Waiting for task...'}
@@ -326,9 +326,9 @@ const SubAgentCard: React.FC<{
       </div>
 
       {/* Stats Row */}
-      <div className="px-3 pb-2 flex items-center justify-between text-[9px] text-white/60 border-t border-[#00ffff]/10">
+      <div className="px-3 pb-2 flex items-center justify-between text-[9px] text-white/60 border-t border-[var(--nc-border-light)]/10">
         <div className="flex items-center gap-1">
-          <span className="text-[#ffff55]">Tokens:</span>
+          <span className="text-[var(--nc-text-accent)]">Tokens:</span>
           <span className="font-mono text-white/80 ml-1">{formatTokens(agent.tokensUsed, agent.tokensBudget)}</span>
         </div>
         <div className="flex items-center gap-1">
@@ -338,19 +338,19 @@ const SubAgentCard: React.FC<{
       </div>
 
       {/* Actions */}
-      <div className="px-3 pt-2 pb-3 flex items-center gap-1 border-t border-[#00ffff]/10">
+      <div className="px-3 pt-2 pb-3 flex items-center gap-1 border-t border-[var(--nc-border-light)]/10">
         {renderActions()}
       </div>
 
       {/* Expanded Details */}
       {isExpanded && (
-        <div className="border-t border-[#00ffff]/20 bg-[#000020] p-3 space-y-3 animate-slide-down">
+        <div className="border-t border-[var(--nc-border-light)]/20 bg-[#000020] p-3 space-y-3 animate-slide-down">
           {/* Current Tool */}
           {agent.currentTool && (
-            <div className="flex items-center gap-2 p-2 bg-[#000040] rounded text-[10px]">
-              <Terminal className="w-3.5 h-3.5 text-[#00ffff]" />
+            <div className="flex items-center gap-2 p-2 bg-[var(--nc-bg-deep)] rounded text-[10px]">
+              <Terminal className="w-3.5 h-3.5 text-[var(--nc-text)]" />
               <span className="text-white/60">Current tool:</span>
-              <span className="font-mono text-[#00ffff] ml-auto">{agent.currentTool}</span>
+              <span className="font-mono text-[var(--nc-text)] ml-auto">{agent.currentTool}</span>
             </div>
           )}
 
@@ -358,7 +358,7 @@ const SubAgentCard: React.FC<{
           <div>
             <div className="flex justify-between text-[9px] mb-1">
               <span className="text-white/60">Tokens:</span>
-              <span className="font-mono text-[#00ffff]">{agent.tokensUsed.toLocaleString()} / {agent.tokensBudget.toLocaleString()}</span>
+              <span className="font-mono text-[var(--nc-text)]">{agent.tokensUsed.toLocaleString()} / {agent.tokensBudget.toLocaleString()}</span>
             </div>
             <div className="h-1.5 bg-[#000020] rounded-full overflow-hidden">
               <div
@@ -374,11 +374,11 @@ const SubAgentCard: React.FC<{
           {/* Logs Preview */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] text-[#ffff55] font-bold">Recent Logs</span>
+              <span className="text-[10px] text-[var(--nc-text-accent)] font-bold">Recent Logs</span>
               <button
                 type="button"
                 onClick={() => {}}
-                className="text-[10px] text-[#00ffff]/60 hover:text-[#00ffff]"
+                className="text-[10px] text-[var(--nc-text)]/60 hover:text-[var(--nc-text)]"
               >
                 View all
               </button>
@@ -386,7 +386,7 @@ const SubAgentCard: React.FC<{
             <div className="max-h-40 overflow-y-auto bg-[#000020] rounded p-2 space-y-1 font-mono text-[9px]">
               {agent.logs.slice(-5).map((log) => (
                 <div key={log.id} className="flex items-start gap-1 text-white/70">
-                  <span className="text-[#00ffff]/60 font-mono">
+                  <span className="text-[var(--nc-text)]/60 font-mono">
                     {new Date(log.timestamp).toLocaleTimeString()}
                   </span>
                   <span className={`text-[9px] ${getLogColor(log.type)}`}>
@@ -394,23 +394,23 @@ const SubAgentCard: React.FC<{
                   </span>
                   <span className="flex-1 truncate">{log.message}</span>
                   {log.tool && (
-                    <span className="text-[#00ffff]/60 font-mono ml-1">[{log.tool}]</span>
+                    <span className="text-[var(--nc-text)]/60 font-mono ml-1">[{log.tool}]</span>
                   )}
                   {log.duration && (
-                    <span className="text-[#ffff55]/60 font-mono ml-1">{log.duration}ms</span>
+                    <span className="text-[var(--nc-text-accent)]/60 font-mono ml-1">{log.duration}ms</span>
                   )}
                 </div>
               ))}
               {agent.logs.length > 5 && (
-                <p className="text-[9px] text-[#00ffff]/60 text-center mt-1">... and {agent.logs.length - 5} more</p>
+                <p className="text-[9px] text-[var(--nc-text)]/60 text-center mt-1">... and {agent.logs.length - 5} more</p>
               )}
             </div>
           </div>
 
           {/* Token Budget Alert */}
           {agent.tokensUsed > agent.tokensBudget * 0.8 && (
-            <div className="p-2 bg-[#ff5555]/20 border border-[#ff5555]/40 rounded text-[10px]">
-              <div className="flex items-center gap-1 text-[#ff5555]">
+            <div className="p-2 bg-[#ff5555]/20 border border-[var(--nc-danger)]/40 rounded text-[10px]">
+              <div className="flex items-center gap-1 text-[var(--nc-danger)]">
                 <AlertTriangle className="w-3.5 h-3.5" />
                 <span>Token budget at {Math.round((agent.tokensUsed / agent.tokensBudget) * 100)}%</span>
               </div>
@@ -516,14 +516,14 @@ const SubAgentPanel: React.FC<SubAgentPanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#000030] border-l-2 border-[#00ffff]/20 overflow-hidden">
+    <div className="flex flex-col h-full bg-[#000030] border-l-2 border-[var(--nc-border-light)]/20 overflow-hidden">
       {/* Header */}
-      <div className="p-3 border-b-2 border-[#00ffff]/20 bg-[#000040] shrink-0">
+      <div className="p-3 border-b-2 border-[var(--nc-border-light)]/20 bg-[var(--nc-bg-deep)] shrink-0">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-[#ffff55]" />
-            <span className="text-[#ffff55] font-bold text-sm">{t.subAgents}</span>
-            <span className="text-[#00ffff] text-xs px-2 py-0.5 bg-[#000040] rounded">
+            <Users className="w-5 h-5 text-[var(--nc-text-accent)]" />
+            <span className="text-[var(--nc-text-accent)] font-bold text-sm">{t.subAgents}</span>
+            <span className="text-[var(--nc-text)] text-xs px-2 py-0.5 bg-[var(--nc-bg-deep)] rounded">
               {subAgents.length}
             </span>
           </div>
@@ -540,19 +540,19 @@ const SubAgentPanel: React.FC<SubAgentPanelProps> = ({
 
         {/* Stats bar */}
         <div className="flex flex-wrap gap-4 text-[10px]">
-          <span className="flex items-center gap-1 text-[#00ffff]/60">
+          <span className="flex items-center gap-1 text-[var(--nc-text)]/60">
             <Activity className="w-3.5 h-3.5" />
             <span>{subAgents.filter(a => a.status === 'running').length} {t.running}</span>
           </span>
-          <span className="flex items-center gap-1 text-[#88ff88]">
+          <span className="flex items-center gap-1 text-[var(--nc-success)]">
             <CheckCircle className="w-3.5 h-3.5" />
             <span>{subAgents.filter(a => a.status === 'completed').length} {t.completed}</span>
           </span>
-          <span className="flex items-center gap-1 text-[#ff5555]">
+          <span className="flex items-center gap-1 text-[var(--nc-danger)]">
             <XCircle className="w-3.5 h-3.5" />
             <span>{subAgents.filter(a => a.status === 'failed').length} {t.failed}</span>
           </span>
-          <span className="flex items-center gap-1 text-[#ffff55]">
+          <span className="flex items-center gap-1 text-[var(--nc-text-accent)]">
             <Pause className="w-3.5 h-3.5" />
             <span>{subAgents.filter(a => a.status === 'paused').length} {t.paused}</span>
           </span>
@@ -562,30 +562,30 @@ const SubAgentPanel: React.FC<SubAgentPanelProps> = ({
       {/* Create Agent Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="bg-[#000040] border-2 border-[#00ffff] rounded-lg p-4 w-full max-w-md mx-4">
+          <div className="bg-[var(--nc-bg-deep)] border-2 border-[var(--nc-border-light)] rounded-lg p-4 w-full max-w-md mx-4">
             <div className="flex items-center justify-between mb-4">
-              <span className="text-[#ffff55] font-bold">{t.createAgent}</span>
-              <button onClick={() => setShowCreateModal(false)} className="text-[#00ffff]/60 hover:text-[#00ffff]">
+              <span className="text-[var(--nc-text-accent)] font-bold">{t.createAgent}</span>
+              <button onClick={() => setShowCreateModal(false)} className="text-[var(--nc-text)]/60 hover:text-[var(--nc-text)]">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-[10px] text-[#00ffff]/60 mb-1">{t.name}</label>
+                <label className="block text-[10px] text-[var(--nc-text)]/60 mb-1">{t.name}</label>
                 <input
                   type="text"
                   value={newAgentConfig.name}
                   onChange={(e) => setNewAgentConfig({...newAgentConfig, name: e.target.value})}
-                  className="w-full bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1 text-xs font-mono outline-none"
+                  className="w-full bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1 text-xs font-mono outline-none"
                   placeholder="agent-1"
                 />
               </div>
               <div>
-                <label className="block text-[10px] text-[#00ffff]/60 mb-1">{t.role}</label>
+                <label className="block text-[10px] text-[var(--nc-text)]/60 mb-1">{t.role}</label>
                 <select
                   value={newAgentConfig.role}
                   onChange={(e) => setNewAgentConfig({...newAgentConfig, role: e.target.value})}
-                  className="w-full bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1 text-xs font-mono outline-none"
+                  className="w-full bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1 text-xs font-mono outline-none"
                 >
                   {roles.map(r => (
                     <option key={r.value} value={r.value}>{r.label}</option>
@@ -593,17 +593,17 @@ const SubAgentPanel: React.FC<SubAgentPanelProps> = ({
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] text-[#00ffff]/60 mb-1">{t.tokensBudget}</label>
+                <label className="block text-[10px] text-[var(--nc-text)]/60 mb-1">{t.tokensBudget}</label>
                 <input
                   type="number"
                   value={newAgentConfig.tokensBudget}
                   onChange={(e) => setNewAgentConfig({...newAgentConfig, tokensBudget: parseInt(e.target.value)})}
-                  className="w-full bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1 text-xs font-mono outline-none"
+                  className="w-full bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1 text-xs font-mono outline-none"
                 />
               </div>
               <div className="flex gap-2 justify-end pt-2">
                 <button onClick={() => setShowCreateModal(false)} className="nc-button text-xs px-3 py-1">{t.cancel}</button>
-                <button onClick={handleCreateAgent} className="nc-button text-xs px-3 py-1 bg-[#00ffff] text-black">{t.create}</button>
+                <button onClick={handleCreateAgent} className="nc-button text-xs px-3 py-1 bg-[var(--nc-highlight-bg)] text-black">{t.create}</button>
               </div>
             </div>
           </div>
@@ -613,8 +613,8 @@ const SubAgentPanel: React.FC<SubAgentPanelProps> = ({
       {/* Agents List */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {subAgents.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center text-[#00ffff]/50">
-            <Users className="w-12 h-12 mb-2 text-[#00ffff]/30" />
+          <div className="h-full flex flex-col items-center justify-center text-center text-[var(--nc-text)]/50">
+            <Users className="w-12 h-12 mb-2 text-[var(--nc-text)]/30" />
             <p className="text-xs">{t.noAgents}</p>
             <button
               type="button"
@@ -652,11 +652,11 @@ const SubAgentPanel: React.FC<SubAgentPanelProps> = ({
 
 function getLogColor(type: string): string {
   switch (type) {
-    case 'success': return 'text-[#88ff88]';
-    case 'error': return 'text-[#ff5555]';
-    case 'warning': return 'text-[#ffff55]';
-    case 'tool': return 'text-[#00ffff]';
-    case 'thought': return 'text-[#ffff55]';
+    case 'success': return 'text-[var(--nc-success)]';
+    case 'error': return 'text-[var(--nc-danger)]';
+    case 'warning': return 'text-[var(--nc-text-accent)]';
+    case 'tool': return 'text-[var(--nc-text)]';
+    case 'thought': return 'text-[var(--nc-text-accent)]';
     default: return 'text-white/70';
   }
 }

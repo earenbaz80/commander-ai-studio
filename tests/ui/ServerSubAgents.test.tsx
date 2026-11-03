@@ -483,7 +483,7 @@ describe('ServerSubAgents', () => {
     }));
 
     const relleno = screen.getByTestId('subagents-progress-fill');
-    expect(relleno).toHaveClass('bg-[#00ffff]');
+    expect(relleno).toHaveClass('bg-[var(--nc-highlight-bg)]');
     expect(relleno).not.toHaveAttribute('data-failed');
 
     act(() => FakeEventSource.instances[0].emit('subagents', {
@@ -719,7 +719,7 @@ describe('ServerSubAgents', () => {
     const relleno = screen.getByTestId('subagents-progress-fill');
     expect(relleno).toHaveAttribute('data-cancelled', 'true');
     expect(relleno).not.toHaveAttribute('data-failed');
-    expect(relleno).toHaveClass('bg-[#ffff55]');
+    expect(relleno).toHaveClass('bg-[var(--nc-active-bg)]');
 
     // Un fallo manda sobre la cancelación: el ámbar no puede tapar un error.
     act(() => FakeEventSource.instances[0].emit('subagents', {

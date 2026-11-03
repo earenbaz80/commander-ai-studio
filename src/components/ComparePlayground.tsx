@@ -134,14 +134,14 @@ export const ComparePlayground: React.FC<ComparePlaygroundProps> = ({
   const modelObjB = ALL_MODELS.find((m) => m.id === modelB);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#000080] font-mono text-xs text-white overflow-hidden p-2 gap-2">
+    <div className="flex-1 flex flex-col h-full bg-[var(--nc-bg-panel)] font-mono text-xs text-white overflow-hidden p-2 gap-2">
       {/* Top Banner Header */}
-      <div className="bg-[#00aaaa] text-black font-bold px-3 py-1.5 flex items-center justify-between border-2 border-black shrink-0">
+      <div className="bg-[var(--nc-header-bg)] text-black font-bold px-3 py-1.5 flex items-center justify-between border-2 border-black shrink-0">
         <div className="flex items-center gap-2">
           <Columns className="w-5 h-5 text-black" />
           <span className="text-sm">{lang === 'es' ? 'MODO COMPARATIVO BENCHMARK (SIDE-BY-SIDE)' : lang === 'de' ? 'MODELLVERGLEICH NEBENEINANDER' : 'SIDE-BY-SIDE MODEL BENCHMARK'}</span>
         </div>
-        <span className="text-xs bg-[#0000aa] text-[#ffff55] px-2 py-0.5 border border-black font-bold">
+        <span className="text-xs bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] px-2 py-0.5 border border-black font-bold">
           {lang === 'es' ? '[Doble Inferencia Concurrente]' : lang === 'de' ? '[Paralleles Doppel-Inferenz]' : '[Concurrent Dual Inference]'}
         </span>
       </div>
@@ -149,18 +149,18 @@ export const ComparePlayground: React.FC<ComparePlaygroundProps> = ({
       {/* Model Config Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 shrink-0">
         {/* Model A Selector */}
-        <div className="bg-[#0000aa] border-2 border-[#00ffff] p-2 space-y-2">
+        <div className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-2 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="font-bold text-[#ffff55] flex items-center gap-1">
-              <Layers className="w-4 h-4 text-[#00ffff]" /> {lang === 'es' ? 'MODELO A:' : lang === 'de' ? 'MODELL A:' : 'MODEL A:'}
+            <span className="font-bold text-[var(--nc-text-accent)] flex items-center gap-1">
+              <Layers className="w-4 h-4 text-[var(--nc-text)]" /> {lang === 'es' ? 'MODELO A:' : lang === 'de' ? 'MODELL A:' : 'MODEL A:'}
             </span>
-            <span className="bg-[#00ffff] text-black px-1 font-bold text-[10px]">{lang === 'es' ? 'LADO IZQUIERDO' : lang === 'de' ? 'LINKE SEITE' : 'LEFT SIDE'}</span>
+            <span className="bg-[var(--nc-highlight-bg)] text-black px-1 font-bold text-[10px]">{lang === 'es' ? 'LADO IZQUIERDO' : lang === 'de' ? 'LINKE SEITE' : 'LEFT SIDE'}</span>
           </div>
 
           <select
             value={modelA}
             onChange={(e) => setModelA(e.target.value)}
-            className="w-full bg-[#000080] border border-[#00ffff] p-1 text-xs text-white font-bold outline-none cursor-pointer"
+            className="w-full bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] p-1 text-xs text-white font-bold outline-none cursor-pointer"
           >
             {ALL_MODELS.map((m) => (
               <option key={m.id} value={m.id}>
@@ -170,7 +170,7 @@ export const ComparePlayground: React.FC<ComparePlaygroundProps> = ({
           </select>
 
           <div className="flex items-center gap-2 text-[10px]">
-            <span className="text-[#00ffff] font-bold">TEMP A ({tempA}):</span>
+            <span className="text-[var(--nc-text)] font-bold">TEMP A ({tempA}):</span>
             <input
               type="range"
               min="0"
@@ -184,18 +184,18 @@ export const ComparePlayground: React.FC<ComparePlaygroundProps> = ({
         </div>
 
         {/* Model B Selector */}
-        <div className="bg-[#0000aa] border-2 border-[#00ffff] p-2 space-y-2">
+        <div className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-2 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="font-bold text-[#ffff55] flex items-center gap-1">
-              <Layers className="w-4 h-4 text-[#ffff55]" /> {lang === 'es' ? 'MODELO B:' : lang === 'de' ? 'MODELL B:' : 'MODEL B:'}
+            <span className="font-bold text-[var(--nc-text-accent)] flex items-center gap-1">
+              <Layers className="w-4 h-4 text-[var(--nc-text-accent)]" /> {lang === 'es' ? 'MODELO B:' : lang === 'de' ? 'MODELL B:' : 'MODEL B:'}
             </span>
-            <span className="bg-[#ffff55] text-black px-1 font-bold text-[10px]">{lang === 'es' ? 'LADO DERECHO' : lang === 'de' ? 'RECHTE SEITE' : 'RIGHT SIDE'}</span>
+            <span className="bg-[var(--nc-active-bg)] text-black px-1 font-bold text-[10px]">{lang === 'es' ? 'LADO DERECHO' : lang === 'de' ? 'RECHTE SEITE' : 'RIGHT SIDE'}</span>
           </div>
 
           <select
             value={modelB}
             onChange={(e) => setModelB(e.target.value)}
-            className="w-full bg-[#000080] border border-[#00ffff] p-1 text-xs text-white font-bold outline-none cursor-pointer"
+            className="w-full bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] p-1 text-xs text-white font-bold outline-none cursor-pointer"
           >
             {ALL_MODELS.map((m) => (
               <option key={m.id} value={m.id}>
@@ -205,7 +205,7 @@ export const ComparePlayground: React.FC<ComparePlaygroundProps> = ({
           </select>
 
           <div className="flex items-center gap-2 text-[10px]">
-            <span className="text-[#ffff55] font-bold">TEMP B ({tempB}):</span>
+            <span className="text-[var(--nc-text-accent)] font-bold">TEMP B ({tempB}):</span>
             <input
               type="range"
               min="0"
@@ -220,8 +220,8 @@ export const ComparePlayground: React.FC<ComparePlaygroundProps> = ({
       </div>
 
       {/* Prompt Input Box */}
-      <div className="bg-[#0000aa] border-2 border-[#00ffff] p-2 flex flex-col gap-1.5 shrink-0">
-        <label className="text-[11px] font-bold text-[#ffff55] flex items-center justify-between">
+      <div className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-2 flex flex-col gap-1.5 shrink-0">
+        <label className="text-[11px] font-bold text-[var(--nc-text-accent)] flex items-center justify-between">
           <span>{lang === 'es' ? 'PROMPT ÚNICO PARA AMBOS MODELOS:' : lang === 'de' ? 'GEMEINSAMER PROMPT FÜR BEIDE MODELLE:' : 'SHARED PROMPT FOR BOTH MODELS:'}</span>
         </label>
         <div className="flex gap-2">
@@ -229,14 +229,14 @@ export const ComparePlayground: React.FC<ComparePlaygroundProps> = ({
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             rows={2}
-            className="flex-1 bg-[#000080] border border-[#00ffff] p-2 text-xs text-white outline-none resize-none font-mono"
+            className="flex-1 bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] p-2 text-xs text-white outline-none resize-none font-mono"
             placeholder={lang === 'es' ? "Escribe el prompt a comparar..." : lang === 'de' ? 'Prompt zum Vergleichen eingeben...' : "Type prompt to compare..."}
           />
           <button
             type="button"
             onClick={handleRunComparison}
             disabled={isLoading || !prompt.trim()}
-            className="bg-[#ffff55] text-black font-bold px-4 hover:bg-white border-2 border-black flex flex-col items-center justify-center gap-1 disabled:opacity-50 shrink-0"
+            className="bg-[var(--nc-active-bg)] text-black font-bold px-4 hover:bg-white border-2 border-black flex flex-col items-center justify-center gap-1 disabled:opacity-50 shrink-0"
           >
             <Play className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
             <span className="text-[10px] uppercase">{isLoading ? (lang === 'es' ? 'EVALUANDO...' : lang === 'de' ? 'AUSWERTUNG...' : 'EVALUATING...') : (lang === 'es' ? 'EJECUTAR' : lang === 'de' ? 'AUSFÜHREN' : 'RUN')}</span>
@@ -247,26 +247,26 @@ export const ComparePlayground: React.FC<ComparePlaygroundProps> = ({
       {/* Comparison Split Outputs */}
       <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 gap-2 overflow-hidden">
         {/* Column A Output */}
-        <div className="bg-[#0000aa] border-2 border-[#00ffff] p-2 flex flex-col min-h-0 overflow-hidden">
-          <div className="bg-[#000080] border-b border-[#00ffff] px-2 py-1 flex items-center justify-between text-[11px] shrink-0 mb-1">
-            <span className="font-bold text-[#00ffff] truncate">{modelObjA?.name || modelA}</span>
+        <div className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-2 flex flex-col min-h-0 overflow-hidden">
+          <div className="bg-[var(--nc-bg-panel)] border-b border-[var(--nc-border-light)] px-2 py-1 flex items-center justify-between text-[11px] shrink-0 mb-1">
+            <span className="font-bold text-[var(--nc-text)] truncate">{modelObjA?.name || modelA}</span>
             <div className="flex items-center gap-2 text-[10px]">
               {resultA.latencyMs && (
-                <span className="text-[#ffff55] flex items-center gap-0.5">
+                <span className="text-[var(--nc-text-accent)] flex items-center gap-0.5">
                   <Clock className="w-3 h-3" /> {resultA.latencyMs}ms
                 </span>
               )}
               {resultA.tokens && (
-                <span className="text-[#00ffff] flex items-center gap-0.5">
+                <span className="text-[var(--nc-text)] flex items-center gap-0.5">
                   <Zap className="w-3 h-3" /> ~{resultA.tokens} tokens
                 </span>
               )}
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto bg-[#000080] p-3 border border-[#00aaaa]">
+          <div className="flex-1 overflow-y-auto bg-[var(--nc-bg-panel)] p-3 border border-[var(--nc-border-mid)]">
             {isLoading && !resultA.text ? (
-              <div className="flex items-center justify-center h-full text-[#ffff55] animate-pulse">
+              <div className="flex items-center justify-center h-full text-[var(--nc-text-accent)] animate-pulse">
                 {lang === 'es' ? `Procesando en ${modelObjA?.name}...` : lang === 'de' ? `Verarbeitung mit ${modelObjA?.name}...` : `Processing on ${modelObjA?.name}...`}
               </div>
             ) : resultA.text ? (
@@ -280,26 +280,26 @@ export const ComparePlayground: React.FC<ComparePlaygroundProps> = ({
         </div>
 
         {/* Column B Output */}
-        <div className="bg-[#0000aa] border-2 border-[#00ffff] p-2 flex flex-col min-h-0 overflow-hidden">
-          <div className="bg-[#000080] border-b border-[#00ffff] px-2 py-1 flex items-center justify-between text-[11px] shrink-0 mb-1">
-            <span className="font-bold text-[#ffff55] truncate">{modelObjB?.name || modelB}</span>
+        <div className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-2 flex flex-col min-h-0 overflow-hidden">
+          <div className="bg-[var(--nc-bg-panel)] border-b border-[var(--nc-border-light)] px-2 py-1 flex items-center justify-between text-[11px] shrink-0 mb-1">
+            <span className="font-bold text-[var(--nc-text-accent)] truncate">{modelObjB?.name || modelB}</span>
             <div className="flex items-center gap-2 text-[10px]">
               {resultB.latencyMs && (
-                <span className="text-[#ffff55] flex items-center gap-0.5">
+                <span className="text-[var(--nc-text-accent)] flex items-center gap-0.5">
                   <Clock className="w-3 h-3" /> {resultB.latencyMs}ms
                 </span>
               )}
               {resultB.tokens && (
-                <span className="text-[#00ffff] flex items-center gap-0.5">
+                <span className="text-[var(--nc-text)] flex items-center gap-0.5">
                   <Zap className="w-3 h-3" /> ~{resultB.tokens} tokens
                 </span>
               )}
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto bg-[#000080] p-3 border border-[#00aaaa]">
+          <div className="flex-1 overflow-y-auto bg-[var(--nc-bg-panel)] p-3 border border-[var(--nc-border-mid)]">
             {isLoading && !resultB.text ? (
-              <div className="flex items-center justify-center h-full text-[#ffff55] animate-pulse">
+              <div className="flex items-center justify-center h-full text-[var(--nc-text-accent)] animate-pulse">
                 {lang === 'es' ? `Procesando en ${modelObjB?.name}...` : lang === 'de' ? `Verarbeitung mit ${modelObjB?.name}...` : `Processing on ${modelObjB?.name}...`}
               </div>
             ) : resultB.text ? (

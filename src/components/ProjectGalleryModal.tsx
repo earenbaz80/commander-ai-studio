@@ -158,7 +158,7 @@ export const ProjectGalleryContent: React.FC<ProjectGalleryContentProps> = ({
   return (
     <>
       {/* Navigation Tabs */}
-      <div className="flex items-center gap-2 p-2 bg-[#0000aa] border-b-2 border-[#00ffff] shrink-0">
+      <div className="flex items-center gap-2 p-2 bg-[var(--nc-bg-main)] border-b-2 border-[var(--nc-border-light)] shrink-0">
         <button
           onClick={() => setActiveTab('gallery')}
           className={`nc-button flex items-center gap-1.5 text-xs ${activeTab === 'gallery' ? 'nc-active' : ''}`}
@@ -186,8 +186,8 @@ export const ProjectGalleryContent: React.FC<ProjectGalleryContentProps> = ({
         <div className="flex flex-col flex-1 overflow-hidden p-3 gap-3 min-h-0">
           {/* Search Bar & Tag Filter */}
           <div className="flex flex-col sm:flex-row gap-2">
-            <div className="flex-1 bg-[#0000aa] border-2 border-[#00ffff] flex items-center px-2 gap-2">
-              <Search className="w-4 h-4 text-[#ffff55]" />
+            <div className="flex-1 bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] flex items-center px-2 gap-2">
+              <Search className="w-4 h-4 text-[var(--nc-text-accent)]" />
               <input
                 type="text"
                 value={searchQuery}
@@ -196,16 +196,16 @@ export const ProjectGalleryContent: React.FC<ProjectGalleryContentProps> = ({
                 className="w-full bg-transparent p-1.5 text-xs text-[#ffffff] outline-none font-mono placeholder-[#00ffff]/60"
               />
               {searchQuery && (
-                <X className="w-4 h-4 text-[#00ffff] cursor-pointer" onClick={() => setSearchQuery('')} />
+                <X className="w-4 h-4 text-[var(--nc-text)] cursor-pointer" onClick={() => setSearchQuery('')} />
               )}
             </div>
 
             {allTags.length > 0 && (
-              <div className="flex items-center gap-1 overflow-x-auto max-w-xs p-1 border border-[#00ffff] bg-[#0000aa]">
-                <Tag className="w-3.5 h-3.5 text-[#ffff55] shrink-0" />
+              <div className="flex items-center gap-1 overflow-x-auto max-w-xs p-1 border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)]">
+                <Tag className="w-3.5 h-3.5 text-[var(--nc-text-accent)] shrink-0" />
                 <button
                   onClick={() => setSelectedTag(null)}
-                  className={`text-[10px] px-1.5 py-0.5 font-mono ${selectedTag === null ? 'bg-[#ffff55] text-black font-bold' : 'text-[#00ffff]'}`}
+                  className={`text-[10px] px-1.5 py-0.5 font-mono ${selectedTag === null ? 'bg-[var(--nc-active-bg)] text-black font-bold' : 'text-[var(--nc-text)]'}`}
                 >
                   TODOS
                 </button>
@@ -213,7 +213,7 @@ export const ProjectGalleryContent: React.FC<ProjectGalleryContentProps> = ({
                   <button
                     key={tag}
                     onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
-                    className={`text-[10px] px-1.5 py-0.5 font-mono shrink-0 ${selectedTag === tag ? 'bg-[#ffff55] text-black font-bold' : 'bg-[#000080] text-[#00ffff] border border-[#00ffff]'}`}
+                    className={`text-[10px] px-1.5 py-0.5 font-mono shrink-0 ${selectedTag === tag ? 'bg-[var(--nc-active-bg)] text-black font-bold' : 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border border-[var(--nc-border-light)]'}`}
                   >
                     #{tag}
                   </button>
@@ -225,26 +225,26 @@ export const ProjectGalleryContent: React.FC<ProjectGalleryContentProps> = ({
           {/* Gallery Grid / List */}
           <div className="flex-1 overflow-y-auto pr-1 grid grid-cols-1 md:grid-cols-2 gap-3 align-content-start nc-x-scroll">
             {loading ? (
-              <div className="col-span-full h-40 flex items-center justify-center text-[#ffff55] font-mono text-sm">
+              <div className="col-span-full h-40 flex items-center justify-center text-[var(--nc-text-accent)] font-mono text-sm">
                 ⚡ CARGANDO GALERÍA DE COMANDOS...
               </div>
             ) : filteredProjects.length === 0 ? (
-              <div className="col-span-full h-40 flex flex-col items-center justify-center text-[#00ffff] font-mono text-xs gap-2 border-2 border-dashed border-[#00ffff] p-4">
+              <div className="col-span-full h-40 flex flex-col items-center justify-center text-[var(--nc-text)] font-mono text-xs gap-2 border-2 border-dashed border-[var(--nc-border-light)] p-4">
                 <span>NO SE ENCONTRARON PROYECTOS PARA LA BÚSQUEDA.</span>
                 {activeTab === 'my_projects' && !auth.currentUser && (
-                  <span className="text-[#ffff55]">Debes iniciar sesión para ver tus proyectos guardados.</span>
+                  <span className="text-[var(--nc-text-accent)]">Debes iniciar sesión para ver tus proyectos guardados.</span>
                 )}
               </div>
             ) : (
               filteredProjects.map((proj) => (
                 <div
                   key={proj.id}
-                  className="nc-panel p-3 flex flex-col justify-between border-2 border-[#00ffff] bg-[#0000aa] gap-2 hover:border-[#ffff55] transition-colors"
+                  className="nc-panel p-3 flex flex-col justify-between border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] gap-2 hover:border-[var(--nc-text-accent)] transition-colors"
                 >
                   <div>
-                    <div className="flex items-start justify-between gap-2 border-b border-[#00ffff] pb-1.5">
-                      <h3 className="font-bold text-[#ffff55] text-sm font-mono truncate">{proj.title}</h3>
-                      <span className="bg-[#000080] text-[#00ffff] text-[10px] px-1.5 py-0.5 border border-[#00ffff] font-mono shrink-0">
+                    <div className="flex items-start justify-between gap-2 border-b border-[var(--nc-border-light)] pb-1.5">
+                      <h3 className="font-bold text-[var(--nc-text-accent)] text-sm font-mono truncate">{proj.title}</h3>
+                      <span className="bg-[var(--nc-bg-panel)] text-[var(--nc-text)] text-[10px] px-1.5 py-0.5 border border-[var(--nc-border-light)] font-mono shrink-0">
                         {proj.selectedModel}
                       </span>
                     </div>
@@ -256,7 +256,7 @@ export const ProjectGalleryContent: React.FC<ProjectGalleryContentProps> = ({
                     {proj.tags && proj.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1 my-1">
                         {proj.tags.map((t) => (
-                          <span key={t} className="text-[9px] text-[#00ffff] bg-[#000080] px-1 border border-[#00ffff]/60 font-mono">
+                          <span key={t} className="text-[9px] text-[var(--nc-text)] bg-[var(--nc-bg-panel)] px-1 border border-[var(--nc-border-light)]/60 font-mono">
                             #{t}
                           </span>
                         ))}
@@ -264,13 +264,13 @@ export const ProjectGalleryContent: React.FC<ProjectGalleryContentProps> = ({
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between border-t border-[#00ffff]/60 pt-2 text-[11px] font-mono text-[#00ffff]">
+                  <div className="flex items-center justify-between border-t border-[var(--nc-border-light)]/60 pt-2 text-[11px] font-mono text-[var(--nc-text)]">
                     <span className="truncate">👤 {proj.authorName}</span>
 
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => handleLike(proj.id)}
-                        className={`flex items-center gap-1 nc-button text-[10px] py-0.5 px-1.5 ${userLikes[proj.id] ? 'bg-[#ffff55] text-black font-bold' : ''}`}
+                        className={`flex items-center gap-1 nc-button text-[10px] py-0.5 px-1.5 ${userLikes[proj.id] ? 'bg-[var(--nc-active-bg)] text-black font-bold' : ''}`}
                       >
                         <Heart className={`w-3 h-3 ${userLikes[proj.id] ? 'fill-black' : ''}`} />
                         <span>{proj.likesCount || 0}</span>
@@ -281,7 +281,7 @@ export const ProjectGalleryContent: React.FC<ProjectGalleryContentProps> = ({
                           onSelectProject(proj);
                           onClose();
                         }}
-                        className="nc-button text-[10px] py-0.5 px-2 bg-[#00aaaa] text-black font-bold flex items-center gap-1"
+                        className="nc-button text-[10px] py-0.5 px-2 bg-[var(--nc-header-bg)] text-black font-bold flex items-center gap-1"
                       >
                         <span>CARGAR</span>
                         <ArrowRight className="w-3 h-3" />
@@ -296,52 +296,52 @@ export const ProjectGalleryContent: React.FC<ProjectGalleryContentProps> = ({
       ) : (
         /* Publish Tab Form */
         <div className="flex-1 overflow-y-auto p-4 nc-x-scroll">
-          <form onSubmit={handlePublishSubmit} className="max-w-xl mx-auto flex flex-col gap-4 bg-[#0000aa] p-4 border-2 border-[#00ffff]">
-            <div className="text-sm font-bold text-[#ffff55] border-b-2 border-[#00ffff] pb-2 flex items-center gap-2">
+          <form onSubmit={handlePublishSubmit} className="max-w-xl mx-auto flex flex-col gap-4 bg-[var(--nc-bg-main)] p-4 border-2 border-[var(--nc-border-light)]">
+            <div className="text-sm font-bold text-[var(--nc-text-accent)] border-b-2 border-[var(--nc-border-light)] pb-2 flex items-center gap-2">
               <FolderPlus className="w-5 h-5" />
               <span>PUBLICAR PROYECTO ACTUAL EN LA NUBE</span>
             </div>
 
             {pubStatus && (
-              <div className="p-2 text-xs font-mono bg-[#000080] border border-[#00ffff] text-[#ffff55]">
+              <div className="p-2 text-xs font-mono bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] text-[var(--nc-text-accent)]">
                 {pubStatus}
               </div>
             )}
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-[#00ffff] font-bold">TÍTULO DEL PROYECTO</label>
+              <label className="text-xs text-[var(--nc-text)] font-bold">TÍTULO DEL PROYECTO</label>
               <input
                 type="text"
                 required
                 value={pubTitle}
                 onChange={(e) => setPubTitle(e.target.value)}
-                className="bg-[#000080] text-[#ffff55] p-2 text-xs border-2 border-[#00ffff] outline-none font-mono"
+                className="bg-[var(--nc-bg-panel)] text-[var(--nc-text-accent)] p-2 text-xs border-2 border-[var(--nc-border-light)] outline-none font-mono"
               />
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-[#00ffff] font-bold">DESCRIPCIÓN</label>
+              <label className="text-xs text-[var(--nc-text)] font-bold">DESCRIPCIÓN</label>
               <textarea
                 rows={3}
                 value={pubDescription}
                 onChange={(e) => setPubDescription(e.target.value)}
                 placeholder="Explica qué hace esta plantilla o instrucción de sistema..."
-                className="bg-[#000080] text-white p-2 text-xs border-2 border-[#00ffff] outline-none font-mono resize-none"
+                className="bg-[var(--nc-bg-panel)] text-white p-2 text-xs border-2 border-[var(--nc-border-light)] outline-none font-mono resize-none"
               />
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-[#00ffff] font-bold">ETIQUETAS (SEPARADAS POR COMAS)</label>
+              <label className="text-xs text-[var(--nc-text)] font-bold">ETIQUETAS (SEPARADAS POR COMAS)</label>
               <input
                 type="text"
                 value={pubTags}
                 onChange={(e) => setPubTags(e.target.value)}
                 placeholder="ej. resumen, codigo, asistente, espanol"
-                className="bg-[#000080] text-[#ffff55] p-2 text-xs border-2 border-[#00ffff] outline-none font-mono"
+                className="bg-[var(--nc-bg-panel)] text-[var(--nc-text-accent)] p-2 text-xs border-2 border-[var(--nc-border-light)] outline-none font-mono"
               />
             </div>
 
-            <div className="flex items-center gap-2 border p-2 border-[#00ffff] bg-[#000080]">
+            <div className="flex items-center gap-2 border p-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)]">
               <input
                 type="checkbox"
                 id="pubIsPublic"
@@ -354,14 +354,14 @@ export const ProjectGalleryContent: React.FC<ProjectGalleryContentProps> = ({
               </label>
             </div>
 
-            <div className="bg-[#000080] p-2 border border-[#00ffff]/60 text-[11px] font-mono text-[#00ffff]">
-              ℹ️ Se guardará con el modelo actual: <span className="text-[#ffff55]">{currentSelectedModel}</span>
+            <div className="bg-[var(--nc-bg-panel)] p-2 border border-[var(--nc-border-light)]/60 text-[11px] font-mono text-[var(--nc-text)]">
+              ℹ️ Se guardará con el modelo actual: <span className="text-[var(--nc-text-accent)]">{currentSelectedModel}</span>
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="nc-button py-2 text-xs font-bold flex items-center justify-center gap-2 bg-[#00aaaa] text-black"
+              className="nc-button py-2 text-xs font-bold flex items-center justify-center gap-2 bg-[var(--nc-header-bg)] text-black"
             >
               <Share2 className="w-4 h-4" />
               <span>{loading ? 'GUARDANDO...' : 'GUARDAR Y PUBLICAR'}</span>
@@ -394,7 +394,7 @@ export const ProjectGalleryModal: React.FC<ProjectGalleryModalProps> = ({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="nc-panel w-full max-w-4xl h-[85vh] flex flex-col border-2 border-[#00ffff] bg-[#000080] shadow-[10px_10px_0px_#000055] cursor-default"
+        className="nc-panel w-full max-w-4xl h-[85vh] flex flex-col border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] shadow-[10px_10px_0px_var(--nc-shadow)] cursor-default"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Title Bar */}

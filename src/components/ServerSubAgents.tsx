@@ -34,9 +34,9 @@ function estadoTexto(status: SubAgentRow['status'], t: Traductor): string {
 }
 
 function colorEstado(status: SubAgentRow['status']): string {
-  if (status === 'running') return 'text-[#00ffff]';
+  if (status === 'running') return 'text-[var(--nc-text)]';
   if (status === 'completed') return 'text-green-400';
-  if (status === 'cancelled') return 'text-[#ffff55]';
+  if (status === 'cancelled') return 'text-[var(--nc-text-accent)]';
   return 'text-red-400';
 }
 
@@ -219,7 +219,7 @@ function colorConexion(state: SubAgentsConnectionState): string {
   if (state === 'live') return 'text-green-400';
   if (state === 'offline') return 'text-red-400';
   if (state === 'ended') return 'text-cyan-500/70';
-  return 'text-[#ffff55]';
+  return 'text-[var(--nc-text-accent)]';
 }
 
 function vacioTexto(state: SubAgentsConnectionState, t: Traductor): string {
@@ -344,7 +344,7 @@ export function ServerSubAgents({ lang = 'es' }: { lang?: Language }) {
           data-testid="subagents-progress-bar"
         >
           <div
-            className={`h-full transition-[width] duration-300 ${fallidos > 0 ? 'bg-red-400' : cancelados > 0 ? 'bg-[#ffff55]' : 'bg-[#00ffff]'}`}
+            className={`h-full transition-[width] duration-300 ${fallidos > 0 ? 'bg-red-400' : cancelados > 0 ? 'bg-[var(--nc-active-bg)]' : 'bg-[var(--nc-highlight-bg)]'}`}
             style={{ width: `${porcentaje}%` }}
             data-failed={fallidos > 0 ? 'true' : undefined}
             data-cancelled={cancelados > 0 ? 'true' : undefined}
@@ -354,7 +354,7 @@ export function ServerSubAgents({ lang = 'es' }: { lang?: Language }) {
       )}
 
       {desfasado && (
-        <div className="text-[10px] text-[#ffff55] mb-1" data-testid="subagents-stale">
+        <div className="text-[10px] text-[var(--nc-text-accent)] mb-1" data-testid="subagents-stale">
           {conexionTexto(connection.state, t)} {t('Estos datos pueden estar desfasados', 'This data may be stale')}
           {connection.state === 'offline'
             ? t('; se reconecta solo al volver la red.', '; it reconnects on its own when the network returns.')
@@ -387,7 +387,7 @@ export function ServerSubAgents({ lang = 'es' }: { lang?: Language }) {
               ref={(el) => { filasRef.current[r.id] = el; }}
               className={`text-[10px] border rounded p-1 ${
                 fijada
-                  ? 'sticky top-0 z-10 bg-[#000080] border-cyan-500/50'
+                  ? 'sticky top-0 z-10 bg-[var(--nc-bg-panel)] border-cyan-500/50'
                   : 'border-cyan-900/40'
               } ${atascado ? 'outline outline-1 outline-[#ffff55]' : ''}`}
               data-status={r.status}
@@ -396,9 +396,9 @@ export function ServerSubAgents({ lang = 'es' }: { lang?: Language }) {
             >
               <div className="flex items-center gap-2">
                 <span className={colorEstado(r.status)}>●</span>
-                <span className="text-[#ffff55] truncate">{r.goal}</span>
+                <span className="text-[var(--nc-text-accent)] truncate">{r.goal}</span>
                 {atascado && (
-                  <span className="text-[#ffff55]" data-testid="subagent-stuck">
+                  <span className="text-[var(--nc-text-accent)]" data-testid="subagent-stuck">
                     {`${t('posible atasco', 'possible stall')} (> ${umbralAtasco} min)`}
                   </span>
                 )}
@@ -410,7 +410,7 @@ export function ServerSubAgents({ lang = 'es' }: { lang?: Language }) {
                 </div>
               )}
               {fijada && resumenCorriendo(rows, ahora, t, lang) && (
-                <div className="text-[#ffff55] mt-0.5" data-testid="subagent-pinned-summary">
+                <div className="text-[var(--nc-text-accent)] mt-0.5" data-testid="subagent-pinned-summary">
                   {resumenCorriendo(rows, ahora, t, lang)}
                 </div>
               )}

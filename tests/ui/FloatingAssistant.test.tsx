@@ -86,7 +86,7 @@ describe('FloatingAssistant (Nono)', () => {
     test('el saludo es un mensaje de Nono (no del usuario)', () => {
       render(<FloatingAssistant lang="es" />);
       fireEvent.click(getHead());
-      const bubbles = document.querySelectorAll('.nono-panel .bg-\\[\\#00243e\\]');
+      const bubbles = document.querySelectorAll('[data-testid="nono-message-bubble"]');
       expect(bubbles.length).toBeGreaterThanOrEqual(1);
     });
 
@@ -111,7 +111,7 @@ describe('FloatingAssistant (Nono)', () => {
 
       // El typing desaparece y hay una respuesta de Nono
       expect(screen.queryByText('● ● ●')).toBeNull();
-      const bubbles = document.querySelectorAll('.nono-panel .bg-\\[\\#00243e\\]');
+      const bubbles = document.querySelectorAll('[data-testid="nono-message-bubble"]');
       expect(bubbles.length).toBeGreaterThanOrEqual(1);
     });
 
@@ -130,7 +130,7 @@ describe('FloatingAssistant (Nono)', () => {
       fireEvent.change(input, { target: { value: '   ' } });
       fireEvent.keyDown(input, { key: 'Enter' });
       expect(input.value).toBe('   ');
-      expect(document.querySelectorAll('.nono-panel .bg-\\[\\#ffff55\\]')).toHaveLength(0);
+      expect(document.querySelectorAll('[data-testid="nono-user-bubble"]')).toHaveLength(0);
     });
 
     test('expresión cambia según la palabra clave', () => {
@@ -147,15 +147,15 @@ describe('FloatingAssistant (Nono)', () => {
     test('🗑️ limpia el chat', () => {
       render(<FloatingAssistant lang="es" />);
       fireEvent.click(getHead());
-      expect(document.querySelectorAll('.nono-panel .bg-\\[\\#ffff55\\]').length).toBe(0);
+      expect(document.querySelectorAll('[data-testid="nono-user-bubble"]').length).toBe(0);
 
       const input = screen.getByPlaceholderText('Escribe...');
       fireEvent.change(input, { target: { value: 'mensaje de prueba' } });
       fireEvent.keyDown(input, { key: 'Enter' });
-      expect(document.querySelectorAll('.nono-panel .bg-\\[\\#ffff55\\]').length).toBe(1);
+      expect(document.querySelectorAll('[data-testid="nono-user-bubble"]').length).toBe(1);
 
       fireEvent.click(screen.getByLabelText('Limpiar chat'));
-      expect(document.querySelectorAll('.nono-panel .bg-\\[\\#ffff55\\]')).toHaveLength(0);
+      expect(document.querySelectorAll('[data-testid="nono-user-bubble"]')).toHaveLength(0);
       expect(screen.getByText(/Chat limpiado/)).toBeInTheDocument();
     });
 

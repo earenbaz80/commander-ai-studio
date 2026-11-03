@@ -121,10 +121,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-[min(92vw,600px)] nc-panel border-2 border-[#00ffff] bg-[#000080] shadow-2xl">
+      <div className="w-[min(92vw,600px)] nc-panel border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] shadow-2xl">
         {/* Buscador */}
-        <div className="flex items-center gap-2 px-3 py-2 border-b-2 border-[#000055] bg-[#0000aa]">
-          <Search className="w-4 h-4 text-[#00ffff] shrink-0" />
+        <div className="flex items-center gap-2 px-3 py-2 border-b-2 border-[var(--nc-border-dark)] bg-[var(--nc-bg-main)]">
+          <Search className="w-4 h-4 text-[var(--nc-text)] shrink-0" />
           <input
             ref={inputRef}
             value={query}
@@ -153,7 +153,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           )}
           {groups.map((group) => (
             <div key={group.name} className="mb-1" role="group" aria-label={group.name}>
-              <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-[#ffff55] uppercase tracking-wider">
+              <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-[var(--nc-text-accent)] uppercase tracking-wider">
                 {group.name}
               </div>
               {group.items.map(({ cmd, index }) => (
@@ -168,8 +168,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onClick={() => runAt(index)}
                   className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs font-mono border-l-2 ${
                     index === active
-                      ? 'bg-[#00ffff] text-black border-[#ffff55]'
-                      : 'text-white border-transparent hover:bg-[#0000cc]'
+                      ? 'bg-[var(--nc-highlight-bg)] text-black border-[var(--nc-text-accent)]'
+                      : 'text-white border-transparent hover:bg-[var(--nc-bg-hover)]'
                   }`}
                 >
                   {cmd.icon && <span className="shrink-0 flex items-center">{cmd.icon}</span>}
@@ -177,7 +177,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   {cmd.hint && (
                     <span
                       className={`text-[10px] shrink-0 ${
-                        index === active ? 'text-black/70' : 'text-[#00ffff]'
+                        index === active ? 'text-black/70' : 'text-[var(--nc-text)]'
                       }`}
                     >
                       {cmd.hint}
@@ -190,9 +190,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         </div>
 
         {/* Pie con ayuda de teclado */}
-        <div className="flex items-center justify-between px-3 py-1.5 border-t-2 border-[#000055] bg-[#0000aa] text-[10px] font-mono text-gray-300">
+        <div className="flex items-center justify-between px-3 py-1.5 border-t-2 border-[var(--nc-border-dark)] bg-[var(--nc-bg-main)] text-[10px] font-mono text-gray-300">
           <span>↑↓ {lang === 'es' ? 'navegar' : lang === 'de' ? 'navigieren' : 'navigate'} · ↵ {lang === 'es' ? 'ejecutar' : lang === 'de' ? 'ausführen' : 'run'} · Esc {lang === 'es' ? 'cerrar' : lang === 'de' ? 'schließen' : 'close'}</span>
-          <span className="flex items-center gap-1 text-[#00ffff]">
+          <span className="flex items-center gap-1 text-[var(--nc-text)]">
             <CornerDownLeft className="w-3 h-3" /> Ctrl+K
           </span>
         </div>

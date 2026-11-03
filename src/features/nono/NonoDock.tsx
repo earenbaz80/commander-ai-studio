@@ -15,7 +15,7 @@ export interface NonoDockProps {
 
 export const NonoDock: React.FC<NonoDockProps> = ({ lang = 'es', children }) => (
   <ResizableSplit id="nono" side="right" lang={lang}>
-    <div className="h-full border-l-2 border-[#00ffff] overflow-hidden">{children}</div>
+    <div className="h-full border-l-2 border-[var(--nc-border-light)] overflow-hidden">{children}</div>
   </ResizableSplit>
 );
 

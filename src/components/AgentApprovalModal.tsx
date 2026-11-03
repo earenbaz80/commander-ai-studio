@@ -117,15 +117,15 @@ export function AgentApprovalModal({ approval, onResolve, lang = 'es' }: AgentAp
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-      <div className="bg-[#000080] border-2 border-[#ffff55] p-4 max-w-2xl w-full max-h-[85vh] overflow-y-auto">
-        <div className="text-[#ffff55] font-bold text-sm mb-1">
+      <div className="bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-text-accent)] p-4 max-w-2xl w-full max-h-[85vh] overflow-y-auto">
+        <div className="text-[var(--nc-text-accent)] font-bold text-sm mb-1">
           {t('Revisar cambios de la IA', 'Review AI changes')}
         </div>
         <div className="text-white text-xs mb-1">{toolId}</div>
-        <div className="text-[#00ffff] text-[11px] mb-3 break-all">{approval.description}</div>
+        <div className="text-[var(--nc-text)] text-[11px] mb-3 break-all">{approval.description}</div>
 
         {isPatchTool && loading && (
-          <div className="text-[11px] text-[#00ffff] mb-3">{t('Leyendo archivo…', 'Reading file…')}</div>
+          <div className="text-[11px] text-[var(--nc-text)] mb-3">{t('Leyendo archivo…', 'Reading file…')}</div>
         )}
 
         {showDiff && rules.length > 0 && (
@@ -188,7 +188,7 @@ export function AgentApprovalModal({ approval, onResolve, lang = 'es' }: AgentAp
               </button>
               <button
                 onClick={() => onResolve(true)}
-                className="nc-button text-xs px-3 py-1 bg-[#ffff55] text-black font-bold"
+                className="nc-button text-xs px-3 py-1 bg-[var(--nc-active-bg)] text-black font-bold"
               >
                 {t('Aprobar', 'Approve')}
               </button>

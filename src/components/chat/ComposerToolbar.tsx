@@ -114,7 +114,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           : lang === 'de' ? 'Hilfe: @nono = öffnet Nono · @archivo = Dateien · @ayuda = Info' : 'Help: @nono = opens Nono · @archivo = files · @ayuda = info'
         }
         aria-label={lang === 'es' ? 'Ayuda de menciones' : lang === 'de' ? 'Erwähnungshilfe' : 'Mention help'}
-        className="shrink-0 p-1.5 bg-[#000080] border border-cyan-400/40 rounded hover:bg-[#0000cc] transition-colors cursor-help"
+        className="shrink-0 p-1.5 bg-[var(--nc-bg-panel)] border border-cyan-400/40 rounded hover:bg-[var(--nc-bg-hover)] transition-colors cursor-help"
       >
         <HelpCircle className="w-3.5 h-3.5 text-cyan-400" />
       </button>
@@ -123,7 +123,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
       <button
         type="button"
         onClick={() => fileInputRef.current?.click()}
-        className="cursor-pointer shrink-0 p-2 bg-[#0000aa] border border-cyan-400/40 rounded hover:bg-[#0000cc] transition-colors"
+        className="cursor-pointer shrink-0 p-2 bg-[var(--nc-bg-main)] border border-cyan-400/40 rounded hover:bg-[var(--nc-bg-hover)] transition-colors"
         title={lang === 'es' ? 'Adjuntar archivos' : lang === 'de' ? 'Dateien anhängen' : 'Attach files'}
         aria-label={lang === 'es' ? 'Adjuntar archivos' : lang === 'de' ? 'Dateien anhängen' : 'Attach files'}
       >
@@ -150,7 +150,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
               ? `Verwendetes Modell${currentModel?.description ? `: ${currentModel.description}` : ''}`
               : `Model in use${currentModel?.description ? `: ${currentModel.description}` : ''}`
         }
-        className="order-first w-full min-w-0 min-h-10 sm:order-none sm:w-auto sm:min-w-[240px] sm:flex-1 bg-[#000080] border border-cyan-400/60 text-[#00ffff] text-sm font-mono px-2 py-2 rounded focus-visible:outline-2 focus-visible:outline-[#ffff55] cursor-pointer"
+        className="order-first w-full min-w-0 min-h-10 sm:order-none sm:w-auto sm:min-w-[240px] sm:flex-1 bg-[var(--nc-bg-panel)] border border-cyan-400/60 text-[var(--nc-text)] text-sm font-mono px-2 py-2 rounded focus-visible:outline-2 focus-visible:outline-[#ffff55] cursor-pointer"
       >
         {/* Modelo no listado (p. ej. descargado de HuggingFace) */}
         {!currentModel && <option value={selectedModel}>{selectedModel}</option>}
@@ -190,8 +190,8 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           aria-label={lang === 'es' ? 'Configurar LLM local' : lang === 'de' ? 'Lokales LLM konfigurieren' : 'Configure local LLM'}
           className={`flex items-center gap-1 rounded border px-2 py-2 text-xs font-bold shrink-0 transition-colors ${
             isLocal
-              ? 'border-[#00aa00] bg-[#002200] text-[#00ff00]'
-              : 'border-[#00aaaa]/40 bg-[#0000aa] text-[#00ffff] hover:bg-[#0000cc]'
+              ? 'border-[#00aa00] bg-[#002200] text-[var(--nc-success)]'
+              : 'border-[var(--nc-border-mid)]/40 bg-[var(--nc-bg-main)] text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)]'
           }`}
         >
           <Cpu className="w-3.5 h-3.5" />
@@ -211,10 +211,10 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
         aria-label={lang === 'es' ? 'Modo del agente' : lang === 'de' ? 'Agentenmodus' : 'Agent mode'}
         className={`min-h-9 max-w-full flex items-center gap-1 rounded border px-2 py-2 text-xs font-bold shrink-0 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-[#ffff55] ${
           runMode === 'build'
-            ? 'border-[#00aa00] bg-[#002200] text-[#00ff00]'
+            ? 'border-[#00aa00] bg-[#002200] text-[var(--nc-success)]'
             : runMode === 'plan'
-              ? 'border-[#ffff55] bg-[#222200] text-[#ffff55]'
-              : 'border-[#aa0000] bg-[#220000] text-[#ff5555]'
+              ? 'border-[var(--nc-text-accent)] bg-[#222200] text-[var(--nc-text-accent)]'
+              : 'border-[#aa0000] bg-[#220000] text-[var(--nc-danger)]'
         }`}
       >
         <option value="build">{runModeOption('build')}</option>
@@ -226,7 +226,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
         onClick={onOpenAdvanced}
         title={lang === 'es' ? 'Configuración avanzada (tools, globs)' : lang === 'de' ? 'Erweiterte Einstellungen (Tools, Globs)' : 'Advanced settings (tools, globs)'}
         aria-label={lang === 'es' ? 'Configuración avanzada' : lang === 'de' ? 'Erweiterte Einstellungen' : 'Advanced settings'}
-        className="flex items-center gap-1 rounded border border-cyan-400/40 px-2 py-2 text-xs font-bold text-[#00ffff] hover:bg-[#0000aa] shrink-0"
+        className="flex items-center gap-1 rounded border border-cyan-400/40 px-2 py-2 text-xs font-bold text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] shrink-0"
       >
         <Settings className="w-3 h-3" />
         {lang === 'es' ? 'Avanzado' : lang === 'de' ? 'Erweitert' : 'Advanced'}
@@ -247,10 +247,10 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
             e.currentTarget.querySelector('summary')?.focus();
           }
         }}>
-          <summary className="min-h-9 flex items-center px-2 border border-cyan-400/40 cursor-pointer text-[#00ffff] hover:bg-[#0000aa] focus-visible:outline-2 focus-visible:outline-[#ffff55]" aria-label={lang === 'es' ? 'Opciones de conversación' : lang === 'de' ? 'Unterhaltungsoptionen' : 'Conversation options'}>
+          <summary className="min-h-9 flex items-center px-2 border border-cyan-400/40 cursor-pointer text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] focus-visible:outline-2 focus-visible:outline-[#ffff55]" aria-label={lang === 'es' ? 'Opciones de conversación' : lang === 'de' ? 'Unterhaltungsoptionen' : 'Conversation options'}>
             {lang === 'es' ? 'Opciones' : lang === 'de' ? 'Optionen' : 'Options'}
           </summary>
-          <div className="absolute bottom-full right-0 z-20 mb-2 w-56 max-w-[80vw] border border-[#00ffff] bg-[#000080] p-1 shadow-lg">
+          <div className="absolute bottom-full right-0 z-20 mb-2 w-56 max-w-[80vw] border border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] p-1 shadow-lg">
             <button type="button" onClick={(e) => {
               const menu = e.currentTarget.closest('details');
               if (menu) {
@@ -258,7 +258,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                 menu.querySelector('summary')?.focus();
               }
               onClearChat();
-            }} className="w-full px-3 py-2 text-left text-red-300 hover:bg-[#0000aa]">
+            }} className="w-full px-3 py-2 text-left text-red-300 hover:bg-[var(--nc-bg-hover)]">
               {lang === 'es' ? 'Limpiar conversación' : lang === 'de' ? 'Unterhaltung leeren' : 'Clear conversation'}
             </button>
           </div>
@@ -268,7 +268,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           disabled={isGenerating || !canSend}
           aria-label={lang === 'es' ? 'Enviar mensaje' : lang === 'de' ? 'Nachricht senden' : 'Send message'}
           title={lang === 'es' ? 'Enviar mensaje' : lang === 'de' ? 'Nachricht senden' : 'Send message'}
-          className="flex min-h-10 items-center gap-2 px-4 py-2 border-2 border-[#ffff55] bg-[#ffff55] text-[#000080] font-bold hover:bg-white hover:border-white disabled:bg-[#333355] disabled:border-[#666688] disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
+          className="flex min-h-10 items-center gap-2 px-4 py-2 border-2 border-[var(--nc-text-accent)] bg-[var(--nc-active-bg)] text-[var(--nc-active-text)] font-bold hover:bg-white hover:border-white disabled:bg-[var(--nc-bg-deep)] disabled:border-[var(--nc-border-dark)] disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
         >
           {isGenerating ? (
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />

@@ -36,14 +36,14 @@ export const TokenCounter: React.FC<{
   const isCacheable = tokenCount >= 32768;
 
   return (
-    <div className="text-[10px] font-mono px-2 py-1 bg-[#0000aa] border border-[#00aaaa] flex flex-wrap items-center justify-between gap-2 text-[#00ffff] select-none">
+    <div className="text-[10px] font-mono px-2 py-1 bg-[var(--nc-bg-main)] border border-[var(--nc-border-mid)] flex flex-wrap items-center justify-between gap-2 text-[var(--nc-text)] select-none">
       <div className="flex items-center gap-3">
         <span className="font-bold text-white flex items-center gap-1">
-          <Zap className="w-3 h-3 text-[#ffff55]" />
-          Tokens: <span className="text-[#ffff55] font-bold">{tokenCount.toLocaleString()}</span>
+          <Zap className="w-3 h-3 text-[var(--nc-text-accent)]" />
+          Tokens: <span className="text-[var(--nc-text-accent)] font-bold">{tokenCount.toLocaleString()}</span>
         </span>
 
-        <span className="flex items-center gap-1 text-[#00ffff]">
+        <span className="flex items-center gap-1 text-[var(--nc-text)]">
           <Coins className="w-3 h-3 text-green-400" />
           Costo Est.: <span className="text-green-400 font-bold">${cost} USD</span>
         </span>
@@ -51,11 +51,11 @@ export const TokenCounter: React.FC<{
 
       <div className="flex items-center gap-2 text-[9px]">
         {isCacheable && (
-          <span className="bg-[#ffff55] text-black font-bold px-1.5 py-0.2 rounded border border-white flex items-center gap-1">
+          <span className="bg-[var(--nc-active-bg)] text-black font-bold px-1.5 py-0.2 rounded border border-white flex items-center gap-1">
             <Database className="w-2.5 h-2.5" /> CACHÉ DE CONTEXTO ACTIVO (-75% COSTO)
           </span>
         )}
-        <span className="text-[#ffff55] opacity-80">
+        <span className="text-[var(--nc-text-accent)] opacity-80">
           Límite: {isPro ? '2,000,000' : '1,000,000'} ctx
         </span>
       </div>

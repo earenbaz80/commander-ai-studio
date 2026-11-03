@@ -104,7 +104,7 @@ export const ShellJobLog: React.FC<ShellJobLogProps> = ({ jobId, command, lang }
   };
 
   const badge = state === 'running'
-    ? { text: t('EN MARCHA', 'RUNNING'), cls: 'text-[#ffff55]' }
+    ? { text: t('EN MARCHA', 'RUNNING'), cls: 'text-[var(--nc-text-accent)]' }
     : state === 'stopped'
       ? { text: t('DETENIDO', 'STOPPED'), cls: 'text-white/60' }
       : state === 'exited'
@@ -112,17 +112,17 @@ export const ShellJobLog: React.FC<ShellJobLogProps> = ({ jobId, command, lang }
           text: exitCode === 0
             ? t('SALIÓ 0', 'EXIT 0')
             : `${t('SALIÓ', 'EXIT')} ${exitCode ?? '?'}`,
-          cls: exitCode === 0 ? 'text-[#00ff66]' : 'text-red-400',
+          cls: exitCode === 0 ? 'text-[var(--nc-success)]' : 'text-red-400',
         }
         : { text: t('SIN DATOS', 'NO DATA'), cls: 'text-red-400' };
 
   return (
-    <div className="border border-[#00ffff]/40 bg-black/50 rounded">
-      <div className="flex items-center gap-2 px-1.5 py-1 border-b border-[#00ffff]/20">
-        <span className="text-[10px] font-bold text-[#ffff55] shrink-0">
+    <div className="border border-[var(--nc-border-light)]/40 bg-black/50 rounded">
+      <div className="flex items-center gap-2 px-1.5 py-1 border-b border-[var(--nc-border-light)]/20">
+        <span className="text-[10px] font-bold text-[var(--nc-text-accent)] shrink-0">
           {t('SALIDA EN VIVO', 'LIVE OUTPUT')}
         </span>
-        <span className="text-[10px] text-[#00ffff]/70 font-mono truncate" title={command || jobId}>
+        <span className="text-[10px] text-[var(--nc-text)]/70 font-mono truncate" title={command || jobId}>
           {command || jobId}
         </span>
         <span className={`ml-auto text-[10px] font-bold shrink-0 ${badge.cls}`}>{badge.text}</span>

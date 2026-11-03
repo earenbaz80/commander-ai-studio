@@ -17,14 +17,14 @@ const NavGroup: React.FC<{
       onClick={onToggle}
       aria-expanded={open}
       aria-label={title}
-      className="flex min-h-9 items-center gap-1 text-xs font-bold text-[#ffff55] uppercase tracking-wider px-1 py-2 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ffff55]"
+      className="flex min-h-9 items-center gap-1 text-xs font-bold text-[var(--nc-text-accent)] uppercase tracking-wider px-1 py-2 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ffff55]"
     >
       {open ? (
         <ChevronDown className="w-3.5 h-3.5 shrink-0" />
       ) : (
         <ChevronRight className="w-3.5 h-3.5 shrink-0" />
       )}
-      <span className="flex-1 text-left border-b border-[#00ffff]/30 pb-0.5">{title}</span>
+      <span className="flex-1 text-left border-b border-[var(--nc-border-light)]/30 pb-0.5">{title}</span>
     </button>
     {open && <div className="flex flex-col gap-1.5 pl-1 pt-0.5">{children}</div>}
   </div>
@@ -206,7 +206,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside 
-      className={isSidebarOpen ? 'shrink-0 h-full nc-panel p-3 flex flex-col gap-3 border-r-2 border-[#00ffff] overflow-y-auto select-none min-h-0 max-w-[45vw]' : 'hidden'}
+      className={isSidebarOpen ? 'shrink-0 h-full nc-panel p-3 flex flex-col gap-3 border-r-2 border-[var(--nc-border-light)] overflow-y-auto select-none min-h-0 max-w-[45vw]' : 'hidden'}
       style={width ? { width } : undefined}
       aria-label={lang === 'es' ? 'Navegación principal' : lang === 'de' ? 'Hauptnavigation' : 'Main navigation'}
     >
@@ -247,7 +247,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           data-tooltip={lang === 'es' ? 'Commander Composer (Multi-Archivo & Diffs)' : lang === 'de' ? 'Commander Composer (Mehrdatei & Diffs)' : 'Commander Composer (Multi-File & Diffs)'}
           data-tooltip-sub={lang === 'es' ? 'Agente de código multi-archivo, diffs interactivos y Live Sandbox' : lang === 'de' ? 'Mehrdatei-Coding-Agent & Live-Runner' : 'Multi-file coding agent & live runner'}
         >
-          <Code2 className="w-6 h-6 text-[#ffff55]" /> {t.modeComposer}
+          <Code2 className="w-6 h-6 text-[var(--nc-text-accent)]" /> {t.modeComposer}
         </button>
         <button 
           onClick={() => setMode('compare')} 
@@ -255,7 +255,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           data-tooltip={lang === 'es' ? 'Comparador de Modelos en Paralelo' : lang === 'de' ? 'Modellvergleich nebeneinander' : 'Side-by-Side Model Comparison'}
           data-tooltip-sub={lang === 'es' ? 'Ejecuta el mismo prompt en Claude, Gemini y HuggingFace a la vez' : lang === 'de' ? 'Prompt gleichzeitig mit mehreren Modellen ausführen' : 'Run prompt across multiple models simultaneously'}
         >
-          <Columns className="w-6 h-6 text-[#ffff55]" /> {t.modeCompare}
+          <Columns className="w-6 h-6 text-[var(--nc-text-accent)]" /> {t.modeCompare}
         </button>
         <button 
           onClick={() => setMode('live_voice')} 
@@ -263,7 +263,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           data-tooltip={lang === 'es' ? 'Voz en Vivo Bidireccional (Gemini Live)' : lang === 'de' ? 'Echtzeit-Sprache (Gemini Live)' : 'Realtime Voice (Gemini Live)'}
           data-tooltip-sub={lang === 'es' ? 'Streaming de audio con micrófono y síntesis de voz en tiempo real' : lang === 'de' ? 'Sprachinteraktion in Echtzeit mit geringer Latenz' : 'Low latency real-time voice interaction'}
         >
-          <Radio className="w-6 h-6 text-[#00ffff]" /> {t.modeVoice}
+          <Radio className="w-6 h-6 text-[var(--nc-text)]" /> {t.modeVoice}
         </button>
         <button
           onClick={onOpenGallery}
@@ -298,7 +298,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             data-tooltip={lang === 'es' ? 'Ajustes del modelo' : lang === 'de' ? 'Modell-Einstellungen' : 'Model settings'}
             data-tooltip-sub={lang === 'es' ? 'Modelo, parámetros e instrucciones en un solo panel' : lang === 'de' ? 'Modell, Parameter und Anweisungen in einem Panel' : 'Model, parameters and instructions in a single panel'}
           >
-            <Sliders className="w-6 h-6 text-[#00ffff]" /> {lang === 'es' ? 'Ajustes del modelo' : lang === 'de' ? 'Modell-Einstellungen' : 'Model settings'}
+            <Sliders className="w-6 h-6 text-[var(--nc-text)]" /> {lang === 'es' ? 'Ajustes del modelo' : lang === 'de' ? 'Modell-Einstellungen' : 'Model settings'}
           </button>
         )}
         <button 
@@ -316,7 +316,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             data-tooltip={lang === 'es' ? 'Configurar LLM Local' : lang === 'de' ? 'Lokales LLM konfigurieren' : 'Configure Local LLM'}
             data-tooltip-sub={lang === 'es' ? 'Servidor y modelo del LLM local (Ollama / OpenAI-compatible)' : lang === 'de' ? 'Lokaler LLM-Server & Modell (Ollama / OpenAI-kompatibel)' : 'Local LLM server & model (Ollama / OpenAI-compatible)'}
           >
-            <Server className="w-6 h-6 text-[#00ffff]" /> {lang === 'es' ? 'Configurar LLM Local' : lang === 'de' ? 'Lokales LLM konfigurieren' : 'Configure Local LLM'}
+            <Server className="w-6 h-6 text-[var(--nc-text)]" /> {lang === 'es' ? 'Configurar LLM Local' : lang === 'de' ? 'Lokales LLM konfigurieren' : 'Configure Local LLM'}
           </button>
         )}
         </NavGroup>
@@ -333,7 +333,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             data-tooltip={lang === 'es' ? 'Compilar / Exportar Proyecto' : lang === 'de' ? 'Projekt kompilieren / exportieren' : 'Compile / Export Project'}
             data-tooltip-sub={lang === 'es' ? 'Compila la aplicación nativa para Windows, Android, iOS, macOS y Linux' : lang === 'de' ? 'Die native App für Desktop und Mobilgeräte bauen' : 'Build the native app for desktop and mobile'}
           >
-            <Hammer className="w-6 h-6 text-[#ffff55]" /> {lang === 'es' ? 'Compilar Proyecto' : lang === 'de' ? 'Projekt kompilieren' : 'Compile Project'}
+            <Hammer className="w-6 h-6 text-[var(--nc-text-accent)]" /> {lang === 'es' ? 'Compilar Proyecto' : lang === 'de' ? 'Projekt kompilieren' : 'Compile Project'}
           </button>
         )}
         <button 
@@ -347,12 +347,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </NavGroup>
       </div>
 
-      <div className="border-t-2 border-[#00ffff] pt-2 mt-2">
+      <div className="border-t-2 border-[var(--nc-border-light)] pt-2 mt-2">
         <div className="flex items-center justify-between text-xs mb-2">
           <span className="flex items-center gap-1 font-bold">
             <Clock className="w-3.5 h-3.5" /> {lang === 'es' ? 'HISTORIAL' : lang === 'de' ? 'VERLAUF' : 'HISTORY'}
             {historyRows.length > 0 && (
-              <span className="bg-[#000055] border border-[#00ffff]/40 text-[#00ffff] px-1 text-[9px] font-mono">
+              <span className="bg-[var(--nc-bg-deep)] border border-[var(--nc-border-light)]/40 text-[var(--nc-text)] px-1 text-[9px] font-mono">
                 {historyRows.length}
               </span>
             )}
@@ -361,7 +361,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {onRefreshServerSessions && (
               <button
                 onClick={onRefreshServerSessions}
-                className="text-[#00ffff] hover:text-white p-1"
+                className="text-[var(--nc-text)] hover:text-white p-1"
                 title={lang === 'es' ? 'Actualizar sesiones del servidor' : lang === 'de' ? 'Server-Sitzungen aktualisieren' : 'Refresh server sessions'}
               >
                 <RefreshCw className="w-3.5 h-3.5" />
@@ -370,7 +370,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {recentHistory.length > 0 && (
               <button
                 onClick={onClearHistory}
-                className="text-[#00ffff] hover:text-white p-1"
+                className="text-[var(--nc-text)] hover:text-white p-1"
                 title={lang === 'es' ? 'Borrar el historial de este equipo' : lang === 'de' ? 'Lokalen Verlauf leeren' : 'Clear local history'}
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -387,21 +387,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder={lang === 'es' ? 'Buscar historial...' : lang === 'de' ? 'Verlauf durchsuchen...' : 'Search history...'}
-              className="w-full bg-[#000044] border border-[#00ffff]/40 text-white placeholder-[#00aaaa]/50 text-[10px] px-2 py-1 outline-none focus:border-[#00ffff] transition-colors rounded font-mono"
+              className="w-full bg-[var(--nc-bg-deep)] border border-[var(--nc-border-light)]/40 text-white placeholder-[#00aaaa]/50 text-[10px] px-2 py-1 outline-none focus:border-[var(--nc-border-light)] transition-colors rounded font-mono"
             />
           </div>
         )}
 
         {/* Coincidencias dentro de los mensajes: lo que el filtro de títulos no ve */}
         {onSearchMessages && searchTerm.trim().length >= 2 && (searchHits.length > 0 || isSearchingMessages) && (
-          <div className="mb-2 border border-[#00ffff]/40 bg-[#000044] rounded" data-testid="message-search-results">
-            <div className="flex items-center justify-between px-2 py-1 border-b border-[#00ffff]/20 text-[9px] font-mono text-[#00ffff]">
+          <div className="mb-2 border border-[var(--nc-border-light)]/40 bg-[var(--nc-bg-deep)] rounded" data-testid="message-search-results">
+            <div className="flex items-center justify-between px-2 py-1 border-b border-[var(--nc-border-light)]/20 text-[9px] font-mono text-[var(--nc-text)]">
               <span>{lang === 'es' ? 'EN MENSAJES' : lang === 'de' ? 'IN NACHRICHTEN' : 'IN MESSAGES'}</span>
               <span>{isSearchingMessages ? '…' : searchHits.length}</span>
             </div>
             <div className="max-h-40 overflow-y-auto">
               {searchHits.length === 0 ? (
-                <div className="text-[10px] text-[#ff5555] italic p-2 text-center">
+                <div className="text-[10px] text-[var(--nc-danger)] italic p-2 text-center">
                   {lang === 'es' ? 'Sin coincidencias en mensajes' : lang === 'de' ? 'Keine Treffer in Nachrichten' : 'No matches in messages'}
                 </div>
               ) : (
@@ -413,10 +413,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     // Sin etiqueta el botón no anuncia nada útil; el nombre calculado
                     // desde los spans tampoco incluía el fragmento.
                     aria-label={plainSnippet(hit.snippet)}
-                    className="w-full text-left px-2 py-1 text-[10px] text-white hover:bg-[#0000aa] transition-colors border-b border-[#00ffff]/10 last:border-b-0"
+                    className="w-full text-left px-2 py-1 text-[10px] text-white hover:bg-[var(--nc-bg-hover)] transition-colors border-b border-[var(--nc-border-light)]/10 last:border-b-0"
                     title={plainSnippet(hit.snippet)}
                   >
-                    <span className="block truncate font-mono text-[#ffff55]">
+                    <span className="block truncate font-mono text-[var(--nc-text-accent)]">
                       {hit.thread_id.slice(0, 8)} · #{hit.seq}
                     </span>
                     <span className="block truncate text-[#aaffff]/80">{plainSnippet(hit.snippet)}</span>
@@ -429,7 +429,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <div className="space-y-1">
           {historyRows.length === 0 ? (
-            <div className="text-[11px] text-[#00aaaa] italic p-2 text-center">
+            <div className="text-[11px] text-[var(--nc-text-dim)] italic p-2 text-center">
               {hasHistory
                 ? (lang === 'es' ? 'Sin coincidencias' : lang === 'de' ? 'Keine Treffer gefunden' : 'No matches found')
                 : (lang === 'es' ? 'Sin conversaciones guardadas' : lang === 'de' ? 'Noch keine Unterhaltungen' : 'No conversations yet')}
@@ -443,7 +443,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div
                   key={row.key}
                   data-testid={thread ? 'session-row-' + thread.id : undefined}
-                  className="bg-[#0000aa] border border-[#00ffff]/40 hover:border-[#00ffff] rounded p-1.5 text-[10px] transition-colors"
+                  className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)]/40 hover:border-[var(--nc-border-light)] rounded p-1.5 text-[10px] transition-colors"
                 >
                   {thread && editingSessionId === thread.id ? (
                     <input
@@ -466,7 +466,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         setEditingSessionId(null);
                       }}
                       aria-label="Nuevo nombre del hilo"
-                      className="w-full bg-[#000044] border border-[#00ffff] text-[#ffff55] text-[10px] px-1 py-0.5 outline-none font-mono"
+                      className="w-full bg-[var(--nc-bg-deep)] border border-[var(--nc-border-light)] text-[var(--nc-text-accent)] text-[10px] px-1 py-0.5 outline-none font-mono"
                     />
                   ) : (
                     <>
@@ -477,18 +477,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           className="flex-1 min-w-0 text-left"
                           title={rowTitle}
                         >
-                          <span className="flex items-center gap-1 font-bold text-[#ffff55] truncate">
+                          <span className="flex items-center gap-1 font-bold text-[var(--nc-text-accent)] truncate">
                             {row.pinned && <Pin className="w-2.5 h-2.5 shrink-0" />}
                             <span className="truncate">{rowTitle}</span>
                           </span>
-                          <span className="block text-[#00ffff]/70 font-mono text-[9px] truncate">
+                          <span className="block text-[var(--nc-text)]/70 font-mono text-[9px] truncate">
                             {[row.meta, row.project].filter(Boolean).join(' · ')}
                           </span>
                         </button>
                         <span className="flex items-center gap-0.5 shrink-0">
                           {item && (
                             <span
-                              className="bg-[#000055] border border-[#00ffff]/40 text-[#00ffff] px-1 text-[8px] font-mono"
+                              className="bg-[var(--nc-bg-deep)] border border-[var(--nc-border-light)]/40 text-[var(--nc-text)] px-1 text-[8px] font-mono"
                               title={lang === 'es' ? 'Guardada en este equipo' : lang === 'de' ? 'Auf diesem Gerät gespeichert' : 'Saved on this device'}
                             >
                               EQ
@@ -496,7 +496,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           )}
                           {thread && (
                             <span
-                              className="bg-[#000055] border border-[#ffff55]/40 text-[#ffff55] px-1 text-[8px] font-mono"
+                              className="bg-[var(--nc-bg-deep)] border border-[var(--nc-text-accent)]/40 text-[var(--nc-text-accent)] px-1 text-[8px] font-mono"
                               title={lang === 'es' ? 'Guardada en el servidor' : lang === 'de' ? 'Auf dem Server gespeichert' : 'Saved on the server'}
                             >
                               SRV
@@ -508,7 +508,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               onClick={() => onToggleServerSessionPin(thread)}
                               aria-label={(thread.pinned ? 'Soltar ' : 'Fijar ') + rowTitle}
                               title={thread.pinned ? 'Quitar de fijados' : 'Fijar arriba'}
-                              className={thread.pinned ? 'text-[#ffff55] hover:text-white p-0.5' : 'text-[#00ffff]/60 hover:text-white p-0.5'}
+                              className={thread.pinned ? 'text-[var(--nc-text-accent)] hover:text-white p-0.5' : 'text-[var(--nc-text)]/60 hover:text-white p-0.5'}
                             >
                               <Pin className="w-3 h-3" />
                             </button>
@@ -519,7 +519,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               onClick={() => { setSessionDraft(thread.title || ''); setEditingSessionId(thread.id); }}
                               aria-label={'Renombrar ' + rowTitle}
                               title="Renombrar"
-                              className="text-[#00ffff]/60 hover:text-white p-0.5"
+                              className="text-[var(--nc-text)]/60 hover:text-white p-0.5"
                             >
                               <Pencil className="w-3 h-3" />
                             </button>
@@ -549,11 +549,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         </span>
                       </div>
                       {item && (
-                        <div className="flex items-center gap-1 pt-1 mt-1 border-t border-[#000055]">
+                        <div className="flex items-center gap-1 pt-1 mt-1 border-t border-[var(--nc-border-dark)]">
                           <button
                             type="button"
                             onClick={() => onSelectHistoryItem(item)}
-                            className="nc-button !px-1.5 !py-0.5 text-[10px] flex-1 text-center bg-[#000080] text-[#00ffff] hover:text-white"
+                            className="nc-button !px-1.5 !py-0.5 text-[10px] flex-1 text-center bg-[var(--nc-bg-panel)] text-[var(--nc-text)] hover:text-white"
                             title={lang === 'es' ? 'Restaurar conversación y parámetros' : lang === 'de' ? 'Unterhaltung und Parameter wiederherstellen' : 'Restore conversation and parameters'}
                           >
                             {lang === 'es' ? 'Restaurar' : lang === 'de' ? 'Wiederherstellen' : 'Restore'}
@@ -562,7 +562,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             <button
                               type="button"
                               onClick={() => onRunHistoryItem(item)}
-                              className="nc-button !px-1.5 !py-0.5 text-[10px] bg-[#00ffff] text-black font-bold hover:bg-white flex items-center gap-1 shrink-0"
+                              className="nc-button !px-1.5 !py-0.5 text-[10px] bg-[var(--nc-highlight-bg)] text-black font-bold hover:bg-white flex items-center gap-1 shrink-0"
                               title={lang === 'es' ? 'Restaurar y ejecutar en vivo' : lang === 'de' ? 'Wiederherstellen und im Live-Viewer ausführen' : 'Restore and run in live viewer'}
                             >
                               <span className="flex items-center gap-1">

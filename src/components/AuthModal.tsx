@@ -85,7 +85,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, currentUs
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div 
-        className="nc-panel w-full max-w-md p-4 flex flex-col gap-4 border-2 border-[#00ffff] bg-[#000080] shadow-[8px_8px_0px_#000055] cursor-default"
+        className="nc-panel w-full max-w-md p-4 flex flex-col gap-4 border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] shadow-[8px_8px_0px_var(--nc-shadow)] cursor-default"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -104,12 +104,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, currentUs
         {currentUser ? (
           /* Logged In View */
           <div className="flex flex-col gap-4 text-center p-2">
-            <div className="bg-[#0000aa] p-3 border-2 border-[#00ffff] rounded flex flex-col items-center gap-2">
-              <div className="w-12 h-12 bg-[#00ffff] text-black font-bold text-xl rounded-full flex items-center justify-center">
+            <div className="bg-[var(--nc-bg-main)] p-3 border-2 border-[var(--nc-border-light)] rounded flex flex-col items-center gap-2">
+              <div className="w-12 h-12 bg-[var(--nc-highlight-bg)] text-black font-bold text-xl rounded-full flex items-center justify-center">
                 {currentUser.displayName?.charAt(0).toUpperCase() || currentUser.email?.charAt(0).toUpperCase() || 'U'}
               </div>
-              <div className="text-[#ffff55] font-bold text-lg">{currentUser.displayName || 'Usuario Commander'}</div>
-              <div className="text-[#00ffff] text-xs font-mono">{currentUser.email}</div>
+              <div className="text-[var(--nc-text-accent)] font-bold text-lg">{currentUser.displayName || 'Usuario Commander'}</div>
+              <div className="text-[var(--nc-text)] text-xs font-mono">{currentUser.email}</div>
             </div>
 
             <button onClick={handleLogout} className="nc-button flex items-center justify-center gap-2 py-2">
@@ -121,7 +121,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, currentUs
           /* Auth Form View */
           <div className="flex flex-col gap-3">
             {/* Tabs */}
-            <div className="flex gap-2 border-b-2 border-[#00ffff] pb-2">
+            <div className="flex gap-2 border-b-2 border-[var(--nc-border-light)] pb-2">
               <button
                 type="button"
                 onClick={() => { setIsRegistering(false); setError(null); }}
@@ -149,7 +149,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, currentUs
             <form onSubmit={handleSubmit} className="flex flex-col gap-3">
               {isRegistering && (
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs text-[#00ffff] font-bold flex items-center gap-1">
+                  <label className="text-xs text-[var(--nc-text)] font-bold flex items-center gap-1">
                     <User className="w-3.5 h-3.5" /> NOMBRE DE USUARIO
                   </label>
                   <input
@@ -158,14 +158,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, currentUs
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Ej. CommanderDev"
-                    className="bg-[#0000aa] text-[#ffff55] p-2 text-xs border-2 border-[#00ffff] outline-none font-mono"
+                    className="bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] p-2 text-xs border-2 border-[var(--nc-border-light)] outline-none font-mono"
                   />
                 </div>
               )}
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs text-[#00ffff] font-bold flex items-center gap-1">
-                  <User className="w-3.5 h-3.5 text-[#ffff55]" /> USUARIO O CORREO ELECTRÓNICO
+                <label className="text-xs text-[var(--nc-text)] font-bold flex items-center gap-1">
+                  <User className="w-3.5 h-3.5 text-[var(--nc-text-accent)]" /> USUARIO O CORREO ELECTRÓNICO
                 </label>
                 <input
                   type="text"
@@ -173,12 +173,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, currentUs
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Ej: usuario_dev o correo@ejemplo.com"
-                  className="bg-[#0000aa] text-[#ffff55] p-2 text-xs border-2 border-[#00ffff] outline-none font-mono"
+                  className="bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] p-2 text-xs border-2 border-[var(--nc-border-light)] outline-none font-mono"
                 />
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs text-[#00ffff] font-bold flex items-center gap-1">
+                <label className="text-xs text-[var(--nc-text)] font-bold flex items-center gap-1">
                   <Lock className="w-3.5 h-3.5" /> CONTRASEÑA
                 </label>
                 <input
@@ -187,7 +187,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, currentUs
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="bg-[#0000aa] text-[#ffff55] p-2 text-xs border-2 border-[#00ffff] outline-none font-mono"
+                  className="bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] p-2 text-xs border-2 border-[var(--nc-border-light)] outline-none font-mono"
                 />
               </div>
 
@@ -202,17 +202,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, currentUs
             </form>
 
             <div className="relative my-2 text-center">
-              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[#00ffff]/40"></div></div>
-              <span className="relative bg-[#000080] px-2 text-[10px] text-[#00ffff]">O TAMBIÉN</span>
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[var(--nc-border-light)]/40"></div></div>
+              <span className="relative bg-[var(--nc-bg-panel)] px-2 text-[10px] text-[var(--nc-text)]">O TAMBIÉN</span>
             </div>
 
             <button
               type="button"
               onClick={handleGoogleLogin}
               disabled={loading}
-              className="nc-button py-2 text-xs flex items-center justify-center gap-2 bg-[#0000aa] hover:bg-[#00aaaa]"
+              className="nc-button py-2 text-xs flex items-center justify-center gap-2 bg-[var(--nc-bg-main)] hover:bg-[var(--nc-header-bg)]"
             >
-              <svg className="w-4 h-4 fill-current text-[#ffff55]" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 fill-current text-[var(--nc-text-accent)]" viewBox="0 0 24 24">
                 <path d="M12.24 10.285V13.4h6.887c-.58 2.319-2.72 4.041-5.647 4.041-3.393 0-6.142-2.749-6.142-6.142s2.749-6.142 6.142-6.142c1.55 0 2.96.577 4.04 1.528l2.42-2.42C18.45 2.82 15.52 2 12.24 2 6.58 2 2 6.58 2 12.24s4.58 10.24 10.24 10.24c6.14 0 10.12-4.32 10.12-10.3 0-.69-.07-1.37-.19-2.022H12.24z"/>
               </svg>
               <span>INICIAR SESIÓN CON GOOGLE</span>

@@ -64,10 +64,10 @@ export const BrowserView: React.FC<{ projectPath: string }> = ({ projectPath }) 
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Barra de dirección */}
-      <div className="flex items-center gap-1 p-1.5 border-b border-[#004466] bg-[#00243e] shrink-0">
+      <div className="flex items-center gap-1 p-1.5 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] shrink-0">
         <div className="flex items-center gap-1 shrink-0">
-          <Globe className="w-3.5 h-3.5 text-[#00ffff]" />
-          <Lock className="w-2.5 h-2.5 text-[#00ffff]/50" />
+          <Globe className="w-3.5 h-3.5 text-[var(--nc-text)]" />
+          <Lock className="w-2.5 h-2.5 text-[var(--nc-text)]/50" />
         </div>
         <input
           value={mode === 'url' ? url : localPath}
@@ -80,12 +80,12 @@ export const BrowserView: React.FC<{ projectPath: string }> = ({ projectPath }) 
           }}
           placeholder={mode === 'url' ? 'https://…' : 'ruta/al/archivo.html'}
           spellCheck={false}
-          className="flex-1 bg-[#000d1a] text-[11px] font-mono text-[#00ffff] px-2 py-1 rounded border border-[#004466] outline-none focus:border-[#00ffff] placeholder:text-[#00ffff]/30"
+          className="flex-1 bg-[var(--nc-bg-deep)] text-[11px] font-mono text-[var(--nc-text)] px-2 py-1 rounded border border-[var(--nc-border-dark)] outline-none focus:border-[var(--nc-border-light)] placeholder:text-[var(--nc-text)]/30"
         />
         <button
           onClick={() => (mode === 'url' ? navigate(url) : previewLocal(localPath))}
           disabled={loading}
-          className="p-1 text-[#00ffff] hover:bg-[#0000aa] rounded disabled:opacity-40 shrink-0"
+          className="p-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] rounded disabled:opacity-40 shrink-0"
           title={mode === 'url' ? 'Ir' : 'Previsualizar'}
         >
           {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
@@ -93,7 +93,7 @@ export const BrowserView: React.FC<{ projectPath: string }> = ({ projectPath }) 
         {activeUrl && (
           <button
             onClick={() => { setReloadKey((k) => k + 1); setBlocked(false); }}
-            className="p-1 text-[#00ffff] hover:bg-[#0000aa] rounded shrink-0"
+            className="p-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] rounded shrink-0"
             title="Recargar"
           >
             <RefreshCw className="w-3 h-3" />
@@ -104,7 +104,7 @@ export const BrowserView: React.FC<{ projectPath: string }> = ({ projectPath }) 
             href={activeUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-1 text-[#00ffff] hover:bg-[#0000aa] rounded shrink-0"
+            className="p-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] rounded shrink-0"
             title="Abrir en pestaña del navegador"
           >
             <ExternalLink className="w-3 h-3" />
@@ -113,12 +113,12 @@ export const BrowserView: React.FC<{ projectPath: string }> = ({ projectPath }) 
       </div>
 
       {/* Accesos rápidos */}
-      <div className="flex flex-wrap items-center gap-1 px-1.5 py-1 border-b border-[#004466] shrink-0">
+      <div className="flex flex-wrap items-center gap-1 px-1.5 py-1 border-b border-[var(--nc-border-dark)] shrink-0">
         {QUICK_LINKS.map((link) => (
           <button
             key={link.url}
             onClick={() => { setUrl(link.url); navigate(link.url); }}
-            className="text-[10px] font-mono px-1.5 py-0.5 bg-[#00243e] text-[#00ffff] border border-[#004466] rounded hover:bg-[#0000aa]"
+            className="text-[10px] font-mono px-1.5 py-0.5 bg-[var(--nc-bg-deep)] text-[var(--nc-text)] border border-[var(--nc-border-dark)] rounded hover:bg-[var(--nc-bg-hover)]"
           >
             {link.label}
           </button>
@@ -128,15 +128,15 @@ export const BrowserView: React.FC<{ projectPath: string }> = ({ projectPath }) 
             onClick={() => { setMode('local'); previewLocal(localPath); }}
             className={`text-[10px] font-mono px-1.5 py-0.5 border rounded flex items-center gap-1 ${
               mode === 'local'
-                ? 'bg-[#0000aa] text-[#ffff55] border-[#ffff55]'
-                : 'bg-[#00243e] text-[#00ffff] border-[#004466] hover:bg-[#0000aa]'
+                ? 'bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] border-[var(--nc-text-accent)]'
+                : 'bg-[var(--nc-bg-deep)] text-[var(--nc-text)] border-[var(--nc-border-dark)] hover:bg-[var(--nc-bg-hover)]'
             }`}
             title="Renderiza un HTML del proyecto activo en un iframe aislado"
           >
             <FileCode2 className="w-3 h-3" /> Local HTML
           </button>
         )}
-        <span className="ml-auto text-[10px] font-mono text-[#00ffff]/50 truncate max-w-[50%]">{status}</span>
+        <span className="ml-auto text-[10px] font-mono text-[var(--nc-text)]/50 truncate max-w-[50%]">{status}</span>
       </div>
 
       {/* Contenido */}
@@ -167,9 +167,9 @@ export const BrowserView: React.FC<{ projectPath: string }> = ({ projectPath }) 
               }}
             />
             {blocked && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#000d1a] text-center p-4">
-                <Globe className="w-6 h-6 text-[#ffff55]" />
-                <p className="text-[11px] font-mono text-[#00ffff]/80 max-w-[240px]">
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--nc-bg-deep)] text-center p-4">
+                <Globe className="w-6 h-6 text-[var(--nc-text-accent)]" />
+                <p className="text-[11px] font-mono text-[var(--nc-text)]/80 max-w-[240px]">
                   Este sitio bloquea su visualización en marcos integrados (X-Frame-Options).
                 </p>
                 <a
@@ -185,8 +185,8 @@ export const BrowserView: React.FC<{ projectPath: string }> = ({ projectPath }) 
           </>
         ) : (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-center p-4">
-            <Globe className="w-7 h-7 text-[#00ffff]/30" />
-            <p className="text-[11px] font-mono text-[#00ffff]/50 max-w-[220px]">
+            <Globe className="w-7 h-7 text-[var(--nc-text)]/30" />
+            <p className="text-[11px] font-mono text-[var(--nc-text)]/50 max-w-[220px]">
               Escribe una URL o previsualiza un archivo HTML de tu proyecto.
             </p>
           </div>
