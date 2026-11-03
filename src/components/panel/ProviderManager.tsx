@@ -88,7 +88,9 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
       const data = await res.json().catch(() => ({}));
       if (data.success) {
         setProviders(Array.isArray(data.providers) ? data.providers : []);
-        setConfigPath(typeof data.configPath === 'string' ? data.configPath : '');
+        // Se muestra dónde se escribe: config global del usuario, fuera del
+        // proyecto, para que las claves no acaben en un commit.
+        setConfigPath(typeof data.writePath === 'string' ? data.writePath : typeof data.configPath === 'string' ? data.configPath : '');
       } else {
         setError(data.error || t('No se pudo cargar la lista de proveedores', 'Could not load providers', 'Anbieter konnten nicht geladen werden'));
       }
@@ -138,7 +140,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen, onClos
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ id: provider.id, config, target: 'project' }),
+        body: JSON.stringify({ id: provider.id, config, target: 'global' }),
       });
       const data = await res.json().catch(() => ({}));
       if (!data.success) throw new Error(data.error || t('Error guardando', 'Error saving', 'Fehler beim Speichern'));

@@ -32,7 +32,7 @@ import { handleAnthropicGenerate, handleAnthropicStream } from './anthropic';
 import { executeLocalHfModel } from './localModels';
 import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList, apiKeyMiddleware } from './apiKeys';
 import { isAllowedHost, allowedHostsFromEnv } from './hostGuard';
-import { getConfig, getConfigPath, getEnvProviderIds, getProviderSecret, loadConfig, removeProviderConfig } from './src/config/index';
+import { getConfig, getConfigPath, getEnvProviderIds, getGlobalConfigPath, getProviderSecret, loadConfig, removeProviderConfig } from './src/config/index';
 import { PROVIDER_SPECS, buildProviderList, describeProvider, getProviderCatalog } from './src/providers/registry';
 import skillsRouter from './skills/api';
 import { forkSessionWorkspace, deleteSessionWorkspace, listSessions, createGitWorktree } from './sessionWorkspace';
@@ -842,9 +842,12 @@ app.post('/api/providers', async (req, res) => {
       }
     }
 
-    // Merge con configuración existente y guardar
+    // Merge con configuración existente y guardar.
+    // Por defecto, global: `commander.json` está versionado en este repo y una
+    // API key guardada ahí acabaría en el próximo commit. `target: 'project'`
+    // sigue disponible para quien lo pida explícitamente.
     const { writeConfig } = await import('./src/config/index');
-    const writeTarget: 'project' | 'global' = target === 'global' ? 'global' : 'project';
+    const writeTarget: 'project' | 'global' = target === 'project' ? 'project' : 'global';
     const configPath = writeConfig({ providers: { [id]: config } }, writeTarget);
 
     res.json({ success: true, configPath, target: writeTarget });
@@ -860,7 +863,7 @@ app.get('/api/providers', async (_req, res) => {
     const catalog = await getProviderCatalog();
     const envIds = new Set(getEnvProviderIds());
     const providers = buildProviderList(getConfig().providers as any, envIds, catalog);
-    return res.json({ success: true, providers, configPath: getConfigPath() });
+    return res.json({ success: true, providers, configPath: getConfigPath(), writePath: getGlobalConfigPath() });
   } catch (e: any) {
     return res.status(500).json({ success: false, error: e?.message || 'Error listando proveedores' });
   }
