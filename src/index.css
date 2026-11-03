@@ -476,7 +476,7 @@ code::-webkit-scrollbar-track,
   --nc-highlight-bg: #00ffff;
   --nc-bg-hover: #0000cc;
   --nc-bg-deep: #000055;
-  --nc-danger: #ff5555;
+  --nc-danger: #ff6b6b;
   --nc-success: #55ff55;
 }
 
@@ -571,7 +571,7 @@ code::-webkit-scrollbar-track,
 .theme-solarized {
   --nc-bg-main: #002b36;
   --nc-bg-panel: #073642;
-  --nc-text: #93a1a1;
+  --nc-text: #a8b6b6;
   --nc-text-accent: #d7a300;
   --nc-header-bg: #268bd2;
   --nc-header-text: #000000;
@@ -580,7 +580,7 @@ code::-webkit-scrollbar-track,
   --nc-active-bg: #d7a300;
   --nc-active-text: #002b36;
   --nc-shadow: #001f27;
-  --nc-text-dim: #839496;
+  --nc-text-dim: #9aa8a8;
   --nc-border-mid: #268bd2;
   --nc-highlight-bg: #2aa198;
   --nc-bg-hover: #0e4b58;
@@ -730,6 +730,17 @@ body {
     0 6px 0 #403000,
     0 8px 10px rgba(0, 0, 0, 0.9),
     0 0 26px rgba(255, 191, 0, 0.55);
+}
+
+/* En papel el ámbar fluorescente no se lee y la extrusión oscura lo ensucia.
+   El título mantiene el relieve, pero con tinta y sombras de la paleta clara. */
+.theme-light .commander-title {
+  color: var(--nc-text-accent);
+  text-shadow:
+    0 1px 0 var(--nc-bg-panel),
+    0 2px 0 var(--nc-border-dark),
+    0 3px 0 var(--nc-border-mid),
+    0 6px 10px var(--nc-shadow);
 }
 
 /* ==========================================================================
