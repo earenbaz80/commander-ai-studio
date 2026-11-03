@@ -268,6 +268,51 @@ export function getProviderConfig(): ProviderConfig {
   return getConfig().providers;
 }
 
+/** Ids de proveedor que llegan por entorno (sólo nombres, sin valores). */
+export function getEnvProviderIds(): string[] {
+  return Object.keys(loadEnvOverrides().providers || {});
+}
+
+/**
+ * Campo ya guardado en config para un proveedor (clave, host o URL).
+ *
+ * Existe para que los handlers puedan usar lo que se configuró en el gestor
+ * de proveedores: antes sólo miraban body/cookie/entorno y lo guardado en
+ * `commander.json` no lo leía nadie. Nunca lanza: una config inválida no debe
+ * tumbar una petición de chat.
+ */
+export function getProviderSecret(provider: string, field: string): string | undefined {
+  try {
+    const value = (getConfig().providers as any)?.[provider]?.[field];
+    return typeof value === 'string' && value.trim() ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Quita un proveedor del fichero de config.
+ *
+ * No toca las variables de entorno: si el proveedor también viene de ahí, el
+ * GET lo seguirá marcando como configurado (`source: 'env'`).
+ */
+export function removeProviderConfig(id: string): string {
+  const projectConfig = findConfigFile() || path.join(process.cwd(), 'commander.json');
+  const raw = fs.existsSync(projectConfig) ? loadConfigFile(projectConfig) : {};
+  const rawProviders = (raw.providers || {}) as Record<string, unknown>;
+  const providers = { ...rawProviders };
+  delete providers[id];
+
+  const validated = CommanderConfigSchema.parse({ ...raw, providers });
+  fs.writeFileSync(projectConfig, JSON.stringify(validated, null, 2), 'utf-8');
+  // Se invalida en vez de fijar la config escrita: al releer vuelven a entrar
+  // las variables de entorno, que no forman parte del fichero.
+  configCache = null;
+  configPathCache = projectConfig;
+
+  return projectConfig;
+}
+
 export function getToolsConfig(): ToolsConfig {
   return getConfig().tools;
 }

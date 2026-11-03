@@ -390,7 +390,6 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   const hfList = catalog.filter((m) => m.provider === 'huggingface');
   const ollamaList = catalog.filter((m) => m.provider === 'ollama');
   const openrouterList = catalog.filter((m) => m.provider === 'openrouter');
-  const pollinationsList = catalog.filter((m) => m.provider === 'pollinations');
   const customList = catalog.filter((m) => m.provider === 'custom');
 
   const handleModelChange = (modelId: string) => {
@@ -502,62 +501,46 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 : 'text-green-600'
             }`}
           >
-            <optgroup label="🌟 GOOGLE GEMINI">
-              {geminiList.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="🧠 ANTHROPIC CLAUDE">
-              {anthropicList.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="🚀 XAI GROK">
-              {xaiList.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="🤗 HUGGING FACE LOCAL">
-              {hfList.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label={ollamaOffline ? '💻 OLLAMA LOCAL (sin conexión)' : '💻 OLLAMA LOCAL GRATIS'}>
-              {ollamaList.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="🆓 OPENROUTER GRATIS">
-              {openrouterList.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="🌐 POLLINATIONS SIN KEY">
-              {pollinationsList.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="🔌 CUSTOM ENDPOINT">
-              {customList.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </optgroup>
+            {/* Sólo se puede elegir lo que se puede usar: el grupo de un
+                proveedor sin credenciales queda con sus opciones deshabilitadas
+                y dice cómo arreglarlo, en vez de prometer un modelo que
+                responderá con error. Ollama se libra: funciona en local con su
+                host por defecto. */}
+            {[
+              { id: 'google', label: '🌟 GOOGLE GEMINI', models: geminiList },
+              { id: 'anthropic', label: '🧠 ANTHROPIC CLAUDE', models: anthropicList },
+              { id: 'xai', label: '🚀 XAI GROK', models: xaiList },
+              { id: 'huggingface', label: '🤗 HUGGING FACE', models: hfList },
+              {
+                id: 'ollama',
+                label: ollamaOffline ? '💻 OLLAMA LOCAL (sin conexión)' : '💻 OLLAMA LOCAL',
+                models: ollamaList,
+              },
+              { id: 'openrouter', label: '🆓 OPENROUTER', models: openrouterList },
+              { id: 'custom', label: '🔌 CUSTOM ENDPOINT', models: customList },
+            ].map((group) => {
+              const enabled = group.id === 'ollama' || providers[group.id]?.configured === true;
+              return (
+                <optgroup
+                  key={group.id}
+                  label={`${group.label} ${
+                    enabled
+                      ? '✓'
+                      : lang === 'es'
+                        ? '(sin configurar)'
+                        : lang === 'de'
+                          ? '(nicht konfiguriert)'
+                          : '(not configured)'
+                  }`}
+                >
+                  {group.models.map((m) => (
+                    <option key={m.id} value={m.id} disabled={!enabled}>
+                      {m.name}
+                    </option>
+                  ))}
+                </optgroup>
+              );
+            })}
           </select>
 
           <div className="bg-[#0000aa] border border-[#00aaaa] p-2 text-[10px] text-[#ffffff]">
@@ -1681,6 +1664,9 @@ export const RightPanel: React.FC<RightPanelProps> = ({
 };
 
 // Live Preview Component
+const PREVIEW_EMPTY_HINT = 'Enter a URL or load local HTML';
+const COMMAND_PLACEHOLDER = 'Enter command...';
+
 export const LivePreview: React.FC<{ 
   projectPath: string; 
   selectedModel: string;
@@ -1706,14 +1692,14 @@ export const LivePreview: React.FC<{
         />
         <button
           onClick={() => { setMode(mode === 'iframe' ? 'local' : 'iframe'); reloadKey.current += 1; }}
-          className="p-1 text-[#00ffff] hover:bg-[#0000aa] rounded"
+          className="p-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-panel)] rounded"
           title={mode === 'iframe' ? 'Switch to Local HTML' : 'Switch to Iframe'}
         >
           {mode === 'iframe' ? '📁' : '🌐'}
         </button>
         <button
           onClick={() => { reloadKey.current += 1; }}
-          className="p-1 text-[#00ffff] hover:bg-[#0000aa] rounded"
+          className="p-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-panel)] rounded"
           title="Reload"
         >
           ↻
@@ -1736,7 +1722,7 @@ export const LivePreview: React.FC<{
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-center p-4 text-[#00ffff]/50">
-            <span className="text-[11px] font-mono">Enter a URL or load local HTML</span>
+            <span className="text-[11px] font-mono">{PREVIEW_EMPTY_HINT}</span>
           </div>
         )}
       </div>
@@ -1791,22 +1777,22 @@ export const LiveConsole: React.FC<{
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const typeColors = {
-    log: '#00ffff',
-    error: '#ff5555',
-    warn: '#ffff55',
-    info: '#00ff66',
+  const typeClasses: Record<'log' | 'error' | 'warn' | 'info', string> = {
+    log: 'text-[var(--nc-text)]',
+    error: 'text-red-300',
+    warn: 'text-[var(--nc-text-accent)]',
+    info: 'text-emerald-300',
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#000d1a]">
-      <div className="flex items-center gap-2 p-2 border-b border-[#004466] bg-[#00243e]">
-        <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-[#00ff66]' : 'bg-[#ff5555]'}`} />
-        <span className="text-[10px] font-mono text-[#00ffff]">Live Console - {selectedModel}</span>
+    <div className="flex flex-col h-full bg-[var(--nc-bg-panel)]">
+      <div className="flex items-center gap-2 p-2 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-main)]">
+        <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-400' : 'bg-red-400'}`} />
+        <span className="text-[10px] font-mono text-[var(--nc-text)]">{`Live Console - ${selectedModel}`}</span>
         <div className="flex-1" />
         <button
           onClick={() => setLogs([])}
-          className="p-1 text-[#00ffff] hover:bg-[#0000aa] rounded text-[10px]"
+          className="p-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-panel)] rounded text-[10px]"
           title="Clear"
         >
           🗑
@@ -1814,28 +1800,28 @@ export const LiveConsole: React.FC<{
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-1 font-mono text-[10px]">
         {logs.map((log, i) => (
-          <div key={i} className="flex gap-2 text-[#e0e0e0]">
-            <span className="text-[#00ffff]/50 shrink-0">{log.time}</span>
-            <span className="shrink-0" style={{ color: typeColors[log.type] }}>
+          <div key={i} className="flex gap-2 text-[var(--nc-text)]">
+            <span className="shrink-0">{log.time}</span>
+            <span className={`shrink-0 ${typeClasses[log.type]}`}>
               {log.type === 'error' ? '✗' : log.type === 'warn' ? '⚠' : log.type === 'info' ? 'ℹ' : '▶'}
             </span>
-            <span style={{ color: typeColors[log.type] }}>{log.message}</span>
+            <span className={typeClasses[log.type]}>{log.message}</span>
           </div>
         ))}
         <div ref={logsEndRef} />
       </div>
-      <div className="flex gap-1 p-2 border-t border-[#004466] bg-[#00243e]">
+      <div className="flex gap-1 p-2 border-t border-[var(--nc-border-dark)] bg-[var(--nc-bg-main)]">
         <input
           type="text"
           value={command}
           onChange={(e) => setCommand(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Enter command..."
-          className="flex-1 bg-[#000080] text-[#00ffff] text-[10px] px-2 py-1 rounded border border-[#004466] outline-none focus:border-[#00ffff]"
+          placeholder={COMMAND_PLACEHOLDER}
+          className="flex-1 bg-[var(--nc-bg-panel)] text-[var(--nc-text)] text-[10px] px-2 py-1 rounded border border-[var(--nc-border-dark)] outline-none"
         />
         <button
           onClick={() => command.trim() && handleCommand(command.trim())}
-          className="p-1 text-[#00ffff] hover:bg-[#0000aa] rounded"
+          className="p-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-panel)] rounded"
         >
           ▶
         </button>
@@ -1886,14 +1872,14 @@ export const NetworkMonitor: React.FC<{ projectPath: string }> = () => {
   }, []);
 
   return (
-    <div className="flex flex-col h-full bg-[#000d1a]">
-      <div className="flex items-center gap-2 p-2 border-b border-[#004466] bg-[#00243e]">
-        <span className="text-[10px] font-mono text-[#ffff55]">Network Monitor</span>
+    <div className="flex flex-col h-full bg-[var(--nc-bg-panel)]">
+      <div className="flex items-center gap-2 p-2 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-main)]">
+        <span className="text-[10px] font-mono text-[var(--nc-text-accent)]">{'Network Monitor'}</span>
         <div className="flex-1" />
         <select
           value={filter}
           onChange={(e) => setFilter(e.target.value as any)}
-          className="bg-[#000080] text-[#00ffff] text-[9px] px-1 py-0.5 rounded border border-[#004466] outline-none"
+          className="bg-[var(--nc-bg-panel)] text-[var(--nc-text)] text-[9px] px-1 py-0.5 rounded border border-[var(--nc-border-dark)] outline-none"
         >
           <option value="all">All</option>
           <option value="xhr">XHR</option>
@@ -1902,7 +1888,7 @@ export const NetworkMonitor: React.FC<{ projectPath: string }> = () => {
         </select>
         <button
           onClick={() => setRequests([])}
-          className="p-1 text-[#00ffff] hover:bg-[#0000aa] rounded text-[10px]"
+          className="p-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-panel)] rounded text-[10px]"
           title="Clear"
         >
           🗑
@@ -1910,19 +1896,19 @@ export const NetworkMonitor: React.FC<{ projectPath: string }> = () => {
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-1 font-mono text-[9px]">
         {requests.length === 0 ? (
-          <div className="text-center text-[#00ffff]/30 py-8">No requests captured</div>
+          <div className="text-center text-[var(--nc-text)] py-8">{'No requests captured'}</div>
         ) : (
           requests.slice().reverse().map((req) => (
-            <div key={req.id} className="flex gap-2 px-1 py-0.5 bg-[#000080]/50 rounded border border-[#004466]/50 hover:border-[#00ffff]/50 transition-colors">
-              <span className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold ${req.method === 'GET' ? 'bg-[#00ff66]/20 text-[#00ff66]' : req.method === 'POST' ? 'bg-[#00ffff]/20 text-[#00ffff]' : req.method === 'DELETE' ? 'bg-[#ff5555]/20 text-[#ff5555]' : 'bg-[#ffff55]/20 text-[#ffff55]'}`}>
+            <div key={req.id} className="flex gap-2 px-1 py-0.5 bg-[var(--nc-bg-panel)] rounded border border-[var(--nc-border-dark)] hover:border-[var(--nc-border-light)] transition-colors">
+              <span className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold ${req.method === 'GET' ? 'bg-emerald-400/20 text-emerald-300' : req.method === 'POST' ? 'bg-cyan-400/20 text-cyan-300' : req.method === 'DELETE' ? 'bg-red-400/20 text-red-300' : 'bg-yellow-400/20 text-yellow-300'}`}>
                 {req.method}
               </span>
-              <span className="flex-1 truncate text-[#e0e0e0]">{req.url}</span>
-              <span className={`shrink-0 font-bold ${req.status === 'pending' ? 'text-[#ffff55]' : req.status === 200 ? 'text-[#00ff66]' : 'text-[#ff5555]'}`}>
+              <span className="flex-1 truncate text-[var(--nc-text)]">{req.url}</span>
+              <span className={`shrink-0 font-bold ${req.status === 'pending' ? 'text-[var(--nc-text-accent)]' : req.status === 200 ? 'text-emerald-300' : 'text-red-300'}`}>
                 {req.status === 'pending' ? '⏳' : req.status}
               </span>
-              <span className="shrink-0 text-[#00ffff]/50">{req.duration}ms</span>
-              <span className="shrink-0 text-[#00ffff]/30">{req.time}</span>
+              <span className="shrink-0 text-[var(--nc-text)]">{req.duration}ms</span>
+              <span className="shrink-0 text-[var(--nc-text)]">{req.time}</span>
             </div>
           ))
         )}

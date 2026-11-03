@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { getProviderSecret } from './src/config/index';
 
 export async function handleAnthropicGenerate(req: Request, res: Response) {
   try {
@@ -15,7 +16,7 @@ export async function handleAnthropicGenerate(req: Request, res: Response) {
     } = req.body;
 
     const cookieKey = (req as any).apiKeys?.ANTHROPIC_API_KEY || '';
-    const apiKey = anthropicApiKey || cookieKey || process.env.ANTHROPIC_API_KEY;
+    const apiKey = anthropicApiKey || cookieKey || process.env.ANTHROPIC_API_KEY || getProviderSecret('anthropic', 'apiKey');
     if (!apiKey) {
       return res.status(400).json({
         success: false,
