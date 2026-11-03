@@ -30,6 +30,20 @@ vi.mock('firebase/auth', () => ({
   onAuthStateChanged: (_auth: any, cb: any) => { cb(null); return () => {}; },
 }));
 
+// `useAppTelemetry` importa firestore directo, sin pasar por src/lib/firebase, así
+// que el mock de arriba no lo tapa: en jsdom acaba abriendo un canal gRPC real
+// que revienta más tarde con «process is not defined» y tumba la corrida.
+vi.mock('firebase/firestore', () => ({
+  collection: vi.fn(() => ({})),
+  addDoc: vi.fn().mockResolvedValue({}),
+  serverTimestamp: vi.fn(() => new Date(0)),
+  query: vi.fn(),
+  where: vi.fn(),
+  orderBy: vi.fn(),
+  limit: vi.fn(),
+  getDocs: vi.fn().mockResolvedValue({ docs: [] }),
+}));
+
 // Espías de notificaciones: comprobamos que se emitan al completar
 export const notificationSpies = {
   sendBrowserNotification: vi.fn(),
