@@ -97,36 +97,10 @@ export interface DownloadedLocalModel {
   progress?: number;
 }
 
-export interface SchemaProperty {
-  id: string;
-  name: string;
-  type: 'STRING' | 'NUMBER' | 'BOOLEAN' | 'ARRAY' | 'OBJECT' | 'ENUM';
-  description?: string;
-  required: boolean;
-  enumValues?: string[];
-  arrayItemType?: 'STRING' | 'NUMBER' | 'BOOLEAN' | 'OBJECT';
-}
-
-export interface StructuredOutputConfig {
-  enabled: boolean;
-  rootType: 'OBJECT' | 'ARRAY';
-  properties: SchemaProperty[];
-  rawSchemaJson?: string;
-  mode: 'visual' | 'raw';
-}
-
-export interface FunctionDeclarationItem {
-  id: string;
-  name: string;
-  description: string;
-  parametersJson: string;
-}
-
 export interface ToolsConfig {
   googleSearch: boolean;
   codeExecution: boolean;
   urlContext?: boolean;
-  customFunctions: FunctionDeclarationItem[];
 }
 
 export interface ParameterConfig {
@@ -138,12 +112,10 @@ export interface ParameterConfig {
   stopSequences?: string[];
   responseFormat: 'text' | 'json';
   jsonSchema?: string;
-  structuredOutput?: StructuredOutputConfig;
   tools?: ToolsConfig;
   systemInstruction: string;
   examples: StructuredExample[];
   // HuggingFace specific
-  hfDevice: 'webgpu' | 'wasm' | 'api';
   hfQuantization: 'fp16' | 'q8' | 'q4';
   hfApiToken?: string;
   anthropicApiKey?: string;
@@ -186,7 +158,6 @@ export interface ChatMessage {
   activeVariantIndex?: number;
   groundingSources?: GroundingSource[];
   webSearchQueries?: string[];
-  functionCalls?: { name: string; args: any; id?: string }[];
   agentSteps?: AgentStep[];
   environmentId?: string;
   interactionId?: string;

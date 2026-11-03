@@ -144,7 +144,7 @@ describe('PreferencesModal · umbral de atasco', () => {
       jsonSchema: '',
       systemInstruction: 'base',
       examples: [],
-      tools: { googleSearch: true, codeExecution: false, urlContext: true, customFunctions: [] },
+      tools: { googleSearch: true, codeExecution: false, urlContext: true },
     } as any;
     const setParameters = vi.fn();
 
@@ -184,7 +184,7 @@ describe('PreferencesModal · umbral de atasco', () => {
       jsonSchema: '',
       systemInstruction: 'base',
       examples: [],
-      tools: { googleSearch: true, codeExecution: false, urlContext: true, customFunctions: [] },
+      tools: { googleSearch: true, codeExecution: false, urlContext: true },
     } as any;
     const setParameters = vi.fn();
 

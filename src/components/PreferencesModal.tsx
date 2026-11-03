@@ -423,7 +423,6 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
         googleSearch: prev.tools?.googleSearch ?? false,
         codeExecution: prev.tools?.codeExecution ?? false,
         urlContext: prev.tools?.urlContext ?? true,
-        customFunctions: prev.tools?.customFunctions ?? [],
         ...patch,
       },
     }));

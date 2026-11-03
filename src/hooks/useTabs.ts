@@ -58,14 +58,12 @@ export const DEFAULT_PARAMETERS: ParameterConfig = {
   jsonSchema: '',
   systemInstruction: 'Eres un asistente experto en ingeniería de software, IA y empaquetado nativo.',
   examples: [],
-  hfDevice: 'webgpu',
   hfQuantization: 'q4',
   hfApiToken: '',
   tools: {
     googleSearch: true,
     codeExecution: true,
     urlContext: true,
-    customFunctions: [],
   },
 };
 

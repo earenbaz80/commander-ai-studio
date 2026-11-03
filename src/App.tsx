@@ -807,22 +807,6 @@ export default function App() {
               const t: any[] = [];
               if (parameters.tools?.googleSearch) t.push({ googleSearch: {} });
               if (parameters.tools?.codeExecution) t.push({ codeExecution: {} });
-              if (parameters.tools?.customFunctions && parameters.tools.customFunctions.length > 0) {
-                const funcs = parameters.tools.customFunctions.map((f) => {
-                  let parsedParams = {};
-                  try {
-                    parsedParams = typeof f.parametersJson === 'string' ? JSON.parse(f.parametersJson) : f.parametersJson;
-                  } catch (e) {
-                    console.warn('Error parsing function params JSON:', e);
-                  }
-                  return {
-                    name: f.name,
-                    description: f.description,
-                    parameters: parsedParams,
-                  };
-                });
-                t.push({ functionDeclarations: funcs });
-              }
               return t.length > 0 ? t : undefined;
             })(),
           };
@@ -972,7 +956,6 @@ export default function App() {
         let accumulatedText = '';
         let finalGroundingSources: any[] = [];
         let finalWebSearchQueries: string[] = [];
-        let finalFunctionCalls: any[] = [];
         let finalMetrics: any = null;
 
         while (true) {
@@ -1005,7 +988,6 @@ export default function App() {
                 accumulatedText = data.fullText || accumulatedText;
                 finalGroundingSources = data.groundingSources || [];
                 finalWebSearchQueries = data.webSearchQueries || [];
-                finalFunctionCalls = data.functionCalls || [];
                 finalMetrics = data.metrics;
               } else if (data.type === 'error') {
                 throw new Error(data.error || 'Error en streaming');
@@ -1023,7 +1005,6 @@ export default function App() {
           providerUsed: selectedProvider,
           groundingSources: finalGroundingSources,
           webSearchQueries: finalWebSearchQueries,
-          functionCalls: finalFunctionCalls,
           tokensUsed: finalMetrics?.totalTokens,
           latencyMs: finalMetrics?.latencyMs,
         };
@@ -1077,7 +1058,6 @@ export default function App() {
             modelUsed: activeModel,
             groundingSources: data.groundingSources,
             webSearchQueries: data.webSearchQueries,
-            functionCalls: data.functionCalls,
           };
 
           setMessages((prev) => [...prev, botMsg]);
