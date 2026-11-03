@@ -13,7 +13,7 @@ Revisado contra el árbol: varias fases ya están hechas, así que no hay que re
 
 | Fase | Estado | Evidencia |
 | --- | --- | --- |
-| 1. Command palette | **Hecho** | `src/components/CommandPalette.tsx` (204 líneas) importado en `App.tsx`; el atajo vive en `src/hooks/useCommandPaletteShortcut.ts` |
+| 1. Command palette | **Hecho** | `CommandPalette.tsx` + `paletteSearch.ts` (filtro difuso) y `paletteCommands.tsx` (comandos, archivos, sesiones, tools y agentes); atajo en `src/hooks/useCommandPaletteShortcut.ts` |
 | 2. Layout 3 paneles | **Hecho** | `src/components/ResizableSplit.tsx` monta el asa y `src/stores/layoutStore.ts` guarda claves y límites; Workbench y Nono ya lo usan |
 | 3. Diff viewer | **Hecho** | `src/components/DiffViewer.tsx` integrado en `AgentApprovalModal.tsx` con aceptación por hunk, sobre `diffLines`/`mergeHunks` de `src/utils/patch.ts` |
 | 4. Status bar | **Hecho** | `src/components/StatusBar.tsx` importado en `App.tsx` |
@@ -28,8 +28,8 @@ Orden sugerido por retorno: **6 → 7 → 8**, y dejar la 10 para el final (toca
 
 ## Fases (orden por impacto/día)
 
-### Fase 1 — Command palette (Ctrl+K)  [EN CURSO]
-Búsqueda universal: archivos, comandos, sesiones, tools, agentes. Fuzzy filter, Enter ejecuta, Esc cierra.
+### Fase 1 — Command palette (Ctrl+K)  [HECHO]
+Búsqueda universal: archivos, comandos, sesiones, tools, agentes. Filtro difuso por tokens y subsecuencias, Enter ejecuta, Esc cierra.
 Archivos: src/components/CommandPalette.tsx, src/hooks/useCommandPaletteShortcut.ts, App.tsx (atajo global).
 
 ### Fase 2 — Layout 3 paneles redimensionables
