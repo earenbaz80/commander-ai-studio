@@ -361,7 +361,7 @@ export default function App() {
         detail: { path, line: 0, character: 0 },
       }));
     }, 0);
-  }, []);
+  }, [setIsWorkbenchOpen]);
 
   const handleUsePaletteTool = useCallback((name: string) => {
     const prefix = lang === 'es'
