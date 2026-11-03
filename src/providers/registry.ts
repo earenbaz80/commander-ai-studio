@@ -251,7 +251,10 @@ export function buildProviderList(
 }
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
-const SUPPORTED = new Set(PROVIDER_SPECS.map((s) => s.id));
+// LM Studio queda fuera del catálogo de models.dev a propósito: sus modelos
+// dependen de lo que tenga cargado *tu* servidor, así que sólo entran por la
+// consulta en vivo a su host. Si no responde, no hay modelos que ofrecer.
+const SUPPORTED = new Set(PROVIDER_SPECS.map((s) => s.id).filter((id) => id !== 'lmstudio'));
 
 let catalogCache: { at: number; data: CatalogProvider[] } | null = null;
 let inFlight: Promise<CatalogProvider[]> | null = null;
