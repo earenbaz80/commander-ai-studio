@@ -22,6 +22,7 @@ import { WorkbenchPanel } from './components/WorkbenchPanel';
 import { Sidebar } from './components/Sidebar';
 import { RightPanel } from './components/RightPanel';
 import { ChatPlayground } from './components/ChatPlayground';
+import { Playground } from './components/Playground';
 import { FreeformPlayground } from './components/FreeformPlayground';
 import { StructuredPlayground } from './components/StructuredPlayground';
 // El composer era la única vista que quedaba en el arranque y arrastraba jszip
@@ -1280,6 +1281,14 @@ export default function App() {
 
         {/* Center Canvas View based on active mode */}
         <main className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0 h-full">
+          {/* Un solo armazón para los seis playgrounds */}
+          <Playground
+            mode={mode}
+            setMode={setMode}
+            lang={lang as any}
+            selectedModel={selectedModel}
+            onOpenSettings={() => setIsInspectorOpen(true)}
+          >
           {mode === 'chat' && (
             <ChatPlayground
               messages={messages}
@@ -1359,6 +1368,7 @@ export default function App() {
             />
             </React.Suspense>
           )}
+          </Playground>
 
           {mode === 'telemetry' && (
             <React.Suspense fallback={<LazyFallback lang={lang} />}>
