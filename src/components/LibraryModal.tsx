@@ -50,7 +50,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="nc-panel w-full max-w-5xl h-[88vh] flex flex-col bg-[#000080] border-2 border-[#00ffff] shadow-[10px_10px_0px_#000055] cursor-default"
+        className="nc-panel w-full max-w-5xl h-[88vh] flex flex-col bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] shadow-[10px_10px_0px_var(--nc-shadow)] cursor-default"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Retro Title Bar */}
@@ -73,7 +73,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
         </div>
 
         {/* Top-level tabs: Galería / Plantillas */}
-        <div className="flex items-center gap-2 p-2 bg-[#0000aa] border-b-2 border-[#00ffff] shrink-0">
+        <div className="flex items-center gap-2 p-2 bg-[var(--nc-bg-main)] border-b-2 border-[var(--nc-border-light)] shrink-0">
           <button
             onClick={() => setTab('gallery')}
             className={`nc-button flex items-center gap-1.5 text-xs ${tab === 'gallery' ? 'nc-active' : ''}`}

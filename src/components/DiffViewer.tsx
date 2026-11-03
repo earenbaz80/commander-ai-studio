@@ -69,7 +69,7 @@ export function DiffViewer({
   if (diff.hunks.length === 0) {
     return (
       <div className="text-[11px]">
-        <div className="text-[#ffff55] font-bold mb-2 truncate" title={path}>
+        <div className="text-[var(--nc-text-accent)] font-bold mb-2 truncate" title={path}>
           {t('Sin cambios', 'No changes')}: <span className="text-white/80">{path}</span>
         </div>
         <div className="flex justify-end">
@@ -91,7 +91,7 @@ export function DiffViewer({
   return (
     <div className="text-[11px]">
       <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="text-[#ffff55] font-bold truncate" title={path}>
+        <div className="text-[var(--nc-text-accent)] font-bold truncate" title={path}>
           {path}
         </div>
         <div className="shrink-0 font-mono">
@@ -101,15 +101,15 @@ export function DiffViewer({
       </div>
 
       <div
-        className="max-h-[45vh] overflow-y-auto border border-[#004466] bg-[#000022]"
+        className="max-h-[45vh] overflow-y-auto border border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)]"
         data-testid="diff-hunks"
       >
         {diff.hunks.map((h) => {
           const isRejected = rejected.has(h.id);
           const isCollapsed = collapsed.has(h.id);
           return (
-            <div key={h.id} className="border-b border-[#004466] last:border-b-0">
-              <div className="flex items-center gap-2 px-2 py-1 bg-[#000055]">
+            <div key={h.id} className="border-b border-[var(--nc-border-dark)] last:border-b-0">
+              <div className="flex items-center gap-2 px-2 py-1 bg-[var(--nc-bg-deep)]">
                 <input
                   type="checkbox"
                   checked={!isRejected}
@@ -120,7 +120,7 @@ export function DiffViewer({
                 <button
                   type="button"
                   onClick={() => toggleCollapsed(h.id)}
-                  className="font-mono text-[10px] text-[#00ffff] hover:text-[#ffff55]"
+                  className="font-mono text-[10px] text-[var(--nc-text)] hover:text-[var(--nc-text-accent)]"
                   title={isCollapsed ? t('Expandir', 'Expand') : t('Plegar', 'Collapse')}
                 >
                   @@ -{h.oldStart},{h.oldCount} +{h.newStart},{h.newCount} @@
@@ -153,7 +153,7 @@ export function DiffViewer({
       </div>
 
       <div className="flex items-center justify-between gap-2 mt-3">
-        <div className="text-[10px] text-[#00ffff]">
+        <div className="text-[10px] text-[var(--nc-text)]">
           {t('Hunks', 'Hunks')}: {accepted.length}/{diff.hunks.length}
         </div>
         <div className="flex gap-2">
@@ -167,7 +167,7 @@ export function DiffViewer({
           <button
             type="button"
             onClick={() => onApply(mergeHunks(oldText, diff.hunks, acceptedIds))}
-            className="nc-button text-xs px-3 py-1 bg-[#ffff55] text-black font-bold"
+            className="nc-button text-xs px-3 py-1 bg-[var(--nc-active-bg)] text-black font-bold"
           >
             {acceptedLabel ?? t('Aplicar seleccionados', 'Apply selected')}
           </button>

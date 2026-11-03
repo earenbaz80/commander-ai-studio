@@ -143,10 +143,10 @@ export const SymbolSearchModal: React.FC<SymbolSearchModalProps> = ({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-[min(92vw,640px)] nc-panel border-2 border-[#00ffff] bg-[#000080] shadow-2xl">
+      <div className="w-[min(92vw,640px)] nc-panel border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] shadow-2xl">
         {/* Buscador */}
-        <div className="flex items-center gap-2 px-3 py-2 border-b-2 border-[#000055] bg-[#0000aa]">
-          <Search className="w-4 h-4 text-[#00ffff] shrink-0" />
+        <div className="flex items-center gap-2 px-3 py-2 border-b-2 border-[var(--nc-border-dark)] bg-[var(--nc-bg-main)]">
+          <Search className="w-4 h-4 text-[var(--nc-text)] shrink-0" />
           <input
             ref={inputRef}
             value={query}
@@ -158,7 +158,7 @@ export const SymbolSearchModal: React.FC<SymbolSearchModalProps> = ({
             aria-label={lang === 'es' ? 'Buscar símbolo en el workspace' : lang === 'de' ? 'Workspace-Symbol suchen' : 'Search workspace symbol'}
             className="flex-1 bg-transparent text-white placeholder-gray-400 outline-none text-sm font-mono"
           />
-          {loading && <span className="text-[#ffff55] text-[10px] shrink-0">…</span>}
+          {loading && <span className="text-[var(--nc-text-accent)] text-[10px] shrink-0">…</span>}
           <button
             type="button"
             onClick={onClose}
@@ -194,12 +194,12 @@ export const SymbolSearchModal: React.FC<SymbolSearchModalProps> = ({
               onMouseEnter={() => setActive(index)}
               onClick={() => open(sym)}
               className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs font-mono ${
-                index === active ? 'bg-[#00ffff] text-black' : 'text-[#e3e2e6] hover:bg-[#00ffff]/10'
+                index === active ? 'bg-[var(--nc-highlight-bg)] text-black' : 'text-[#e3e2e6] hover:bg-[var(--nc-highlight-bg)]/10'
               }`}
             >
               <span
                 className={`shrink-0 px-1 rounded text-[10px] ${
-                  index === active ? 'bg-black/20 text-black' : 'bg-[#004466] text-[#00ffff]'
+                  index === active ? 'bg-black/20 text-black' : 'bg-[var(--nc-bg-deep)] text-[var(--nc-text)]'
                 }`}
               >
                 {symbolKindName(sym.kind, lang)}
@@ -207,7 +207,7 @@ export const SymbolSearchModal: React.FC<SymbolSearchModalProps> = ({
               <span className="font-bold truncate">{sym.name}</span>
               <span
                 className={`ml-auto shrink-0 text-[10px] ${
-                  index === active ? 'text-black/70' : 'text-[#00ffff]/60'
+                  index === active ? 'text-black/70' : 'text-[var(--nc-text)]/60'
                 }`}
               >
                 {toRelative(normalizeProblemPath(sym.location.uri), projectPath)}:
@@ -218,12 +218,12 @@ export const SymbolSearchModal: React.FC<SymbolSearchModalProps> = ({
         </div>
 
         {/* Pie */}
-        <div className="flex items-center justify-between px-3 py-1.5 border-t-2 border-[#000055] bg-[#0000aa] text-[10px] font-mono text-gray-300">
+        <div className="flex items-center justify-between px-3 py-1.5 border-t-2 border-[var(--nc-border-dark)] bg-[var(--nc-bg-main)] text-[10px] font-mono text-gray-300">
           <span>
             ↑↓ {lang === 'es' ? 'navegar' : lang === 'de' ? 'navigieren' : 'navigate'} · ↵ {lang === 'es' ? 'abrir' : lang === 'de' ? 'öffnen' : 'open'} · Esc{' '}
             {lang === 'es' ? 'cerrar' : lang === 'de' ? 'schließen' : 'close'}
           </span>
-          <span className="flex items-center gap-1 text-[#00ffff]">
+          <span className="flex items-center gap-1 text-[var(--nc-text)]">
             <CornerDownLeft className="w-3 h-3" /> Ctrl+P
           </span>
         </div>

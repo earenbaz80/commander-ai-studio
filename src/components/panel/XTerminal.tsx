@@ -160,7 +160,7 @@ export const XTerminal: React.FC<XTerminalProps> = ({ projectPath = '', lang = '
   };
 
   const statusColor =
-    conn === 'open' ? 'text-[#55ff55]' : conn === 'error' ? 'text-[#ff5555]' : 'text-[#ffff55]';
+    conn === 'open' ? 'text-[var(--nc-success)]' : conn === 'error' ? 'text-[var(--nc-danger)]' : 'text-[var(--nc-text-accent)]';
   const statusText =
     conn === 'open'
       ? t('conectado', 'connected')
@@ -171,31 +171,31 @@ export const XTerminal: React.FC<XTerminalProps> = ({ projectPath = '', lang = '
           : t('desconectado', 'disconnected');
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-[#000d1a]">
+    <div className="flex flex-col h-full min-h-0 bg-[var(--nc-bg-deep)]">
       {/* Barra de estado */}
-      <div className="flex items-center gap-2 px-2 py-1 border-b border-[#004466] bg-[#00243e] shrink-0 text-[10px] font-mono">
+      <div className="flex items-center gap-2 px-2 py-1 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] shrink-0 text-[10px] font-mono">
         {conn === 'open' ? (
-          <Wifi className="w-3 h-3 text-[#55ff55]" />
+          <Wifi className="w-3 h-3 text-[var(--nc-success)]" />
         ) : (
           <WifiOff className="w-3 h-3 text-[#ff9966]" />
         )}
         <span className={'font-bold uppercase ' + statusColor}>{statusText}</span>
         {projectPath && (
-          <span className="text-[#00ffff]/40 truncate ml-2" title={projectPath}>
+          <span className="text-[var(--nc-text)]/40 truncate ml-2" title={projectPath}>
             {projectPath}
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
           <button
             onClick={() => fitRef.current?.fit()}
-            className="p-1 text-[#00ffff]/70 hover:text-[#00ffff] hover:bg-[#0000aa] rounded"
+            className="p-1 text-[var(--nc-text)]/70 hover:text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] rounded"
             title={t('Ajustar tamano', 'Fit to size')}
           >
             <Maximize2 className="w-3 h-3" />
           </button>
           <button
             onClick={reconnect}
-            className="p-1 text-[#00ffff]/70 hover:text-[#00ffff] hover:bg-[#0000aa] rounded"
+            className="p-1 text-[var(--nc-text)]/70 hover:text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] rounded"
             title={t('Reconectar', 'Reconnect')}
           >
             <RefreshCw className={'w-3 h-3 ' + (conn === 'connecting' ? 'animate-spin' : '')} />
@@ -207,7 +207,7 @@ export const XTerminal: React.FC<XTerminalProps> = ({ projectPath = '', lang = '
       <div ref={containerRef} className="flex-1 min-h-0 p-1" onClick={() => termRef.current?.focus()} />
 
       {conn === 'error' && (
-        <div className="px-2 py-1 text-[9px] text-[#ff9966] bg-[#330000]/40 border-t border-[#ff5555]/30">
+        <div className="px-2 py-1 text-[9px] text-[#ff9966] bg-[#330000]/40 border-t border-[var(--nc-danger)]/30">
           {t(
             'No se pudo conectar al backend de terminal. Esta corriendo el servidor Express (puerto 3000)?',
             'Could not reach the terminal backend. Is the Express server (port 3000) running?'

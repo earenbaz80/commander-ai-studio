@@ -271,11 +271,11 @@ export const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div 
-        className="bg-[#0000aa] border-4 border-[#00ffff] w-full max-w-lg font-mono text-xs text-[#00ffff] shadow-2xl overflow-hidden flex flex-col cursor-default"
+        className="bg-[var(--nc-bg-main)] border-4 border-[var(--nc-border-light)] w-full max-w-lg font-mono text-xs text-[var(--nc-text)] shadow-2xl overflow-hidden flex flex-col cursor-default"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="bg-[#00aaaa] text-black font-bold px-3 py-2 flex items-center justify-between border-b-2 border-black">
+        <div className="bg-[var(--nc-header-bg)] text-black font-bold px-3 py-2 flex items-center justify-between border-b-2 border-black">
           <div className="flex items-center gap-2">
             <Radio className="w-5 h-5 text-black animate-pulse" />
             <span className="text-sm">
@@ -288,11 +288,11 @@ export const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 flex flex-col items-center justify-center space-y-6 bg-[#000080]">
+        <div className="p-6 flex flex-col items-center justify-center space-y-6 bg-[var(--nc-bg-panel)]">
           {/* Animated Waveform Orb */}
           <div className="relative flex items-center justify-center">
             <div
-              className="w-32 h-32 rounded-full border-4 border-[#00ffff] flex items-center justify-center transition-all duration-75 shadow-[0_0_30px_#00ffff]"
+              className="w-32 h-32 rounded-full border-4 border-[var(--nc-border-light)] flex items-center justify-center transition-all duration-75 shadow-[0_0_30px_var(--nc-border-light)]"
               style={{
                 transform: `scale(${1 + Math.min(audioLevel / 100, 0.4)})`,
                 backgroundColor: isSpeaking ? '#ffff55' : isListening ? '#00aaaa' : '#0000aa',
@@ -305,14 +305,14 @@ export const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
               ) : isProcessing ? (
                 <Sparkles className="w-12 h-12 text-black animate-spin" />
               ) : (
-                <MicOff className="w-12 h-12 text-[#00ffff]" />
+                <MicOff className="w-12 h-12 text-[var(--nc-text)]" />
               )}
             </div>
           </div>
 
           {/* Status Label */}
           <div className="text-center space-y-1">
-            <div className="text-base font-bold text-[#ffff55]">
+            <div className="text-base font-bold text-[var(--nc-text-accent)]">
               {isSpeaking
                 ? (lang === 'es' ? '🔊 HABLANDO...' : lang === 'de' ? '🔊 SPRICHT...' : '🔊 SPEAKING...')
                 : isProcessing
@@ -322,20 +322,20 @@ export const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
                 : (lang === 'es' ? 'PRESIONA INICIAR PARA HABLAR' : lang === 'de' ? 'START DRÜCKEN ZUM SPRECHEN' : 'PRESS START TO SPEAK')}
             </div>
             <p className="text-[10px] text-white">
-              {lang === 'es' ? 'Modelo activo: ' : lang === 'de' ? 'Aktives Modell: ' : 'Active model: '}<span className="text-[#00ffff] font-bold">{selectedModel}</span>
+              {lang === 'es' ? 'Modelo activo: ' : lang === 'de' ? 'Aktives Modell: ' : 'Active model: '}<span className="text-[var(--nc-text)] font-bold">{selectedModel}</span>
             </p>
           </div>
 
           {/* Transcript Box */}
-          <div className="w-full bg-[#0000aa] border-2 border-[#00ffff] p-3 space-y-2 min-h-[100px] max-h-[160px] overflow-y-auto">
+          <div className="w-full bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-3 space-y-2 min-h-[100px] max-h-[160px] overflow-y-auto">
             {transcript && (
               <div className="text-white">
-                <span className="text-[#00ffff] font-bold">{lang === 'es' ? 'TÚ:' : lang === 'de' ? 'DU:' : 'YOU:'}</span> {transcript}
+                <span className="text-[var(--nc-text)] font-bold">{lang === 'es' ? 'TÚ:' : lang === 'de' ? 'DU:' : 'YOU:'}</span> {transcript}
               </div>
             )}
             {lastResponse && (
-              <div className="text-[#ffff55]">
-                <span className="text-[#ffff55] font-bold">{lang === 'es' ? 'MODELO:' : lang === 'de' ? 'MODELL:' : 'MODEL:'}</span> {lastResponse}
+              <div className="text-[var(--nc-text-accent)]">
+                <span className="text-[var(--nc-text-accent)] font-bold">{lang === 'es' ? 'MODELO:' : lang === 'de' ? 'MODELL:' : 'MODEL:'}</span> {lastResponse}
               </div>
             )}
             {!transcript && !lastResponse && (
@@ -351,7 +351,7 @@ export const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
               <button
                 type="button"
                 onClick={startVoice}
-                className="flex-1 bg-[#ffff55] text-black font-bold py-2.5 border-2 border-black hover:bg-white text-xs uppercase flex items-center justify-center gap-2"
+                className="flex-1 bg-[var(--nc-active-bg)] text-black font-bold py-2.5 border-2 border-black hover:bg-white text-xs uppercase flex items-center justify-center gap-2"
               >
                 <Mic className="w-4 h-4" />
                 <span>{lang === 'es' ? 'INICIAR GRABACIÓN DE VOZ' : lang === 'de' ? 'SPRACHAUFNAHME STARTEN' : 'START VOICE RECORDING'}</span>
@@ -361,7 +361,7 @@ export const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
                 <button
                   type="button"
                   onClick={handleFinishSpeaking}
-                  className="flex-1 bg-[#00ffff] text-black font-bold py-2.5 border-2 border-black hover:bg-white text-xs uppercase flex items-center justify-center gap-2 animate-pulse"
+                  className="flex-1 bg-[var(--nc-highlight-bg)] text-black font-bold py-2.5 border-2 border-black hover:bg-white text-xs uppercase flex items-center justify-center gap-2 animate-pulse"
                 >
                   <Check className="w-4 h-4" />
                   <span>{lang === 'es' ? 'ENVIAR VOZ Y RESPONDER ↵' : lang === 'de' ? 'SPRACHE SENDEN & ANTWORTEN ↵' : 'SEND VOICE & RESPOND ↵'}</span>
@@ -379,9 +379,9 @@ export const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
               <button
                 type="button"
                 disabled
-                className="flex-1 bg-[#000055] text-[#ffff55] border-2 border-[#00ffff] py-2.5 text-xs uppercase flex items-center justify-center gap-2 cursor-wait"
+                className="flex-1 bg-[var(--nc-bg-deep)] text-[var(--nc-text-accent)] border-2 border-[var(--nc-border-light)] py-2.5 text-xs uppercase flex items-center justify-center gap-2 cursor-wait"
               >
-                <RefreshCw className="w-4 h-4 animate-spin text-[#ffff55]" />
+                <RefreshCw className="w-4 h-4 animate-spin text-[var(--nc-text-accent)]" />
                 <span>{lang === 'es' ? 'TRANSCRIBIENDO Y GENERANDO...' : lang === 'de' ? 'TRANSKRIBIERE & ERZEUGE...' : 'TRANSCRIBING & GENERATING...'}</span>
               </button>
             ) : (

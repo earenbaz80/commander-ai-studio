@@ -89,7 +89,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4 overflow-y-auto">
-      <div className="nc-panel w-full max-w-md border-2 border-[#00ffff] bg-[#000080] shadow-[8px_8px_0px_#000055]">
+      <div className="nc-panel w-full max-w-md border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] shadow-[8px_8px_0px_var(--nc-shadow)]">
         {/* Cabecera */}
         <div className="flex items-center justify-between nc-header p-2">
           <div className="flex items-center gap-2">
@@ -114,7 +114,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 <div className="mx-auto w-20 h-20 flex items-center justify-center">
                   <svg
                     viewBox="0 0 24 24"
-                    className="w-16 h-16 text-[#ffff55]"
+                    className="w-16 h-16 text-[var(--nc-text-accent)]"
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="1.8"
@@ -136,7 +136,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
               <button
                 onClick={() => { setView('register'); setError(null); }}
-                className="nc-button py-2.5 text-sm flex items-center justify-center gap-2 bg-[#ffff55] text-black font-bold hover:bg-white"
+                className="nc-button py-2.5 text-sm flex items-center justify-center gap-2 bg-[var(--nc-active-bg)] text-black font-bold hover:bg-white"
               >
                 <UserPlus className="w-4 h-4" />
                 <span>{lang === 'es' ? 'CREAR MI CUENTA' : lang === 'de' ? 'MEIN KONTO ERSTELLEN' : 'CREATE MY ACCOUNT'}</span>
@@ -151,13 +151,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               </button>
 
               <div className="relative my-1 text-center">
-                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[#00ffff]/40"></div></div>
-                <span className="relative bg-[#000080] px-2 text-[10px] text-[#00ffff]">{lang === 'es' ? 'O' : lang === 'de' ? 'ODER' : 'OR'}</span>
+                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[var(--nc-border-light)]/40"></div></div>
+                <span className="relative bg-[var(--nc-bg-panel)] px-2 text-[10px] text-[var(--nc-text)]">{lang === 'es' ? 'O' : lang === 'de' ? 'ODER' : 'OR'}</span>
               </div>
 
               {/* Invitado */}
-              <div className="bg-[#000044] border-2 border-[#00ffff]/50 p-3 flex flex-col gap-2">
-                <div className="flex items-center gap-2 text-[#ffff55] text-xs font-bold">
+              <div className="bg-[var(--nc-bg-deep)] border-2 border-[var(--nc-border-light)]/50 p-3 flex flex-col gap-2">
+                <div className="flex items-center gap-2 text-[var(--nc-text-accent)] text-xs font-bold">
                   <Rocket className="w-4 h-4" />
                   <span>{lang === 'es' ? 'CONTINUAR COMO INVITADO' : lang === 'de' ? 'ALS GAST FORTFAHREN' : 'CONTINUE AS GUEST'}</span>
                 </div>
@@ -166,11 +166,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   value={guestName}
                   onChange={(e) => setGuestName(e.target.value)}
                   placeholder={lang === 'es' ? 'Elige un nombre (opcional)' : lang === 'de' ? 'Wähle einen Namen (optional)' : 'Pick a name (optional)'}
-                  className="bg-[#0000aa] text-[#ffff55] p-2 text-xs border-2 border-[#00ffff] outline-none font-mono"
+                  className="bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] p-2 text-xs border-2 border-[var(--nc-border-light)] outline-none font-mono"
                 />
                 <button
                   onClick={() => onContinueAsGuest(guestName)}
-                  className="nc-button py-2 text-xs flex items-center justify-center gap-2 bg-[#00aaaa] text-black font-bold hover:bg-[#00ffff]"
+                  className="nc-button py-2 text-xs flex items-center justify-center gap-2 bg-[var(--nc-header-bg)] text-black font-bold hover:bg-[var(--nc-highlight-bg)]"
                 >
                   <Rocket className="w-4 h-4" />
                   <span>{lang === 'es' ? 'ENTRAR COMO INVITADO' : lang === 'de' ? 'ALS GAST EINTRETEN' : 'ENTER AS GUEST'}</span>
@@ -215,7 +215,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <form onSubmit={handleSubmit} className="flex flex-col gap-3">
                 {view === 'register' && (
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs text-[#00ffff] font-bold flex items-center gap-1">
+                    <label className="text-xs text-[var(--nc-text)] font-bold flex items-center gap-1">
                       <User className="w-3.5 h-3.5" /> {lang === 'es' ? 'NOMBRE' : lang === 'de' ? 'NAME' : 'NAME'}
                     </label>
                     <input
@@ -224,14 +224,14 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder={lang === 'es' ? 'Ej. CommanderDev' : lang === 'de' ? 'z. B. CommanderDev' : 'e.g. CommanderDev'}
-                      className="bg-[#0000aa] text-[#ffff55] p-2 text-xs border-2 border-[#00ffff] outline-none font-mono"
+                      className="bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] p-2 text-xs border-2 border-[var(--nc-border-light)] outline-none font-mono"
                     />
                   </div>
                 )}
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs text-[#00ffff] font-bold flex items-center gap-1">
-                    <User className="w-3.5 h-3.5 text-[#ffff55]" /> {lang === 'es' ? 'USUARIO O CORREO' : lang === 'de' ? 'BENUTZER ODER E-MAIL' : 'USER OR EMAIL'}
+                  <label className="text-xs text-[var(--nc-text)] font-bold flex items-center gap-1">
+                    <User className="w-3.5 h-3.5 text-[var(--nc-text-accent)]" /> {lang === 'es' ? 'USUARIO O CORREO' : lang === 'de' ? 'BENUTZER ODER E-MAIL' : 'USER OR EMAIL'}
                   </label>
                   <input
                     type="text"
@@ -239,12 +239,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder={lang === 'es' ? 'usuario o correo@ejemplo.com' : lang === 'de' ? 'benutzer oder mail@beispiel.de' : 'user or mail@example.com'}
-                    className="bg-[#0000aa] text-[#ffff55] p-2 text-xs border-2 border-[#00ffff] outline-none font-mono"
+                    className="bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] p-2 text-xs border-2 border-[var(--nc-border-light)] outline-none font-mono"
                   />
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs text-[#00ffff] font-bold flex items-center gap-1">
+                  <label className="text-xs text-[var(--nc-text)] font-bold flex items-center gap-1">
                     <Lock className="w-3.5 h-3.5" /> {lang === 'es' ? 'CONTRASEÑA' : lang === 'de' ? 'PASSWORT' : 'PASSWORD'}
                   </label>
                   <input
@@ -253,7 +253,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="bg-[#0000aa] text-[#ffff55] p-2 text-xs border-2 border-[#00ffff] outline-none font-mono"
+                    className="bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] p-2 text-xs border-2 border-[var(--nc-border-light)] outline-none font-mono"
                   />
                 </div>
 
@@ -270,16 +270,16 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               </form>
 
               <div className="relative my-1 text-center">
-                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[#00ffff]/40"></div></div>
-                <span className="relative bg-[#000080] px-2 text-[10px] text-[#00ffff]">{lang === 'es' ? 'O TAMBIÉN' : lang === 'de' ? 'ODER' : 'OR'}</span>
+                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[var(--nc-border-light)]/40"></div></div>
+                <span className="relative bg-[var(--nc-bg-panel)] px-2 text-[10px] text-[var(--nc-text)]">{lang === 'es' ? 'O TAMBIÉN' : lang === 'de' ? 'ODER' : 'OR'}</span>
               </div>
 
               <button
                 onClick={handleGoogle}
                 disabled={loading}
-                className="nc-button py-2 text-xs flex items-center justify-center gap-2 bg-[#0000aa] hover:bg-[#00aaaa]"
+                className="nc-button py-2 text-xs flex items-center justify-center gap-2 bg-[var(--nc-bg-main)] hover:bg-[var(--nc-header-bg)]"
               >
-                <svg className="w-4 h-4 fill-current text-[#ffff55]" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 fill-current text-[var(--nc-text-accent)]" viewBox="0 0 24 24">
                   <path d="M12.24 10.285V13.4h6.887c-.58 2.319-2.72 4.041-5.647 4.041-3.393 0-6.142-2.749-6.142-6.142s2.749-6.142 6.142-6.142c1.55 0 2.96.577 4.04 1.528l2.42-2.42C18.45 2.82 15.52 2 12.24 2 6.58 2 2 6.58 2 12.24s4.58 10.24 10.24 10.24c6.14 0 10.12-4.32 10.12-10.3 0-.69-.07-1.37-.19-2.022H12.24z" />
                 </svg>
                 <span>{lang === 'es' ? 'CONTINUAR CON GOOGLE' : lang === 'de' ? 'MIT GOOGLE FORTFAHREN' : 'CONTINUE WITH GOOGLE'}</span>

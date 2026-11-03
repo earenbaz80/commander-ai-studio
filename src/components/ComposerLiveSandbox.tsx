@@ -158,7 +158,7 @@ export const ComposerLiveSandbox: React.FC<ComposerLiveSandboxProps> = ({
 
       const TargetComponent = typeof App !== 'undefined' 
         ? App 
-        : (window.__AppDefault || (() => React.createElement('div', { className: 'p-4 text-[#ffff55]' }, 'Componente App no exportado')));
+        : (window.__AppDefault || (() => React.createElement('div', { className: 'p-4 text-[var(--nc-text-accent)]' }, 'Componente App no exportado')));
 
       const root = ReactDOM.createRoot(document.getElementById('root'));
       root.render(React.createElement(TargetComponent));
@@ -192,16 +192,16 @@ export const ComposerLiveSandbox: React.FC<ComposerLiveSandboxProps> = ({
       : { width: '100%', height: '100%' };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-[#000055] font-mono select-none overflow-hidden">
+    <div className="flex-1 flex flex-col min-h-0 bg-[var(--nc-bg-deep)] font-mono select-none overflow-hidden">
       {/* Sandbox Toolbar */}
-      <div className="bg-[#0000aa] border-b-2 border-[#00ffff] p-2 flex items-center justify-between shrink-0">
+      <div className="bg-[var(--nc-bg-main)] border-b-2 border-[var(--nc-border-light)] p-2 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <DeviceSelect value={viewport.id} onChange={setDevice} lang={lang} testId="sandbox-device" />
 
           <button
             type="button"
             onClick={handleRefresh}
-            className="nc-button !py-1 !px-2 bg-[#ffff55] text-black hover:bg-white font-bold flex items-center gap-1 text-[11px]"
+            className="nc-button !py-1 !px-2 bg-[var(--nc-active-bg)] text-black hover:bg-white font-bold flex items-center gap-1 text-[11px]"
             title="Recargar y re-compilar sandbox"
           >
             <RotateCw className="w-3.5 h-3.5" />
@@ -210,11 +210,11 @@ export const ComposerLiveSandbox: React.FC<ComposerLiveSandboxProps> = ({
         </div>
 
         <div className="flex items-center gap-2 text-xs">
-          <div className="flex items-center gap-1 text-[#ffff55]">
+          <div className="flex items-center gap-1 text-[var(--nc-text-accent)]">
             <Code2 className="w-3.5 h-3.5" />
             <span>{appFile ? appFile.name : 'Sin archivo principal'}</span>
           </div>
-          <span className="bg-[#004400] text-[#55ff55] border border-[#55ff55] px-1.5 py-0.5 text-[10px] font-bold">
+          <span className="bg-[#004400] text-[var(--nc-success)] border border-[var(--nc-success)] px-1.5 py-0.5 text-[10px] font-bold">
             LIVE SANDBOX ACTIVO
           </span>
         </div>
@@ -223,32 +223,32 @@ export const ComposerLiveSandbox: React.FC<ComposerLiveSandboxProps> = ({
       {/* Main Sandbox Area & Bottom Console */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Sandbox Canvas Container */}
-        <div className="flex-1 overflow-auto bg-[#000033] flex p-2 min-h-0">
+        <div className="flex-1 overflow-auto bg-[var(--nc-bg-deep)] flex p-2 min-h-0">
           <iframe
             key={reloadKey}
             ref={iframeRef}
             srcDoc={bundleHtml}
             sandbox="allow-scripts allow-modals"
             style={frameStyle}
-            className="bg-[#000080] border-4 border-[#00ffff] rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.35)] block m-auto"
+            className="bg-[var(--nc-bg-panel)] border-4 border-[var(--nc-border-light)] rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.35)] block m-auto"
             title="Commander Live Execution Sandbox"
           />
         </div>
 
         {/* Live Sandbox Console Drawer */}
-        <div className="h-36 bg-[#000022] border-t-2 border-[#00ffff] flex flex-col shrink-0">
-          <div className="bg-[#000080] px-2 py-1 flex items-center justify-between border-b border-[#00aaaa]">
-            <div className="flex items-center gap-1.5 text-[#ffff55] text-[11px] font-bold">
-              <Terminal className="w-3.5 h-3.5 text-[#00ffff]" />
+        <div className="h-36 bg-[var(--nc-bg-deep)] border-t-2 border-[var(--nc-border-light)] flex flex-col shrink-0">
+          <div className="bg-[var(--nc-bg-panel)] px-2 py-1 flex items-center justify-between border-b border-[var(--nc-border-mid)]">
+            <div className="flex items-center gap-1.5 text-[var(--nc-text-accent)] text-[11px] font-bold">
+              <Terminal className="w-3.5 h-3.5 text-[var(--nc-text)]" />
               <span>{lang === 'es' ? 'CONSOLA DE EJECUCIÓN EN VIVO (SANDBOX LOGS)' : lang === 'de' ? 'SANDBOX-AUSFÜHRUNGSKONSOLE' : 'SANDBOX EXECUTION CONSOLE'}</span>
-              <span className="bg-[#0000aa] text-[#00ffff] px-1 text-[9px] border border-[#00ffff]">
+              <span className="bg-[var(--nc-bg-main)] text-[var(--nc-text)] px-1 text-[9px] border border-[var(--nc-border-light)]">
                 {logs.length} eventos
               </span>
             </div>
             <button
               type="button"
               onClick={handleClearLogs}
-              className="text-[#a8c7fa] hover:text-white p-0.5 text-[10px] flex items-center gap-1"
+              className="text-[var(--nc-text)] hover:text-white p-0.5 text-[10px] flex items-center gap-1"
               title="Limpiar consola"
             >
               <Trash2 className="w-3 h-3" />
@@ -277,8 +277,8 @@ export const ComposerLiveSandbox: React.FC<ComposerLiveSandboxProps> = ({
                       : log.type === 'warn'
                       ? 'text-yellow-300'
                       : log.type === 'info'
-                      ? 'text-[#55ff55]'
-                      : 'text-[#00ffff]'
+                      ? 'text-[var(--nc-success)]'
+                      : 'text-[var(--nc-text)]'
                   }`}
                 >
                   <span className="text-[#888888] select-none shrink-0">[{log.timestamp}]</span>

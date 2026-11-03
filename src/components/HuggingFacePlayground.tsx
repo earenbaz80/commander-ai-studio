@@ -438,23 +438,23 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
   return (
 
-    <div className="flex-1 min-w-0 min-h-0 h-full flex flex-col bg-[#0000aa] font-mono text-xs text-[#00ffff] p-2 overflow-hidden select-text">
+    <div className="flex-1 min-w-0 min-h-0 h-full flex flex-col bg-[var(--nc-bg-main)] font-mono text-xs text-[var(--nc-text)] p-2 overflow-hidden select-text">
 
       {/* Top Banner Bar */}
 
-      <div className="bg-[#00aaaa] text-black font-bold px-3 py-1 flex items-center justify-between border-2 border-black shrink-0">
+      <div className="bg-[var(--nc-header-bg)] text-black font-bold px-3 py-1 flex items-center justify-between border-2 border-black shrink-0">
 
         <div className="flex items-center gap-2">
 
           <span>╔═ HUGGING FACE LOCAL HUB MANAGER ═╗</span>
 
-          <div className="flex gap-1 bg-[#0000aa] p-0.5 border border-white">
+          <div className="flex gap-1 bg-[var(--nc-bg-main)] p-0.5 border border-white">
 
             <button
 
               onClick={() => setActiveTab('search')}
 
-              className={`px-2 py-0.5 text-[10px] font-bold ${activeTab === 'search' ? 'bg-[#ffff55] text-black' : 'text-[#00ffff]'}`}
+              className={`px-2 py-0.5 text-[10px] font-bold ${activeTab === 'search' ? 'bg-[var(--nc-active-bg)] text-black' : 'text-[var(--nc-text)]'}`}
 
             >
 
@@ -466,7 +466,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
               onClick={() => setActiveTab('local_models')}
 
-              className={`px-2 py-0.5 text-[10px] font-bold ${activeTab === 'local_models' ? 'bg-[#ffff55] text-black' : 'text-[#00ffff]'}`}
+              className={`px-2 py-0.5 text-[10px] font-bold ${activeTab === 'local_models' ? 'bg-[var(--nc-active-bg)] text-black' : 'text-[var(--nc-text)]'}`}
 
             >
 
@@ -478,7 +478,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
               onClick={() => setActiveTab('tester')}
 
-              className={`px-2 py-0.5 text-[10px] font-bold ${activeTab === 'tester' ? 'bg-[#ffff55] text-black' : 'text-[#00ffff]'}`}
+              className={`px-2 py-0.5 text-[10px] font-bold ${activeTab === 'tester' ? 'bg-[var(--nc-active-bg)] text-black' : 'text-[var(--nc-text)]'}`}
 
             >
 
@@ -506,7 +506,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
       {downloadingModelId && (
 
-        <div className="bg-[#0000aa] border-2 border-[#ffff55] p-2 my-1 text-[#ffff55] font-bold space-y-1">
+        <div className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-text-accent)] p-2 my-1 text-[var(--nc-text-accent)] font-bold space-y-1">
 
           <div className="flex justify-between">
 
@@ -516,9 +516,9 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
           </div>
 
-          <div className="w-full bg-[#000055] h-3 border border-[#ffff55]">
+          <div className="w-full bg-[var(--nc-bg-deep)] h-3 border border-[var(--nc-text-accent)]">
 
-            <div className="bg-[#ffff55] h-full" style={{ width: `${downloadProgress}%` }} />
+            <div className="bg-[var(--nc-active-bg)] h-full" style={{ width: `${downloadProgress}%` }} />
 
           </div>
 
@@ -538,11 +538,11 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
             {/* Engine Status & Token Bar */}
 
-            <div className="border border-[#00aaaa] bg-[#000055] p-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+            <div className="border border-[var(--nc-border-mid)] bg-[var(--nc-bg-deep)] p-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
 
               <div className="flex items-center gap-2">
 
-                <span className="text-[#ffff55] font-bold">⚡ MOTOR LOCAL:</span>
+                <span className="text-[var(--nc-text-accent)] font-bold">⚡ MOTOR LOCAL:</span>
 
                 <span className="text-white">WebGPU Tensores + Gemini Bridge Inteligente (100% Funcional)</span>
 
@@ -550,7 +550,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
               <div className="flex items-center gap-2">
 
-                <span className="text-[10px] text-[#00ffff]">Token HuggingFace (Opcional):</span>
+                <span className="text-[10px] text-[var(--nc-text)]">Token HuggingFace (Opcional):</span>
 
                 <input
 
@@ -570,7 +570,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                   placeholder="hf_... (para Router API)"
 
-                  className="bg-[#0000aa] border border-[#00ffff] px-1.5 py-0.5 text-[10px] text-white outline-none w-44"
+                  className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] px-1.5 py-0.5 text-[10px] text-white outline-none w-44"
 
                 />
 
@@ -582,9 +582,9 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
             {/* Search Box */}
 
-            <div className="border-2 border-[#00ffff] bg-[#000080] p-3 space-y-2">
+            <div className="border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] p-3 space-y-2">
 
-              <div className="bg-[#00aaaa] text-black font-bold px-2 py-0.5 flex justify-between">
+              <div className="bg-[var(--nc-header-bg)] text-black font-bold px-2 py-0.5 flex justify-between">
 
                 <span>BUSCADOR Y CATÁLOGO DE MODELOS HUGGING FACE HUB</span>
 
@@ -606,7 +606,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                   placeholder="Escribe el nombre del modelo (DeepSeek, Llama, Qwen, Whisper, Mistral)..."
 
-                  className="flex-1 bg-[#0000aa] border border-[#00ffff] p-2 text-xs text-[#ffffff] outline-none"
+                  className="flex-1 bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] p-2 text-xs text-[#ffffff] outline-none"
 
                 />
 
@@ -616,7 +616,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                   onChange={(e) => setSelectedPipeline(e.target.value)}
 
-                  className="bg-[#0000aa] border border-[#00ffff] p-2 text-xs text-[#ffff55] font-bold outline-none cursor-pointer"
+                  className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] p-2 text-xs text-[var(--nc-text-accent)] font-bold outline-none cursor-pointer"
 
                 >
 
@@ -644,7 +644,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
               <div className="flex flex-wrap gap-1 items-center pt-1">
 
-                <span className="text-[10px] text-[#00aaaa] font-bold">ACCESOS DIRECTOS:</span>
+                <span className="text-[10px] text-[var(--nc-text-dim)] font-bold">ACCESOS DIRECTOS:</span>
 
                 {[
 
@@ -686,9 +686,9 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                       searchQuery === chip.query && selectedPipeline === chip.pipeline
 
-                        ? 'bg-[#ffff55] text-black border-[#ffff55]'
+                        ? 'bg-[var(--nc-active-bg)] text-black border-[var(--nc-text-accent)]'
 
-                        : 'bg-[#0000aa] text-[#00ffff] border-[#00aaaa] hover:bg-[#00aaaa] hover:text-black'
+                        : 'bg-[var(--nc-bg-main)] text-[var(--nc-text)] border-[var(--nc-border-mid)] hover:bg-[var(--nc-header-bg)] hover:text-black'
 
                     }`}
 
@@ -710,7 +710,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
             {isSearching ? (
 
-              <div className="border border-[#00ffff] bg-[#000080] p-8 text-center text-[#ffff55] font-bold">
+              <div className="border border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] p-8 text-center text-[var(--nc-text-accent)] font-bold">
 
                 BUSCANDO Y RECUPERANDO MODELOS EN HUGGING FACE HUB...
 
@@ -718,9 +718,9 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
             ) : searchResults.length === 0 ? (
 
-              <div className="border border-[#00ffff] bg-[#000080] p-8 text-center space-y-2">
+              <div className="border border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] p-8 text-center space-y-2">
 
-                <div className="text-[#ffff55] font-bold">No se encontraron modelos con el término "{searchQuery}".</div>
+                <div className="text-[var(--nc-text-accent)] font-bold">No se encontraron modelos con el término "{searchQuery}".</div>
 
                 <button
 
@@ -732,7 +732,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                   }}
 
-                  className="bg-[#00aaaa] text-black font-bold px-3 py-1 text-xs hover:bg-[#00ffff]"
+                  className="bg-[var(--nc-header-bg)] text-black font-bold px-3 py-1 text-xs hover:bg-[var(--nc-highlight-bg)]"
 
                 >
 
@@ -762,7 +762,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                       className={`border-2 p-3 flex flex-col justify-between space-y-2 ${
 
-                        isSelected ? 'border-[#ffff55] bg-[#000055]' : 'border-[#00ffff] bg-[#000080]'
+                        isSelected ? 'border-[var(--nc-text-accent)] bg-[var(--nc-bg-deep)]' : 'border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)]'
 
                       }`}
 
@@ -772,13 +772,13 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                         <div className="flex justify-between items-start gap-1">
 
-                          <span className="text-[#ffff55] font-bold text-xs truncate max-w-[190px]" title={model.modelId}>
+                          <span className="text-[var(--nc-text-accent)] font-bold text-xs truncate max-w-[190px]" title={model.modelId}>
 
                             {model.modelId}
 
                           </span>
 
-                          {isDownloaded && <span className="bg-[#00aaaa] text-black font-bold px-1 text-[9px] shrink-0">[INSTALADO]</span>}
+                          {isDownloaded && <span className="bg-[var(--nc-header-bg)] text-black font-bold px-1 text-[9px] shrink-0">[INSTALADO]</span>}
 
                         </div>
 
@@ -786,11 +786,11 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                           <span>{model.downloads.toLocaleString()} descargas</span>
 
-                          <span className="text-[#00ffff]">~{model.sizeMb} MB</span>
+                          <span className="text-[var(--nc-text)]">~{model.sizeMb} MB</span>
 
                         </div>
 
-                        <div className="text-[9px] text-[#00aaaa] truncate">
+                        <div className="text-[9px] text-[var(--nc-text-dim)] truncate">
 
                           Categoría: {model.pipeline_tag || 'text-generation'}
 
@@ -814,7 +814,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                             }}
 
-                            className="w-full bg-[#00aaaa] text-black font-bold py-1 text-xs hover:bg-[#00ffff]"
+                            className="w-full bg-[var(--nc-header-bg)] text-black font-bold py-1 text-xs hover:bg-[var(--nc-highlight-bg)]"
 
                           >
 
@@ -830,7 +830,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                             disabled={downloadingModelId === model.modelId}
 
-                            className="w-full bg-[#ffff55] text-black font-bold py-1 text-xs hover:bg-white flex items-center justify-center gap-1"
+                            className="w-full bg-[var(--nc-active-bg)] text-black font-bold py-1 text-xs hover:bg-white flex items-center justify-center gap-1"
 
                           >
 
@@ -864,9 +864,9 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
           <div className="space-y-4">
 
-            <div className="border-2 border-[#00ffff] bg-[#000080] p-3 space-y-3">
+            <div className="border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] p-3 space-y-3">
 
-              <div className="bg-[#00aaaa] text-black font-bold px-2 py-0.5">
+              <div className="bg-[var(--nc-header-bg)] text-black font-bold px-2 py-0.5">
 
                 MIS MODELOS LOCALES EN CACHÉ ({downloadedModels.length})
 
@@ -884,13 +884,13 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                   <div className="text-[10px] text-gray-300">Directorio: {runtimeStatus.dir}</div>
 
-                <button onClick={handleDownloadRuntime} className="mt-1 bg-[#ffff55] text-black font-bold px-2 py-1 text-[10px] border border-black">
+                <button onClick={handleDownloadRuntime} className="mt-1 bg-[var(--nc-active-bg)] text-black font-bold px-2 py-1 text-[10px] border border-black">
 
                   DESCARGAR RUNTIME (opt-in, real)
 
                 </button>
 
-                {runtimeDownloadStatus && <div className="text-[10px] text-[#ffff55] mt-1">{runtimeDownloadStatus}</div>}
+                {runtimeDownloadStatus && <div className="text-[10px] text-[var(--nc-text-accent)] mt-1">{runtimeDownloadStatus}</div>}
 
                 </div>
 
@@ -902,9 +902,9 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                 {downloadedModels.map((local) => (
 
-                  <div key={local.id} className="border border-[#00ffff] bg-[#0000aa] p-3 space-y-2">
+                  <div key={local.id} className="border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] p-3 space-y-2">
 
-                    <div className="flex justify-between font-bold text-[#ffff55]">
+                    <div className="flex justify-between font-bold text-[var(--nc-text-accent)]">
 
                       <span>{local.name}</span>
 
@@ -936,7 +936,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                         }}
 
-                        className="flex-1 bg-[#ffff55] text-black font-bold py-1 text-xs"
+                        className="flex-1 bg-[var(--nc-active-bg)] text-black font-bold py-1 text-xs"
 
                       >
 
@@ -966,17 +966,17 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
             </div>
 
-            <div className="border-2 border-[#ffff55] bg-[#000080] p-3 space-y-2">
+            <div className="border-2 border-[var(--nc-text-accent)] bg-[var(--nc-bg-panel)] p-3 space-y-2">
 
-              <div className="text-[11px] text-[#ffff55] font-bold">DESCARGA REAL (streaming, verificado por servidor)</div>
+              <div className="text-[11px] text-[var(--nc-text-accent)] font-bold">DESCARGA REAL (streaming, verificado por servidor)</div>
 
               <div className="flex flex-col gap-2 mt-2">
 
-                <input value={realUrl} onChange={(ev) => setRealUrl(ev.target.value)} placeholder="URL directa (https://...)" className="bg-[#0000aa] border border-[#00ffff] text-[#00ffff] p-1 text-[10px]" />
+                <input value={realUrl} onChange={(ev) => setRealUrl(ev.target.value)} placeholder="URL directa (https://...)" className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] text-[var(--nc-text)] p-1 text-[10px]" />
 
-                <input value={realName} onChange={(ev) => setRealName(ev.target.value)} placeholder="Nombre final (ej. modelo.gguf)" className="bg-[#0000aa] border border-[#00ffff] text-[#00ffff] p-1 text-[10px]" />
+                <input value={realName} onChange={(ev) => setRealName(ev.target.value)} placeholder="Nombre final (ej. modelo.gguf)" className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] text-[var(--nc-text)] p-1 text-[10px]" />
 
-                <button onClick={handleRealDownload} className="bg-[#00aaaa] text-black font-bold px-3 py-1 text-xs">
+                <button onClick={handleRealDownload} className="bg-[var(--nc-header-bg)] text-black font-bold px-3 py-1 text-xs">
 
                   DESCARGAR ARCHIVO REAL
 
@@ -996,9 +996,9 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
           <div className="space-y-3">
 
-            <div className="border-2 border-[#ffff55] bg-[#000080] p-3 space-y-2">
+            <div className="border-2 border-[var(--nc-text-accent)] bg-[var(--nc-bg-panel)] p-3 space-y-2">
 
-              <div className="bg-[#ffff55] text-black font-bold px-2 py-0.5">
+              <div className="bg-[var(--nc-active-bg)] text-black font-bold px-2 py-0.5">
 
                 INFERENCIA LOCAL TESTER - MODELO: {selectedModel}
 
@@ -1014,7 +1014,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                 rows={3}
 
-                className="w-full bg-[#0000aa] border border-[#00ffff] p-2 text-xs text-white outline-none"
+                className="w-full bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] p-2 text-xs text-white outline-none"
 
               />
 
@@ -1026,7 +1026,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                 disabled={isGenerating}
 
-                className="w-full bg-[#ffff55] text-black font-bold py-2 border border-white hover:bg-white"
+                className="w-full bg-[var(--nc-active-bg)] text-black font-bold py-2 border border-white hover:bg-white"
 
               >
 
@@ -1038,15 +1038,15 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
 
 
-            <div className="border-2 border-[#00ffff] bg-[#000080] p-3 space-y-2">
+            <div className="border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] p-3 space-y-2">
 
-              <div className="bg-[#00aaaa] text-black font-bold px-2 py-0.5 flex justify-between">
+              <div className="bg-[var(--nc-header-bg)] text-black font-bold px-2 py-0.5 flex justify-between">
 
                 <span>RESULTADO INFERENCIA LOCAL</span>
 
                 {hfOutput && (
 
-                  <button onClick={handleCopy} className="bg-[#0000aa] text-[#ffff55] px-2 text-[10px]">
+                  <button onClick={handleCopy} className="bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] px-2 text-[10px]">
 
                     {copied ? '[COPIADO]' : '[COPIAR]'}
 
@@ -1058,7 +1058,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
 
 
-              <div className="bg-[#0000aa] border border-[#00ffff] p-3 min-h-[120px] text-xs text-[#00ffff] whitespace-pre-wrap">
+              <div className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] p-3 min-h-[120px] text-xs text-[var(--nc-text)] whitespace-pre-wrap">
 
                 {isGenerating ? 'Calculando tensores WebGPU...' : hfOutput || 'El resultado aparecerá aquí...'}
 

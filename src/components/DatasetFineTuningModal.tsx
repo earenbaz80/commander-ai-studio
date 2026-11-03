@@ -166,11 +166,11 @@ Devuelve ÚNICAMENTE un arreglo JSON con la estructura:
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div 
-        className="bg-[#0000aa] border-4 border-[#00ffff] w-full max-w-3xl max-h-[90vh] flex flex-col font-mono text-xs text-[#00ffff] shadow-2xl overflow-hidden cursor-default"
+        className="bg-[var(--nc-bg-main)] border-4 border-[var(--nc-border-light)] w-full max-w-3xl max-h-[90vh] flex flex-col font-mono text-xs text-[var(--nc-text)] shadow-2xl overflow-hidden cursor-default"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-[#00aaaa] text-black font-bold px-3 py-2 flex items-center justify-between border-b-2 border-black">
+        <div className="bg-[var(--nc-header-bg)] text-black font-bold px-3 py-2 flex items-center justify-between border-b-2 border-black">
           <div className="flex items-center gap-2">
             <Database className="w-5 h-5 text-black" />
             <span className="text-sm">DATASET & FEW-SHOT FINE-TUNING GRID</span>
@@ -181,11 +181,11 @@ Devuelve ÚNICAMENTE un arreglo JSON con la estructura:
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 flex-1 overflow-y-auto space-y-4 bg-[#000080]">
+        <div className="p-4 flex-1 overflow-y-auto space-y-4 bg-[var(--nc-bg-panel)]">
           {/* Top Actions Banner */}
-          <div className="bg-[#0000aa] border-2 border-[#00ffff] p-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-3 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <div className="text-[#ffff55] font-bold text-sm">Ejemplos Guardados: {parameters.examples.length}</div>
+              <div className="text-[var(--nc-text-accent)] font-bold text-sm">Ejemplos Guardados: {parameters.examples.length}</div>
               <p className="text-[10px] text-white">
                 Define pares Entrada ➔ Salida para guiar al modelo (Few-Shot) o exportar como dataset de ajuste fino (JSONL/CSV).
               </p>
@@ -196,9 +196,9 @@ Devuelve ÚNICAMENTE un arreglo JSON con la estructura:
                 type="button"
                 onClick={handleGenerateSynthetic}
                 disabled={isGeneratingSynthetic}
-                className="bg-[#ffff55] text-black font-bold px-3 py-1.5 border border-black hover:bg-white flex items-center gap-1.5 disabled:opacity-50"
+                className="bg-[var(--nc-active-bg)] text-black font-bold px-3 py-1.5 border border-black hover:bg-white flex items-center gap-1.5 disabled:opacity-50"
               >
-                <Sparkles className={`w-4 h-4 ${isGeneratingSynthetic ? 'animate-spin' : 'text-[#000080]'}`} />
+                <Sparkles className={`w-4 h-4 ${isGeneratingSynthetic ? 'animate-spin' : 'text-[var(--nc-active-text)]'}`} />
                 <span>{isGeneratingSynthetic ? 'GENERANDO...' : '✨ GENERAR CON IA'}</span>
               </button>
 
@@ -206,7 +206,7 @@ Devuelve ÚNICAMENTE un arreglo JSON con la estructura:
                 type="button"
                 onClick={exportAsJsonl}
                 disabled={parameters.examples.length === 0}
-                className="bg-[#00aaaa] text-black font-bold px-3 py-1.5 border border-black hover:bg-[#00ffff] flex items-center gap-1.5 disabled:opacity-50"
+                className="bg-[var(--nc-header-bg)] text-black font-bold px-3 py-1.5 border border-black hover:bg-[var(--nc-highlight-bg)] flex items-center gap-1.5 disabled:opacity-50"
               >
                 <Download className="w-4 h-4" />
                 <span>EXPORTAR JSONL</span>
@@ -216,7 +216,7 @@ Devuelve ÚNICAMENTE un arreglo JSON con la estructura:
                 type="button"
                 onClick={exportAsCsv}
                 disabled={parameters.examples.length === 0}
-                className="bg-[#00aaaa] text-black font-bold px-3 py-1.5 border border-black hover:bg-[#00ffff] flex items-center gap-1.5 disabled:opacity-50"
+                className="bg-[var(--nc-header-bg)] text-black font-bold px-3 py-1.5 border border-black hover:bg-[var(--nc-highlight-bg)] flex items-center gap-1.5 disabled:opacity-50"
               >
                 <FileText className="w-4 h-4" />
                 <span>EXPORTAR CSV</span>
@@ -225,27 +225,27 @@ Devuelve ÚNICAMENTE un arreglo JSON con la estructura:
           </div>
 
           {/* New Example Creator */}
-          <div className="border-2 border-[#00ffff] bg-[#0000aa] p-3 space-y-2">
-            <div className="text-[#ffff55] font-bold">AGREGAR NUEVO EJEMPLO PAIR</div>
+          <div className="border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] p-3 space-y-2">
+            <div className="text-[var(--nc-text-accent)] font-bold">AGREGAR NUEVO EJEMPLO PAIR</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
-                <label className="text-[10px] text-[#00ffff] font-bold block mb-1">ENTRADA (USER INPUT):</label>
+                <label className="text-[10px] text-[var(--nc-text)] font-bold block mb-1">ENTRADA (USER INPUT):</label>
                 <textarea
                   value={newInput}
                   onChange={(e) => setNewInput(e.target.value)}
                   rows={2}
-                  className="w-full bg-[#000080] border border-[#00ffff] p-2 text-white outline-none font-mono text-xs"
+                  className="w-full bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] p-2 text-white outline-none font-mono text-xs"
                   placeholder="Ej: Clasifica la intención: Quiero cancelar mi suscripción"
                 />
               </div>
 
               <div>
-                <label className="text-[10px] text-[#ffff55] font-bold block mb-1">SALIDA (MODEL OUTPUT):</label>
+                <label className="text-[10px] text-[var(--nc-text-accent)] font-bold block mb-1">SALIDA (MODEL OUTPUT):</label>
                 <textarea
                   value={newOutput}
                   onChange={(e) => setNewOutput(e.target.value)}
                   rows={2}
-                  className="w-full bg-[#000080] border border-[#00ffff] p-2 text-white outline-none font-mono text-xs"
+                  className="w-full bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] p-2 text-white outline-none font-mono text-xs"
                   placeholder='Ej: { "categoria": "baja_servicio", "prioridad": "alta" }'
                 />
               </div>
@@ -255,7 +255,7 @@ Devuelve ÚNICAMENTE un arreglo JSON con la estructura:
               type="button"
               onClick={handleAddExample}
               disabled={!newInput.trim() || !newOutput.trim()}
-              className="w-full bg-[#00aaaa] text-black font-bold py-1.5 hover:bg-[#00ffff] disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full bg-[var(--nc-header-bg)] text-black font-bold py-1.5 hover:bg-[var(--nc-highlight-bg)] disabled:opacity-50 flex items-center justify-center gap-2"
             >
               <Plus className="w-4 h-4" />
               <span>AGREGAR AL DATASET</span>
@@ -265,14 +265,14 @@ Devuelve ÚNICAMENTE un arreglo JSON con la estructura:
           {/* List of Examples */}
           <div className="space-y-2">
             {parameters.examples.length === 0 ? (
-              <div className="text-center py-8 border-2 border-dashed border-[#00ffff] text-white">
+              <div className="text-center py-8 border-2 border-dashed border-[var(--nc-border-light)] text-white">
                 No hay ejemplos guardados. Agrega pares manualmente o usa el generador sintético con IA.
               </div>
             ) : (
               parameters.examples.map((ex, index) => (
-                <div key={ex.id} className="border-2 border-[#00ffff] bg-[#0000aa] p-2 space-y-1 relative group">
-                  <div className="flex justify-between items-center bg-[#000080] px-2 py-0.5 border border-[#00aaaa]">
-                    <span className="font-bold text-[#ffff55]">EJEMPLO #{index + 1}</span>
+                <div key={ex.id} className="border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] p-2 space-y-1 relative group">
+                  <div className="flex justify-between items-center bg-[var(--nc-bg-panel)] px-2 py-0.5 border border-[var(--nc-border-mid)]">
+                    <span className="font-bold text-[var(--nc-text-accent)]">EJEMPLO #{index + 1}</span>
                     <button
                       onClick={() => handleRemoveExample(ex.id)}
                       className="text-red-400 hover:text-red-200"
@@ -283,13 +283,13 @@ Devuelve ÚNICAMENTE un arreglo JSON con la estructura:
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1">
-                    <div className="bg-[#000080] p-2 border border-[#00aaaa]">
-                      <div className="text-[10px] text-[#00ffff] font-bold mb-0.5">ENTRADA:</div>
+                    <div className="bg-[var(--nc-bg-panel)] p-2 border border-[var(--nc-border-mid)]">
+                      <div className="text-[10px] text-[var(--nc-text)] font-bold mb-0.5">ENTRADA:</div>
                       <p className="text-white whitespace-pre-wrap">{ex.input}</p>
                     </div>
 
-                    <div className="bg-[#000080] p-2 border border-[#00aaaa]">
-                      <div className="text-[10px] text-[#ffff55] font-bold mb-0.5">SALIDA ESPERADA:</div>
+                    <div className="bg-[var(--nc-bg-panel)] p-2 border border-[var(--nc-border-mid)]">
+                      <div className="text-[10px] text-[var(--nc-text-accent)] font-bold mb-0.5">SALIDA ESPERADA:</div>
                       <p className="text-white whitespace-pre-wrap">{ex.output}</p>
                     </div>
                   </div>
@@ -300,8 +300,8 @@ Devuelve ÚNICAMENTE un arreglo JSON con la estructura:
         </div>
 
         {/* Modal Footer */}
-        <div className="bg-[#00aaaa] p-2 flex justify-end border-t-2 border-black">
-          <button onClick={onClose} className="nc-button bg-[#0000aa] text-[#ffff55]">
+        <div className="bg-[var(--nc-header-bg)] p-2 flex justify-end border-t-2 border-black">
+          <button onClick={onClose} className="nc-button bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)]">
             CERRAR Y GUARDAR EN SESIÓN
           </button>
         </div>

@@ -57,13 +57,13 @@ export const StructuredPlayground: React.FC<StructuredPlaygroundProps> = ({
   };
 
   return (
-    <div className="flex-1 min-w-0 min-h-0 h-full flex flex-col bg-[#0000aa] font-mono text-xs text-[#00ffff] p-2 overflow-hidden select-text">
+    <div className="flex-1 min-w-0 min-h-0 h-full flex flex-col bg-[var(--nc-bg-main)] font-mono text-xs text-[var(--nc-text)] p-2 overflow-hidden select-text">
       {/* Top Banner */}
-      <div className="bg-[#00aaaa] text-black font-bold px-3 py-1 flex items-center justify-between border-2 border-black shrink-0">
+      <div className="bg-[var(--nc-header-bg)] text-black font-bold px-3 py-1 flex items-center justify-between border-2 border-black shrink-0">
         <span>╔═ TABLA DE EJEMPLOS FEW-SHOT (.DAT) ═╗</span>
         <button
           onClick={handleAddExample}
-          className="bg-[#ffff55] text-black font-bold px-2 py-0.5 border border-black hover:bg-white text-xs"
+          className="bg-[var(--nc-active-bg)] text-black font-bold px-2 py-0.5 border border-black hover:bg-white text-xs"
         >
           [+ AÑADIR EJEMPLO]
         </button>
@@ -71,36 +71,36 @@ export const StructuredPlayground: React.FC<StructuredPlaygroundProps> = ({
 
       <div className="flex-1 overflow-y-auto space-y-4 my-2">
         {/* Table Box */}
-        <div className="border-2 border-[#00ffff] bg-[#000080] p-3 space-y-2">
-          <div className="bg-[#00aaaa] text-black font-bold px-2 py-0.5">
+        <div className="border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] p-3 space-y-2">
+          <div className="bg-[var(--nc-header-bg)] text-black font-bold px-2 py-0.5">
             EJEMPLOS DE ENTRENAMIENTO STRUCTURED
           </div>
 
-          <table className="w-full text-left border-collapse border border-[#00ffff]">
+          <table className="w-full text-left border-collapse border border-[var(--nc-border-light)]">
             <thead>
-              <tr className="bg-[#0000aa] text-[#ffff55] border-b border-[#00ffff]">
-                <th className="p-2 border-r border-[#00ffff] w-1/2">ENTRADA (INPUT)</th>
-                <th className="p-2 border-r border-[#00ffff] w-1/2">SALIDA ESPERADA (OUTPUT)</th>
+              <tr className="bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] border-b border-[var(--nc-border-light)]">
+                <th className="p-2 border-r border-[var(--nc-border-light)] w-1/2">ENTRADA (INPUT)</th>
+                <th className="p-2 border-r border-[var(--nc-border-light)] w-1/2">SALIDA ESPERADA (OUTPUT)</th>
                 <th className="p-2 text-center w-10">DEL</th>
               </tr>
             </thead>
             <tbody>
               {examples.map((ex, _index) => (
-                <tr key={ex.id} className="border-b border-[#00aaaa]">
-                  <td className="p-1.5 border-r border-[#00ffff]">
+                <tr key={ex.id} className="border-b border-[var(--nc-border-mid)]">
+                  <td className="p-1.5 border-r border-[var(--nc-border-light)]">
                     <textarea
                       value={ex.input}
                       onChange={(e) => handleUpdateExample(ex.id, 'input', e.target.value)}
                       rows={2}
-                      className="w-full bg-[#0000aa] border border-[#00aaaa] p-1.5 text-xs text-white outline-none"
+                      className="w-full bg-[var(--nc-bg-main)] border border-[var(--nc-border-mid)] p-1.5 text-xs text-white outline-none"
                     />
                   </td>
-                  <td className="p-1.5 border-r border-[#00ffff]">
+                  <td className="p-1.5 border-r border-[var(--nc-border-light)]">
                     <textarea
                       value={ex.output}
                       onChange={(e) => handleUpdateExample(ex.id, 'output', e.target.value)}
                       rows={2}
-                      className="w-full bg-[#0000aa] border border-[#00aaaa] p-1.5 text-xs text-[#ffff55] outline-none"
+                      className="w-full bg-[var(--nc-bg-main)] border border-[var(--nc-border-mid)] p-1.5 text-xs text-[var(--nc-text-accent)] outline-none"
                     />
                   </td>
                   <td className="p-1.5 text-center">
@@ -118,40 +118,40 @@ export const StructuredPlayground: React.FC<StructuredPlaygroundProps> = ({
         </div>
 
         {/* Test Section */}
-        <div className="border-2 border-[#ffff55] bg-[#000080] p-3 space-y-2">
-          <div className="bg-[#ffff55] text-black font-bold px-2 py-0.5">
+        <div className="border-2 border-[var(--nc-text-accent)] bg-[var(--nc-bg-panel)] p-3 space-y-2">
+          <div className="bg-[var(--nc-active-bg)] text-black font-bold px-2 py-0.5">
             PRUEBA EN VIVO STRUCTURED
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-2">
-              <label className="text-[#ffff55] font-bold block">ENTRADA DE PRUEBA:</label>
+              <label className="text-[var(--nc-text-accent)] font-bold block">ENTRADA DE PRUEBA:</label>
               <textarea
                 value={testInput}
                 onChange={(e) => setTestInput(e.target.value)}
                 rows={3}
-                className="w-full bg-[#0000aa] border border-[#ffff55] p-2 text-xs text-white outline-none"
+                className="w-full bg-[var(--nc-bg-main)] border border-[var(--nc-text-accent)] p-2 text-xs text-white outline-none"
               />
               <button
                 onClick={handleRunTest}
                 disabled={isGenerating}
-                className="w-full bg-[#ffff55] text-black font-bold py-2 border border-white hover:bg-white"
+                className="w-full bg-[var(--nc-active-bg)] text-black font-bold py-2 border border-white hover:bg-white"
               >
                 [EJECUTAR PRUEBA ESTRUCTURADA]
               </button>
             </div>
 
             <div className="space-y-2">
-              <div className="flex justify-between items-center text-[#ffff55] font-bold">
+              <div className="flex justify-between items-center text-[var(--nc-text-accent)] font-bold">
                 <span>RESULTADO:</span>
                 {resultOutput && (
-                  <button onClick={handleCopy} className="bg-[#0000aa] text-[#ffff55] px-2 text-[10px]">
+                  <button onClick={handleCopy} className="bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] px-2 text-[10px]">
                     {copied ? '[COPIADO]' : '[COPIAR]'}
                   </button>
                 )}
               </div>
 
-              <div className="bg-[#0000aa] border border-[#ffff55] p-2 min-h-[100px] text-xs text-[#ffff55] whitespace-pre-wrap">
+              <div className="bg-[var(--nc-bg-main)] border border-[var(--nc-text-accent)] p-2 min-h-[100px] text-xs text-[var(--nc-text-accent)] whitespace-pre-wrap">
                 {isGenerating ? 'Calculando estructura...' : resultOutput || 'Resultado aparecía aquí...'}
               </div>
             </div>

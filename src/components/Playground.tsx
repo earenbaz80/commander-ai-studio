@@ -125,7 +125,7 @@ export const Playground: React.FC<PlaygroundProps> = ({
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex items-center gap-1 px-2 py-1 bg-[#00aaaa] border-b-2 border-[#000055] shrink-0 overflow-x-auto">
+      <div className="flex items-center gap-1 px-2 py-1 bg-[var(--nc-header-bg)] border-b-2 border-[var(--nc-border-dark)] shrink-0 overflow-x-auto">
         {MODES.map((spec) => {
           const active = spec.id === mode;
           return (
@@ -137,7 +137,7 @@ export const Playground: React.FC<PlaygroundProps> = ({
               data-testid={`playground-mode-${spec.id}`}
               className={`px-2 py-0.5 text-[11px] font-bold rounded-sm border whitespace-nowrap transition-colors ${
                 active
-                  ? 'bg-[#000080] text-[#00ffff] border-[#00ffff]'
+                  ? 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border-[var(--nc-border-light)]'
                   : 'text-black hover:bg-black/10 border-transparent'
               }`}
             >
@@ -149,7 +149,7 @@ export const Playground: React.FC<PlaygroundProps> = ({
         <span className="ml-auto flex items-center gap-1 shrink-0 pl-2">
           <span className="text-[10px] text-black/70 font-bold">{modelLabel}:</span>
           <code
-            className="text-[10px] text-[#ffff55] bg-[#000055] px-1.5 py-0.5 rounded-sm max-w-[220px] truncate"
+            className="text-[10px] text-[var(--nc-text-accent)] bg-[var(--nc-bg-deep)] px-1.5 py-0.5 rounded-sm max-w-[220px] truncate"
             title={selectedModel || ''}
             data-testid="playground-model"
           >
@@ -161,7 +161,7 @@ export const Playground: React.FC<PlaygroundProps> = ({
               onClick={onOpenSettings}
               title={settingsLabel}
               aria-label={settingsLabel}
-              className="p-0.5 text-black hover:text-[#ffff55] rounded-sm"
+              className="p-0.5 text-black hover:text-[var(--nc-text-accent)] rounded-sm"
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
             </button>

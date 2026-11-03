@@ -228,11 +228,11 @@ func main() {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div 
-        className="bg-[#0000aa] border-2 border-[#00ffff] w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl cursor-default"
+        className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl cursor-default"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-[#00aaaa] text-black font-bold px-3 py-2 flex items-center justify-between border-b-2 border-black">
+        <div className="bg-[var(--nc-header-bg)] text-black font-bold px-3 py-2 flex items-center justify-between border-b-2 border-black">
           <div className="flex items-center gap-2">
             <Code2 className="w-4 h-4 text-black" />
             <span className="text-xs sm:text-sm">╔═ OBTENER CÓDIGO DE INTEGRACIÓN MULTI-LENGUAJE ═╗</span>
@@ -243,7 +243,7 @@ func main() {
         </div>
 
         {/* Tabs for Languages */}
-        <div className="bg-[#000080] border-b border-[#00ffff] p-2 flex flex-wrap gap-1 text-xs">
+        <div className="bg-[var(--nc-bg-panel)] border-b border-[var(--nc-border-light)] p-2 flex flex-wrap gap-1 text-xs">
           {[
             { id: 'js', label: 'JS/TS SDK', icon: FileCode },
             { id: 'python', label: 'Python SDK', icon: Terminal },
@@ -261,7 +261,7 @@ func main() {
                 type="button"
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`px-2.5 py-1 font-bold text-[11px] flex items-center gap-1.5 border ${
-                  isActive ? 'bg-[#ffff55] text-black border-white' : 'bg-[#0000aa] text-[#00ffff] border-[#00aaaa]'
+                  isActive ? 'bg-[var(--nc-active-bg)] text-black border-white' : 'bg-[var(--nc-bg-main)] text-[var(--nc-text)] border-[var(--nc-border-mid)]'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -272,13 +272,13 @@ func main() {
         </div>
 
         {/* Code Content */}
-        <div className="flex-1 overflow-y-auto p-3 bg-[#000080] relative min-h-[300px]">
+        <div className="flex-1 overflow-y-auto p-3 bg-[var(--nc-bg-panel)] relative min-h-[300px]">
           <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
             <button
               type="button"
               onClick={handleDownloadZip}
               disabled={downloading}
-              className="nc-button text-xs bg-[#ffff55] text-black font-bold flex items-center gap-1 border border-white hover:bg-white"
+              className="nc-button text-xs bg-[var(--nc-active-bg)] text-black font-bold flex items-center gap-1 border border-white hover:bg-white"
             >
               <Download className="w-3.5 h-3.5" />
               <span>{downloading ? (lang === 'es' ? 'Generando ZIP...' : lang === 'de' ? 'ZIP wird erstellt...' : 'Generating ZIP...') : t.downloadZip}</span>
@@ -286,20 +286,20 @@ func main() {
             <button
               type="button"
               onClick={handleCopy}
-              className="nc-button text-xs bg-[#00aaaa] text-black font-bold flex items-center gap-1 border border-white"
+              className="nc-button text-xs bg-[var(--nc-header-bg)] text-black font-bold flex items-center gap-1 border border-white"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-green-700" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copied ? t.copied : t.copy}</span>
             </button>
           </div>
 
-          <pre className="text-xs text-[#00ffff] font-mono whitespace-pre-wrap leading-relaxed overflow-x-auto p-2">
+          <pre className="text-xs text-[var(--nc-text)] font-mono whitespace-pre-wrap leading-relaxed overflow-x-auto p-2">
             {currentSnippet}
           </pre>
         </div>
 
         {/* Footer */}
-        <div className="bg-[#00aaaa] p-2 flex items-center justify-between border-t-2 border-black text-xs text-black font-bold">
+        <div className="bg-[var(--nc-header-bg)] p-2 flex items-center justify-between border-t-2 border-black text-xs text-black font-bold">
           <span>{lang === 'es' ? 'Modelo' : lang === 'de' ? 'Modell' : 'Model'}: {selectedModel}</span>
           <button type="button" onClick={onClose} className="nc-button text-xs">
             {t.close}

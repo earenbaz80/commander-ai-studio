@@ -289,7 +289,7 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
   const fontScaleClass = fontScale === 'lg' ? 'text-lg' : fontScale === 'xl' ? 'text-xl' : 'text-sm';
 
   return (
-    <div className="flex flex-col h-full bg-[#000080] text-white font-mono relative">
+    <div className="flex flex-col h-full bg-[var(--nc-bg-panel)] text-white font-mono relative">
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
@@ -311,8 +311,8 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
               <div
                 className={`max-w-[80%] rounded-lg p-3 ${
                   msg.role === 'user'
-                    ? 'bg-[#0000aa] border border-cyan-400/30'
-                    : 'bg-[#000044] border border-yellow-500/30'
+                    ? 'bg-[var(--nc-bg-main)] border border-cyan-400/30'
+                    : 'bg-[var(--nc-bg-deep)] border border-yellow-500/30'
                 }`}
               >
                 <div className="flex items-center gap-2 mb-1">

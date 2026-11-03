@@ -48,8 +48,8 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = ({
 
   if (filteredItems.length === 0) {
     return (
-      <div className={`absolute bottom-full mb-2 left-0 w-80 bg-[#000080] border-2 border-[#00ffff] p-2 shadow-2xl z-50 font-mono text-xs text-[#ffff55] ${className}`}>
-        <div className="flex items-center gap-1 text-[11px] text-[#00aaaa]">
+      <div className={`absolute bottom-full mb-2 left-0 w-80 bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] p-2 shadow-2xl z-50 font-mono text-xs text-[var(--nc-text-accent)] ${className}`}>
+        <div className="flex items-center gap-1 text-[11px] text-[var(--nc-text-dim)]">
           <Sparkles className="w-3.5 h-3.5" />
           <span>
             {loading
@@ -64,44 +64,44 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = ({
   const getCategoryIcon = (category: string) => {
     switch (category) {
       case 'file':
-        return <FileCode className="w-3.5 h-3.5 text-[#00ffff] shrink-0" />;
+        return <FileCode className="w-3.5 h-3.5 text-[var(--nc-text)] shrink-0" />;
       case 'doc':
-        return <BookOpen className="w-3.5 h-3.5 text-[#ffff55] shrink-0" />;
+        return <BookOpen className="w-3.5 h-3.5 text-[var(--nc-text-accent)] shrink-0" />;
       case 'param':
         return <Sliders className="w-3.5 h-3.5 text-[#ff77ff] shrink-0" />;
       case 'git':
-        return <GitBranch className="w-3.5 h-3.5 text-[#55ff55] shrink-0" />;
+        return <GitBranch className="w-3.5 h-3.5 text-[var(--nc-success)] shrink-0" />;
       default:
-        return <Sparkles className="w-3.5 h-3.5 text-[#00ffff] shrink-0" />;
+        return <Sparkles className="w-3.5 h-3.5 text-[var(--nc-text)] shrink-0" />;
     }
   };
 
   const getBadgeStyle = (category: string) => {
     switch (category) {
       case 'file':
-        return 'bg-[#004466] text-[#00ffff] border-[#00ffff]';
+        return 'bg-[var(--nc-bg-deep)] text-[var(--nc-text)] border-[var(--nc-border-light)]';
       case 'doc':
-        return 'bg-[#555500] text-[#ffff55] border-[#ffff55]';
+        return 'bg-[#555500] text-[var(--nc-text-accent)] border-[var(--nc-text-accent)]';
       case 'param':
         return 'bg-[#550055] text-[#ff77ff] border-[#ff77ff]';
       case 'git':
-        return 'bg-[#004400] text-[#55ff55] border-[#55ff55]';
+        return 'bg-[#004400] text-[var(--nc-success)] border-[var(--nc-success)]';
       default:
-        return 'bg-[#000055] text-white border-white';
+        return 'bg-[var(--nc-bg-deep)] text-white border-white';
     }
   };
 
   return (
     <div
       ref={containerRef}
-      className={`absolute bottom-full mb-2 left-0 w-80 sm:w-96 max-h-64 bg-[#000080] border-2 border-[#00ffff] shadow-[4px_4px_0px_#000000] z-50 font-mono text-xs overflow-y-auto flex flex-col ${className}`}
+      className={`absolute bottom-full mb-2 left-0 w-80 sm:w-96 max-h-64 bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] shadow-[4px_4px_0px_#000000] z-50 font-mono text-xs overflow-y-auto flex flex-col ${className}`}
     >
-      <div className="bg-[#00aaaa] text-black px-2 py-1 font-bold text-[10px] uppercase flex items-center justify-between border-b border-black shrink-0 sticky top-0 z-10">
+      <div className="bg-[var(--nc-header-bg)] text-black px-2 py-1 font-bold text-[10px] uppercase flex items-center justify-between border-b border-black shrink-0 sticky top-0 z-10">
         <span className="flex items-center gap-1">
           <Sparkles className="w-3 h-3 text-black" />
           <span>CONTEXTO DINÁMICO (@FILES, @DOCS, @PARAMS, @GIT)</span>
         </span>
-        <span className="text-[9px] text-[#000080]">↑↓ NAVEGAR • ENTER SELECCIONAR</span>
+        <span className="text-[9px] text-[var(--nc-active-text)]">↑↓ NAVEGAR • ENTER SELECCIONAR</span>
       </div>
 
       <div className="p-1 space-y-0.5">
@@ -115,14 +115,14 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = ({
               onClick={() => onSelect(item)}
               className={`p-1.5 cursor-pointer border flex flex-col gap-0.5 transition-colors ${
                 isSelected
-                  ? 'bg-[#00ffff] text-black border-white font-bold'
-                  : 'bg-[#0000aa] text-white border-[#000080] hover:bg-[#000066]'
+                  ? 'bg-[var(--nc-highlight-bg)] text-black border-white font-bold'
+                  : 'bg-[var(--nc-bg-main)] text-white border-[var(--nc-border-dark)] hover:bg-[#000066]'
               }`}
             >
               <div className="flex items-center justify-between gap-1">
                 <div className="flex items-center gap-1.5 truncate">
                   {getCategoryIcon(item.category)}
-                  <span className={`font-bold ${isSelected ? 'text-black' : 'text-[#ffff55]'}`}>
+                  <span className={`font-bold ${isSelected ? 'text-black' : 'text-[var(--nc-text-accent)]'}`}>
                     {item.label}
                   </span>
                 </div>
@@ -130,7 +130,7 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = ({
                   {item.badge}
                 </span>
               </div>
-              <p className={`text-[10px] truncate ${isSelected ? 'text-[#000080]' : 'text-[#a8c7fa]'}`}>
+              <p className={`text-[10px] truncate ${isSelected ? 'text-[var(--nc-active-text)]' : 'text-[var(--nc-text)]'}`}>
                 {item.description}
               </p>
             </div>

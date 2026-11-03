@@ -37,8 +37,8 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
     const { lines, stats } = computeLineDiff(old, current);
 
     return (
-      <div className="bg-[#000080] border border-[#00ffff] p-2 text-[10px] font-mono space-y-1 max-h-48 overflow-y-auto">
-        <div className="text-[#ffff55] font-bold border-b border-[#00aaaa] pb-1 flex justify-between items-center">
+      <div className="bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] p-2 text-[10px] font-mono space-y-1 max-h-48 overflow-y-auto">
+        <div className="text-[var(--nc-text-accent)] font-bold border-b border-[var(--nc-border-mid)] pb-1 flex justify-between items-center">
           <span>📊 COMPARATIVA DE DIFERENCIAS (PROMPT DIFF):</span>
           <span className="text-[9px]">
             <span className="text-green-400">+{stats.addedCount}</span>{' '}
@@ -77,7 +77,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div 
-        className="nc-panel w-full max-w-2xl flex flex-col border-2 border-[#00ffff] bg-[#000080] shadow-[10px_10px_0px_#000055] cursor-default"
+        className="nc-panel w-full max-w-2xl flex flex-col border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] shadow-[10px_10px_0px_var(--nc-shadow)] cursor-default"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between nc-header p-2 border-b-2 border-black">
@@ -92,9 +92,9 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
 
         <div className="p-3 flex-1 overflow-y-auto max-h-[80vh] space-y-3">
           {loading ? (
-            <div className="p-4 text-[#ffff55] text-center text-xs animate-pulse">Cargando versiones desde Firestore...</div>
+            <div className="p-4 text-[var(--nc-text-accent)] text-center text-xs animate-pulse">Cargando versiones desde Firestore...</div>
           ) : versions.length === 0 ? (
-            <div className="p-4 text-[#00ffff] text-center text-xs italic">
+            <div className="p-4 text-[var(--nc-text)] text-center text-xs italic">
               No se han guardado versiones anteriores aún. Puedes guardar versiones desde el panel lateral derecho.
             </div>
           ) : (
@@ -103,18 +103,18 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
               const versionText = v.parameters?.systemInstruction || '';
 
               return (
-                <div key={v.id} className="border-2 border-[#00ffff] p-2.5 bg-[#0000aa] space-y-2">
+                <div key={v.id} className="border-2 border-[var(--nc-border-light)] p-2.5 bg-[var(--nc-bg-main)] space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <div className="font-bold text-[#ffff55] text-xs">{v.title}</div>
-                      <div className="text-[9px] text-[#00ffff]">{new Date(v.timestamp).toLocaleString()}</div>
+                      <div className="font-bold text-[var(--nc-text-accent)] text-xs">{v.title}</div>
+                      <div className="text-[9px] text-[var(--nc-text)]">{new Date(v.timestamp).toLocaleString()}</div>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
                         onClick={() => setDiffVersionId(isShowingDiff ? null : v.id)}
                         className={`nc-button text-[10px] px-2 py-1 flex items-center gap-1 ${
-                          isShowingDiff ? 'bg-[#ffff55] text-black font-bold' : ''
+                          isShowingDiff ? 'bg-[var(--nc-active-bg)] text-black font-bold' : ''
                         }`}
                       >
                         <Eye className="w-3 h-3" />
@@ -126,7 +126,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                           onLoadVersion(v);
                           onClose();
                         }}
-                        className="nc-button text-[10px] px-2.5 py-1 bg-[#00aaaa] text-black font-bold border-white"
+                        className="nc-button text-[10px] px-2.5 py-1 bg-[var(--nc-header-bg)] text-black font-bold border-white"
                       >
                         CARGAR
                       </button>
@@ -141,7 +141,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
           )}
         </div>
 
-        <div className="bg-[#00aaaa] p-2 flex items-center justify-between border-t-2 border-black text-[10px] text-black font-bold">
+        <div className="bg-[var(--nc-header-bg)] p-2 flex items-center justify-between border-t-2 border-black text-[10px] text-black font-bold">
           <span>{versions.length} versiones registradas</span>
           <button type="button" onClick={onClose} className="nc-button text-xs">
             Cerrar

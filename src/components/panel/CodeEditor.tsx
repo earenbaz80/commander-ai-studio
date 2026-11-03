@@ -861,11 +861,11 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       {/* Indicador de estado del language server (TS/JS). */}
       {(lsp.initialized || lsp.error) && (
         <div
-          className="absolute left-2 bottom-2 z-10 px-1.5 py-0.5 bg-[#000080]/85 border border-[#00ffff]/40 font-mono text-[9px] pointer-events-none"
+          className="absolute left-2 bottom-2 z-10 px-1.5 py-0.5 bg-[var(--nc-bg-panel)]/85 border border-[var(--nc-border-light)]/40 font-mono text-[9px] pointer-events-none"
           data-testid="lsp-status"
           title={lsp.error ? lsp.error : `Language server activo (${language})`}
         >
-          <span className={lsp.error ? 'text-[#ff5555]' : 'text-[#88ff88]'}>
+          <span className={lsp.error ? 'text-[var(--nc-danger)]' : 'text-[var(--nc-success)]'}>
             {lsp.error ? '● LSP error' : `● LSP ${language}`}
           </span>
         </div>
@@ -890,24 +890,24 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       {/* Panel de resultados LSP (definiciones / referencias / símbolos). */}
       {lspPanel && (
         <div
-          className="absolute right-2 bottom-2 z-20 w-80 max-h-64 overflow-auto bg-[#000045] border border-[#00ffff]/60 shadow-lg font-mono text-[10px]"
+          className="absolute right-2 bottom-2 z-20 w-80 max-h-64 overflow-auto bg-[var(--nc-bg-deep)] border border-[var(--nc-border-light)]/60 shadow-lg font-mono text-[10px]"
           data-testid="lsp-panel"
         >
-          <div className="flex items-center justify-between px-2 py-1 bg-[#000080] border-b border-[#00ffff]/40 sticky top-0">
-            <span className="text-[#ffff55] font-bold">
+          <div className="flex items-center justify-between px-2 py-1 bg-[var(--nc-bg-panel)] border-b border-[var(--nc-border-light)]/40 sticky top-0">
+            <span className="text-[var(--nc-text-accent)] font-bold">
               {lspPanel.title} ({lspPanel.items.length})
             </span>
             <button
               type="button"
               onClick={() => setLspPanel(null)}
-              className="text-[#00ffff] hover:text-[#ffff55] px-1"
+              className="text-[var(--nc-text)] hover:text-[var(--nc-text-accent)] px-1"
               aria-label="Cerrar"
             >
               ✕
             </button>
           </div>
           {lspPanel.items.length === 0 ? (
-            <div className="px-2 py-1.5 text-[#00ffff]/60">Sin resultados</div>
+            <div className="px-2 py-1.5 text-[var(--nc-text)]/60">Sin resultados</div>
           ) : (
             <ul>
               {lspPanel.items.map((item, i) => (
@@ -919,11 +919,11 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                       else jumpTo(item.line ?? 0, item.character ?? 0);
                       setLspPanel(null);
                     }}
-                    className="w-full text-left px-2 py-1 hover:bg-[#00ffff]/10 border-b border-[#00ffff]/10"
+                    className="w-full text-left px-2 py-1 hover:bg-[var(--nc-highlight-bg)]/10 border-b border-[var(--nc-border-light)]/10"
                   >
-                    <span className="text-[#88ff88] whitespace-pre">{item.label}</span>
+                    <span className="text-[var(--nc-success)] whitespace-pre">{item.label}</span>
                     {item.detail && (
-                      <span className="text-[#00ffff]/50 ml-2">{item.detail}</span>
+                      <span className="text-[var(--nc-text)]/50 ml-2">{item.detail}</span>
                     )}
                   </button>
                 </li>
@@ -936,10 +936,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       {/* Overlay de renombrado (reemplaza a window.prompt). */}
       {rename && (
         <div
-          className="absolute left-1/2 -translate-x-1/2 top-2 z-20 bg-[#000045] border border-[#00ffff]/60 shadow-lg px-2 py-1.5 font-mono text-[10px] flex items-center gap-2"
+          className="absolute left-1/2 -translate-x-1/2 top-2 z-20 bg-[var(--nc-bg-deep)] border border-[var(--nc-border-light)]/60 shadow-lg px-2 py-1.5 font-mono text-[10px] flex items-center gap-2"
           data-testid="lsp-rename"
         >
-          <span className="text-[#ffff55]">Renombrar símbolo:</span>
+          <span className="text-[var(--nc-text-accent)]">Renombrar símbolo:</span>
           <input
             ref={renameInputRef}
             defaultValue={rename.current}
@@ -951,7 +951,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                 view.current?.focus();
               }
             }}
-            className="bg-[#00060f] border border-[#004466] text-[#00ffff] px-1 py-0.5 outline-none focus:border-[#ffff55] min-w-[10rem]"
+            className="bg-[#00060f] border border-[var(--nc-border-dark)] text-[var(--nc-text)] px-1 py-0.5 outline-none focus:border-[var(--nc-text-accent)] min-w-[10rem]"
           />
           <button
             type="button"
@@ -959,7 +959,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
               const el = renameInputRef.current;
               if (el) void submitRename(el.value.trim());
             }}
-            className="text-[#00ffff] hover:text-[#ffff55]"
+            className="text-[var(--nc-text)] hover:text-[var(--nc-text-accent)]"
           >
             OK
           </button>

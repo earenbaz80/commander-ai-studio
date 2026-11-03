@@ -471,6 +471,13 @@ code::-webkit-scrollbar-track,
   --nc-active-bg: #ffff55;
   --nc-active-text: #000000;
   --nc-shadow: #000055;
+  --nc-text-dim: #00aaaa;
+  --nc-border-mid: #00aaaa;
+  --nc-highlight-bg: #00ffff;
+  --nc-bg-hover: #0000cc;
+  --nc-bg-deep: #000055;
+  --nc-danger: #ff5555;
+  --nc-success: #55ff55;
 }
 
 .theme-matrix {
@@ -485,6 +492,13 @@ code::-webkit-scrollbar-track,
   --nc-active-bg: #33ff33;
   --nc-active-text: #000000;
   --nc-shadow: #002200;
+  --nc-text-dim: #22aa22;
+  --nc-border-mid: #00aa33;
+  --nc-highlight-bg: #33ff33;
+  --nc-bg-hover: #004400;
+  --nc-bg-deep: #001a00;
+  --nc-danger: #ff5555;
+  --nc-success: #55ff55;
 }
 
 .theme-amber {
@@ -499,6 +513,13 @@ code::-webkit-scrollbar-track,
   --nc-active-bg: #ffea80;
   --nc-active-text: #000000;
   --nc-shadow: #331100;
+  --nc-text-dim: #cc8800;
+  --nc-border-mid: #cc7700;
+  --nc-highlight-bg: #ffb000;
+  --nc-bg-hover: #4a2200;
+  --nc-bg-deep: #2a1200;
+  --nc-danger: #ff7043;
+  --nc-success: #aaff66;
 }
 
 .theme-dos {
@@ -513,6 +534,13 @@ code::-webkit-scrollbar-track,
   --nc-active-bg: #ffffff;
   --nc-active-text: #000000;
   --nc-shadow: #222222;
+  --nc-text-dim: #bbbbbb;
+  --nc-border-mid: #aaaaaa;
+  --nc-highlight-bg: #ffffff;
+  --nc-bg-hover: #2a2a2a;
+  --nc-bg-deep: #1c1c1c;
+  --nc-danger: #ff5555;
+  --nc-success: #55ff55;
 }
 
 /* Claro tipo papel: fondo hueso, tinta verde-azulada y ámbar oscuro para que
@@ -530,6 +558,13 @@ code::-webkit-scrollbar-track,
   --nc-active-bg: #cf9b00;
   --nc-active-text: #1b1b1b;
   --nc-shadow: #c9c8ba;
+  --nc-text-dim: #5b6b63;
+  --nc-border-mid: #7aa8a8;
+  --nc-highlight-bg: #a8d8d8;
+  --nc-bg-hover: #e2e1d3;
+  --nc-bg-deep: #e8e7da;
+  --nc-danger: #b3261e;
+  --nc-success: #2f6b2f;
 }
 
 /* Solarizado (Solarized Dark): base03/base02 con cian y ámbar clásicos. */
@@ -545,6 +580,13 @@ code::-webkit-scrollbar-track,
   --nc-active-bg: #b58900;
   --nc-active-text: #002b36;
   --nc-shadow: #001f27;
+  --nc-text-dim: #839496;
+  --nc-border-mid: #268bd2;
+  --nc-highlight-bg: #2aa198;
+  --nc-bg-hover: #0e4b58;
+  --nc-bg-deep: #04232c;
+  --nc-danger: #dc322f;
+  --nc-success: #859900;
 }
 
 @layer utilities {

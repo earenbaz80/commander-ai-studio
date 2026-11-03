@@ -589,7 +589,7 @@ cargo tauri build
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div 
-        className="nc-panel w-full max-w-4xl max-h-[90vh] flex flex-col bg-[#000080] border-2 border-[#00ffff] shadow-[10px_10px_0px_#000055] cursor-default text-xs"
+        className="nc-panel w-full max-w-4xl max-h-[90vh] flex flex-col bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] shadow-[10px_10px_0px_var(--nc-shadow)] cursor-default text-xs"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Title Bar */}
@@ -610,31 +610,31 @@ cargo tauri build
         </div>
 
         {/* Subtitle Banner */}
-        <div className="bg-[#0000aa] border-b-2 border-[#00ffff] p-2 flex flex-wrap items-center justify-between gap-2 text-white">
+        <div className="bg-[var(--nc-bg-main)] border-b-2 border-[var(--nc-border-light)] p-2 flex flex-wrap items-center justify-between gap-2 text-white">
           <div className="flex items-center gap-2">
-            <Binary className="w-4 h-4 text-[#ffff55]" />
-            <span className="text-[11px] text-[#00ffff] font-bold">
+            <Binary className="w-4 h-4 text-[var(--nc-text-accent)]" />
+            <span className="text-[11px] text-[var(--nc-text)] font-bold">
               {t.compilerSubtitle}
             </span>
           </div>
           <div className="flex items-center gap-2 text-[10px]">
-            <span className="bg-[#000080] px-2 py-0.5 border border-[#00ffff] text-[#ffff55]">
+            <span className="bg-[var(--nc-bg-panel)] px-2 py-0.5 border border-[var(--nc-border-light)] text-[var(--nc-text-accent)]">
               {selectedModel}
             </span>
           </div>
         </div>
 
         {/* Configuration Bar */}
-        <div className="p-3 bg-[#000055] border-b-2 border-[#00ffff] grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="p-3 bg-[var(--nc-bg-deep)] border-b-2 border-[var(--nc-border-light)] grid grid-cols-1 sm:grid-cols-3 gap-2">
           {/* Target Platform */}
           <div>
-            <label className="text-[10px] text-[#ffff55] font-bold block mb-1">
+            <label className="text-[10px] text-[var(--nc-text-accent)] font-bold block mb-1">
               {lang === 'es' ? 'PLATAFORMA DESTINO:' : lang === 'de' ? 'ZIELPLATTFORM:' : 'TARGET PLATFORM:'}
             </label>
             <select
               value={platform}
               onChange={(e) => setPlatform(e.target.value as any)}
-              className="w-full bg-[#0000aa] border border-[#00ffff] p-1 text-[11px] text-white font-bold outline-none cursor-pointer"
+              className="w-full bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] p-1 text-[11px] text-white font-bold outline-none cursor-pointer"
             >
               <option value="windows">🪟 Windows 11 / 10 (.NET / EXE)</option>
               <option value="electron">⚡ Electron Desktop (.EXE / .DMG / AppImage)</option>
@@ -648,13 +648,13 @@ cargo tauri build
 
           {/* Architecture */}
           <div>
-            <label className="text-[10px] text-[#ffff55] font-bold block mb-1">
+            <label className="text-[10px] text-[var(--nc-text-accent)] font-bold block mb-1">
               {t.architecture}:
             </label>
             <select
               value={architecture}
               onChange={(e) => setArchitecture(e.target.value as any)}
-              className="w-full bg-[#0000aa] border border-[#00ffff] p-1 text-[11px] text-white font-bold outline-none cursor-pointer"
+              className="w-full bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] p-1 text-[11px] text-white font-bold outline-none cursor-pointer"
             >
               <option value="x86_64">x86_64 (Intel / AMD 64-bit)</option>
               <option value="arm64">ARM64 (Apple Silicon / Qualcomm / Mobile)</option>
@@ -671,17 +671,17 @@ cargo tauri build
               className={`w-full py-1.5 px-3 font-bold text-xs flex items-center justify-center gap-1.5 border border-white transition-all ${
                 isCompiling
                   ? 'bg-amber-400 text-black animate-pulse'
-                  : 'bg-[#ffff55] text-black hover:bg-white cursor-pointer shadow-[2px_2px_0px_#000000]'
+                  : 'bg-[var(--nc-active-bg)] text-black hover:bg-white cursor-pointer shadow-[2px_2px_0px_#000000]'
               }`}
             >
-              <Hammer className="w-4 h-4 text-[#000080]" />
+              <Hammer className="w-4 h-4 text-[var(--nc-active-text)]" />
               <span>{isCompiling ? (lang === 'es' ? 'COMPILANDO...' : lang === 'de' ? 'KOMPILIERE...' : 'COMPILING...') : (lang === 'es' ? 'INICIAR COMPILACIÓN' : lang === 'de' ? 'KOMPILIERUNG STARTEN' : 'START COMPILATION')}</span>
             </button>
           </div>
         </div>
 
         {/* Compiler Pipeline Steps */}
-        <div className="bg-[#000080] p-2.5 border-b border-[#00ffff] grid grid-cols-1 sm:grid-cols-5 gap-1.5 text-[10px]">
+        <div className="bg-[var(--nc-bg-panel)] p-2.5 border-b border-[var(--nc-border-light)] grid grid-cols-1 sm:grid-cols-5 gap-1.5 text-[10px]">
           {steps.map((st) => (
             <div 
               key={st.id} 
@@ -689,8 +689,8 @@ cargo tauri build
                 st.status === 'success' 
                   ? 'border-green-400 bg-green-950/40 text-green-300' 
                   : st.status === 'running'
-                  ? 'border-[#ffff55] bg-[#ffff55]/20 text-[#ffff55] animate-pulse'
-                  : 'border-[#00aaaa] bg-[#000055] text-gray-400'
+                  ? 'border-[var(--nc-text-accent)] bg-[var(--nc-active-bg)]/20 text-[var(--nc-text-accent)] animate-pulse'
+                  : 'border-[var(--nc-border-mid)] bg-[var(--nc-bg-deep)] text-gray-400'
               }`}
             >
               <span className="font-bold truncate">{st.label}</span>
@@ -703,12 +703,12 @@ cargo tauri build
         </div>
 
         {/* Tab Buttons */}
-        <div className="bg-[#0000aa] border-b border-[#00ffff] px-2 py-1 flex gap-1">
+        <div className="bg-[var(--nc-bg-main)] border-b border-[var(--nc-border-light)] px-2 py-1 flex gap-1">
           <button
             type="button"
             onClick={() => setActiveTab('logs')}
             className={`px-3 py-1 font-bold text-[10px] border flex items-center gap-1 ${
-              activeTab === 'logs' ? 'bg-[#ffff55] text-black border-white' : 'bg-[#000080] text-[#00ffff] border-[#00aaaa]'
+              activeTab === 'logs' ? 'bg-[var(--nc-active-bg)] text-black border-white' : 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border-[var(--nc-border-mid)]'
             }`}
           >
             <Terminal className="w-3 h-3" />
@@ -718,7 +718,7 @@ cargo tauri build
             type="button"
             onClick={() => setActiveTab('manifest')}
             className={`px-3 py-1 font-bold text-[10px] border flex items-center gap-1 ${
-              activeTab === 'manifest' ? 'bg-[#ffff55] text-black border-white' : 'bg-[#000080] text-[#00ffff] border-[#00aaaa]'
+              activeTab === 'manifest' ? 'bg-[var(--nc-active-bg)] text-black border-white' : 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border-[var(--nc-border-mid)]'
             }`}
           >
             <FileCode className="w-3 h-3" />
@@ -728,7 +728,7 @@ cargo tauri build
             type="button"
             onClick={() => setActiveTab('test')}
             className={`px-3 py-1 font-bold text-[10px] border flex items-center gap-1 ${
-              activeTab === 'test' ? 'bg-[#ffff55] text-black border-white' : 'bg-[#000080] text-[#00ffff] border-[#00aaaa]'
+              activeTab === 'test' ? 'bg-[var(--nc-active-bg)] text-black border-white' : 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border-[var(--nc-border-mid)]'
             }`}
           >
             <Play className="w-3 h-3" />
@@ -737,11 +737,11 @@ cargo tauri build
         </div>
 
         {/* Tab Content */}
-        <div className="p-3 overflow-y-auto flex-1 bg-[#000033] min-h-[220px]">
+        <div className="p-3 overflow-y-auto flex-1 bg-[var(--nc-bg-deep)] min-h-[220px]">
           {activeTab === 'logs' && (
-            <div className="font-mono text-[11px] text-[#00ffff] space-y-1">
+            <div className="font-mono text-[11px] text-[var(--nc-text)] space-y-1">
               {terminalLogs.map((log, idx) => (
-                <div key={idx} className={log.includes('[SUCCESS]') || log.includes('[OK]') ? 'text-green-400 font-bold' : log.includes('>>') ? 'text-[#ffff55] font-bold' : ''}>
+                <div key={idx} className={log.includes('[SUCCESS]') || log.includes('[OK]') ? 'text-green-400 font-bold' : log.includes('>>') ? 'text-[var(--nc-text-accent)] font-bold' : ''}>
                   {log}
                 </div>
               ))}
@@ -749,7 +749,7 @@ cargo tauri build
           )}
 
           {activeTab === 'manifest' && (
-            <pre className="text-[11px] text-[#00ffff] font-mono whitespace-pre-wrap">
+            <pre className="text-[11px] text-[var(--nc-text)] font-mono whitespace-pre-wrap">
               {JSON.stringify({
                 artifact: promptTitle || 'CommanderApp',
                 version: 'v2.5.0-build.1',
@@ -771,16 +771,16 @@ cargo tauri build
 
           {activeTab === 'test' && (
             <div className="space-y-3">
-              <div className="bg-[#000080] p-2.5 border border-[#00ffff] flex items-center justify-between">
+              <div className="bg-[var(--nc-bg-panel)] p-2.5 border border-[var(--nc-border-light)] flex items-center justify-between">
                 <div>
-                  <span className="font-bold text-[#ffff55] block">{lang === 'es' ? 'Ejecución de Prueba del Artefacto Compilado:' : lang === 'de' ? 'Testlauf des kompilierten Artefakts:' : 'Test Run of Compiled Artifact:'}</span>
+                  <span className="font-bold text-[var(--nc-text-accent)] block">{lang === 'es' ? 'Ejecución de Prueba del Artefacto Compilado:' : lang === 'de' ? 'Testlauf des kompilierten Artefakts:' : 'Test Run of Compiled Artifact:'}</span>
                   <span className="text-[10px] text-gray-300">Prompt: "{defaultPrompt.slice(0, 80)}..."</span>
                 </div>
                 <button
                   type="button"
                   onClick={handleRunTest}
                   disabled={isTesting}
-                  className="nc-button bg-[#ffff55] text-black font-bold flex items-center gap-1.5 px-3 py-1"
+                  className="nc-button bg-[var(--nc-active-bg)] text-black font-bold flex items-center gap-1.5 px-3 py-1"
                 >
                   <Play className="w-3.5 h-3.5" />
                   <span>{isTesting ? (lang === 'es' ? 'EJECUTANDO...' : lang === 'de' ? 'AUSFÜHRUNG...' : 'EXECUTING...') : (lang === 'es' ? 'EJECUTAR TEST' : lang === 'de' ? 'TEST AUSFÜHREN' : 'RUN TEST')}</span>
@@ -788,7 +788,7 @@ cargo tauri build
               </div>
 
               {testResult && (
-                <div className="bg-[#000080] p-3 border border-green-400 text-white space-y-1">
+                <div className="bg-[var(--nc-bg-panel)] p-3 border border-green-400 text-white space-y-1">
                   <div className="text-[10px] text-green-300 font-bold flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>{lang === 'es' ? 'RESPUESTA RECIBIDA DEL BINARIO COMPILADO:' : lang === 'de' ? 'ANTWORT VOM KOMPILIERTEN ARTEFAKT:' : 'RESPONSE RECEIVED FROM COMPILED ARTIFACT:'}</span>
@@ -801,7 +801,7 @@ cargo tauri build
         </div>
 
         {/* Footer with Download */}
-        <div className="bg-[#00aaaa] p-2.5 flex items-center justify-between border-t-2 border-black">
+        <div className="bg-[var(--nc-header-bg)] p-2.5 flex items-center justify-between border-t-2 border-black">
           <div className="flex items-center gap-2">
             {buildFinished ? (
               <span className="text-black font-bold flex items-center gap-1 text-[11px]">
@@ -822,7 +822,7 @@ cargo tauri build
               disabled={!buildFinished}
               className={`nc-button text-xs font-bold flex items-center gap-1.5 px-3 py-1 ${
                 buildFinished 
-                  ? 'bg-[#ffff55] text-black border-black hover:bg-white cursor-pointer shadow-[2px_2px_0px_#000000]' 
+                  ? 'bg-[var(--nc-active-bg)] text-black border-black hover:bg-white cursor-pointer shadow-[2px_2px_0px_#000000]' 
                   : 'bg-gray-400 text-gray-700 cursor-not-allowed opacity-50'
               }`}
             >

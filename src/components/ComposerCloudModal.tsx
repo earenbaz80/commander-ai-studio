@@ -140,9 +140,9 @@ export const ComposerCloudModal: React.FC<ComposerCloudModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 font-mono select-none">
-      <div className="w-full max-w-4xl bg-[#000080] border-4 border-[#00ffff] shadow-[8px_8px_0px_#000000] flex flex-col max-h-[85vh] overflow-hidden text-xs text-white">
+      <div className="w-full max-w-4xl bg-[var(--nc-bg-panel)] border-4 border-[var(--nc-border-light)] shadow-[8px_8px_0px_#000000] flex flex-col max-h-[85vh] overflow-hidden text-xs text-white">
         {/* Header */}
-        <div className="bg-[#00aaaa] text-black px-3 py-1.5 font-bold flex items-center justify-between border-b-2 border-black shrink-0">
+        <div className="bg-[var(--nc-header-bg)] text-black px-3 py-1.5 font-bold flex items-center justify-between border-b-2 border-black shrink-0">
           <div className="flex items-center gap-2">
             <Cloud className="w-5 h-5 text-black" />
             <span className="text-sm uppercase tracking-wider">
@@ -159,14 +159,14 @@ export const ComposerCloudModal: React.FC<ComposerCloudModalProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="bg-[#000055] p-1.5 flex gap-1 border-b-2 border-[#00ffff] shrink-0">
+        <div className="bg-[var(--nc-bg-deep)] p-1.5 flex gap-1 border-b-2 border-[var(--nc-border-light)] shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab('save')}
             className={`px-3 py-1 text-xs font-bold border flex items-center gap-1.5 ${
               activeTab === 'save'
-                ? 'bg-[#ffff55] text-black border-white'
-                : 'bg-[#0000aa] text-[#00ffff] border-[#00aaaa] hover:bg-[#000080]'
+                ? 'bg-[var(--nc-active-bg)] text-black border-white'
+                : 'bg-[var(--nc-bg-main)] text-[var(--nc-text)] border-[var(--nc-border-mid)] hover:bg-[var(--nc-bg-hover)]'
             }`}
           >
             <UploadCloud className="w-4 h-4" />
@@ -180,8 +180,8 @@ export const ComposerCloudModal: React.FC<ComposerCloudModalProps> = ({
             }}
             className={`px-3 py-1 text-xs font-bold border flex items-center gap-1.5 ${
               activeTab === 'my_projects'
-                ? 'bg-[#ffff55] text-black border-white'
-                : 'bg-[#0000aa] text-[#00ffff] border-[#00aaaa] hover:bg-[#000080]'
+                ? 'bg-[var(--nc-active-bg)] text-black border-white'
+                : 'bg-[var(--nc-bg-main)] text-[var(--nc-text)] border-[var(--nc-border-mid)] hover:bg-[var(--nc-bg-hover)]'
             }`}
           >
             <FolderOpen className="w-4 h-4" />
@@ -195,8 +195,8 @@ export const ComposerCloudModal: React.FC<ComposerCloudModalProps> = ({
             }}
             className={`px-3 py-1 text-xs font-bold border flex items-center gap-1.5 ${
               activeTab === 'community'
-                ? 'bg-[#ffff55] text-black border-white'
-                : 'bg-[#0000aa] text-[#00ffff] border-[#00aaaa] hover:bg-[#000080]'
+                ? 'bg-[var(--nc-active-bg)] text-black border-white'
+                : 'bg-[var(--nc-bg-main)] text-[var(--nc-text)] border-[var(--nc-border-mid)] hover:bg-[var(--nc-bg-hover)]'
             }`}
           >
             <Globe className="w-4 h-4" />
@@ -207,7 +207,7 @@ export const ComposerCloudModal: React.FC<ComposerCloudModalProps> = ({
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto p-3 min-h-0">
           {activeTab === 'save' && (
-            <form onSubmit={handleSaveToCloud} className="space-y-3 max-w-2xl mx-auto bg-[#0000aa] border-2 border-[#00ffff] p-4 shadow">
+            <form onSubmit={handleSaveToCloud} className="space-y-3 max-w-2xl mx-auto bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-4 shadow">
               {!currentUser && (
                 <div className="bg-[#ff3333] text-white p-2 border border-black font-bold text-xs flex items-center gap-2">
                   <Lock className="w-4 h-4" />
@@ -220,30 +220,30 @@ export const ComposerCloudModal: React.FC<ComposerCloudModalProps> = ({
               )}
 
               <div>
-                <label className="block text-[#ffff55] font-bold mb-1">
+                <label className="block text-[var(--nc-text-accent)] font-bold mb-1">
                   {lang === 'es' ? 'Nombre del Proyecto:' : lang === 'de' ? 'Projektname:' : 'Project Name:'}
                 </label>
                 <input
                   type="text"
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
-                  className="w-full bg-[#000080] border border-[#00ffff] p-2 text-white outline-none"
+                  className="w-full bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] p-2 text-white outline-none"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-[#ffff55] font-bold mb-1">
+                <label className="block text-[var(--nc-text-accent)] font-bold mb-1">
                   {lang === 'es' ? 'Descripción o Notas de Versión:' : lang === 'de' ? 'Beschreibung:' : 'Description:'}
                 </label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full bg-[#000080] border border-[#00ffff] p-2 text-white outline-none h-16 resize-none"
+                  className="w-full bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] p-2 text-white outline-none h-16 resize-none"
                 />
               </div>
 
-              <div className="flex items-center gap-2 bg-[#000055] p-2 border border-[#00aaaa]">
+              <div className="flex items-center gap-2 bg-[var(--nc-bg-deep)] p-2 border border-[var(--nc-border-mid)]">
                 <input
                   type="checkbox"
                   id="pubCheck"
@@ -256,13 +256,13 @@ export const ComposerCloudModal: React.FC<ComposerCloudModalProps> = ({
                 </label>
               </div>
 
-              <div className="bg-[#000080] border border-[#00aaaa] p-2 text-[11px] space-y-1">
-                <div className="text-[#ffff55] font-bold">
+              <div className="bg-[var(--nc-bg-panel)] border border-[var(--nc-border-mid)] p-2 text-[11px] space-y-1">
+                <div className="text-[var(--nc-text-accent)] font-bold">
                   {lang === 'es' ? 'Archivos que se sincronizarán (' : lang === 'de' ? 'Zu synchronisierende Dateien (' : 'Files to sync ('}{currentFiles.length}):
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {currentFiles.map((f) => (
-                    <span key={f.name} className="bg-[#000055] text-[#00ffff] px-1.5 py-0.5 border border-[#00ffff] text-[10px]">
+                    <span key={f.name} className="bg-[var(--nc-bg-deep)] text-[var(--nc-text)] px-1.5 py-0.5 border border-[var(--nc-border-light)] text-[10px]">
                       {f.name}
                     </span>
                   ))}
@@ -270,7 +270,7 @@ export const ComposerCloudModal: React.FC<ComposerCloudModalProps> = ({
               </div>
 
               {successMsg && (
-                <div className="bg-[#004400] text-[#00ff66] border border-[#00ff66] p-2 font-bold flex items-center gap-1.5">
+                <div className="bg-[#004400] text-[var(--nc-success)] border border-[var(--nc-success)] p-2 font-bold flex items-center gap-1.5">
                   <Check className="w-4 h-4" />
                   <span>{successMsg}</span>
                 </div>
@@ -279,7 +279,7 @@ export const ComposerCloudModal: React.FC<ComposerCloudModalProps> = ({
               <button
                 type="submit"
                 disabled={isSaving || !currentUser}
-                className="w-full bg-[#00ffff] text-black font-bold py-2 text-xs hover:bg-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2 border border-black shadow"
+                className="w-full bg-[var(--nc-highlight-bg)] text-black font-bold py-2 text-xs hover:bg-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2 border border-black shadow"
               >
                 {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
                 <span>
@@ -292,32 +292,32 @@ export const ComposerCloudModal: React.FC<ComposerCloudModalProps> = ({
           {activeTab === 'my_projects' && (
             <div className="space-y-2">
               {isLoadingList ? (
-                <div className="text-center p-8 text-[#00ffff]">
+                <div className="text-center p-8 text-[var(--nc-text)]">
                   <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
                   <span>{lang === 'es' ? 'Cargando proyectos desde Firestore...' : lang === 'de' ? 'Projekte werden aus Firestore geladen...' : 'Loading projects from Firestore...'}</span>
                 </div>
               ) : !currentUser ? (
-                <div className="text-center p-8 text-[#ffff55] bg-[#0000aa] border border-[#00ffff]">
+                <div className="text-center p-8 text-[var(--nc-text-accent)] bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)]">
                   {lang === 'es' ? 'Inicia sesión para ver y gestionar tus proyectos guardados.' : lang === 'de' ? 'Bitte melde dich an, um deine Projekte zu sehen.' : 'Please sign in to view your projects.'}
                 </div>
               ) : userProjects.length === 0 ? (
-                <div className="text-center p-8 text-[#00aaaa] bg-[#0000aa] border border-[#00ffff]">
+                <div className="text-center p-8 text-[var(--nc-text-dim)] bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)]">
                   {lang === 'es' ? 'Aún no tienes proyectos guardados en la nube.' : lang === 'de' ? 'Keine gespeicherten Projekte in der Cloud gefunden.' : 'No saved projects found in cloud.'}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {userProjects.map((proj) => (
-                    <div key={proj.id} className="bg-[#0000aa] border-2 border-[#00ffff] p-3 flex flex-col justify-between gap-2 shadow">
+                    <div key={proj.id} className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-3 flex flex-col justify-between gap-2 shadow">
                       <div>
                         <div className="flex items-start justify-between gap-1">
-                          <h3 className="font-bold text-sm text-[#ffff55] truncate">{proj.name}</h3>
-                          <span className={`text-[9px] px-1 py-0.2 border font-bold ${proj.isPublic ? 'bg-[#004400] text-[#55ff55] border-[#55ff55]' : 'bg-[#555500] text-[#ffff55] border-[#ffff55]'}`}>
+                          <h3 className="font-bold text-sm text-[var(--nc-text-accent)] truncate">{proj.name}</h3>
+                          <span className={`text-[9px] px-1 py-0.2 border font-bold ${proj.isPublic ? 'bg-[#004400] text-[var(--nc-success)] border-[var(--nc-success)]' : 'bg-[#555500] text-[var(--nc-text-accent)] border-[var(--nc-text-accent)]'}`}>
                             {proj.isPublic ? 'PÚBLICO' : 'PRIVADO'}
                           </span>
                         </div>
-                        {proj.description && <p className="text-[11px] text-[#a8c7fa] mt-1 line-clamp-2">{proj.description}</p>}
+                        {proj.description && <p className="text-[11px] text-[var(--nc-text)] mt-1 line-clamp-2">{proj.description}</p>}
                         
-                        <div className="flex items-center gap-2 mt-2 text-[10px] text-[#00ffff]">
+                        <div className="flex items-center gap-2 mt-2 text-[10px] text-[var(--nc-text)]">
                           <span className="flex items-center gap-1">
                             <FileCode className="w-3 h-3" /> {proj.files.length} archivos
                           </span>
@@ -326,11 +326,11 @@ export const ComposerCloudModal: React.FC<ComposerCloudModalProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex gap-1 border-t border-[#000055] pt-2">
+                      <div className="flex gap-1 border-t border-[var(--nc-border-dark)] pt-2">
                         <button
                           type="button"
                           onClick={() => handleOpenProject(proj)}
-                          className="flex-1 bg-[#ffff55] text-black hover:bg-white font-bold py-1 px-2 text-[10px] flex items-center justify-center gap-1 border border-black shadow"
+                          className="flex-1 bg-[var(--nc-active-bg)] text-black hover:bg-white font-bold py-1 px-2 text-[10px] flex items-center justify-center gap-1 border border-black shadow"
                         >
                           <FolderOpen className="w-3.5 h-3.5" />
                           <span>{lang === 'es' ? 'ABRIR EN COMPOSER' : lang === 'de' ? 'IM COMPOSER ÖFFNEN' : 'OPEN IN COMPOSER'}</span>
@@ -354,28 +354,28 @@ export const ComposerCloudModal: React.FC<ComposerCloudModalProps> = ({
           {activeTab === 'community' && (
             <div className="space-y-2">
               {isLoadingList ? (
-                <div className="text-center p-8 text-[#00ffff]">
+                <div className="text-center p-8 text-[var(--nc-text)]">
                   <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
                   <span>{lang === 'es' ? 'Cargando proyectos de la comunidad...' : lang === 'de' ? 'Community-Projekte werden geladen...' : 'Loading community projects...'}</span>
                 </div>
               ) : publicProjects.length === 0 ? (
-                <div className="text-center p-8 text-[#00aaaa] bg-[#0000aa] border border-[#00ffff]">
+                <div className="text-center p-8 text-[var(--nc-text-dim)] bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)]">
                   {lang === 'es' ? 'No hay proyectos públicos compartidos todavía.' : lang === 'de' ? 'Noch keine öffentlichen Projekte geteilt.' : 'No public projects shared yet.'}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {publicProjects.map((proj) => (
-                    <div key={proj.id} className="bg-[#0000aa] border-2 border-[#00ffff] p-3 flex flex-col justify-between gap-2 shadow">
+                    <div key={proj.id} className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-3 flex flex-col justify-between gap-2 shadow">
                       <div>
                         <div className="flex items-start justify-between gap-1">
-                          <h3 className="font-bold text-sm text-[#ffff55] truncate">{proj.name}</h3>
-                          <span className="text-[9px] bg-[#004400] text-[#55ff55] border border-[#55ff55] px-1 font-bold">
+                          <h3 className="font-bold text-sm text-[var(--nc-text-accent)] truncate">{proj.name}</h3>
+                          <span className="text-[9px] bg-[#004400] text-[var(--nc-success)] border border-[var(--nc-success)] px-1 font-bold">
                             GALERÍA
                           </span>
                         </div>
-                        {proj.description && <p className="text-[11px] text-[#a8c7fa] mt-1 line-clamp-2">{proj.description}</p>}
+                        {proj.description && <p className="text-[11px] text-[var(--nc-text)] mt-1 line-clamp-2">{proj.description}</p>}
                         
-                        <div className="flex items-center gap-2 mt-2 text-[10px] text-[#00ffff]">
+                        <div className="flex items-center gap-2 mt-2 text-[10px] text-[var(--nc-text)]">
                           <span>Autor: {proj.authorName}</span>
                           <span>•</span>
                           <span>{proj.files.length} archivos</span>
@@ -399,8 +399,8 @@ export const ComposerCloudModal: React.FC<ComposerCloudModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="bg-[#000080] border-t-2 border-[#00ffff] p-2 flex items-center justify-between shrink-0">
-          <span className="text-[10px] text-[#a8c7fa]">
+        <div className="bg-[var(--nc-bg-panel)] border-t-2 border-[var(--nc-border-light)] p-2 flex items-center justify-between shrink-0">
+          <span className="text-[10px] text-[var(--nc-text)]">
             {lang === 'es'
               ? '☁️ Sincronización en la nube con Firestore y autenticación con roles y reglas de seguridad.'
               : lang === 'de' ? '☁️ Cloud-Synchronisation mit Firestore und rollenbasierten Sicherheitsregeln.' : '☁️ Cloud synchronization with Firestore and role-based security rules.'}

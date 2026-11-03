@@ -97,7 +97,7 @@ import type { Language } from './i18n/translations';
 
 /** Fallback estático (sin animación) mientras se descarga un chunk bajo demanda. */
 const LazyFallback: React.FC<{ lang: Language }> = ({ lang }) => (
-  <div className="flex-1 flex items-center justify-center text-[#00ffff] font-mono text-xs p-4">
+  <div className="flex-1 flex items-center justify-center text-[var(--nc-text)] font-mono text-xs p-4">
     {lang === 'es' ? 'CARGANDO…' : lang === 'de' ? 'LÄDT…' : 'LOADING…'}
   </div>
 );
@@ -1181,16 +1181,16 @@ export default function App() {
 
       {/* Offline Status Banner (Service Worker Active) */}
       {isOffline && (
-        <div className="bg-[#880000] text-[#ffff55] px-3 py-1 text-[11px] font-mono font-bold flex items-center justify-between border-b-2 border-black z-30 select-none animate-pulse">
+        <div className="bg-[#880000] text-[var(--nc-text-accent)] px-3 py-1 text-[11px] font-mono font-bold flex items-center justify-between border-b-2 border-black z-30 select-none animate-pulse">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block shadow-[0_0_8px_#ffff55]" />
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block shadow-[0_0_8px_var(--nc-text-accent)]" />
             <span>
               {lang === 'es'
                 ? '⚡ MODO SIN CONEXIÓN (OFFLINE) • SERVICE WORKER ACTIVO: Interfaz y plantillas cargadas desde la caché local'
                 : lang === 'de' ? '⚡ OFFLINE-MODUS AKTIV • SERVICE WORKER AKTIV: Kern-Oberfläche & Vorlagen aus dem lokalen Cache geladen' : '⚡ OFFLINE MODE ACTIVE • SERVICE WORKER ACTIVE: Core UI & templates loaded from local cache'}
             </span>
           </div>
-          <span className="text-[10px] bg-black/50 px-2 py-0.5 border border-[#ffff55] text-white">
+          <span className="text-[10px] bg-black/50 px-2 py-0.5 border border-[var(--nc-text-accent)] text-white">
             {lang === 'es' ? 'CACHE ACTIVA' : lang === 'de' ? 'ZWISCHENGESPEICHERT' : 'CACHED'}
           </span>
         </div>
@@ -1223,8 +1223,8 @@ export default function App() {
         <div
           className={`shrink-0 px-2 py-1 text-[10px] font-mono border-b ${
             projectToast.kind === 'ok'
-              ? 'bg-[#003300] text-[#00ff00] border-[#00ff00]/50'
-              : 'bg-[#330000] text-[#ff5555] border-[#ff5555]/50'
+              ? 'bg-[#003300] text-[var(--nc-success)] border-[var(--nc-success)]/50'
+              : 'bg-[#330000] text-[var(--nc-danger)] border-[var(--nc-danger)]/50'
           }`}
         >
           {projectToast.text}
@@ -1266,7 +1266,7 @@ export default function App() {
             <div
               onMouseDown={sidebarResize.onMouseDown}
               onDoubleClick={sidebarResize.onDoubleClick}
-              className="w-1.5 shrink-0 cursor-col-resize bg-[#00ffff]/20 hover:bg-[#00ffff]/60 transition-colors z-40"
+              className="w-1.5 shrink-0 cursor-col-resize bg-[var(--nc-highlight-bg)]/20 hover:bg-[var(--nc-highlight-bg)]/60 transition-colors z-40"
               title="Arrastra para redimensionar · doble clic para resetear"
             />
           </>

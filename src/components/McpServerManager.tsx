@@ -283,18 +283,18 @@ export const McpServerManager: React.FC<McpServerManagerProps> = ({ isOpen, onCl
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 font-mono select-none">
-      <div className="w-full max-w-lg nc-panel border-2 border-[#00ffff] p-5 relative shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-lg nc-panel border-2 border-[var(--nc-border-light)] p-5 relative shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
 
         {/* Border corner accents */}
-        <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-[#ffff55] -mt-0.5 -ml-0.5" />
-        <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-[#ffff55] -mt-0.5 -mr-0.5" />
-        <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-[#ffff55] -mb-0.5 -ml-0.5" />
-        <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-[#ffff55] -mb-0.5 -mr-0.5" />
+        <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-[var(--nc-text-accent)] -mt-0.5 -ml-0.5" />
+        <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-[var(--nc-text-accent)] -mt-0.5 -mr-0.5" />
+        <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-[var(--nc-text-accent)] -mb-0.5 -ml-0.5" />
+        <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-[var(--nc-text-accent)] -mb-0.5 -mr-0.5" />
 
         {/* Header */}
-        <div className="flex items-center justify-between border-b-2 border-[#00ffff] pb-3 mb-4">
+        <div className="flex items-center justify-between border-b-2 border-[var(--nc-border-light)] pb-3 mb-4">
           <div className="flex items-center gap-2">
-            <Boxes className="w-5 h-5 text-[#ffff55] animate-pulse" />
+            <Boxes className="w-5 h-5 text-[var(--nc-text-accent)] animate-pulse" />
             <span className="text-sm font-bold text-white uppercase tracking-wider">
               {t('── SERVIDORES MCP ──', '── MCP SERVERS ──')}
             </span>
@@ -308,8 +308,8 @@ export const McpServerManager: React.FC<McpServerManagerProps> = ({ isOpen, onCl
         </div>
 
         {/* Intro */}
-        <div className="bg-[#000080] border border-[#00ffff]/40 p-2 text-[10px] text-[#00ffff] mb-3 flex items-start gap-2">
-          <Cpu className="w-4 h-4 text-[#ffff55] shrink-0" />
+        <div className="bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)]/40 p-2 text-[10px] text-[var(--nc-text)] mb-3 flex items-start gap-2">
+          <Cpu className="w-4 h-4 text-[var(--nc-text-accent)] shrink-0" />
           <p className="leading-tight">
             {t(
               'Registra servidores MCP (Model Context Protocol) que exponen herramientas al agente. Se guardan localmente y se sincronizan con commander.json.',
@@ -320,13 +320,13 @@ export const McpServerManager: React.FC<McpServerManagerProps> = ({ isOpen, onCl
 
         {/* Lista de servidores */}
         <div className="mb-4">
-          <label className="text-[10px] text-[#ffff55] font-bold uppercase flex items-center gap-1 mb-2">
+          <label className="text-[10px] text-[var(--nc-text-accent)] font-bold uppercase flex items-center gap-1 mb-2">
             <Server className="w-3 h-3" />
             {t(`Servidores registrados (${servers.length})`, `Registered servers (${servers.length})`)}
           </label>
 
           {servers.length === 0 ? (
-            <p className="text-[10px] text-[#00aaaa] italic">
+            <p className="text-[10px] text-[var(--nc-text-dim)] italic">
               {t('No hay servidores MCP registrados.', 'No MCP servers registered.')}
             </p>
           ) : (
@@ -338,18 +338,18 @@ export const McpServerManager: React.FC<McpServerManagerProps> = ({ isOpen, onCl
                 return (
                 <div
                   key={srv.name}
-                  className="bg-[#000045] border border-[#00ffff]/30 px-2 py-1.5"
+                  className="bg-[var(--nc-bg-deep)] border border-[var(--nc-border-light)]/30 px-2 py-1.5"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] font-bold text-[#00ffff]">{srv.name}</span>
+                        <span className="text-[11px] font-bold text-[var(--nc-text)]">{srv.name}</span>
                         {srv.auth && (
                           <span
                             className={`flex items-center gap-0.5 text-[8px] px-1 py-px border ${
                               isAuth
-                                ? 'text-[#88ff88] border-[#00ff00]/50 bg-[#003300]'
-                                : 'text-[#ffcc66] border-[#ffff55]/40 bg-[#332200]'
+                                ? 'text-[var(--nc-success)] border-[var(--nc-success)]/50 bg-[#003300]'
+                                : 'text-[#ffcc66] border-[var(--nc-text-accent)]/40 bg-[#332200]'
                             }`}
                             title={isAuth ? t('Autorizado', 'Authorized') : t('Sin autorizar', 'Not authorized')}
                           >
@@ -358,7 +358,7 @@ export const McpServerManager: React.FC<McpServerManagerProps> = ({ isOpen, onCl
                           </span>
                         )}
                       </div>
-                      <div className="text-[9px] text-[#00aaaa] truncate" title={srv.command}>
+                      <div className="text-[9px] text-[var(--nc-text-dim)] truncate" title={srv.command}>
                         <PlugZap className="w-2.5 h-2.5 inline mr-1" />
                         {srv.command}
                         {srv.args.length > 0 ? ` ${srv.args.join(' ')}` : ''}
@@ -370,7 +370,7 @@ export const McpServerManager: React.FC<McpServerManagerProps> = ({ isOpen, onCl
                           {isAuth ? (
                             <button
                               onClick={() => handleAuthLogout(srv.name)}
-                              className="text-[#ffcc66] hover:text-white border border-[#ffff55]/50 hover:bg-[#665500] px-1 py-0.5 text-[9px] font-bold transition-all"
+                              className="text-[#ffcc66] hover:text-white border border-[var(--nc-text-accent)]/50 hover:bg-[#665500] px-1 py-0.5 text-[9px] font-bold transition-all"
                               title={t('Cerrar sesión OAuth', 'OAuth logout')}
                             >
                               <LogOut className="w-3 h-3" />
@@ -379,7 +379,7 @@ export const McpServerManager: React.FC<McpServerManagerProps> = ({ isOpen, onCl
                             <button
                               onClick={() => handleAuthorize(srv.name)}
                               disabled={authorizing === srv.name}
-                              className="text-[#00ffff] hover:text-black border border-[#00ffff] hover:bg-[#00ffff] px-1 py-0.5 text-[9px] font-bold transition-all disabled:opacity-40"
+                              className="text-[var(--nc-text)] hover:text-black border border-[var(--nc-border-light)] hover:bg-[var(--nc-highlight-bg)] px-1 py-0.5 text-[9px] font-bold transition-all disabled:opacity-40"
                               title={t('Autorizar (OAuth)', 'Authorize (OAuth)')}
                             >
                               {authorizing === srv.name ? (
@@ -408,14 +408,14 @@ export const McpServerManager: React.FC<McpServerManagerProps> = ({ isOpen, onCl
         </div>
 
         {/* Formulario para añadir */}
-        <div className="space-y-2 pt-3 border-t border-[#000055]">
-          <div className="flex items-center gap-1.5 text-[10px] text-[#ffff55] font-bold uppercase mb-1">
+        <div className="space-y-2 pt-3 border-t border-[var(--nc-border-dark)]">
+          <div className="flex items-center gap-1.5 text-[10px] text-[var(--nc-text-accent)] font-bold uppercase mb-1">
             <Plus className="w-3 h-3" />
             {t('Añadir / actualizar servidor', 'Add / update server')}
           </div>
 
           <div>
-            <label className="text-[9px] text-[#00ffff] uppercase font-bold mb-0.5 block">
+            <label className="text-[9px] text-[var(--nc-text)] uppercase font-bold mb-0.5 block">
               {t('Nombre', 'Name')}
             </label>
             <input
@@ -423,12 +423,12 @@ export const McpServerManager: React.FC<McpServerManagerProps> = ({ isOpen, onCl
               onChange={(e) => setName(e.target.value)}
               placeholder={t('ej: filesystem, git', 'e.g. filesystem, git')}
               spellCheck={false}
-              className="w-full bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[#00ffff]"
+              className="w-full bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[var(--nc-border-light)]"
             />
           </div>
 
           <div>
-            <label className="text-[9px] text-[#00ffff] uppercase font-bold mb-0.5 block">
+            <label className="text-[9px] text-[var(--nc-text)] uppercase font-bold mb-0.5 block">
               {t('Comando', 'Command')}
             </label>
             <input
@@ -436,12 +436,12 @@ export const McpServerManager: React.FC<McpServerManagerProps> = ({ isOpen, onCl
               onChange={(e) => setCommand(e.target.value)}
               placeholder="npx -y @modelcontextprotocol/server-filesystem"
               spellCheck={false}
-              className="w-full bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[#00ffff]"
+              className="w-full bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[var(--nc-border-light)]"
             />
           </div>
 
           <div>
-            <label className="text-[9px] text-[#00ffff] uppercase font-bold mb-0.5 block">
+            <label className="text-[9px] text-[var(--nc-text)] uppercase font-bold mb-0.5 block">
               {t('Argumentos (separados por espacio o JSON)', 'Arguments (space-separated or JSON)')}
             </label>
             <input
@@ -449,20 +449,20 @@ export const McpServerManager: React.FC<McpServerManagerProps> = ({ isOpen, onCl
               onChange={(e) => setArgs(e.target.value)}
               placeholder="/ruta/proyecto  o  [&quot;/ruta&quot;]"
               spellCheck={false}
-              className="w-full bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[#00ffff]"
+              className="w-full bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[var(--nc-border-light)]"
             />
           </div>
 
           <button
             onClick={handleAdd}
             disabled={!name.trim() || !command.trim() || busy}
-            className="nc-button w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] bg-[#00ffff] text-black font-bold hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed mt-2"
+            className="nc-button w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] bg-[var(--nc-highlight-bg)] text-black font-bold hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed mt-2"
           >
             {busy ? <Save className="w-3.5 h-3.5 animate-pulse" /> : <Save className="w-3.5 h-3.5" />}
             {t('Guardar servidor', 'Save server')}
           </button>
 
-          <p className="text-[9px] text-[#00aaaa] leading-tight pt-1">
+          <p className="text-[9px] text-[var(--nc-text-dim)] leading-tight pt-1">
             {t(
               'Nota: esto guarda la configuración. El binario/paquete npm debe estar instalado para que el servidor funcione.',
               'Note: this saves the config. The binary/npm package must be installed for the server to run.'
@@ -471,14 +471,14 @@ export const McpServerManager: React.FC<McpServerManagerProps> = ({ isOpen, onCl
         </div>
 
         {savedFlash && (
-          <div className="mt-3 bg-[#003300] border border-[#00ff00]/50 text-[#88ff88] p-1.5 text-[10px] flex items-center gap-1.5 animate-in fade-in duration-150">
+          <div className="mt-3 bg-[#003300] border border-[var(--nc-success)]/50 text-[var(--nc-success)] p-1.5 text-[10px] flex items-center gap-1.5 animate-in fade-in duration-150">
             <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
             {t('✓ Servidores MCP guardados.', '✓ MCP servers saved.')}
           </div>
         )}
 
         {/* Footer */}
-        <div className="text-center mt-4 text-[9px] text-[#00aaaa] uppercase font-mono tracking-wider pt-2 border-t border-[#000055]">
+        <div className="text-center mt-4 text-[9px] text-[var(--nc-text-dim)] uppercase font-mono tracking-wider pt-2 border-t border-[var(--nc-border-dark)]">
           {t('COMMANDER AI STUDIO - MCP REGISTRY', 'COMMANDER AI STUDIO - MCP REGISTRY')}
         </div>
       </div>

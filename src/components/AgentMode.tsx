@@ -474,12 +474,12 @@ export const AgentMode: React.FC<AgentModeProps> = ({
 
   return (
     <div className="flex-1 min-w-0 min-h-0 h-full flex flex-col overflow-hidden nc-container font-mono">
-      <div className="p-2 sm:p-3 border-b-2 border-[#00ffff] flex items-center justify-between nc-panel shrink-0 select-none">
+      <div className="p-2 sm:p-3 border-b-2 border-[var(--nc-border-light)] flex items-center justify-between nc-panel shrink-0 select-none">
         <div className="flex items-center gap-2">
-          <span className="text-[#ffff55] font-bold text-xs sm:text-sm">
+          <span className="text-[var(--nc-text-accent)] font-bold text-xs sm:text-sm">
             {lang === 'es' ? 'MODO AGENTE' : lang === 'de' ? 'AGENTENMODUS' : 'AGENT MODE'}
           </span>
-          <span className="text-[#00ffff] text-[10px] hidden sm:inline">cwd: {cwd}</span>
+          <span className="text-[var(--nc-text)] text-[10px] hidden sm:inline">cwd: {cwd}</span>
         </div>
         <div className="flex items-center gap-2">
           {state.running ? (
@@ -497,7 +497,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                 type="button"
                 onClick={handleStart}
                 disabled={!canRun}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded border-2 font-bold text-xs bg-[#00ffff] text-black hover:bg-white border-white disabled:opacity-50"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded border-2 font-bold text-xs bg-[var(--nc-highlight-bg)] text-black hover:bg-white border-white disabled:opacity-50"
               >
                 <Play className="w-3.5 h-3.5 fill-black" />
                 <span>{lang === 'es' ? 'INICIAR TAREA' : lang === 'de' ? 'AUFGABE STARTEN' : 'START TASK'}</span>
@@ -523,21 +523,21 @@ export const AgentMode: React.FC<AgentModeProps> = ({
           panel de la derecha (h-full + shrink-0) se llevaba todo el alto y el
           consola quedaba con altura 0, así que el grid reparte el espacio. */}
       <div className="flex-1 min-h-0 w-full grid grid-rows-[minmax(0,1fr)_minmax(0,45%)] lg:flex lg:flex-row overflow-hidden">
-        <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden border-r-2 border-[#00ffff]/10">
-          <div className="p-3 border-b-2 border-[#00ffff]/20 bg-[#000028] shrink-0">
+        <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden border-r-2 border-[var(--nc-border-light)]/10">
+          <div className="p-3 border-b-2 border-[var(--nc-border-light)]/20 bg-[#000028] shrink-0">
             <div className="flex flex-col gap-2">
               <textarea
                 value={goal}
                 onChange={(e) => setGoal(e.target.value)}
                 placeholder={lang === 'es' ? 'Describe la tarea para el agente...' : lang === 'de' ? 'Beschreibe die Agentenaufgabe...' : 'Describe the agent task...'}
-                className="w-full bg-[#000045] text-white p-2 border-2 border-[#00ffff] text-xs font-mono outline-none min-h-[60px] resize-y"
+                className="w-full bg-[var(--nc-bg-deep)] text-white p-2 border-2 border-[var(--nc-border-light)] text-xs font-mono outline-none min-h-[60px] resize-y"
                 disabled={state.running}
               />
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   value={toolId}
                   onChange={(e) => setToolId(e.target.value)}
-                  className="bg-[#000045] text-[#00ffff] border border-[#00ffff] px-2 py-1 text-xs font-mono w-40 max-w-full"
+                  className="bg-[var(--nc-bg-deep)] text-[var(--nc-text)] border border-[var(--nc-border-light)] px-2 py-1 text-xs font-mono w-40 max-w-full"
                   list="agent-tools"
                   disabled={state.running}
                 />
@@ -562,7 +562,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                 <input
                   value={toolInput}
                   onChange={(e) => setToolInput(e.target.value)}
-                  className="flex-1 min-w-0 bg-[#000045] text-white border border-[#00ffff] px-2 py-1 text-xs font-mono"
+                  className="flex-1 min-w-0 bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)] px-2 py-1 text-xs font-mono"
                   placeholder='{"path":"README.md"}'
                   disabled={state.running}
                 />
@@ -579,7 +579,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-[#000033]">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-[var(--nc-bg-deep)]">
             {state.steps.length === 0 ? (
               <EmptyState
                 icon={<Terminal className="w-12 h-12" />}
@@ -598,16 +598,16 @@ export const AgentMode: React.FC<AgentModeProps> = ({
           </div>
         </div>
 
-        <div className="w-full lg:w-[380px] shrink-0 border-t-2 lg:border-t-0 lg:border-l-2 border-[#00ffff] bg-[#000030] flex flex-col min-w-0 h-full overflow-hidden">
+        <div className="w-full lg:w-[380px] shrink-0 border-t-2 lg:border-t-0 lg:border-l-2 border-[var(--nc-border-light)] bg-[#000030] flex flex-col min-w-0 h-full overflow-hidden">
           {/* Panel Tabs */}
-          <div className="p-2 bg-[#000088] border-b-2 border-[#00ffff] flex items-center gap-1 flex-wrap">
+          <div className="p-2 bg-[#000088] border-b-2 border-[var(--nc-border-light)] flex items-center gap-1 flex-wrap">
             <button
               type="button"
               onClick={() => setActivePanel('plan')}
               className={`flex items-center gap-1.5 px-2 py-1 text-xs font-bold rounded transition-colors ${
                 activePanel === 'plan'
-                  ? 'bg-[#00ffff] text-black'
-                  : 'text-[#ffff55] hover:text-[#ffff55]/80 hover:bg-[#00ffff]/10'
+                  ? 'bg-[var(--nc-highlight-bg)] text-black'
+                  : 'text-[var(--nc-text-accent)] hover:text-[var(--nc-text-accent)]/80 hover:bg-[var(--nc-highlight-bg)]/10'
               }`}
             >
               <ListTodo className="w-3.5 h-3.5" />
@@ -618,8 +618,8 @@ export const AgentMode: React.FC<AgentModeProps> = ({
               onClick={() => setActivePanel('timeline')}
               className={`flex items-center gap-1.5 px-2 py-1 text-xs font-bold rounded transition-colors ${
                 activePanel === 'timeline'
-                  ? 'bg-[#ffff55] text-black'
-                  : 'text-[#ffff55] hover:text-[#ffff55]/80 hover:bg-[#ffff55]/10'
+                  ? 'bg-[var(--nc-active-bg)] text-black'
+                  : 'text-[var(--nc-text-accent)] hover:text-[var(--nc-text-accent)]/80 hover:bg-[var(--nc-active-bg)]/10'
               }`}
             >
               <Clock className="w-3.5 h-3.5" />
@@ -630,8 +630,8 @@ export const AgentMode: React.FC<AgentModeProps> = ({
               onClick={() => setActivePanel('subagents')}
               className={`flex items-center gap-1.5 px-2 py-1 text-xs font-bold rounded transition-colors ${
                 activePanel === 'subagents'
-                  ? 'bg-[#ffff55] text-black'
-                  : 'text-[#ffff55] hover:text-[#ffff55]/80 hover:bg-[#ffff55]/10'
+                  ? 'bg-[var(--nc-active-bg)] text-black'
+                  : 'text-[var(--nc-text-accent)] hover:text-[var(--nc-text-accent)]/80 hover:bg-[var(--nc-active-bg)]/10'
               }`}
             >
               <Users className="w-3.5 h-3.5" />
@@ -642,8 +642,8 @@ export const AgentMode: React.FC<AgentModeProps> = ({
               onClick={() => setActivePanel('mcp')}
               className={`flex items-center gap-1.5 px-2 py-1 text-xs font-bold rounded transition-colors ${
                 activePanel === 'mcp'
-                  ? 'bg-[#00ffff] text-black'
-                  : 'text-[#ffff55] hover:text-[#ffff55]/80 hover:bg-[#00ffff]/10'
+                  ? 'bg-[var(--nc-highlight-bg)] text-black'
+                  : 'text-[var(--nc-text-accent)] hover:text-[var(--nc-text-accent)]/80 hover:bg-[var(--nc-highlight-bg)]/10'
               }`}
             >
               <Plug className="w-3.5 h-3.5" />
@@ -654,8 +654,8 @@ export const AgentMode: React.FC<AgentModeProps> = ({
               onClick={() => setActivePanel('plugins')}
               className={`flex items-center gap-1.5 px-2 py-1 text-xs font-bold rounded transition-colors ${
                 activePanel === 'plugins'
-                  ? 'bg-[#00ffff] text-black'
-                  : 'text-[#ffff55] hover:text-[#ffff55]/80 hover:bg-[#00ffff]/10'
+                  ? 'bg-[var(--nc-highlight-bg)] text-black'
+                  : 'text-[var(--nc-text-accent)] hover:text-[var(--nc-text-accent)]/80 hover:bg-[var(--nc-highlight-bg)]/10'
               }`}
             >
               <Plug className="w-3.5 h-3.5" />
@@ -666,8 +666,8 @@ export const AgentMode: React.FC<AgentModeProps> = ({
               onClick={() => setActivePanel('conflict')}
               className={`flex items-center gap-1.5 px-2 py-1 text-xs font-bold rounded transition-colors ${
                 activePanel === 'conflict'
-                  ? 'bg-[#ffff55] text-black'
-                  : 'text-[#ffff55] hover:text-[#ffff55]/80 hover:bg-[#ffff55]/10'
+                  ? 'bg-[var(--nc-active-bg)] text-black'
+                  : 'text-[var(--nc-text-accent)] hover:text-[var(--nc-text-accent)]/80 hover:bg-[var(--nc-active-bg)]/10'
               }`}
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -678,8 +678,8 @@ export const AgentMode: React.FC<AgentModeProps> = ({
               onClick={() => setActivePanel('metrics')}
               className={`flex items-center gap-1.5 px-2 py-1 text-xs font-bold rounded transition-colors ${
                 activePanel === 'metrics'
-                  ? 'bg-[#ffff55] text-black'
-                  : 'text-[#ffff55] hover:text-[#ffff55]/80 hover:bg-[#ffff55]/10'
+                  ? 'bg-[var(--nc-active-bg)] text-black'
+                  : 'text-[var(--nc-text-accent)] hover:text-[var(--nc-text-accent)]/80 hover:bg-[var(--nc-active-bg)]/10'
               }`}
             >
               <Activity className="w-3.5 h-3.5" />
@@ -690,8 +690,8 @@ export const AgentMode: React.FC<AgentModeProps> = ({
               onClick={() => setActivePanel('sessions')}
               className={`flex items-center gap-1.5 px-2 py-1 text-xs font-bold rounded transition-colors ${
                 activePanel === 'sessions'
-                  ? 'bg-[#ffff55] text-black'
-                  : 'text-[#ffff55] hover:text-[#ffff55]/80 hover:bg-[#ffff55]/10'
+                  ? 'bg-[var(--nc-active-bg)] text-black'
+                  : 'text-[var(--nc-text-accent)] hover:text-[var(--nc-text-accent)]/80 hover:bg-[var(--nc-active-bg)]/10'
               }`}
             >
               <ListTodo className="w-3.5 h-3.5" />
@@ -759,7 +759,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
 
             {activePanel === 'mcp' && (
               <div className="space-y-3">
-                <div className="flex items-center gap-1.5 text-[#ffff55] font-bold text-[11px]">
+                <div className="flex items-center gap-1.5 text-[var(--nc-text-accent)] font-bold text-[11px]">
                   <Plug className="w-3.5 h-3.5" />
                   <span>{t('SERVIDORES MCP', 'MCP SERVERS')} ({mcpServers.filter((s) => s.enabled).length}/{mcpServers.length})</span>
                 </div>
@@ -768,14 +768,14 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                     value={mcpUrl}
                     onChange={(e) => setMcpUrl(e.target.value)}
                     placeholder="https://mcp-server/mcp"
-                    className="flex-1 bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1 text-[10px] font-mono outline-none"
+                    className="flex-1 bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1 text-[10px] font-mono outline-none"
                   />
                   <input
                     value={mcpToken}
                     onChange={(e) => setMcpToken(e.target.value)}
                     placeholder="token?"
                     type="password"
-                    className="w-20 bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1 text-[10px] font-mono outline-none"
+                    className="w-20 bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1 text-[10px] font-mono outline-none"
                   />
                   <button
                     type="button"
@@ -794,7 +794,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                   </button>
                 </div>
                 {mcpServers.map((s) => (
-                  <div key={s.id} className="flex items-center gap-1.5 bg-[#0000aa]/40 border border-[#00ffff]/20 px-1.5 py-1">
+                  <div key={s.id} className="flex items-center gap-1.5 bg-[var(--nc-bg-main)]/40 border border-[var(--nc-border-light)]/20 px-1.5 py-1">
                     <input
                       type="checkbox"
                       checked={s.enabled}
@@ -816,7 +816,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                           setMcpTools(`Error ${s.url}: ${e.message}`);
                         }
                       }}
-                      className="text-[#00ffff] text-[10px] px-1"
+                      className="text-[var(--nc-text)] text-[10px] px-1"
                     >
                       {t('listar', 'list')}
                     </button>
@@ -834,14 +834,14 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                     </button>
                   </div>
                 ))}
-                {mcpTools && <div className="text-[10px] text-[#00ffff]/80 break-all">{mcpTools}</div>}
+                {mcpTools && <div className="text-[10px] text-[var(--nc-text)]/80 break-all">{mcpTools}</div>}
               </div>
             )}
 
             {activePanel === 'plugins' && (
               <div className="space-y-3">
-                <div className="border-t-2 border-[#00ffff] p-2.5 space-y-2 shrink-0 max-h-[30%] overflow-y-auto">
-                  <div className="flex items-center gap-1.5 text-[#ffff55] font-bold text-[11px]">
+                <div className="border-t-2 border-[var(--nc-border-light)] p-2.5 space-y-2 shrink-0 max-h-[30%] overflow-y-auto">
+                  <div className="flex items-center gap-1.5 text-[var(--nc-text-accent)] font-bold text-[11px]">
                     <Plug className="w-3.5 h-3.5" />
                     <span>PLUGINS ({plugins.length})</span>
                   </div>
@@ -850,7 +850,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                   <input
                     value={pluginId}
                     onChange={(e) => setPluginId(e.target.value)}
-                    className="flex-1 bg-[#000045] text-white border border-[#00ffff]/50 px-2 py-1 text-[10px] font-mono outline-none"
+                    className="flex-1 bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1 text-[10px] font-mono outline-none"
                     placeholder={t('ID del plugin', 'Plugin ID')}
                   />
                   <button
@@ -864,10 +864,10 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                   </button>
                 </div>
                 {plugins.length === 0 ? (
-                  <div className="text-[10px] text-[#00ffff]/50">{t('No hay plugins instalados.', 'No plugins installed.')}</div>
+                  <div className="text-[10px] text-[var(--nc-text)]/50">{t('No hay plugins instalados.', 'No plugins installed.')}</div>
                 ) : (
                   plugins.slice(0, 5).map((p) => (
-                    <div key={p.id} className="bg-[#0000aa]/40 border border-[#00ffff]/20 px-1.5 py-1">
+                    <div key={p.id} className="bg-[var(--nc-bg-main)]/40 border border-[var(--nc-border-light)]/20 px-1.5 py-1">
                       <div className="text-[10px] text-white truncate" title={p.name}>{p.name}</div>
                       <div className="text-[9px] text-white/50">{p.version}</div>
                       <button
@@ -885,13 +885,13 @@ export const AgentMode: React.FC<AgentModeProps> = ({
 
             {activePanel === 'conflict' && (
               <div className="p-3 space-y-3">
-                <div className="flex items-center gap-1.5 text-[#ffff55] font-bold text-[10px]">
+                <div className="flex items-center gap-1.5 text-[var(--nc-text-accent)] font-bold text-[10px]">
                   <RotateCcw className="w-3 h-3" />
                   <span>{t('RESOLUCIÓN DE CONFLICTOS', 'CONFLICT RESOLUTION')}</span>
                 </div>
 
                 <div className="flex gap-2 flex-wrap items-center">
-                  <span className="text-[10px] text-[#00ffff]/60">
+                  <span className="text-[10px] text-[var(--nc-text)]/60">
                     {lang === 'es' ? 'Todo el merge:' : lang === 'de' ? 'Ganzer Merge:' : 'Whole merge:'}
                   </span>
                   <button
@@ -913,8 +913,8 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                 </div>
 
                 {mergeInfo && mergeInfo.files.length > 0 && (
-                  <div className="space-y-1 bg-black/30 border border-[#ffff55]/20 rounded p-2">
-                    <p className="text-[10px] text-[#ffff55]">
+                  <div className="space-y-1 bg-black/30 border border-[var(--nc-text-accent)]/20 rounded p-2">
+                    <p className="text-[10px] text-[var(--nc-text-accent)]">
                       {(mergeInfo.inMerge ? (lang === 'es' ? 'Merge en curso: ' : lang === 'de' ? 'Merge läuft: ' : 'Merge in progress: ')
                         : (lang === 'es' ? 'Conflictos sin fusionar: ' : lang === 'de' ? 'Nicht zusammengeführt: ' : 'Unmerged: ')) + `${mergeInfo.total} ${t('archivo(s)', 'file(s)')}`}
                     </p>
@@ -960,7 +960,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                         type="button"
                         disabled={resolvingConflict}
                         onClick={closeMerge}
-                        className="nc-button text-[10px] px-2 py-1 bg-[#ffff55] text-black disabled:opacity-50"
+                        className="nc-button text-[10px] px-2 py-1 bg-[var(--nc-active-bg)] text-black disabled:opacity-50"
                       >
                         <Check className="w-3 h-3" />{' '}
                         {lang === 'es' ? 'Cerrar merge (git add)' : lang === 'de' ? 'Merge schließen (git add)' : 'Close merge (git add)'}
@@ -970,8 +970,8 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                 )}
 
                 {mergeInfo?.inMerge && mergeInfo.files.length === 0 && (
-                  <div className="space-y-1 bg-black/30 border border-[#00ff00]/30 rounded p-2">
-                    <p className="text-[10px] text-[#00ff00]">
+                  <div className="space-y-1 bg-black/30 border border-[var(--nc-success)]/30 rounded p-2">
+                    <p className="text-[10px] text-[var(--nc-success)]">
                       {lang === 'es'
                         ? 'Todo preparado con git add: falta el commit de merge.'
                         : lang === 'de'
@@ -1022,7 +1022,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                   placeholder={lang === 'es'
                     ? 'Pega aquí la salida del merge en conflicto...'
                     : lang === 'de' ? 'Füge hier die fehlgeschlagene Merge-Ausgabe ein...' : 'Paste the failing merge output here...'}
-                  className="w-full h-32 bg-black/40 text-white border border-[#ffff55]/40 p-2 rounded text-[10px] font-mono outline-none focus:border-[#ffff55]"
+                  className="w-full h-32 bg-black/40 text-white border border-[var(--nc-text-accent)]/40 p-2 rounded text-[10px] font-mono outline-none focus:border-[var(--nc-text-accent)]"
                   spellCheck={false}
                 />
 
@@ -1032,12 +1032,12 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                   placeholder={lang === 'es'
                     ? 'Archivo en conflicto (p. ej. src/x.ts)'
                     : lang === 'de' ? 'Konfliktdatei (z. B. src/x.ts)' : 'Conflicted file (e.g. src/x.ts)'}
-                  className="w-full bg-black/40 text-white border border-[#ffff55]/40 px-2 py-1 rounded text-[10px] font-mono outline-none focus:border-[#ffff55]"
+                  className="w-full bg-black/40 text-white border border-[var(--nc-text-accent)]/40 px-2 py-1 rounded text-[10px] font-mono outline-none focus:border-[var(--nc-text-accent)]"
                   spellCheck={false}
                 />
 
                 {conflictOutput.trim().length === 0 ? (
-                  <p className="text-[10px] text-[#00ffff]/50">
+                  <p className="text-[10px] text-[var(--nc-text)]/50">
                     {lang === 'es'
                       ? 'Pega la salida de `git merge` para resolver ours/theirs.'
                       : lang === 'de' ? 'Füge die Ausgabe von `git merge` ein, um ours/theirs aufzulösen.' : 'Paste the `git merge` output to resolve ours/theirs.'}
@@ -1076,7 +1076,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                 )}
 
                 {conflictMsg && (
-                  <p className={`text-[10px] ${conflictMsg.ok ? 'text-[#00ff00]' : 'text-red-400'}`}>
+                  <p className={`text-[10px] ${conflictMsg.ok ? 'text-[var(--nc-success)]' : 'text-red-400'}`}>
                     {conflictMsg.text}
                   </p>
                 )}
@@ -1085,16 +1085,16 @@ export const AgentMode: React.FC<AgentModeProps> = ({
 
             {activePanel === 'metrics' && (
               <div className="space-y-3">
-                <div className="flex items-center gap-1.5 text-[#ffff55] font-bold text-[11px] pt-1">
+                <div className="flex items-center gap-1.5 text-[var(--nc-text-accent)] font-bold text-[11px] pt-1">
                   <Activity className="w-3.5 h-3.5" />
                   <span>{t('MÉTRICAS DE TOOLS', 'TOOL METRICS')}</span>
                 </div>
                 {Object.keys(metrics).length === 0 ? (
-                  <div className="text-[10px] text-[#00ffff]/50">{t('Sin métricas aún.', 'No metrics yet.')}</div>
+                  <div className="text-[10px] text-[var(--nc-text)]/50">{t('Sin métricas aún.', 'No metrics yet.')}</div>
                 ) : (
                   Object.entries(metrics).slice(0, 8).map(([k, v]) => (
                     <div key={k} className="flex justify-between text-[10px] text-white/80 font-mono">
-                      <span className="text-[#00ffff]">{k}</span>
+                      <span className="text-[var(--nc-text)]">{k}</span>
                       <span>
                         {v.calls} {t('llamadas', 'calls')} • {v.fails} {t('fallos', 'fails')} • {v.avgMs}ms
                       </span>
@@ -1106,30 +1106,30 @@ export const AgentMode: React.FC<AgentModeProps> = ({
 
             {activePanel === 'sessions' && (
               <div className="space-y-3">
-                <div className="flex items-center gap-1.5 text-[#ffff55] font-bold text-[11px] pt-1">
+                <div className="flex items-center gap-1.5 text-[var(--nc-text-accent)] font-bold text-[11px] pt-1">
                   <ListTodo className="w-3.5 h-3.5" />
                   <span>
                     {lang === 'es' ? 'SESIONES' : lang === 'de' ? 'SITZUNGEN' : 'SESSIONS'} ({sessions.length})
                   </span>
-                  <button type="button" onClick={() => { loadSessionsFromServer().then((r) => { const local = loadSessions(); const byId = new Map<string, AgentSession>(); for (const s of local) byId.set(s.id, s); for (const s of r) if (!byId.has(s.id)) byId.set(s.id, s); setSessions(Array.from(byId.values()).sort((a, b) => b.ts - a.ts).slice(0, 20)); }); }} className="ml-auto text-[#00ffff] text-[10px]" title={t('Refrescar sesiones', 'Refresh sessions')}><RefreshCw className="w-3.5 h-3.5" /></button>
+                  <button type="button" onClick={() => { loadSessionsFromServer().then((r) => { const local = loadSessions(); const byId = new Map<string, AgentSession>(); for (const s of local) byId.set(s.id, s); for (const s of r) if (!byId.has(s.id)) byId.set(s.id, s); setSessions(Array.from(byId.values()).sort((a, b) => b.ts - a.ts).slice(0, 20)); }); }} className="ml-auto text-[var(--nc-text)] text-[10px]" title={t('Refrescar sesiones', 'Refresh sessions')}><RefreshCw className="w-3.5 h-3.5" /></button>
                 </div>
                 {sessions.length === 0 ? (
-                  <div className="text-[10px] text-[#00ffff]/50">{t('Sin sesiones guardadas.', 'No saved sessions.')}</div>
+                  <div className="text-[10px] text-[var(--nc-text)]/50">{t('Sin sesiones guardadas.', 'No saved sessions.')}</div>
                 ) : (
                   sessions.slice(0, 10).map((s) => (
-                    <div key={s.id} className="bg-[#0000aa]/40 border border-[#00ffff]/20 px-1.5 py-1 space-y-1">
+                    <div key={s.id} className="bg-[var(--nc-bg-main)]/40 border border-[var(--nc-border-light)]/20 px-1.5 py-1 space-y-1">
                       <div className="text-[10px] text-white truncate" title={s.goal}>{s.goal}</div>
                       <div className="text-[9px] text-white/50">
                         {new Date(s.ts).toLocaleString()} • {s.state.steps.length} {t('pasos', 'steps')}
                         {/* `running` guardado en disco = la corrida murió sin llegar a pararse. */}
-                        {s.state.running && <span className="ml-1 text-[#ffff55] font-bold">• {t('interrumpida', 'interrupted')}</span>}
+                        {s.state.running && <span className="ml-1 text-[var(--nc-text-accent)] font-bold">• {t('interrumpida', 'interrupted')}</span>}
                       </div>
                       <div className="flex gap-1">
                         {onContinue && s.state.task && (
-                          <button type="button" onClick={() => onContinue(s)} className="text-[10px] px-1.5 py-0.5 border border-[#00ff66] text-[#00ff66] font-bold" title={t('Retomar desde el último paso guardado', 'Resume from the last saved step')}>{t('Continuar', 'Resume')}</button>
+                          <button type="button" onClick={() => onContinue(s)} className="text-[10px] px-1.5 py-0.5 border border-[var(--nc-success)] text-[var(--nc-success)] font-bold" title={t('Retomar desde el último paso guardado', 'Resume from the last saved step')}>{t('Continuar', 'Resume')}</button>
                         )}
-                        {onRestore && <button type="button" onClick={() => onRestore(s)} className="text-[10px] px-1.5 py-0.5 bg-[#00ffff] text-black font-bold">{t('Restaurar', 'Restore')}</button>}
-                        {onFork && <button type="button" onClick={() => onFork(s)} className="text-[10px] px-1.5 py-0.5 border border-[#ffff55] text-[#ffff55]">{t('Bifurcar', 'Fork')}</button>}
+                        {onRestore && <button type="button" onClick={() => onRestore(s)} className="text-[10px] px-1.5 py-0.5 bg-[var(--nc-highlight-bg)] text-black font-bold">{t('Restaurar', 'Restore')}</button>}
+                        {onFork && <button type="button" onClick={() => onFork(s)} className="text-[10px] px-1.5 py-0.5 border border-[var(--nc-text-accent)] text-[var(--nc-text-accent)]">{t('Bifurcar', 'Fork')}</button>}
                         <button type="button" onClick={() => { deleteSession(s.id); setSessions(loadSessions()); }} className="text-[10px] px-1 text-red-400" title={t('Eliminar sesión', 'Delete session')}><X className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
@@ -1158,11 +1158,11 @@ function backgroundJob(step: AgentStep): { id: string; command?: string } | null
 const StepCard: React.FC<{ step: AgentStep; lang: Language }> = ({ step, lang }) => {
   const job = backgroundJob(step);
   return (
-    <div className="bg-[#000045] border-2 border-[#00ffff]/40 rounded p-2 space-y-1.5">
+    <div className="bg-[var(--nc-bg-deep)] border-2 border-[var(--nc-border-light)]/40 rounded p-2 space-y-1.5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold text-[#ffff55] uppercase">{step.type}</span>
-          {step.toolId && <span className="text-[10px] text-[#00ffff]">{step.toolId}</span>}
+          <span className="text-[10px] font-bold text-[var(--nc-text-accent)] uppercase">{step.type}</span>
+          {step.toolId && <span className="text-[10px] text-[var(--nc-text)]">{step.toolId}</span>}
         </div>
         <span className="text-[10px] text-white/60">
           {new Date(step.ts).toLocaleTimeString() + (step.durationMs ? ` • ${step.durationMs}ms` : '')}
@@ -1172,7 +1172,7 @@ const StepCard: React.FC<{ step: AgentStep; lang: Language }> = ({ step, lang })
       {step.content && <div className="text-[11px] text-white/90 whitespace-pre-wrap break-all">{step.content}</div>}
       {step.input != null && (
         <details className="text-[10px]">
-          <summary className="cursor-pointer text-[#00ffff]">input</summary>
+          <summary className="cursor-pointer text-[var(--nc-text)]">input</summary>
           <pre className="mt-1 bg-black/40 p-1.5 overflow-x-auto text-white/80">
             {String(JSON.stringify(step.input, null, 2))}
           </pre>
@@ -1181,7 +1181,7 @@ const StepCard: React.FC<{ step: AgentStep; lang: Language }> = ({ step, lang })
       {job && <ShellJobLog jobId={job.id} command={job.command} lang={lang} />}
       {step.output != null && (
         <details className="text-[10px]">
-          <summary className="cursor-pointer text-[#00ffff]">output</summary>
+          <summary className="cursor-pointer text-[var(--nc-text)]">output</summary>
           <pre className="mt-1 bg-black/40 p-1.5 overflow-x-auto text-white/80">
             {String(JSON.stringify(step.output, null, 2))}
           </pre>

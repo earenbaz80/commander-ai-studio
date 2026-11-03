@@ -61,7 +61,7 @@ export function StatusBar({ lang, model, isGenerating = false, diagnosticsCount 
   const L = (es: string, en: string) => (lang === 'es' ? es : en);
   const refreshLabel = L('Actualizar rama git', 'Refresh git branch');
   return (
-    <div className="flex items-center gap-3 px-2 py-0.5 bg-[#000080] text-[#ffff55] text-[11px] font-mono border-t border-[#00ffff]/40 select-none">
+    <div className="flex items-center gap-3 px-2 py-0.5 bg-[var(--nc-bg-panel)] text-[var(--nc-text-accent)] text-[11px] font-mono border-t border-[var(--nc-border-light)]/40 select-none">
       <button
         type="button"
         onClick={refreshBranch}

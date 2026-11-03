@@ -185,11 +185,11 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 
   if (plan.length === 0 && !isRunning) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-center text-[#00ffff]/70 p-4">
-        <div className="w-12 h-12 mb-2 border-2 border-[#00ffff] rounded-full flex items-center justify-center">
-          <span className="text-[#ffff55] text-xl">+</span>
+      <div className="flex flex-col items-center justify-center h-full text-center text-[var(--nc-text)]/70 p-4">
+        <div className="w-12 h-12 mb-2 border-2 border-[var(--nc-border-light)] rounded-full flex items-center justify-center">
+          <span className="text-[var(--nc-text-accent)] text-xl">+</span>
         </div>
-        <p className="text-xs text-[#00ffff]/60 mb-4">{t.noPlan}</p>
+        <p className="text-xs text-[var(--nc-text)]/60 mb-4">{t.noPlan}</p>
         <button
           type="button"
           onClick={handleAddStep}
@@ -205,11 +205,11 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      <div className="flex items-center justify-between p-2.5 border-b-2 border-[#00ffff]/20 bg-[#000028] shrink-0">
-        <div className="flex items-center gap-1.5 text-[#ffff55] font-bold text-[11px]">
+      <div className="flex items-center justify-between p-2.5 border-b-2 border-[var(--nc-border-light)]/20 bg-[#000028] shrink-0">
+        <div className="flex items-center gap-1.5 text-[var(--nc-text-accent)] font-bold text-[11px]">
           <ListTodo className="w-4 h-4" />
           <span>{t.addStep}</span>
-          <span className="text-[#00ffff]/60 text-[10px]">({plan.length})</span>
+          <span className="text-[var(--nc-text)]/60 text-[10px]">({plan.length})</span>
         </div>
         <button
           type="button"
@@ -350,7 +350,7 @@ const PlanItemComponent: React.FC<{
 
   return (
     <div
-      className="bg-[#0000aa]/40 border border-[#00ffff]/30 rounded p-2 space-y-1.5"
+      className="bg-[var(--nc-bg-main)]/40 border border-[var(--nc-border-light)]/30 rounded p-2 space-y-1.5"
       draggable={!isEditing && !isRunning}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
@@ -359,7 +359,7 @@ const PlanItemComponent: React.FC<{
       {/* Main item row */}
       <div className="flex items-center gap-1.5">
         <span
-          className="text-[#00ffff]/40 cursor-grab active:cursor-grabbing select-none"
+          className="text-[var(--nc-text)]/40 cursor-grab active:cursor-grabbing select-none"
           title={t.drag}
           aria-hidden="true"
         >
@@ -384,16 +384,16 @@ const PlanItemComponent: React.FC<{
                 if (e.key === 'Enter') onSaveEdit();
                 else if (e.key === 'Escape') onCancelEdit();
               }}
-              className="w-full bg-[#000045] text-white border border-[#00ffff] px-2 py-1 text-xs font-mono outline-none"
+              className="w-full bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)] px-2 py-1 text-xs font-mono outline-none"
               autoFocus
             />
           ) : (
             <span
-              className={`text-[11px] text-white truncate block cursor-text ${item.done ? 'line-through text-[#00ffff]/50' : ''}`}
+              className={`text-[11px] text-white truncate block cursor-text ${item.done ? 'line-through text-[var(--nc-text)]/50' : ''}`}
               onDoubleClick={onStartEdit}
               title={isRunning ? undefined : t.edit}
             >
-              {item.text || <span className="text-[#00ffff]/40 italic">Sin título</span>}
+              {item.text || <span className="text-[var(--nc-text)]/40 italic">Sin título</span>}
             </span>
           )}
         </div>
@@ -412,7 +412,7 @@ const PlanItemComponent: React.FC<{
               <button
                 type="button"
                 onClick={onCancelEdit}
-                className="text-[#ff5555]/80 hover:text-[#ff5555] p-0.5"
+                className="text-[var(--nc-danger)]/80 hover:text-[var(--nc-danger)] p-0.5"
                 title={t.cancel}
               >
                 <X className="w-3.5 h-3.5" />
@@ -423,7 +423,7 @@ const PlanItemComponent: React.FC<{
               type="button"
               onClick={onStartEdit}
               disabled={isRunning}
-              className="text-[#ffff55]/60 hover:text-[#ffff55] p-0.5 disabled:opacity-40"
+              className="text-[var(--nc-text-accent)]/60 hover:text-[var(--nc-text-accent)] p-0.5 disabled:opacity-40"
               title={t.edit}
             >
               <Edit2 className="w-3.5 h-3.5" />
@@ -433,7 +433,7 @@ const PlanItemComponent: React.FC<{
             type="button"
             onClick={onMoveUp}
             disabled={isRunning || index === 0}
-            className="text-[#00ffff]/60 hover:text-[#00ffff] p-0.5 disabled:opacity-30"
+            className="text-[var(--nc-text)]/60 hover:text-[var(--nc-text)] p-0.5 disabled:opacity-30"
             title="Mover arriba"
           >
             <ChevronUp className="w-3.5 h-3.5" />
@@ -442,7 +442,7 @@ const PlanItemComponent: React.FC<{
             type="button"
             onClick={onMoveDown}
             disabled={isRunning}
-            className="text-[#00ffff]/60 hover:text-[#00ffff] p-0.5 disabled:opacity-30"
+            className="text-[var(--nc-text)]/60 hover:text-[var(--nc-text)] p-0.5 disabled:opacity-30"
             title="Mover abajo"
           >
             <ChevronDown className="w-3.5 h-3.5" />
@@ -460,7 +460,7 @@ const PlanItemComponent: React.FC<{
             <button
               type="button"
               onClick={onToggleExpand}
-              className="text-[#00ffff]/60 hover:text-[#00ffff] p-0.5"
+              className="text-[var(--nc-text)]/60 hover:text-[var(--nc-text)] p-0.5"
               title={isExpanded ? t.collapse : t.expand}
             >
               <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
@@ -471,7 +471,7 @@ const PlanItemComponent: React.FC<{
 
       {/* Subtasks */}
       {isExpanded && (
-        <div className="ml-6 border-l-2 border-[#00ffff]/20 pl-3 space-y-1 mt-1">
+        <div className="ml-6 border-l-2 border-[var(--nc-border-light)]/20 pl-3 space-y-1 mt-1">
           {subItems.map((sub) => (
             <div key={sub.id} className="flex items-center gap-1.5">
               <input
@@ -486,7 +486,7 @@ const PlanItemComponent: React.FC<{
                 value={sub.text}
                 onChange={(e) => onSubtaskChange(item.id, sub.id, e.target.value)}
                 disabled={isRunning}
-                className={`flex-1 bg-transparent border-none outline-none text-[10px] ${sub.done ? 'line-through text-[#00ffff]/50' : 'text-white/80'}`}
+                className={`flex-1 bg-transparent border-none outline-none text-[10px] ${sub.done ? 'line-through text-[var(--nc-text)]/50' : 'text-white/80'}`}
                 placeholder={lang === 'es' ? 'Subtarea' : lang === 'de' ? 'Teilaufgabe' : 'Subtask'}
               />
               <button
@@ -504,7 +504,7 @@ const PlanItemComponent: React.FC<{
             type="button"
             onClick={onAddSubtask}
             disabled={isRunning}
-            className="text-[#00ffff]/60 hover:text-[#00ffff] text-[10px] px-2 py-1 flex items-center gap-1 disabled:opacity-40"
+            className="text-[var(--nc-text)]/60 hover:text-[var(--nc-text)] text-[10px] px-2 py-1 flex items-center gap-1 disabled:opacity-40"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>{t.addSubtask}</span>

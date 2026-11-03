@@ -116,11 +116,11 @@ export const FunctionCallingModal: React.FC<FunctionCallingModalProps> = ({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div 
-        className="bg-[#0000aa] border-2 border-[#00ffff] w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl cursor-default"
+        className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl cursor-default"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-[#00aaaa] text-black font-bold px-3 py-2 flex items-center justify-between border-b-2 border-black">
+        <div className="bg-[var(--nc-header-bg)] text-black font-bold px-3 py-2 flex items-center justify-between border-b-2 border-black">
           <div className="flex items-center gap-2">
             <Wrench className="w-4 h-4 text-black" />
             <span className="text-xs sm:text-sm">╔═ CONFIGURACIÓN DE FUNCIONES PERSONALIZADAS (FUNCTION CALLING) ═╗</span>
@@ -131,17 +131,17 @@ export const FunctionCallingModal: React.FC<FunctionCallingModalProps> = ({
         </div>
 
         {/* Toolbar */}
-        <div className="bg-[#000080] border-b border-[#00ffff] p-2 flex items-center justify-between gap-2 text-xs">
+        <div className="bg-[var(--nc-bg-panel)] border-b border-[var(--nc-border-light)] p-2 flex items-center justify-between gap-2 text-xs">
           <button
             type="button"
             onClick={handleAddFunction}
-            className="nc-button text-xs bg-[#00aaaa] text-black font-bold flex items-center gap-1"
+            className="nc-button text-xs bg-[var(--nc-header-bg)] text-black font-bold flex items-center gap-1"
           >
             <Plus className="w-3.5 h-3.5" /> AGREGAR NUEVA FUNCIÓN
           </button>
 
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-[#ffff55] font-bold hidden sm:inline">AGREGAR PLANTILLA:</span>
+            <span className="text-[10px] text-[var(--nc-text-accent)] font-bold hidden sm:inline">AGREGAR PLANTILLA:</span>
             <select
               onChange={(e) => {
                 if (e.target.value !== '') {
@@ -150,7 +150,7 @@ export const FunctionCallingModal: React.FC<FunctionCallingModalProps> = ({
                 }
               }}
               defaultValue=""
-              className="bg-[#0000aa] text-[#00ffff] border border-[#00ffff] p-1 text-[11px] outline-none font-bold"
+              className="bg-[var(--nc-bg-main)] text-[var(--nc-text)] border border-[var(--nc-border-light)] p-1 text-[11px] outline-none font-bold"
             >
               <option value="" disabled>Seleccionar Ejemplo...</option>
               {PRESET_FUNCTIONS.map((p, idx) => (
@@ -163,21 +163,21 @@ export const FunctionCallingModal: React.FC<FunctionCallingModalProps> = ({
         {/* List of Functions */}
         <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs min-h-[300px]">
           {items.length === 0 ? (
-            <div className="text-center py-10 text-[#00ffff] italic">
+            <div className="text-center py-10 text-[var(--nc-text)] italic">
               No has configurado funciones. Haz clic en "+ AGREGAR NUEVA FUNCIÓN" o selecciona una plantilla.
             </div>
           ) : (
             items.map((item, idx) => (
-              <div key={item.id} className="bg-[#000080] border-2 border-[#00ffff] p-3 space-y-2 relative">
+              <div key={item.id} className="bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] p-3 space-y-2 relative">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 flex-1">
-                    <span className="text-[#ffff55] font-bold text-xs">{idx + 1}.</span>
+                    <span className="text-[var(--nc-text-accent)] font-bold text-xs">{idx + 1}.</span>
                     <input
                       type="text"
                       value={item.name}
                       onChange={(e) => handleUpdate(item.id, { name: e.target.value })}
                       placeholder="nombre_funcion"
-                      className="bg-[#0000aa] border border-[#00ffff] text-white px-2 py-1 text-xs font-bold outline-none flex-1"
+                      className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] text-white px-2 py-1 text-xs font-bold outline-none flex-1"
                     />
                   </div>
                   <button
@@ -191,23 +191,23 @@ export const FunctionCallingModal: React.FC<FunctionCallingModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-[10px] text-[#ffff55] font-bold block mb-0.5">DESCRIPCIÓN PARA GEMINI:</label>
+                  <label className="text-[10px] text-[var(--nc-text-accent)] font-bold block mb-0.5">DESCRIPCIÓN PARA GEMINI:</label>
                   <input
                     type="text"
                     value={item.description}
                     onChange={(e) => handleUpdate(item.id, { description: e.target.value })}
                     placeholder="Instrucción de cuándo Gemini debe invocar esta función..."
-                    className="w-full bg-[#0000aa] border border-[#00aaaa] text-xs text-white px-2 py-1 outline-none"
+                    className="w-full bg-[var(--nc-bg-main)] border border-[var(--nc-border-mid)] text-xs text-white px-2 py-1 outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="text-[10px] text-[#00ffff] font-bold block mb-0.5">PARÁMETROS (JSON SCHEMA):</label>
+                  <label className="text-[10px] text-[var(--nc-text)] font-bold block mb-0.5">PARÁMETROS (JSON SCHEMA):</label>
                   <textarea
                     value={item.parametersJson}
                     onChange={(e) => handleUpdate(item.id, { parametersJson: e.target.value })}
                     rows={4}
-                    className="w-full bg-[#0000aa] border border-[#00aaaa] text-[11px] font-mono text-[#00ffff] p-2 outline-none resize-none"
+                    className="w-full bg-[var(--nc-bg-main)] border border-[var(--nc-border-mid)] text-[11px] font-mono text-[var(--nc-text)] p-2 outline-none resize-none"
                   />
                 </div>
               </div>
@@ -216,7 +216,7 @@ export const FunctionCallingModal: React.FC<FunctionCallingModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="bg-[#00aaaa] p-2 flex items-center justify-between border-t-2 border-black">
+        <div className="bg-[var(--nc-header-bg)] p-2 flex items-center justify-between border-t-2 border-black">
           <span className="text-[10px] text-black font-bold">
             {items.length} {items.length === 1 ? 'función activa' : 'funciones activas'}
           </span>
@@ -225,7 +225,7 @@ export const FunctionCallingModal: React.FC<FunctionCallingModalProps> = ({
             <button
               type="button"
               onClick={handleSave}
-              className="nc-button text-xs bg-[#ffff55] text-black font-bold border-2 border-white hover:bg-white"
+              className="nc-button text-xs bg-[var(--nc-active-bg)] text-black font-bold border-2 border-white hover:bg-white"
             >
               [ GUARDAR FUNCIONES ]
             </button>

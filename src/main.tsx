@@ -31,15 +31,15 @@ class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="fixed inset-0 bg-[#000080] text-white font-mono p-8 flex flex-col justify-center items-center select-none z-50">
-          <div className="max-w-xl w-full bg-[#0000aa] border-4 border-[#ff5555] p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 bg-[var(--nc-bg-panel)] text-white font-mono p-8 flex flex-col justify-center items-center select-none z-50">
+          <div className="max-w-xl w-full bg-[var(--nc-bg-main)] border-4 border-[var(--nc-danger)] p-6 shadow-2xl space-y-4">
             <div className="bg-[#aa0000] text-white text-center font-bold py-1 px-3 uppercase tracking-wider text-sm">
               *** ERROR CRÍTICO DEL SISTEMA (EXCEPTION CAUGHT) ***
             </div>
-            <p className="text-xs text-[#ffff55] leading-relaxed">
+            <p className="text-xs text-[var(--nc-text-accent)] leading-relaxed">
               Ocurrió un error inesperado al renderizar la interfaz de Commander AI Studio:
             </p>
-            <div className="bg-black/60 border border-[#ff5555]/50 p-3 text-[11px] text-[#ffaaaa] overflow-x-auto max-h-48 whitespace-pre-wrap font-mono">
+            <div className="bg-black/60 border border-[var(--nc-danger)]/50 p-3 text-[11px] text-[#ffaaaa] overflow-x-auto max-h-48 whitespace-pre-wrap font-mono">
               {this.state.error?.message || 'Error desconocido'}
               {'\n\n'}
               {this.state.error?.stack}
@@ -59,7 +59,7 @@ class ErrorBoundary extends Component<Props, State> {
               </button>
               <button
                 onClick={() => window.location.reload()}
-                className="flex-1 bg-[#00ffff] hover:bg-white text-black font-bold py-2 text-xs uppercase transition-colors"
+                className="flex-1 bg-[var(--nc-highlight-bg)] hover:bg-white text-black font-bold py-2 text-xs uppercase transition-colors"
               >
                 Reintentar Carga
               </button>

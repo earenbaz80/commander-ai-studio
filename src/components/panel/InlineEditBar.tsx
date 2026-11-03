@@ -25,7 +25,7 @@ export interface InlineEditBarProps {
 }
 
 const LINE_CLASS: Record<string, string> = {
-  add: 'bg-[#003300] text-[#88ff88]',
+  add: 'bg-[#003300] text-[var(--nc-success)]',
   del: 'bg-[#330000] text-[#ff8888]',
   equal: 'text-[#9fe8ff]/50',
 };
@@ -71,18 +71,18 @@ export const InlineEditBar: React.FC<InlineEditBarProps> = ({
 
   return (
     <div
-      className="absolute left-2 right-2 top-2 z-20 border border-[#00ffff]/60 bg-[#000045] font-mono text-[11px] shadow-[0_0_0_1px_#000080,0_6px_18px_rgba(0,0,0,0.5)]"
+      className="absolute left-2 right-2 top-2 z-20 border border-[var(--nc-border-light)]/60 bg-[var(--nc-bg-deep)] font-mono text-[11px] shadow-[0_0_0_1px_#000080,0_6px_18px_rgba(0,0,0,0.5)]"
       data-testid="editor-inline-ai"
       onKeyDown={handleKeyDown}
     >
       {/* Cabecera */}
-      <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#004466] bg-[#00243e]">
-        <Sparkles className="w-3 h-3 text-[#ffff55] shrink-0" />
-        <span className="text-[#ffff55]">EDICIÓN IA</span>
-        <span className="text-[#00ffff]/50 truncate">{model}</span>
+      <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)]">
+        <Sparkles className="w-3 h-3 text-[var(--nc-text-accent)] shrink-0" />
+        <span className="text-[var(--nc-text-accent)]">EDICIÓN IA</span>
+        <span className="text-[var(--nc-text)]/50 truncate">{model}</span>
         <button
           onClick={onReject}
-          className="ml-auto p-0.5 text-[#ff5555] hover:bg-[#0000aa] rounded shrink-0"
+          className="ml-auto p-0.5 text-[var(--nc-danger)] hover:bg-[var(--nc-bg-hover)] rounded shrink-0"
           title="Cerrar (Esc)"
           aria-label="Cerrar edición IA"
         >
@@ -92,7 +92,7 @@ export const InlineEditBar: React.FC<InlineEditBarProps> = ({
 
       {(phase === 'prompt' || phase === 'loading') && (
         <div className="flex items-center gap-2 p-2">
-          <Wand2 className="w-3.5 h-3.5 text-[#00ffff] shrink-0" />
+          <Wand2 className="w-3.5 h-3.5 text-[var(--nc-text)] shrink-0" />
           <input
             ref={inputRef}
             value={instruction}
@@ -101,13 +101,13 @@ export const InlineEditBar: React.FC<InlineEditBarProps> = ({
             spellCheck={false}
             autoComplete="off"
             placeholder="Instrucción: p. ej. «añade manejo de errores», «convierte a async»"
-            className="flex-1 min-w-0 bg-[#000d1a] text-white border border-[#00ffff]/50 px-2 py-1 outline-none placeholder:text-[#00ffff]/30 disabled:opacity-60"
+            className="flex-1 min-w-0 bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1 outline-none placeholder:text-[var(--nc-text)]/30 disabled:opacity-60"
             data-testid="editor-inline-input"
           />
           <button
             onClick={onSubmit}
             disabled={phase === 'loading' || !instruction.trim()}
-            className="nc-button !px-2 !py-1 text-[10px] bg-[#00ffff] text-black font-bold hover:bg-white flex items-center gap-1 shrink-0 disabled:opacity-40"
+            className="nc-button !px-2 !py-1 text-[10px] bg-[var(--nc-highlight-bg)] text-black font-bold hover:bg-white flex items-center gap-1 shrink-0 disabled:opacity-40"
           >
             {phase === 'loading' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
             <span>{phase === 'loading' ? 'Generando…' : 'Proponer'}</span>
@@ -117,10 +117,10 @@ export const InlineEditBar: React.FC<InlineEditBarProps> = ({
 
       {showDiff && (
         <div>
-          <div className="flex items-center gap-2 px-2 py-1 border-b border-[#004466] text-[10px]">
-            <span className="text-[#88ff88]">+{summary.added}</span>
+          <div className="flex items-center gap-2 px-2 py-1 border-b border-[var(--nc-border-dark)] text-[10px]">
+            <span className="text-[var(--nc-success)]">+{summary.added}</span>
             <span className="text-[#ff8888]">−{summary.removed}</span>
-            <span className="text-[#00ffff]/50">Cmd/Ctrl+Enter acepta · Esc rechaza</span>
+            <span className="text-[var(--nc-text)]/50">Cmd/Ctrl+Enter acepta · Esc rechaza</span>
           </div>
           <div className="max-h-44 overflow-auto py-1" data-testid="editor-inline-diff">
             {ops.map((op, i) => (
@@ -130,7 +130,7 @@ export const InlineEditBar: React.FC<InlineEditBarProps> = ({
               </div>
             ))}
           </div>
-          <div className="flex items-center gap-2 px-2 py-1 border-t border-[#004466]">
+          <div className="flex items-center gap-2 px-2 py-1 border-t border-[var(--nc-border-dark)]">
             <button
               onClick={onAccept}
               className="nc-button !px-2 !py-1 text-[10px] bg-[#88ff88] text-black font-bold hover:bg-white flex items-center gap-1"

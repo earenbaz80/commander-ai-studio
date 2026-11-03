@@ -262,13 +262,13 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ isOpen, on
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-[90vw] max-w-3xl max-h-[85vh] flex flex-col nc-panel border-2 border-[#00ffff] bg-[#000044]">
-        <div className="flex items-center justify-between px-3 py-2 border-b-2 border-[#00ffff] bg-[#00aaaa]">
+      <div className="w-[90vw] max-w-3xl max-h-[85vh] flex flex-col nc-panel border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-deep)]">
+        <div className="flex items-center justify-between px-3 py-2 border-b-2 border-[var(--nc-border-light)] bg-[var(--nc-header-bg)]">
           <span className="text-black font-bold text-sm">{t(lang, 'Extensiones e Integraciones', 'Extensions & Integrations', 'Erweiterungen & Integrationen')}</span>
           <button onClick={onClose} className="text-black hover:text-red-600 font-bold">X</button>
         </div>
 
-        <div className="flex gap-0 border-b border-[#00ffff]/40">
+        <div className="flex gap-0 border-b border-[var(--nc-border-light)]/40">
           {([
             { id: 'mcp' as Tab, icon: <Server className="w-3.5 h-3.5" />, label: t(lang, 'MCP Servers', 'MCP Servers', 'MCP-Server') },
             { id: 'skills' as Tab, icon: <BookOpen className="w-3.5 h-3.5" />, label: t(lang, 'Skills', 'Skills', 'Skills') },
@@ -277,7 +277,7 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ isOpen, on
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold border-b-2 ${activeTab === tab.id ? 'border-[#00ffff] text-[#00ffff] bg-[#000080]' : 'border-transparent text-[#00aaaa] hover:text-[#00ffff]'}`}
+              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold border-b-2 ${activeTab === tab.id ? 'border-[var(--nc-border-light)] text-[var(--nc-text)] bg-[var(--nc-bg-panel)]' : 'border-transparent text-[var(--nc-text-dim)] hover:text-[var(--nc-text)]'}`}
             >
               {tab.icon} {tab.label}
             </button>
@@ -285,23 +285,23 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ isOpen, on
         </div>
 
         <div className="flex-1 overflow-auto p-3 min-h-0">
-          <p className="mb-3 border border-[#ffff55]/40 p-2 text-xs text-[#ffff55]">
+          <p className="mb-3 border border-[var(--nc-text-accent)]/40 p-2 text-xs text-[var(--nc-text-accent)]">
             {t(lang, 'Catálogo registrado, sin verificar. Una entrada no confirma instalación, conexión ni disponibilidad de herramientas.', 'Registered catalog, unverified. An entry does not confirm installation, connection, or tool availability.', 'Registrierter Katalog, ungeprüft. Ein Eintrag bestätigt weder Installation noch Verbindung oder Werkzeugverfügbarkeit.')}
           </p>
           {activeTab === 'mcp' && (
             <div className="space-y-3">
-              <p className="text-[10px] text-[#00ffff]/70">{t(lang, 'Gestiona servidores MCP (Model Context Protocol).', 'Manage MCP (Model Context Protocol) servers.', 'MCP-Server (Model Context Protocol) verwalten.')}</p>
-              <button onClick={() => setMcpOpen(true)} className="nc-button !px-3 !py-1.5 text-xs font-bold bg-[#00ffff] text-black">
+              <p className="text-[10px] text-[var(--nc-text)]/70">{t(lang, 'Gestiona servidores MCP (Model Context Protocol).', 'Manage MCP (Model Context Protocol) servers.', 'MCP-Server (Model Context Protocol) verwalten.')}</p>
+              <button onClick={() => setMcpOpen(true)} className="nc-button !px-3 !py-1.5 text-xs font-bold bg-[var(--nc-highlight-bg)] text-black">
                 <Server className="w-3.5 h-3.5" /> {t(lang, 'Abrir gestor MCP', 'Open MCP Manager', 'MCP-Manager offnen')}
               </button>
               <div className="max-h-40 overflow-auto space-y-2">
                 {servers.map((s: any) => (
-                  <div key={s.name || s.id} className="flex items-center gap-2 p-1.5 border border-[#004466] bg-[#000022]">
-                    <Server className="w-3 h-3 text-[#00ffff] shrink-0" />
+                  <div key={s.name || s.id} className="flex items-center gap-2 p-1.5 border border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)]">
+                    <Server className="w-3 h-3 text-[var(--nc-text)] shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <div className="text-[#00ffff] font-bold text-[11px] truncate">{s.name || s.url}</div>
+                      <div className="text-[var(--nc-text)] font-bold text-[11px] truncate">{s.name || s.url}</div>
                       <div className="text-[#aaaaaa] text-[9px] truncate">{s.description || ''}</div>
-                      <div className="text-xs text-[#ffff55]">{t(lang, 'Registrado · sin verificar', 'Registered · unverified', 'Registriert · ungeprüft')}</div>
+                      <div className="text-xs text-[var(--nc-text-accent)]">{t(lang, 'Registrado · sin verificar', 'Registered · unverified', 'Registriert · ungeprüft')}</div>
                     </div>
                     <button onClick={() => { removeServerFromStorage(s.name || s.id); loadServers(); }} className="text-red-400 hover:text-red-300 p-1" title="Eliminar">
                       <Trash2 className="w-3 h-3" />
@@ -314,9 +314,9 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ isOpen, on
                   value={mcpServerImportDir}
                   onChange={(e) => setMcpServerImportDir(e.target.value)}
                   placeholder={t(lang, 'Ruta o URL del servidor MCP', 'MCP Server path or URL', 'MCP-Server Pfad oder URL')}
-                  className="flex-1 bg-[#000080] border border-[#00ffff]/40 text-[#00ffff] text-xs px-2 py-1 font-mono"
+                  className="flex-1 bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)]/40 text-[var(--nc-text)] text-xs px-2 py-1 font-mono"
                 />
-                <button onClick={importMcpServer} className="nc-button !px-3 !py-1 text-xs font-bold bg-[#ffff55] text-black disabled:opacity-50">
+                <button onClick={importMcpServer} className="nc-button !px-3 !py-1 text-xs font-bold bg-[var(--nc-active-bg)] text-black disabled:opacity-50">
                   {mcpImporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                   {t(lang, 'Agregar', 'Add', 'Hinzufugen')}
                 </button>
@@ -327,13 +327,13 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ isOpen, on
 
           {activeTab === 'skills' && (
             <div className="space-y-3">
-              <p className="text-[10px] text-[#00ffff]/70">{t(lang, 'Gestionar skills para extender las capacidades del agente.', 'Manage skills to extend the agent capabilities.', 'Skills verwalten, um die Fahigkeiten des Agents zu erweitern.')}</p>
+              <p className="text-[10px] text-[var(--nc-text)]/70">{t(lang, 'Gestionar skills para extender las capacidades del agente.', 'Manage skills to extend the agent capabilities.', 'Skills verwalten, um die Fahigkeiten des Agents zu erweitern.')}</p>
               <div className="flex gap-2">
                 <input
                   value={skillSearch}
                   onChange={(e) => setSkillSearch(e.target.value)}
                   placeholder={t(lang, 'Buscar skills...', 'Search skills...', 'Skills suchen...')}
-                  className="flex-1 bg-[#000080] border border-[#00ffff]/40 text-[#00ffff] text-xs px-2 py-1 font-mono"
+                  className="flex-1 bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)]/40 text-[var(--nc-text)] text-xs px-2 py-1 font-mono"
                 />
                 <button onClick={loadSkills} className="nc-button !px-2 !py-1" title={t(lang, 'Refrescar', 'Refresh', 'Aktualisieren')}>
                   <RefreshCw className={`w-3.5 h-3.5 ${skillsLoading ? 'animate-spin' : ''}`} />
@@ -344,28 +344,28 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ isOpen, on
                   value={skillImportDir}
                   onChange={(e) => setSkillImportDir(e.target.value)}
                   placeholder={t(lang, 'Ruta de carpeta con skills (.md)', 'Path to folder with skills (.md)', 'Pfad zum Ordner mit Skills (.md)')}
-                  className="flex-1 bg-[#000080] border border-[#00ffff]/40 text-[#00ffff] text-xs px-2 py-1 font-mono"
+                  className="flex-1 bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)]/40 text-[var(--nc-text)] text-xs px-2 py-1 font-mono"
                 />
-                <button onClick={importSkills} disabled={skillImporting || !skillImportDir.trim()} className="nc-button !px-3 !py-1 text-xs font-bold bg-[#ffff55] text-black disabled:opacity-50">
+                <button onClick={importSkills} disabled={skillImporting || !skillImportDir.trim()} className="nc-button !px-3 !py-1 text-xs font-bold bg-[var(--nc-active-bg)] text-black disabled:opacity-50">
                   {skillImporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                   {t(lang, 'Importar', 'Import', 'Importieren')}
                 </button>
               </div>
               {skillsError && <div className="text-red-400 text-[10px]">{skillsError}</div>}
               <div className="space-y-1 max-h-60 overflow-auto">
-                {skillsLoading && <div className="text-[#00ffff] text-[10px]">{t(lang, 'Cargando...', 'Loading...', 'Ladt...')}</div>}
+                {skillsLoading && <div className="text-[var(--nc-text)] text-[10px]">{t(lang, 'Cargando...', 'Loading...', 'Ladt...')}</div>}
                 {!skillsLoading && filteredSkills.length === 0 && (
                   <div className="text-[#aaaaaa] text-[10px] italic">{t(lang, 'Sin skills. Importa desde una carpeta.', 'No skills. Import from a folder.', 'Keine Skills. Aus Ordner importieren.')}</div>
                 )}
                 {filteredSkills.map((s: any) => (
-                  <div key={s.id} className="flex items-center gap-2 p-1.5 border border-[#004466] bg-[#000022]">
-                    <BookOpen className="w-3.5 h-3.5 text-[#ffff55] shrink-0" />
+                  <div key={s.id} className="flex items-center gap-2 p-1.5 border border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)]">
+                    <BookOpen className="w-3.5 h-3.5 text-[var(--nc-text-accent)] shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <div className="text-[#00ffff] font-bold text-[11px] truncate">{s.name || s.id}</div>
+                      <div className="text-[var(--nc-text)] font-bold text-[11px] truncate">{s.name || s.id}</div>
                       <div className="text-[#aaaaaa] text-[9px] truncate">{s.description || s.id}</div>
-                      <div className="text-xs text-[#ffff55]">{t(lang, 'Registrado · sin verificar', 'Registered · unverified', 'Registriert · ungeprüft')}</div>
+                      <div className="text-xs text-[var(--nc-text-accent)]">{t(lang, 'Registrado · sin verificar', 'Registered · unverified', 'Registriert · ungeprüft')}</div>
                     </div>
-                    <span className="text-[9px] text-[#00ffff]/60 px-1 border border-[#00ffff]/30">{s.type || 'skill'}</span>
+                    <span className="text-[9px] text-[var(--nc-text)]/60 px-1 border border-[var(--nc-border-light)]/30">{s.type || 'skill'}</span>
                   </div>
                 ))}
               </div>
@@ -374,7 +374,7 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ isOpen, on
 
           {activeTab === 'plugins' && (
             <div className="space-y-3">
-              <p className="text-[10px] text-[#00ffff]/70">{t(lang, 'Instalar y gestionar plugins para ampliar funcionalidades.', 'Install and manage plugins to extend functionality.', 'Plugins installieren und verwalten, um Funktionalitaten zu erweitern.')}</p>
+              <p className="text-[10px] text-[var(--nc-text)]/70">{t(lang, 'Instalar y gestionar plugins para ampliar funcionalidades.', 'Install and manage plugins to extend functionality.', 'Plugins installieren und verwalten, um Funktionalitaten zu erweitern.')}</p>
               <div className="flex gap-2">
                 <button onClick={loadPlugins} className="nc-button !px-2 !py-1" title={t(lang, 'Refrescar', 'Refresh', 'Aktualisieren')}>
                   <RefreshCw className={`w-3.5 h-3.5 ${pluginsLoading ? 'animate-spin' : ''}`} />
@@ -385,38 +385,38 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ isOpen, on
                   value={pluginId}
                   onChange={(e) => setPluginId(e.target.value)}
                   placeholder={t(lang, 'ID del plugin', 'Plugin ID', 'Plugin-ID')}
-                  className="bg-[#000080] border border-[#00ffff]/40 text-[#00ffff] text-xs px-2 py-1 font-mono"
+                  className="bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)]/40 text-[var(--nc-text)] text-xs px-2 py-1 font-mono"
                 />
                 <input
                   value={pluginName}
                   onChange={(e) => setPluginName(e.target.value)}
                   placeholder={t(lang, 'Nombre', 'Name', 'Name')}
-                  className="bg-[#000080] border border-[#00ffff]/40 text-[#00ffff] text-xs px-2 py-1 font-mono"
+                  className="bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)]/40 text-[var(--nc-text)] text-xs px-2 py-1 font-mono"
                 />
                 <input
                   value={pluginVersion}
                   onChange={(e) => setPluginVersion(e.target.value)}
                   placeholder={t(lang, 'Version', 'Version', 'Version')}
-                  className="bg-[#000080] border border-[#00ffff]/40 text-[#00ffff] text-xs px-2 py-1 font-mono"
+                  className="bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)]/40 text-[var(--nc-text)] text-xs px-2 py-1 font-mono"
                 />
               </div>
-              <button onClick={installPlugin} disabled={pluginInstalling || !pluginId.trim()} className="nc-button !px-3 !py-1.5 text-xs font-bold bg-[#ffff55] text-black disabled:opacity-50">
+              <button onClick={installPlugin} disabled={pluginInstalling || !pluginId.trim()} className="nc-button !px-3 !py-1.5 text-xs font-bold bg-[var(--nc-active-bg)] text-black disabled:opacity-50">
                 {pluginInstalling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                 {t(lang, 'Instalar plugin', 'Install plugin', 'Plugin installieren')}
               </button>
               {pluginsError && <div className="text-red-400 text-[10px]">{pluginsError}</div>}
               <div className="space-y-1 max-h-60 overflow-auto">
-                {pluginsLoading && <div className="text-[#00ffff] text-[10px]">{t(lang, 'Cargando...', 'Loading...', 'Ladt...')}</div>}
+                {pluginsLoading && <div className="text-[var(--nc-text)] text-[10px]">{t(lang, 'Cargando...', 'Loading...', 'Ladt...')}</div>}
                 {!pluginsLoading && plugins.length === 0 && (
                   <div className="text-[#aaaaaa] text-[10px] italic">{t(lang, 'Sin plugins instalados.', 'No plugins installed.', 'Keine Plugins installiert.')}</div>
                 )}
                 {plugins.map((p: any) => (
-                  <div key={p.id} className="flex items-center gap-2 p-1.5 border border-[#004466] bg-[#000022]">
-                    <Puzzle className="w-3.5 h-3.5 text-[#00ffff] shrink-0" />
+                  <div key={p.id} className="flex items-center gap-2 p-1.5 border border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)]">
+                    <Puzzle className="w-3.5 h-3.5 text-[var(--nc-text)] shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <div className="text-[#00ffff] font-bold text-[11px] truncate">{p.name || p.id}</div>
+                      <div className="text-[var(--nc-text)] font-bold text-[11px] truncate">{p.name || p.id}</div>
                       <div className="text-[#aaaaaa] text-[9px] truncate">{p.id} v{p.version || 'unknown'}</div>
-                      <div className="text-xs text-[#ffff55]">{t(lang, 'Registrado · sin verificar', 'Registered · unverified', 'Registriert · ungeprüft')}</div>
+                      <div className="text-xs text-[var(--nc-text-accent)]">{t(lang, 'Registrado · sin verificar', 'Registered · unverified', 'Registriert · ungeprüft')}</div>
                     </div>
                     <button onClick={() => uninstallPlugin(p.id)} className="text-red-400 hover:text-red-300 p-1" title={t(lang, 'Desinstalar', 'Uninstall', 'Deinstallieren')}>
                       <Trash2 className="w-3.5 h-3.5" />
@@ -427,14 +427,14 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ isOpen, on
             </div>
           )}
 
-          <div className="border-t border-[#00ffff]/40 p-2">
+          <div className="border-t border-[var(--nc-border-light)]/40 p-2">
             <div className="flex gap-2 mb-2">
-              <Globe className="w-4 h-4 text-[#ffff55] shrink-0 mt-1" />
+              <Globe className="w-4 h-4 text-[var(--nc-text-accent)] shrink-0 mt-1" />
               <input
                 value={webQuery}
                 onChange={(e) => setWebQuery(e.target.value)}
                 placeholder={t(lang, 'Buscar en la web (MCP, skills, plugins)...', 'Search the web (MCP, skills, plugins)...', 'Im Web suchen (MCP, Skills, Plugins)...')}
-                className="flex-1 bg-[#000080] border border-[#00ffff]/40 text-[#00ffff] text-xs px-2 py-1 font-mono"
+                className="flex-1 bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)]/40 text-[var(--nc-text)] text-xs px-2 py-1 font-mono"
                 onKeyDown={(e) => { if (e.key === 'Enter') searchWeb(); }}
               />
               <button onClick={searchWeb} disabled={webSearching || !webQuery.trim()} className="nc-button !px-3 !py-1 text-xs font-bold disabled:opacity-50">
@@ -444,8 +444,8 @@ export const ExtensionsManager: React.FC<ExtensionsManagerProps> = ({ isOpen, on
             {webResults.length > 0 && (
               <div className="max-h-32 overflow-auto space-y-1">
                 {webResults.slice(0, 5).map((r: any, i: number) => (
-                  <a key={i} href={r.url} target="_blank" rel="noopener noreferrer" className="block p-1.5 border border-[#004466] bg-[#000022] hover:bg-[#000044] text-[10px]">
-                    <div className="text-[#00ffff] font-bold truncate">{r.title || r.url}</div>
+                  <a key={i} href={r.url} target="_blank" rel="noopener noreferrer" className="block p-1.5 border border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] hover:bg-[var(--nc-bg-deep)] text-[10px]">
+                    <div className="text-[var(--nc-text)] font-bold truncate">{r.title || r.url}</div>
                     <div className="text-[#aaaaaa] truncate">{r.snippet || r.description || ''}</div>
                   </a>
                 ))}

@@ -180,11 +180,11 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div 
-        className="bg-[#0000aa] border-2 border-[#00ffff] w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl cursor-default"
+        className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl cursor-default"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="bg-[#00aaaa] text-black font-bold px-3 py-2 flex items-center justify-between border-b-2 border-black">
+        <div className="bg-[var(--nc-header-bg)] text-black font-bold px-3 py-2 flex items-center justify-between border-b-2 border-black">
           <div className="flex items-center gap-2">
             <FileJson className="w-4 h-4 text-black" />
             <span className="text-xs sm:text-sm">╔═ CONSTRUCTOR DE SALIDA ESTRUCTURADA (JSON SCHEMA) ═╗</span>
@@ -199,13 +199,13 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
         </div>
 
         {/* Toolbar & Tabs */}
-        <div className="bg-[#000080] border-b border-[#00ffff] p-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="bg-[var(--nc-bg-panel)] border-b border-[var(--nc-border-light)] p-2 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={() => setActiveTab('visual')}
               className={`px-3 py-1 font-bold border transition-colors ${
-                activeTab === 'visual' ? 'bg-[#ffff55] text-black border-white' : 'bg-[#0000aa] text-[#00ffff] border-[#00aaaa]'
+                activeTab === 'visual' ? 'bg-[var(--nc-active-bg)] text-black border-white' : 'bg-[var(--nc-bg-main)] text-[var(--nc-text)] border-[var(--nc-border-mid)]'
               }`}
             >
               [ CONSTRUCTOR VISUAL ]
@@ -217,7 +217,7 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
                 setActiveTab('raw');
               }}
               className={`px-3 py-1 font-bold border transition-colors ${
-                activeTab === 'raw' ? 'bg-[#ffff55] text-black border-white' : 'bg-[#0000aa] text-[#00ffff] border-[#00aaaa]'
+                activeTab === 'raw' ? 'bg-[var(--nc-active-bg)] text-black border-white' : 'bg-[var(--nc-bg-main)] text-[var(--nc-text)] border-[var(--nc-border-mid)]'
               }`}
             >
               [ EDITOR RAW JSON ]
@@ -226,7 +226,7 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
 
           {/* Preset Selector */}
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-[#ffff55] font-bold hidden sm:inline">PLANTILLAS RÁPIDAS:</span>
+            <span className="text-[10px] text-[var(--nc-text-accent)] font-bold hidden sm:inline">PLANTILLAS RÁPIDAS:</span>
             <select
               onChange={(e) => {
                 if (e.target.value !== '') {
@@ -235,7 +235,7 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
                 }
               }}
               defaultValue=""
-              className="bg-[#0000aa] text-[#ffff55] border border-[#00ffff] p-1 text-[11px] outline-none"
+              className="bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] border border-[var(--nc-border-light)] p-1 text-[11px] outline-none"
             >
               <option value="" disabled>Seleccionar Plantilla...</option>
               {SCHEMA_PRESETS.map((p, idx) => (
@@ -251,14 +251,14 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
           <div className="lg:col-span-7 flex flex-col space-y-3">
             {activeTab === 'visual' ? (
               <>
-                <div className="flex items-center justify-between bg-[#000080] border border-[#00ffff] p-2">
+                <div className="flex items-center justify-between bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] p-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-bold text-[#ffff55]">TIPO RAÍZ:</span>
+                    <span className="text-[11px] font-bold text-[var(--nc-text-accent)]">TIPO RAÍZ:</span>
                     <button
                       type="button"
                       onClick={() => setRootType('OBJECT')}
                       className={`px-2 py-0.5 font-bold border text-[10px] ${
-                        rootType === 'OBJECT' ? 'bg-[#00ffff] text-black' : 'bg-[#0000aa] text-white'
+                        rootType === 'OBJECT' ? 'bg-[var(--nc-highlight-bg)] text-black' : 'bg-[var(--nc-bg-main)] text-white'
                       }`}
                     >
                       OBJECT (Objeto Único)
@@ -267,7 +267,7 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
                       type="button"
                       onClick={() => setRootType('ARRAY')}
                       className={`px-2 py-0.5 font-bold border text-[10px] ${
-                        rootType === 'ARRAY' ? 'bg-[#00ffff] text-black' : 'bg-[#0000aa] text-white'
+                        rootType === 'ARRAY' ? 'bg-[var(--nc-highlight-bg)] text-black' : 'bg-[var(--nc-bg-main)] text-white'
                       }`}
                     >
                       ARRAY (Lista de Objetos)
@@ -276,7 +276,7 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
                   <button
                     type="button"
                     onClick={handleAddProperty}
-                    className="nc-button text-[10px] flex items-center gap-1 bg-[#00aaaa] text-black"
+                    className="nc-button text-[10px] flex items-center gap-1 bg-[var(--nc-header-bg)] text-black"
                   >
                     <Plus className="w-3 h-3" /> AGREGAR CAMPO
                   </button>
@@ -285,20 +285,20 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
                 {/* Properties List */}
                 <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
                   {properties.map((prop, idx) => (
-                    <div key={prop.id} className="bg-[#000080] border border-[#00ffff] p-2 space-y-1.5 relative">
+                    <div key={prop.id} className="bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] p-2 space-y-1.5 relative">
                       <div className="flex items-center gap-2">
-                        <span className="text-[#ffff55] font-bold text-[10px]">{idx + 1}.</span>
+                        <span className="text-[var(--nc-text-accent)] font-bold text-[10px]">{idx + 1}.</span>
                         <input
                           type="text"
                           value={prop.name}
                           onChange={(e) => handleUpdateProperty(prop.id, { name: e.target.value })}
                           placeholder="nombre_campo"
-                          className="flex-1 bg-[#0000aa] border border-[#00ffff] text-white px-2 py-0.5 text-xs font-bold outline-none"
+                          className="flex-1 bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] text-white px-2 py-0.5 text-xs font-bold outline-none"
                         />
                         <select
                           value={prop.type}
                           onChange={(e) => handleUpdateProperty(prop.id, { type: e.target.value as any })}
-                          className="bg-[#0000aa] border border-[#00ffff] text-[#ffff55] px-1 py-0.5 text-xs font-bold outline-none"
+                          className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] text-[var(--nc-text-accent)] px-1 py-0.5 text-xs font-bold outline-none"
                         >
                           <option value="STRING">STRING (Texto)</option>
                           <option value="NUMBER">NUMBER (Número)</option>
@@ -306,7 +306,7 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
                           <option value="ARRAY">ARRAY (Lista)</option>
                           <option value="ENUM">ENUM (Opciones Fijas)</option>
                         </select>
-                        <label className="flex items-center gap-1 text-[10px] text-[#00ffff] cursor-pointer">
+                        <label className="flex items-center gap-1 text-[10px] text-[var(--nc-text)] cursor-pointer">
                           <input
                             type="checkbox"
                             checked={prop.required}
@@ -327,8 +327,8 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
 
                       {/* Enum Values Configuration */}
                       {prop.type === 'ENUM' && (
-                        <div className="bg-[#0000aa] border border-[#00aaaa] p-1.5 flex items-center gap-2">
-                          <span className="text-[10px] text-[#ffff55]">VALORES PERMITIDOS (separados por coma):</span>
+                        <div className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-mid)] p-1.5 flex items-center gap-2">
+                          <span className="text-[10px] text-[var(--nc-text-accent)]">VALORES PERMITIDOS (separados por coma):</span>
                           <input
                             type="text"
                             value={(prop.enumValues || []).join(', ')}
@@ -336,19 +336,19 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
                               enumValues: e.target.value.split(',').map((v) => v.trim()).filter(Boolean),
                             })}
                             placeholder="opcion1, opcion2, opcion3"
-                            className="flex-1 bg-[#000080] border border-[#00ffff] text-white px-1.5 py-0.5 text-xs"
+                            className="flex-1 bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] text-white px-1.5 py-0.5 text-xs"
                           />
                         </div>
                       )}
 
                       {/* Array item type */}
                       {prop.type === 'ARRAY' && (
-                        <div className="bg-[#0000aa] border border-[#00aaaa] p-1.5 flex items-center gap-2">
-                          <span className="text-[10px] text-[#ffff55]">TIPO DE ELEMENTOS DE LA LISTA:</span>
+                        <div className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-mid)] p-1.5 flex items-center gap-2">
+                          <span className="text-[10px] text-[var(--nc-text-accent)]">TIPO DE ELEMENTOS DE LA LISTA:</span>
                           <select
                             value={prop.arrayItemType || 'STRING'}
                             onChange={(e) => handleUpdateProperty(prop.id, { arrayItemType: e.target.value as any })}
-                            className="bg-[#000080] border border-[#00ffff] text-white px-1.5 py-0.5 text-xs"
+                            className="bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] text-white px-1.5 py-0.5 text-xs"
                           >
                             <option value="STRING">STRING</option>
                             <option value="NUMBER">NUMBER</option>
@@ -363,7 +363,7 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
                         value={prop.description || ''}
                         onChange={(e) => handleUpdateProperty(prop.id, { description: e.target.value })}
                         placeholder="Descripción para guiar al modelo (opcional)..."
-                        className="w-full bg-[#0000aa] border border-[#00aaaa] text-[10px] text-white px-2 py-0.5"
+                        className="w-full bg-[var(--nc-bg-main)] border border-[var(--nc-border-mid)] text-[10px] text-white px-2 py-0.5"
                       />
                     </div>
                   ))}
@@ -371,11 +371,11 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
               </>
             ) : (
               <div className="flex-1 flex flex-col space-y-1">
-                <span className="text-[11px] text-[#ffff55] font-bold">ESQUEMA JSON SCHEMA BRUTO:</span>
+                <span className="text-[11px] text-[var(--nc-text-accent)] font-bold">ESQUEMA JSON SCHEMA BRUTO:</span>
                 <textarea
                   value={rawJson}
                   onChange={(e) => setRawJson(e.target.value)}
-                  className="flex-1 w-full bg-[#000080] border-2 border-[#00ffff] p-2 text-xs font-mono text-white outline-none resize-none min-h-[300px]"
+                  className="flex-1 w-full bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] p-2 text-xs font-mono text-white outline-none resize-none min-h-[300px]"
                   placeholder="Introduce el esquema JSON compatible con OpenAPI / Gemini..."
                 />
               </div>
@@ -383,9 +383,9 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
           </div>
 
           {/* Right Column: Live JSON Schema Output Preview */}
-          <div className="lg:col-span-5 flex flex-col space-y-2 bg-[#000080] border-2 border-[#00ffff] p-2.5">
-            <div className="flex items-center justify-between border-b border-[#00ffff] pb-1">
-              <span className="text-[11px] font-bold text-[#ffff55]">PREVISUALIZACIÓN JSON SCHEMA:</span>
+          <div className="lg:col-span-5 flex flex-col space-y-2 bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] p-2.5">
+            <div className="flex items-center justify-between border-b border-[var(--nc-border-light)] pb-1">
+              <span className="text-[11px] font-bold text-[var(--nc-text-accent)]">PREVISUALIZACIÓN JSON SCHEMA:</span>
               <button
                 type="button"
                 onClick={handleCopySchema}
@@ -396,11 +396,11 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
               </button>
             </div>
             
-            <pre className="flex-1 bg-[#0000aa] border border-[#00aaaa] p-2 text-[10px] text-[#00ffff] overflow-auto max-h-[350px] font-mono leading-relaxed">
+            <pre className="flex-1 bg-[var(--nc-bg-main)] border border-[var(--nc-border-mid)] p-2 text-[10px] text-[var(--nc-text)] overflow-auto max-h-[350px] font-mono leading-relaxed">
               {activeTab === 'raw' && rawJson.trim() ? rawJson : currentSchemaString}
             </pre>
 
-            <div className="border-t border-[#00aaaa] pt-2 text-[10px] text-[#ffff55] space-y-1">
+            <div className="border-t border-[var(--nc-border-mid)] pt-2 text-[10px] text-[var(--nc-text-accent)] space-y-1">
               <div className="font-bold">💡 EFECTO EN GEMINI:</div>
               <p className="text-white/80 leading-normal">
                 Al activar este esquema, Gemini responderá <strong>estrictamente</strong> en formato JSON validado según esta estructura, sin texto adicional ni markdown circundante.
@@ -410,7 +410,7 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="bg-[#00aaaa] p-2 flex items-center justify-between border-t-2 border-black">
+        <div className="bg-[var(--nc-header-bg)] p-2 flex items-center justify-between border-t-2 border-black">
           <button
             type="button"
             onClick={() => {
@@ -432,7 +432,7 @@ export const JsonSchemaModal: React.FC<JsonSchemaModalProps> = ({
             <button
               type="button"
               onClick={handleSave}
-              className="nc-button text-xs bg-[#ffff55] text-black font-bold border-2 border-white hover:bg-white"
+              className="nc-button text-xs bg-[var(--nc-active-bg)] text-black font-bold border-2 border-white hover:bg-white"
             >
               [ APLICAR ESQUEMA AL MODELO ]
             </button>

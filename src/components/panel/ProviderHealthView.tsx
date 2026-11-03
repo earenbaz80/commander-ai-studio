@@ -42,7 +42,7 @@ export const ProviderHealthView: React.FC<Props> = ({ lang = 'es' }) => {
   return (
     <div className="flex-1 flex flex-col min-h-0 p-2 gap-2 font-mono text-xs text-white overflow-auto">
       <div className="flex items-center justify-between">
-        <span className="text-[#ffff55] font-bold">{t('Proveedores / Observabilidad', 'Providers / Observability', 'Anbieter / Beobachtbarkeit')}</span>
+        <span className="text-[var(--nc-text-accent)] font-bold">{t('Proveedores / Observabilidad', 'Providers / Observability', 'Anbieter / Beobachtbarkeit')}</span>
         <button onClick={load} disabled={loading} className="nc-button !px-2 !py-1 text-[10px]">
           <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
         </button>
@@ -50,7 +50,7 @@ export const ProviderHealthView: React.FC<Props> = ({ lang = 'es' }) => {
       {error && <div className="text-red-400 text-[10px]">{error}</div>}
       <table className="w-full text-[10px] border-collapse">
         <thead>
-          <tr className="text-[#00ffff] border-b border-[#00ffff]/40">
+          <tr className="text-[var(--nc-text)] border-b border-[var(--nc-border-light)]/40">
             <th className="text-left p-1">ID</th>
             <th className="text-left p-1">{t('Estado', 'Status', 'Status')}</th>
             <th className="text-right p-1">{t('Latencia', 'Latency', 'Latenz')}</th>
@@ -65,8 +65,8 @@ export const ProviderHealthView: React.FC<Props> = ({ lang = 'es' }) => {
           {health.map((h) => {
             const m = metrics[h.providerId];
             return (
-              <tr key={h.providerId} className="border-b border-[#004466]">
-                <td className="p-1 text-[#00ffff]">{h.providerId}</td>
+              <tr key={h.providerId} className="border-b border-[var(--nc-border-dark)]">
+                <td className="p-1 text-[var(--nc-text)]">{h.providerId}</td>
                 <td className="p-1">
                   {h.circuitOpen ? (
                     <span className="text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> {t('Circuito abierto', 'Circuit open', 'Schaltung offen')}</span>
@@ -96,7 +96,7 @@ export const ProviderHealthView: React.FC<Props> = ({ lang = 'es' }) => {
           )}
         </tbody>
       </table>
-      {loading && <div className="text-[#00ffff] text-[10px]">{t('Cargando…', 'Loading…', 'Lädt…')}</div>}
+      {loading && <div className="text-[var(--nc-text)] text-[10px]">{t('Cargando…', 'Loading…', 'Lädt…')}</div>}
     </div>
   );
 };

@@ -102,12 +102,12 @@ export const FreeformPlayground: React.FC<FreeformPlaygroundProps> = ({
   };
 
   return (
-    <div className="flex-1 min-w-0 min-h-0 h-full flex flex-col bg-[#0000aa] font-mono text-xs text-[#00ffff] p-2 overflow-hidden select-text">
+    <div className="flex-1 min-w-0 min-h-0 h-full flex flex-col bg-[var(--nc-bg-main)] font-mono text-xs text-[var(--nc-text)] p-2 overflow-hidden select-text">
       {/* Top Banner */}
-      <div className="bg-[#00aaaa] text-black font-bold px-3 py-1 flex items-center justify-between border-2 border-black shrink-0">
+      <div className="bg-[var(--nc-header-bg)] text-black font-bold px-3 py-1 flex items-center justify-between border-2 border-black shrink-0">
         <div className="flex items-center gap-2">
           <span>╔═ NC EDITOR: PROMPT.TXT ═╗</span>
-          <span className="bg-[#0000aa] text-[#ffff55] px-2 py-0.2 border border-white text-[10px]">
+          <span className="bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] px-2 py-0.2 border border-white text-[10px]">
             {lang === 'es' ? 'MODELO:' : lang === 'de' ? 'MODELL:' : 'MODEL:'} {selectedModel}
           </span>
         </div>
@@ -115,7 +115,7 @@ export const FreeformPlayground: React.FC<FreeformPlaygroundProps> = ({
         <button
           onClick={handleRun}
           disabled={isGenerating || !promptText.trim()}
-          className="bg-[#ffff55] text-black font-bold px-3 py-0.5 border border-black hover:bg-white text-xs"
+          className="bg-[var(--nc-active-bg)] text-black font-bold px-3 py-0.5 border border-black hover:bg-white text-xs"
         >
           {isGenerating ? (lang === 'es' ? '[PROCESANDO...]' : lang === 'de' ? '[VERARBEITUNG...]' : '[PROCESSING...]') : (lang === 'es' ? '[EJECUTAR PROMPT (F2)]' : lang === 'de' ? '[PROMPT AUSFÜHREN (F2)]' : '[RUN PROMPT (F2)]')}
         </button>
@@ -124,18 +124,18 @@ export const FreeformPlayground: React.FC<FreeformPlaygroundProps> = ({
       {/* Editor Canvas Grid */}
       <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2 my-2 overflow-hidden">
         {/* Left Text Area Input */}
-        <div className="border-2 border-[#00ffff] bg-[#000080] p-3 flex flex-col space-y-2 overflow-hidden">
-          <div className="bg-[#00aaaa] text-black font-bold px-2 py-0.5 flex justify-between items-center">
+        <div className="border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] p-3 flex flex-col space-y-2 overflow-hidden">
+          <div className="bg-[var(--nc-header-bg)] text-black font-bold px-2 py-0.5 flex justify-between items-center">
             <span>{lang === 'es' ? 'ENTRADA DEL PROMPT' : lang === 'de' ? 'PROMPT-EINGABE' : 'PROMPT INPUT'}</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={handleEnhancePrompt}
                 disabled={!promptText.trim() || isEnhancing}
-                className="bg-[#ffff55] text-black px-2 py-0.2 border border-black hover:bg-white text-[10px] font-bold flex items-center gap-1"
+                className="bg-[var(--nc-active-bg)] text-black px-2 py-0.2 border border-black hover:bg-white text-[10px] font-bold flex items-center gap-1"
                 title="Enhance Prompt AI"
               >
-                <Sparkles className="w-3 h-3 text-[#000080]" />
+                <Sparkles className="w-3 h-3 text-[var(--nc-active-text)]" />
                 <span>{isEnhancing ? (lang === 'es' ? 'OPTIMIZANDO...' : lang === 'de' ? 'VERBESSERE...' : 'ENHANCING...') : (lang === 'es' ? '✨ MEJORAR PROMPT' : lang === 'de' ? '✨ PROMPT VERBESSERN' : '✨ ENHANCE PROMPT')}</span>
               </button>
               <span>{promptText.length} CHARS</span>
@@ -145,25 +145,25 @@ export const FreeformPlayground: React.FC<FreeformPlaygroundProps> = ({
           <textarea
             value={promptText}
             onChange={(e) => setPromptText(e.target.value)}
-            className="flex-1 bg-[#0000aa] border border-[#00ffff] p-3 text-xs text-[#ffffff] font-mono outline-none resize-none leading-relaxed"
+            className="flex-1 bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] p-3 text-xs text-[#ffffff] font-mono outline-none resize-none leading-relaxed"
             placeholder={lang === 'es' ? "Escribe tu prompt aquí..." : lang === 'de' ? 'Gib deinen Prompt hier ein...' : "Type your prompt here..."}
           />
         </div>
 
         {/* Right Output Area */}
-        <div className="border-2 border-[#ffff55] bg-[#000080] p-3 flex flex-col space-y-2 overflow-hidden">
-          <div className="bg-[#ffff55] text-black font-bold px-2 py-0.5 flex justify-between">
+        <div className="border-2 border-[var(--nc-text-accent)] bg-[var(--nc-bg-panel)] p-3 flex flex-col space-y-2 overflow-hidden">
+          <div className="bg-[var(--nc-active-bg)] text-black font-bold px-2 py-0.5 flex justify-between">
             <span>{lang === 'es' ? 'RESULTADO GENERADO' : lang === 'de' ? 'ERZEUGTE AUSGABE' : 'GENERATED OUTPUT'}</span>
             {outputResult && (
-              <button onClick={handleCopy} className="bg-[#0000aa] text-[#ffff55] px-1.5 text-[10px]">
+              <button onClick={handleCopy} className="bg-[var(--nc-bg-main)] text-[var(--nc-text-accent)] px-1.5 text-[10px]">
                 {copied ? (lang === 'es' ? '[COPIADO]' : lang === 'de' ? '[KOPIERT]' : '[COPIED]') : (lang === 'es' ? '[COPIAR]' : lang === 'de' ? '[KOPIEREN]' : '[COPY]')}
               </button>
             )}
           </div>
 
-          <div className="flex-1 bg-[#0000aa] border border-[#ffff55] p-3 text-xs text-[#00ffff] font-mono overflow-y-auto whitespace-pre-wrap leading-relaxed select-text">
+          <div className="flex-1 bg-[var(--nc-bg-main)] border border-[var(--nc-text-accent)] p-3 text-xs text-[var(--nc-text)] font-mono overflow-y-auto whitespace-pre-wrap leading-relaxed select-text">
             {isGenerating ? (
-              <div className="text-[#ffff55] animate-pulse">
+              <div className="text-[var(--nc-text-accent)] animate-pulse">
                 ► {lang === 'es' ? 'PROCESANDO TENSORES EN MOTOR COMMANDER...' : lang === 'de' ? 'TENSOREN WERDEN IN DER COMMANDER-ENGINE VERARBEITET...' : 'PROCESSING TENSORS IN COMMANDER ENGINE...'}
               </div>
             ) : outputResult ? (

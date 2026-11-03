@@ -376,12 +376,12 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
     title,
     children,
   }) => (
-    <div className="bg-[#0000aa] border border-[#00ffff] p-3 space-y-1">
-      <span className="font-bold text-[#ffff55] flex items-center gap-1.5">
-        <span className="text-[#00ffff]">{icon}</span>
+    <div className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] p-3 space-y-1">
+      <span className="font-bold text-[var(--nc-text-accent)] flex items-center gap-1.5">
+        <span className="text-[var(--nc-text)]">{icon}</span>
         {title}
       </span>
-      <div className="text-[11px] text-[#00ffff]/90 space-y-0.5">{children}</div>
+      <div className="text-[11px] text-[var(--nc-text)]/90 space-y-0.5">{children}</div>
     </div>
   );
 
@@ -393,7 +393,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
       }}
     >
       <div
-        className="nc-panel w-full max-w-4xl max-h-[88vh] flex flex-col bg-[#000080] border-2 border-[#00ffff] shadow-[10px_10px_0px_#000055] cursor-default text-xs"
+        className="nc-panel w-full max-w-4xl max-h-[88vh] flex flex-col bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] shadow-[10px_10px_0px_var(--nc-shadow)] cursor-default text-xs"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -425,7 +425,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
         </div>
 
         {/* Tab Navigation */}
-        <div className={`bg-[#0000aa] border-b-2 border-[#00ffff] p-1.5 flex flex-wrap gap-1 text-xs ${q ? 'opacity-60' : ''}`}>
+        <div className={`bg-[var(--nc-bg-main)] border-b-2 border-[var(--nc-border-light)] p-1.5 flex flex-wrap gap-1 text-xs ${q ? 'opacity-60' : ''}`}>
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = !q && activeTab === tab.id;
@@ -440,8 +440,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
                 aria-pressed={isActive}
                 className={`px-3 py-1 font-bold text-[11px] flex items-center gap-1.5 border ${
                   isActive
-                    ? 'bg-[#ffff55] text-black border-white'
-                    : 'bg-[#000080] text-[#00ffff] border-[#00aaaa] hover:bg-[#00aaaa] hover:text-black'
+                    ? 'bg-[var(--nc-active-bg)] text-black border-white'
+                    : 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border-[var(--nc-border-mid)] hover:bg-[var(--nc-header-bg)] hover:text-black'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -452,10 +452,10 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
         </div>
 
         {/* Help Content Area */}
-        <div className="p-4 overflow-y-auto flex-1 space-y-4 text-[#00ffff] leading-relaxed">
+        <div className="p-4 overflow-y-auto flex-1 space-y-4 text-[var(--nc-text)] leading-relaxed">
           {q ? (
             <div className="space-y-2" data-testid="help-search-results">
-              <p className="text-[11px] text-[#ffff55] font-bold">
+              <p className="text-[11px] text-[var(--nc-text-accent)] font-bold">
                 {searchIndex.length === 0
                   ? L('Sin resultados para esta búsqueda.', 'No results for this search.')
                   : L(
@@ -464,12 +464,12 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
                     )}
               </p>
               {searchIndex.map((entry) => (
-                <div key={`${entry.section}-${entry.title}`} className="bg-[#0000aa] border border-[#00ffff] p-2 space-y-0.5">
+                <div key={`${entry.section}-${entry.title}`} className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] p-2 space-y-0.5">
                   <div className="flex items-center gap-2">
-                    <span className="text-[9px] uppercase tracking-wider text-black bg-[#00aaaa] px-1">{entry.section}</span>
-                    <span className="font-bold text-[#ffff55] text-[11px]">{entry.title}</span>
+                    <span className="text-[9px] uppercase tracking-wider text-black bg-[var(--nc-header-bg)] px-1">{entry.section}</span>
+                    <span className="font-bold text-[var(--nc-text-accent)] text-[11px]">{entry.title}</span>
                   </div>
-                  <p className="text-[11px] text-[#00ffff]/90">{entry.desc}</p>
+                  <p className="text-[11px] text-[var(--nc-text)]/90">{entry.desc}</p>
                 </div>
               ))}
             </div>
@@ -477,8 +477,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
             <>
               {activeTab === 'overview' && (
                 <div className="space-y-3">
-                  <div className="bg-[#0000aa] border-2 border-[#00ffff] p-3 space-y-2">
-                    <h3 className="font-bold text-[#ffff55] text-sm uppercase flex items-center gap-2">
+                  <div className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-3 space-y-2">
+                    <h3 className="font-bold text-[var(--nc-text-accent)] text-sm uppercase flex items-center gap-2">
                       <Sparkles className="w-4 h-4" />
                       {L('¿Qué es Commander AI Studio?', 'What is Commander AI Studio?')}
                     </h3>
@@ -498,14 +498,14 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
                     ))}
                   </div>
 
-                  <div className="bg-[#0000aa] border border-[#ffff55] p-3 space-y-1">
-                    <span className="font-bold text-[#ffff55] uppercase text-[11px]">
+                  <div className="bg-[var(--nc-bg-main)] border border-[var(--nc-text-accent)] p-3 space-y-1">
+                    <span className="font-bold text-[var(--nc-text-accent)] uppercase text-[11px]">
                       {L('Novedades recientes', 'What’s new')}
                     </span>
                     <ul className="text-[11px] space-y-0.5 list-none">
                       {whatsNew.map((item) => (
                         <li key={item} className="flex items-start gap-1.5">
-                          <Sparkles className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[#ffff55]" />
+                          <Sparkles className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--nc-text-accent)]" />
                           {item}
                         </li>
                       ))}
@@ -516,8 +516,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
 
               {activeTab === 'modes' && (
                 <div className="space-y-3">
-                  <div className="bg-[#0000aa] border-2 border-[#00ffff] p-3 space-y-1">
-                    <h3 className="font-bold text-[#ffff55] text-sm uppercase flex items-center gap-2">
+                  <div className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-3 space-y-1">
+                    <h3 className="font-bold text-[var(--nc-text-accent)] text-sm uppercase flex items-center gap-2">
                       <Layers className="w-4 h-4" /> {L('Una barra, seis pantallas', 'One bar, six screens')}
                     </h3>
                     <p className="text-[11px]">
@@ -534,8 +534,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
                       </Card>
                     ))}
                   </div>
-                  <div className="bg-[#0000aa] border border-[#00ffff] p-3 space-y-1">
-                    <span className="font-bold text-[#ffff55] flex items-center gap-1.5">
+                  <div className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] p-3 space-y-1">
+                    <span className="font-bold text-[var(--nc-text-accent)] flex items-center gap-1.5">
                       <SlidersHorizontal className="w-4 h-4" /> {L('Conmutador Build / Plan', 'Build / Plan switch')}
                     </span>
                     <p className="text-[11px]">
@@ -550,8 +550,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
 
               {activeTab === 'workbench' && (
                 <div className="space-y-3">
-                  <div className="bg-[#0000aa] border-2 border-[#00ffff] p-3 space-y-2">
-                    <h3 className="font-bold text-[#ffff55] text-sm uppercase flex items-center gap-2">
+                  <div className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-3 space-y-2">
+                    <h3 className="font-bold text-[var(--nc-text-accent)] text-sm uppercase flex items-center gap-2">
                       <PanelRight className="w-4 h-4" />
                       {L('Panel Workbench (derecha)', 'Workbench panel (right)')}
                     </h3>
@@ -575,8 +575,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
 
               {activeTab === 'hf' && (
                 <div className="space-y-3">
-                  <div className="bg-[#0000aa] border-2 border-[#00ffff] p-3 space-y-2">
-                    <h3 className="font-bold text-[#ffff55] text-sm uppercase flex items-center gap-2">
+                  <div className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-3 space-y-2">
+                    <h3 className="font-bold text-[var(--nc-text-accent)] text-sm uppercase flex items-center gap-2">
                       <Cpu className="w-4 h-4" />
                       {L('Modelos locales con WebGPU', 'Local models with WebGPU')}
                     </h3>
@@ -610,8 +610,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
 
               {activeTab === 'export' && (
                 <div className="space-y-3">
-                  <div className="bg-[#0000aa] border-2 border-[#00ffff] p-3 space-y-2">
-                    <h3 className="font-bold text-[#ffff55] text-sm uppercase flex items-center gap-2">
+                  <div className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-3 space-y-2">
+                    <h3 className="font-bold text-[var(--nc-text-accent)] text-sm uppercase flex items-center gap-2">
                       <Hammer className="w-4 h-4" />
                       {L('Compilar y exportar', 'Compile & export')}
                     </h3>
@@ -633,8 +633,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
               )}
 
               {activeTab === 'shortcuts' && (
-                <div className="bg-[#0000aa] border-2 border-[#00ffff] p-3 space-y-2">
-                  <h3 className="font-bold text-[#ffff55] text-sm uppercase flex items-center gap-2">
+                <div className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-3 space-y-2">
+                  <h3 className="font-bold text-[var(--nc-text-accent)] text-sm uppercase flex items-center gap-2">
                     <Keyboard className="w-4 h-4" />
                     {L('Atajos de teclado', 'Keyboard shortcuts')}
                   </h3>
@@ -642,16 +642,16 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
                     {shortcuts.map((s) => (
                       <div
                         key={s.keys}
-                        className="bg-[#000080] p-2 border border-[#00ffff] flex items-center justify-between gap-2"
+                        className="bg-[var(--nc-bg-panel)] p-2 border border-[var(--nc-border-light)] flex items-center justify-between gap-2"
                       >
                         <span className="truncate">{s.action}</span>
-                        <kbd className="shrink-0 font-bold text-[#ffff55] bg-[#000055] border border-[#00ffff]/50 px-1.5 py-0.5 text-[10px] rounded-sm whitespace-nowrap">
+                        <kbd className="shrink-0 font-bold text-[var(--nc-text-accent)] bg-[var(--nc-bg-deep)] border border-[var(--nc-border-light)]/50 px-1.5 py-0.5 text-[10px] rounded-sm whitespace-nowrap">
                           {s.keys}
                         </kbd>
                       </div>
                     ))}
                   </div>
-                  <p className="text-[10px] text-[#00ffff]/60 pt-1">
+                  <p className="text-[10px] text-[var(--nc-text)]/60 pt-1">
                     {L(
                       'En macOS, sustituye Ctrl por Cmd y Alt por ⌥.',
                       'On macOS, replace Ctrl with Cmd and Alt with ⌥.'
@@ -664,7 +664,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
         </div>
 
         {/* Footer */}
-        <div className="bg-[#00aaaa] p-2 flex items-center justify-between gap-2 border-t-2 border-black">
+        <div className="bg-[var(--nc-header-bg)] p-2 flex items-center justify-between gap-2 border-t-2 border-black">
           <span className="text-[10px] text-black/70 font-bold">
             {q
               ? L('Mostrando resultados de búsqueda', 'Showing search results')

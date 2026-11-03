@@ -20,9 +20,9 @@ export const PromptLibraryContent: React.FC<PromptLibraryContentProps> = ({
   return (
     <>
       {/* Subheader banner */}
-      <div className="bg-[#0000aa] border-b-2 border-[#00ffff] px-3 py-1.5 text-xs flex justify-between items-center text-[#ffff55] shrink-0">
+      <div className="bg-[var(--nc-bg-main)] border-b-2 border-[var(--nc-border-light)] px-3 py-1.5 text-xs flex justify-between items-center text-[var(--nc-text-accent)] shrink-0">
         <span>{lang === 'es' ? '[!] Selecciona una plantilla preconfigurada para cargar su System Instruction y Prompt.' : lang === 'de' ? '[!] Wähle eine Vorlage, um ihre Systemanweisung und ihren Prompt zu laden.' : '[!] Select a preset template to load its System Instruction and Prompt.'}</span>
-        <span className="text-[10px] bg-[#00aaaa] text-black font-bold px-2 py-0.5 uppercase">
+        <span className="text-[10px] bg-[var(--nc-header-bg)] text-black font-bold px-2 py-0.5 uppercase">
           {PROMPT_TEMPLATES.length} {lang === 'es' ? 'PLANTILLAS' : lang === 'de' ? 'VORLAGEN' : 'TEMPLATES'}
         </span>
       </div>
@@ -36,29 +36,29 @@ export const PromptLibraryContent: React.FC<PromptLibraryContentProps> = ({
               onSelectTemplate(tmpl);
               onClose();
             }}
-            className="p-3 bg-[#0000aa] hover:bg-[#00aaaa] hover:text-black border-2 border-[#00ffff] cursor-pointer space-y-2 flex flex-col justify-between transition-colors shadow-[4px_4px_0px_#000055] group"
+            className="p-3 bg-[var(--nc-bg-main)] hover:bg-[var(--nc-header-bg)] hover:text-black border-2 border-[var(--nc-border-light)] cursor-pointer space-y-2 flex flex-col justify-between transition-colors shadow-[4px_4px_0px_var(--nc-shadow)] group"
           >
             <div className="space-y-1">
               <div className="flex items-center justify-between gap-1">
-                <span className="font-bold text-xs sm:text-sm text-[#ffff55] group-hover:text-black uppercase">
+                <span className="font-bold text-xs sm:text-sm text-[var(--nc-text-accent)] group-hover:text-black uppercase">
                   {tmpl.title}
                 </span>
-                <span className="text-[9px] font-bold bg-[#000080] group-hover:bg-black text-[#00ffff] group-hover:text-[#ffff55] border border-[#00ffff] px-1.5 py-0.5 uppercase">
+                <span className="text-[9px] font-bold bg-[var(--nc-bg-panel)] group-hover:bg-black text-[var(--nc-text)] group-hover:text-[var(--nc-text-accent)] border border-[var(--nc-border-light)] px-1.5 py-0.5 uppercase">
                   {tmpl.category}
                 </span>
               </div>
-              <p className="text-[11px] text-[#00ffff] group-hover:text-black leading-tight">
+              <p className="text-[11px] text-[var(--nc-text)] group-hover:text-black leading-tight">
                 {tmpl.description}
               </p>
             </div>
 
-            <div className="p-2 bg-[#000055] group-hover:bg-[#000080] border border-[#00ffff] font-mono text-[10px] text-[#ffff55] line-clamp-2">
+            <div className="p-2 bg-[var(--nc-bg-deep)] group-hover:bg-[var(--nc-bg-hover)] border border-[var(--nc-border-light)] font-mono text-[10px] text-[var(--nc-text-accent)] line-clamp-2">
               "{tmpl.defaultPrompt}"
             </div>
 
-            <div className="flex items-center justify-between text-[10px] font-bold text-[#ffff55] group-hover:text-black pt-1 border-t border-[#00ffff]/30">
+            <div className="flex items-center justify-between text-[10px] font-bold text-[var(--nc-text-accent)] group-hover:text-black pt-1 border-t border-[var(--nc-border-light)]/30">
               <span>MODELO: {tmpl.recommendedModel}</span>
-              <span className="flex items-center gap-1 bg-[#000080] group-hover:bg-black text-[#00ffff] group-hover:text-[#ffff55] px-2 py-0.5 border border-[#00ffff]">
+              <span className="flex items-center gap-1 bg-[var(--nc-bg-panel)] group-hover:bg-black text-[var(--nc-text)] group-hover:text-[var(--nc-text-accent)] px-2 py-0.5 border border-[var(--nc-border-light)]">
                 CARGAR <ArrowRight className="w-3 h-3" />
               </span>
             </div>
@@ -67,8 +67,8 @@ export const PromptLibraryContent: React.FC<PromptLibraryContentProps> = ({
       </div>
 
       {/* Footer Bar */}
-      <div className="bg-[#0000aa] border-t-2 border-[#00ffff] p-2 flex justify-between items-center text-xs shrink-0">
-        <span className="text-[10px] text-[#00aaaa] italic font-mono">
+      <div className="bg-[var(--nc-bg-main)] border-t-2 border-[var(--nc-border-light)] p-2 flex justify-between items-center text-xs shrink-0">
+        <span className="text-[10px] text-[var(--nc-text-dim)] italic font-mono">
           Commander AI Studio - Plantillas optimizadas para Gemini, DeepSeek y HuggingFace
         </span>
         <button
@@ -101,7 +101,7 @@ export const PromptLibraryModal: React.FC<PromptLibraryModalProps> = ({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="nc-panel w-full max-w-4xl max-h-[88vh] flex flex-col bg-[#000080] border-2 border-[#00ffff] shadow-[10px_10px_0px_#000055] cursor-default"
+        className="nc-panel w-full max-w-4xl max-h-[88vh] flex flex-col bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] shadow-[10px_10px_0px_var(--nc-shadow)] cursor-default"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Retro Title Bar */}

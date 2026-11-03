@@ -47,13 +47,13 @@ export const TabsView: React.FC<TabsViewProps> = ({
 }) => {
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex items-center justify-between px-2 py-1 border-b border-[#004466] bg-[#00243e] shrink-0">
-        <span className="text-[10px] font-mono text-[#00ffff]/70">
+      <div className="flex items-center justify-between px-2 py-1 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] shrink-0">
+        <span className="text-[10px] font-mono text-[var(--nc-text)]/70">
           {tabs.length} {tabs.length === 1 ? 'pestaña' : 'pestañas'}
         </span>
         <button
           onClick={onNew}
-          className="flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 bg-[#000080] text-[#00ffff] border border-[#00ffff]/40 rounded hover:bg-[#0000aa]"
+          className="flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 bg-[var(--nc-bg-panel)] text-[var(--nc-text)] border border-[var(--nc-border-light)]/40 rounded hover:bg-[var(--nc-bg-hover)]"
           title="Nueva pestaña (Ctrl+T)"
         >
           <Plus className="w-3 h-3" /> Nueva
@@ -68,12 +68,12 @@ export const TabsView: React.FC<TabsViewProps> = ({
               key={tab.id}
               className={`group flex items-center gap-2 px-2 py-1.5 mx-1 mb-0.5 rounded border cursor-pointer ${
                 active
-                  ? 'bg-[#0000aa] border-[#00ffff]'
-                  : 'border-transparent hover:bg-[#000066] hover:border-[#004466]'
+                  ? 'bg-[var(--nc-bg-main)] border-[var(--nc-border-light)]'
+                  : 'border-transparent hover:bg-[#000066] hover:border-[var(--nc-border-dark)]'
               }`}
               onClick={() => onSelect(tab.id)}
             >
-              <span className={active ? 'text-[#ffff55]' : 'text-[#00ffff]/70'}>
+              <span className={active ? 'text-[var(--nc-text-accent)]' : 'text-[var(--nc-text)]/70'}>
                 {MODE_ICONS[tab.mode] || <MessageSquare className="w-3.5 h-3.5" />}
               </span>
               <div className="flex-1 min-w-0">
@@ -81,11 +81,11 @@ export const TabsView: React.FC<TabsViewProps> = ({
                   value={tab.title}
                   onChange={(e) => onRename?.(tab.id, e.target.value)}
                   className={`w-full bg-transparent text-[11px] font-mono outline-none truncate ${
-                    active ? 'text-[#ffff55]' : 'text-[#00ffff]'
+                    active ? 'text-[var(--nc-text-accent)]' : 'text-[var(--nc-text)]'
                   }`}
                   title={tab.title}
                 />
-                <div className="flex items-center gap-1.5 text-[9.5px] font-mono text-[#00ffff]/50">
+                <div className="flex items-center gap-1.5 text-[9.5px] font-mono text-[var(--nc-text)]/50">
                   <span>{modeLabel(tab.mode)}</span>
                   <span>·</span>
                   <span>{tab.messages.length} msg</span>
@@ -103,7 +103,7 @@ export const TabsView: React.FC<TabsViewProps> = ({
               {tabs.length > 1 && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onClose(tab.id); }}
-                  className="p-0.5 rounded text-[#00ffff]/40 hover:text-[#ff5555] hover:bg-[#330000] opacity-0 group-hover:opacity-100"
+                  className="p-0.5 rounded text-[var(--nc-text)]/40 hover:text-[var(--nc-danger)] hover:bg-[#330000] opacity-0 group-hover:opacity-100"
                   title="Cerrar pestaña"
                 >
                   <X className="w-3 h-3" />
