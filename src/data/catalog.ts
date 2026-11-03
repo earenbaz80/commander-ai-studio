@@ -45,7 +45,10 @@ export interface LiveProviderStatus {
   available: boolean;
   count?: number;
   host?: string;
+  /** `true` si hay credenciales en config o entorno, no sólo modelos listados. */
   configured?: boolean;
+  /** De dónde salen las credenciales: `env`, `file`, `local` o `none`. */
+  source?: string;
   error?: string;
 }
 

@@ -15,7 +15,7 @@ import {
   MAX_FALLBACK_MODELS,
   normalizeFallbackChain,
 } from './src/config/geminiModels';
-import { getGoogleFallbackModels, setGoogleFallbackModels } from './src/config/index';
+import { getGoogleFallbackModels, getProviderSecret, setGoogleFallbackModels } from './src/config/index';
 
 /**
  * Cadena de respaldo efectiva para una petición.
@@ -131,7 +131,8 @@ export async function handleGeminiGenerate(req: Request, res: Response) {
     const cookieKey = (req as any).apiKeys?.GEMINI_API_KEY || '';
     // Incluye la key del entorno: es la que realmente usa el cliente y la que
     // hace falta para recordar qué keys no admiten las herramientas integradas.
-    const effectiveKey = userApiKey || geminiApiKey || cookieKey || process.env.GEMINI_API_KEY || '';
+    const effectiveKey =
+      userApiKey || geminiApiKey || cookieKey || process.env.GEMINI_API_KEY || getProviderSecret('google', 'apiKey') || '';
     const ai = getGenAIClient(effectiveKey);
     const activeModel = mapGeminiModel(model);
 
@@ -438,7 +439,8 @@ export async function handleGeminiStream(req: Request, res: Response) {
     const cookieKey = (req as any).apiKeys?.GEMINI_API_KEY || '';
     // Incluye la key del entorno: es la que realmente usa el cliente y la que
     // hace falta para recordar qué keys no admiten las herramientas integradas.
-    const effectiveKey = userApiKey || geminiApiKey || cookieKey || process.env.GEMINI_API_KEY || '';
+    const effectiveKey =
+      userApiKey || geminiApiKey || cookieKey || process.env.GEMINI_API_KEY || getProviderSecret('google', 'apiKey') || '';
     const ai = getGenAIClient(effectiveKey);
     const activeModel = mapGeminiModel(model);
 

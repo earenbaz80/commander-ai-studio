@@ -32,7 +32,8 @@ import { handleAnthropicGenerate, handleAnthropicStream } from './anthropic';
 import { executeLocalHfModel } from './localModels';
 import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList, apiKeyMiddleware } from './apiKeys';
 import { isAllowedHost, allowedHostsFromEnv } from './hostGuard';
-import { loadConfig } from './src/config/index';
+import { getConfig, getConfigPath, getEnvProviderIds, getProviderSecret, loadConfig, removeProviderConfig } from './src/config/index';
+import { PROVIDER_SPECS, buildProviderList, describeProvider, getProviderCatalog } from './src/providers/registry';
 import skillsRouter from './skills/api';
 import { forkSessionWorkspace, deleteSessionWorkspace, listSessions, createGitWorktree } from './sessionWorkspace';
 import { handleOAuthLogin, handleOAuthCallback, handleLogout, getCurrentUser } from './oauth';
@@ -852,6 +853,34 @@ app.post('/api/providers', async (req, res) => {
   }
 });
 
+// Lista real de proveedores: `configured` sale de la config de fichero o del
+// entorno, no de que el catálogo tenga entradas. Es lo que pinta el gestor.
+app.get('/api/providers', async (_req, res) => {
+  try {
+    const catalog = await getProviderCatalog();
+    const envIds = new Set(getEnvProviderIds());
+    const providers = buildProviderList(getConfig().providers as any, envIds, catalog);
+    return res.json({ success: true, providers, configPath: getConfigPath() });
+  } catch (e: any) {
+    return res.status(500).json({ success: false, error: e?.message || 'Error listando proveedores' });
+  }
+});
+
+// Elimina un proveedor del fichero de config. Las variables de entorno no se
+// pueden borrar desde aquí: se informa de que siguen suministrando la clave.
+app.delete('/api/providers/:id', (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!PROVIDER_SPECS.some((s) => s.id === id)) {
+      return res.status(400).json({ success: false, error: 'Proveedor desconocido' });
+    }
+    const configPath = removeProviderConfig(id);
+    return res.json({ success: true, configPath, stillFromEnv: getEnvProviderIds().includes(id) });
+  } catch (e: any) {
+    return res.status(400).json({ success: false, error: e?.message || 'Error eliminando proveedor' });
+  }
+});
+
 // ==================== MCP REGISTRY ====================
 
 // Monta el router de MCP bajo /api/mcp
@@ -1241,7 +1270,7 @@ app.post('/api/hf/generate', async (req, res) => {
     const result = await executeLocalHfModel({
       prompt: prompt || 'Hola',
       model,
-      hfApiToken,
+      hfApiToken: hfApiToken || getProviderSecret('huggingface', 'apiToken'),
       geminiApiKey: userApiKey || geminiApiKey,
       systemInstruction,
       temperature,
@@ -2330,27 +2359,20 @@ interface ModelsDevModel {
 }
 
 async function fetchModelsDevCatalog(): Promise<ModelsDevModel[]> {
-  try {
-    // models.dev provides a comprehensive catalog
-    const res = await fetch('https://models.dev/api.json', {
-      headers: { 'User-Agent': 'CommanderAIStudio/2.5' },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) throw new Error(`Models.dev HTTP ${res.status}`);
-    const data = await res.json();
-    // The API returns { providers: { ... }, models: { ... } }
-    // We need to flatten models
-    if (data.models && typeof data.models === 'object') {
-      return Object.entries(data.models).map(([id, m]: [string, any]) => ({
-        id,
-        ...m,
-      })) as ModelsDevModel[];
-    }
-    return [];
-  } catch (e) {
-    console.warn('[models.live] Failed to fetch models.dev:', (e as Error).message);
-    return [];
-  }
+  // models.dev devuelve un mapa `proveedor → { env, models }`, no una lista
+  // plana. El registro lo normaliza y aquí sólo se aplana a este formato.
+  const providers = await getProviderCatalog();
+  return providers.flatMap((p) =>
+    p.models.map((m) => ({
+      id: m.id,
+      name: m.name,
+      provider: p.id,
+      context_window: m.contextWindow ? Number(String(m.contextWindow).replace(/[^0-9]/g, '')) * 1000 : undefined,
+      tool_call: m.supportsTools,
+      reasoning: m.supportsReasoning,
+      input_modalities: m.supportsImage ? ['text', 'image'] : ['text'],
+    }))
+  );
 }
 
 app.get('/api/models/live', async (req, res) => {
@@ -2359,7 +2381,7 @@ app.get('/api/models/live', async (req, res) => {
       fetchModelsDevCatalog(),
       (async () => {
         try {
-          const host = req.query.host || process.env.OLLAMA_HOST || 'http://localhost:11434';
+          const host = req.query.host || process.env.OLLAMA_HOST || getProviderSecret('ollama', 'host') || 'http://localhost:11434';
           const response = await fetch(`${host}/api/tags`, {
             headers: { 'User-Agent': 'CommanderAIStudio/2.5' },
           });
@@ -2404,15 +2426,26 @@ app.get('/api/models/live', async (req, res) => {
       ...ollamaModels,
     ];
 
-    // Provider status
-    const providerStatus: Record<string, { available: boolean; count: number; error?: string }> = {};
-    const providers = new Set(allEntries.map((m) => m.provider));
-    for (const p of providers) {
+    // Estado por proveedor: `available` dice si tiene modelos listados y
+    // `configured` si hay credenciales. Antes ambos eran lo mismo (count > 0),
+    // así que todo aparecía «disponible» aunque no hubiera ni una clave.
+    const providerStatus: Record<string, { available: boolean; count: number; configured: boolean; source: string; error?: string }> = {};
+    const envIds = new Set(getEnvProviderIds());
+    const specs = new Map(PROVIDER_SPECS.map((s) => [s.id, s]));
+    for (const p of new Set(allEntries.map((m) => m.provider))) {
       const count = allEntries.filter((m) => m.provider === p).length;
-      providerStatus[p] = { available: count > 0, count };
+      const spec = specs.get(p);
+      const st = spec ? describeProvider(spec, getConfig().providers as any, envIds) : { configured: true, source: 'none' };
+      providerStatus[p] = { available: count > 0, count, configured: st.configured, source: st.source };
     }
-    // Add ollama status
-    providerStatus.ollama = { available: ollamaModels.length > 0, count: ollamaModels.length };
+    // Los proveedores sin entradas en el catálogo (HF, custom, freebuff) deben
+    // salir igualmente: su disponibilidad es tener credenciales, no modelos.
+    for (const spec of PROVIDER_SPECS) {
+      if (providerStatus[spec.id]) continue;
+      const st = describeProvider(spec, getConfig().providers as any, envIds);
+      providerStatus[spec.id] = { available: st.configured, count: 0, configured: st.configured, source: st.source };
+    }
+    providerStatus.ollama = { available: ollamaModels.length > 0, count: ollamaModels.length, configured: true, source: 'local' };
 
     return res.json({
       success: true,
@@ -2427,7 +2460,7 @@ app.get('/api/models/live', async (req, res) => {
 // Ollama list available models from library (search)
 app.get('/api/ollama/library', async (req, res) => {
   try {
-    const host = req.query.host || process.env.OLLAMA_HOST || 'http://localhost:11434';
+    const host = req.query.host || process.env.OLLAMA_HOST || getProviderSecret('ollama', 'host') || 'http://localhost:11434';
     const response = await fetch(`${host}/api/tags`, {
       headers: { 'User-Agent': 'CommanderAIStudio/2.5' },
     });
@@ -2444,7 +2477,7 @@ app.get('/api/ollama/library', async (req, res) => {
 app.post('/api/ollama/generate', async (req, res) => {
   try {
     const { prompt, model = 'llama3.2', systemInstruction = '', temperature = 0.7, maxTokens = 2048 } = req.body;
-    const host = req.query.host || process.env.OLLAMA_HOST || 'http://localhost:11434';
+    const host = req.query.host || process.env.OLLAMA_HOST || getProviderSecret('ollama', 'host') || 'http://localhost:11434';
 
     const response = await fetch(`${host}/api/generate`, {
       method: 'POST',
@@ -2483,7 +2516,7 @@ app.post('/api/ollama/generate', async (req, res) => {
 app.post('/api/xai/generate', async (req, res) => {
   try {
     const { prompt, model = 'grok-beta', systemInstruction = '', temperature = 0.7, maxTokens = 2048, apiKey } = req.body || {};
-    const key = apiKey || process.env.XAI_API_KEY;
+    const key = apiKey || process.env.XAI_API_KEY || getProviderSecret('xai', 'apiKey');
     if (!key) return res.json({ ok: false, error: 'XAI_API_KEY requerida' });
 
     const response = await fetch('https://api.x.ai/v1/chat/completions', {
@@ -2528,7 +2561,7 @@ app.post('/api/xai/generate', async (req, res) => {
 app.post('/api/openrouter/generate', async (req, res) => {
   try {
     const { prompt, model = 'openai/gpt-4o-mini', systemInstruction = '', temperature = 0.7, maxTokens = 2048, apiKey } = req.body;
-    const key = apiKey || process.env.OPENROUTER_API_KEY;
+    const key = apiKey || process.env.OPENROUTER_API_KEY || getProviderSecret('openrouter', 'apiKey');
     if (!key) return res.json({ ok: false, error: 'OPENROUTER_API_KEY requerida' });
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -2626,8 +2659,8 @@ app.post('/api/custom/models', async (req, res) => {
 app.post('/api/custom/generate', async (req, res) => {
   try {
     const { prompt, model, systemInstruction = '', temperature = 0.7, maxTokens = 2048, baseURL, apiKey } = req.body;
-    const key = apiKey || process.env.CUSTOM_API_KEY || process.env.OPENCODE_API_KEY;
-    const url = baseURL || process.env.CUSTOM_BASE_URL;
+    const key = apiKey || process.env.CUSTOM_API_KEY || process.env.OPENCODE_API_KEY || getProviderSecret('custom', 'apiKey');
+    const url = baseURL || process.env.CUSTOM_BASE_URL || getProviderSecret('custom', 'baseUrl');
 
     if (!url) return res.json({ ok: false, error: 'CUSTOM_BASE_URL requerido' });
     if (!key) return res.json({ ok: false, error: 'CUSTOM_API_KEY requerida' });
