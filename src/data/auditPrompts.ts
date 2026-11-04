@@ -15,6 +15,17 @@ export function projectName(path: string): string {
   return parts[parts.length - 1] || path;
 }
 
+/**
+ * ¿La pestaña apunta a un proyecto de verdad?
+ *
+ * Vacío, «.» o «./» no lo son: con esa ruta el agente audita el cwd del
+ * servidor en vez del proyecto del usuario, y el informe no sirve.
+ */
+export function hasProjectPath(path?: string | null): boolean {
+  const limpio = String(path ?? '').trim().replace(/[\\/]+$/, '');
+  return limpio !== '' && limpio !== '.' && limpio !== '..';
+}
+
 export function buildAuditPrompt(projectPath: string, lang: Language = 'es'): string {
   const name = projectName(projectPath);
   if (lang === 'de') return buildAuditPromptDe(projectPath);

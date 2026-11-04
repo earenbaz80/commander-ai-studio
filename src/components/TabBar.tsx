@@ -19,6 +19,8 @@ interface TabBarProps {
   onRemoveProject: (path: string) => void;
   onGeneralAudit: () => void;
   auditing?: boolean;
+  /** La pestaña activa tiene un proyecto real: sin él no hay nada que auditar. */
+  canAudit?: boolean;
   lang?: Language;
   isolateSessions?: boolean;
   onToggleIsolate?: () => void;
@@ -39,6 +41,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   onRemoveProject,
   onGeneralAudit,
   auditing,
+  canAudit = true,
   lang = 'es',
   isolateSessions = false,
   onToggleIsolate,
@@ -230,11 +233,19 @@ export const TabBar: React.FC<TabBarProps> = ({
       {/* Auditoría General */}
       <button
         onClick={onGeneralAudit}
-        disabled={auditing}
+        disabled={auditing || !canAudit}
         className="nc-button !px-2 !py-1 shrink-0 flex items-center gap-1.5 bg-[#aa00aa] text-white font-bold hover:bg-[#ff00ff] disabled:opacity-60 disabled:cursor-wait border-[#ff00ff]"
-        title={lang === 'es'
-          ? 'Auditoría General: revisión completa del proyecto activo (bugs, seguridad, deuda técnica)'
-          : lang === 'de' ? 'Allgemeine Prüfung: vollständige Überprüfung des aktiven Projekts' : 'General audit: full review of the active project'}
+        title={
+          !canAudit
+            ? lang === 'es'
+              ? 'Elige, añade o crea un proyecto para poder auditar'
+              : lang === 'de'
+                ? 'Wähle, füge hinzu oder erstelle ein Projekt, um zu prüfen'
+                : 'Pick, add or create a project to run the audit'
+            : lang === 'es'
+              ? 'Auditoría General: revisión completa del proyecto activo (bugs, seguridad, deuda técnica)'
+              : lang === 'de' ? 'Allgemeine Prüfung: vollständige Überprüfung des aktiven Projekts' : 'General audit: full review of the active project'
+        }
       >
         {auditing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Stethoscope className="w-3.5 h-3.5" />}
         <span className="text-[11px] font-mono hidden md:inline">Auditoría General</span>

@@ -52,6 +52,18 @@ describe('useAppPrompts · Auditoría General', () => {
     );
   });
 
+  test('una ruta «.» tampoco cuenta como proyecto: auditaría el cwd del servidor', () => {
+    const opts = baseOpts({ activeTab: { projectPath: '.' } });
+    const { getByText } = render(<Probe opts={opts} />);
+
+    fireEvent.click(getByText('auditar'));
+
+    expect(opts.onAuditStart).not.toHaveBeenCalled();
+    expect(opts.setProjectToast).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'err' })
+    );
+  });
+
   test('en alemán usa el prompt alemán', () => {
     const opts = baseOpts({ lang: 'de', activeTab: { projectPath: 'C:/x/demo' } });
     const { getByText } = render(<Probe opts={opts} />);
