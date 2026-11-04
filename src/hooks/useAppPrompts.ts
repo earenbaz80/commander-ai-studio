@@ -8,8 +8,12 @@ export interface AppPromptsOptions {
   lang: string;
   tabs: any;
   setMode: (mode: StudioMode) => void;
-  handleSendMessage: (prompt: string, attachments: any[]) => Promise<void>;
-  setIsAuditing: (auditing: boolean) => void;
+  /**
+   * Arranca una corrida del agente con ese objetivo.
+   * La auditoría pide herramientas (fs.*, read_diagnostics, shell.run), así que
+   * tiene que ir por el bucle del agente y no por el chat simple.
+   */
+  onAuditStart: (prompt: string) => void;
   currentSessionId: React.MutableRefObject<string>;
   setPromptTitle: (title: string) => void;
   setNonoStatus: (status: any) => void;
@@ -18,7 +22,7 @@ export interface AppPromptsOptions {
 export function useAppPrompts(opts: AppPromptsOptions) {
   const {
     activeTab, setProjectToast, lang, tabs, setMode,
-    handleSendMessage, setIsAuditing, currentSessionId,
+    onAuditStart, currentSessionId,
     setPromptTitle, setNonoStatus,
   } = opts;
 
@@ -27,14 +31,11 @@ export function useAppPrompts(opts: AppPromptsOptions) {
       setProjectToast({ kind: 'err', text: lang === 'es' ? 'Selecciona un proyecto primero' : lang === 'de' ? 'Wähle zuerst ein Projekt aus' : 'Select a project first' });
       return;
     }
-    setIsAuditing(true);
     const prompt = buildAuditPrompt(activeTab.projectPath, lang as 'es' | 'en');
     tabs.updateTab({ mode: 'agent' });
     setMode('agent');
-    setTimeout(() => {
-      handleSendMessage(prompt, []).finally(() => setIsAuditing(false));
-    }, 60);
-  }, [activeTab, setProjectToast, lang, tabs, setMode, handleSendMessage, setIsAuditing]);
+    onAuditStart(prompt);
+  }, [activeTab, setProjectToast, lang, tabs, setMode, onAuditStart]);
 
   const handleNewChat = useCallback(() => {
     const sessionId = `sess-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;

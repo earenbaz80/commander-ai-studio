@@ -227,17 +227,17 @@ export const TabBar: React.FC<TabBarProps> = ({
         )}
       </div>
 
-      {/* Audición General */}
+      {/* Auditoría General */}
       <button
         onClick={onGeneralAudit}
         disabled={auditing}
         className="nc-button !px-2 !py-1 shrink-0 flex items-center gap-1.5 bg-[#aa00aa] text-white font-bold hover:bg-[#ff00ff] disabled:opacity-60 disabled:cursor-wait border-[#ff00ff]"
         title={lang === 'es'
-          ? 'Audición General: revisión completa del proyecto activo (bugs, seguridad, deuda técnica)'
+          ? 'Auditoría General: revisión completa del proyecto activo (bugs, seguridad, deuda técnica)'
           : lang === 'de' ? 'Allgemeine Prüfung: vollständige Überprüfung des aktiven Projekts' : 'General audit: full review of the active project'}
       >
         {auditing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Stethoscope className="w-3.5 h-3.5" />}
-        <span className="text-[11px] font-mono hidden md:inline">Audición General</span>
+        <span className="text-[11px] font-mono hidden md:inline">Auditoría General</span>
       </button>
     </div>
   );

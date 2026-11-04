@@ -265,9 +265,8 @@ export default function App() {
   const tabs = useTabs();
   const [serverSessions, setServerSessions] = useState<any[]>([]);
   const [paletteFiles, setPaletteFiles] = useState<string[]>([]);
-  const [agentGoalRequest, setAgentGoalRequest] = useState<{ text: string; nonce: number } | null>(null);
+  const [agentGoalRequest, setAgentGoalRequest] = useState<{ text: string; nonce: number; autoStart?: boolean } | null>(null);
   const [agentRoots, setAgentRoots] = useState<AgentRoot[]>([]);
-  const [isAuditing, setIsAuditing] = useState(false);
 
   /** Convierte los mensajes persistidos (SQLite) al formato del chat. */
   const toChatMessages = useCallback((msgs: any[]) =>
@@ -583,7 +582,7 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectToast]);
 
-  /** Audición General: lanza el agente en modo chat sobre el proyecto activo. */
+  /** Auditoría General: lanza el agente en modo chat sobre el proyecto activo. */
 
 
   // Handle Selecting and Restoring Session from History (dentro de la pestaña activa)
@@ -1105,6 +1104,12 @@ export default function App() {
     }
   };
 
+  /** «Auditoría General»: arranca el agente con el prompt de auditoría. */
+  const handleAuditStart = useCallback((prompt: string) => {
+    setAgentGoalRequest({ text: prompt, nonce: Date.now(), autoStart: true });
+    setMode('agent');
+  }, [setMode]);
+
   // handleGeneralAudit and handleNewChat
   const { handleGeneralAudit, handleNewChat } = useAppPrompts({
     activeTab,
@@ -1112,8 +1117,7 @@ export default function App() {
     lang,
     tabs,
     setMode,
-    handleSendMessage,
-    setIsAuditing,
+    onAuditStart: handleAuditStart,
     currentSessionId,
     setPromptTitle,
     setNonoStatus,
@@ -1266,7 +1270,7 @@ export default function App() {
         onCreateProject={handleCreateProject}
         onRemoveProject={handleRemoveProject}
         onGeneralAudit={handleGeneralAudit}
-        auditing={isAuditing}
+        auditing={agent.state.running}
         lang={lang as any}
         isolateSessions={isolateSessions}
         onToggleIsolate={() => setIsolateSessions((v) => !v)}
