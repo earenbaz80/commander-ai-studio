@@ -1849,6 +1849,17 @@ export async function executeAgentTool(
     return { ok: true, data: { results: out, spawned: capped.length, capped: agents.length > 6 } };
   }
 
+  // `ask_user` necesita la UI del chat: sin usuario al otro lado no hay a
+  // quién preguntar, así que el servidor lo rechaza con un motivo claro en
+  // vez de caer en el "Tool desconocida" genérico.
+  if (toolId === 'ask_user') {
+    return {
+      ok: false,
+      error: 'ask_user sólo está disponible en el chat: esta corrida no tiene usuario al otro lado',
+      status: 400,
+    };
+  }
+
   if (toolId === 'skill') {
     const name = String(input?.name || input?.skill || '').trim();
     if (!name) return { ok: false, error: 'name requerido', status: 400 };

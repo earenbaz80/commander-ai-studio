@@ -194,6 +194,7 @@ Ejecuta una tool del agente en el servidor.
 - `shell.run` — Ejecutar comando shell (requiere aprobación según allowlist/denylist); `cwd` corre en un subdirectorio, `allowUnlisted` ejecuta fuera de la allowlist tras aprobación e `interactive` abre stdin para `shell.job`
 - `shell.job` — Trabajos en segundo plano: `list`, `logs`, `read` (salida nueva desde un cursor), `write` (stdin del proceso interactivo) y `stop`
 - `shell.pty` — Sesión interactiva persistente (proceso real con TTY): `open` abre un ejecutable con `args` en array y devuelve `id`; `read` devuelve sólo la salida nueva desde un `cursor`; `write` manda texto al stdin; `resize` cambia filas/columnas; `close` la termina; `list` lista las abiertas. Sin shell ni pipes de por medio: el ejecutable se valida, el `cwd` vive dentro del proyecto y `open`/`close` piden aprobación
+- `ask_user` — Pregunta al usuario y espera respuesta: `question` (obligatorio), `header`, `options` (máx. 6) y `allowFreeText`. La corrida queda en pausa hasta que respondes y el texto vuelve como resultado de la tool.
 - `read_diagnostics` — Leer diagnósticos de TypeScript
 - `task` — Lanzar sub-tarea
 - `git.status` / `git.diff` / `git.log` / `git.commit` — Operaciones git
@@ -247,6 +248,8 @@ Crea un nuevo proyecto.
 - **Path Traversal**: Todas las rutas de fs.* se validan contra la allowlist de proyectos
 - **shell.run**: Allowlist de comandos seguros + denylist de peligrosos (fail-safe)
 - **shell.pty**: Ejecutable + argv (sin shell), lista negra de binarios, `cwd` validado y sesiones ligadas a su agente
+- **ask_user**: Sólo transporta texto; no toca el workspace y la pregunta siempre pasa por el modal (nunca se autocompleta).
+- **Reglas de permisos por patrón**: `shell.run`, `fs.write`/`fs.edit` y `fs.propose.*` aceptan reglas `allow`/`ask`/`deny` con `*` como comodín, y gana la última que coincide. `allow` ejecuta sin modal, `deny` bloquea antes de ejecutar y `ask` fuerza el modal; viven en el `localStorage` de la máquina, no en el repo.
 - **API Keys**: Se envían por HTTPS al servidor embebido, nunca expuestas al público
 - **Electron**: `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`
 

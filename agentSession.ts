@@ -134,8 +134,11 @@ async function callLlmNative(
     baseURL: cfg.keys?.CUSTOM_BASE_URL || undefined,
     apiKey: cfg.keys?.CUSTOM_API_KEY || cfg.keys?.OPENCODE_API_KEY || undefined,
   };
-  if (dialect === 'gemini') payload.tools = [{ functionDeclarations: AGENT_FUNCTION_DECLARATIONS }];
-  else payload.tools = toOpenAITools();
+  // La sesión corre en el servidor, sin usuario al otro lado: `ask_user` no
+  // puede resolverse aquí y no se le ofrece al modelo.
+  const declarations = AGENT_FUNCTION_DECLARATIONS.filter((d) => d.name !== 'ask_user');
+  if (dialect === 'gemini') payload.tools = [{ functionDeclarations: declarations }];
+  else payload.tools = toOpenAITools(declarations);
 
   const res = await fetch(`${getServerBaseUrl()}${route}`, {
     method: 'POST',

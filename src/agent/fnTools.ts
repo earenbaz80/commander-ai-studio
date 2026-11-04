@@ -356,6 +356,20 @@ export const AGENT_FUNCTION_DECLARATIONS = [
     parameters: { type: 'OBJECT', properties: { server: { type: 'STRING', description: 'Nombre del servidor MCP local (registro commander.json)' }, serverUrl: { type: 'STRING', description: 'URL del servidor MCP remoto (alternativa a server)' }, tool: { type: 'STRING', description: 'Nombre de la tool a invocar' }, args: { type: 'OBJECT', description: 'Argumentos de la tool' } }, required: ['tool'] },
   },
   {
+    name: 'ask_user',
+    description: 'Preguntar al usuario y esperar su respuesta. Úsalo cuando falte un dato que no puedes deducir del repo ni del objetivo. Con options ofrece alternativas clicables.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        question: { type: 'STRING', description: 'Pregunta concreta, en una frase' },
+        header: { type: 'STRING', description: 'Título corto para el modal' },
+        options: { type: 'ARRAY', description: 'Alternativas para elegir (máx 6)', items: { type: 'STRING' } },
+        allowFreeText: { type: 'BOOLEAN', description: 'Permitir además escribir la respuesta (por defecto true)' },
+      },
+      required: ['question'],
+    },
+  },
+  {
     name: 'update_plan',
     description: 'Actualizar el plan visible de la tarea. Envía la lista completa de pasos en orden y marca done:true los terminados (o manda sólo {id, done} para cambiar el estado de un paso ya listado). No ejecuta nada en el workspace: sólo refleja el progreso.',
     parameters: {
@@ -387,7 +401,7 @@ const FN_TO_TOOL: Record<string, string> = {
   task: 'task', spawn_agents: 'spawn_agents', skill: 'skill',
   git_status: 'git.status', git_diff: 'git.diff', git_log: 'git.log', git_commit: 'git.commit', git_worktree: 'git.worktree', git_rebase: 'git.rebase', git_conflict: 'git.conflict',
   web_fetch: 'web.fetch', web_search: 'web.search', code_run: 'code.run', run_file_change_hooks: 'run_file_change_hooks', worktree_create: 'worktree.create',
-  mcp_call: 'mcp.call',
+  mcp_call: 'mcp.call', ask_user: 'ask_user',
 };
 
 export function mapFunctionCall(name: string, args: any): { tool: string; input: unknown } | null {

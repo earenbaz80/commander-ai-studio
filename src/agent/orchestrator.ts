@@ -1,4 +1,5 @@
 import { uid } from './id';
+import { decide } from './permissionRules';
 import type {
   AgentState,
   OrchestratorOptions,
@@ -150,7 +151,15 @@ export class AgentOrchestrator {
     let effectiveTool: any = tool;
     let effectiveInput: unknown = input;
 
-    const requires = tool.requiresApproval(input, this.ctx);
+    // Reglas por patrón: `deny` bloquea sin preguntar, `allow` ejecuta sin
+    // modal y `ask` fuerza el modal aunque la tool no lo pidiera.
+    const rule = decide(toolId, input);
+    if (rule === 'deny') {
+      this.recordFailed('tool_call', toolId, 'Bloqueado por regla de permisos', input);
+      return { ok: false, error: `Bloqueado por regla de permisos (${toolId})` };
+    }
+    const requires =
+      rule === 'allow' ? false : rule === 'ask' ? true : tool.requiresApproval(input, this.ctx);
     if (requires) {
       const req: any = {
         id: uid('step'),
@@ -158,7 +167,7 @@ export class AgentOrchestrator {
         title: `Aprobar ${tool.id}`,
         description: tool.description,
         danger: tool.danger,
-        meta: { input },
+        meta: { input, ...(tool.approvalMeta ? tool.approvalMeta(input) : {}) },
       };
       const res = await this.ctx.approve(req);
       if (!res.approved) {

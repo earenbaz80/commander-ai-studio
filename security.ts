@@ -58,6 +58,9 @@ export const AGENT_TOOLS = new Set([
   'git.status', 'git.diff', 'git.log', 'git.commit',
   'git.worktree', 'git.rebase', 'git.conflict',
   'worktree.create',
+  // Vive en el cliente (pregunta al usuario por el modal), pero el id está
+  // aquí para que el gestor de permisos y run-tool lo conozcan.
+  'ask_user',
 ]);
 
 // ── Rutas sensibles: nunca se leen ni se buscan ──
