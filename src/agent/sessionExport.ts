@@ -7,6 +7,9 @@ import type { AgentStep } from './types';
  * JSON: tarea, ficheros tocados y, por cada paso, qué hizo, sobre qué y con qué
  * resultado. El input/output crudo se conserva en bloques JSON porque a veces
  * es lo único que explica un fallo.
+ *
+ * Este módulo es puro (ni `document` ni `Blob`) para que la suite de lógica
+ * pueda probarlo; la descarga en el navegador vive en `sessionDownload.ts`.
  */
 export interface ExportableRun {
   task?: string;
@@ -78,15 +81,4 @@ export function sessionToMarkdown(run: ExportableRun, title = 'Sesión del agent
 export function sessionFileName(prefix = 'sesion-agente'): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   return prefix + '-' + stamp + '.md';
-}
-
-/** Descarga la corrida como `.md` (navegador/Electron). */
-export function downloadSessionMarkdown(run: ExportableRun): void {
-  const blob = new Blob([sessionToMarkdown(run)], { type: 'text/markdown;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = sessionFileName();
-  link.click();
-  URL.revokeObjectURL(url);
 }

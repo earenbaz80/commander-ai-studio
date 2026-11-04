@@ -503,7 +503,7 @@ export const AgentMode: React.FC<AgentModeProps> = ({
             type="button"
             onClick={async () => {
               // Carga diferida: el serializador sólo hace falta al exportar.
-              const { downloadSessionMarkdown } = await import('../agent/sessionExport');
+              const { downloadSessionMarkdown } = await import('../agent/sessionDownload');
               downloadSessionMarkdown({
                 task: typeof state.task === 'string' ? state.task : '',
                 steps: state.steps,
