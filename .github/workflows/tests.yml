@@ -105,6 +105,35 @@ jobs:
           path: dist/
           retention-days: 7
 
+  # Empaquetado real, sin instalar nada: `--dir` corre el mismo pipeline que una
+  # release (asar, extraResources, módulos nativos) pero no genera instaladores
+  # ni publica. Es el paso que se rompió con node-pty: electron-builder intentó
+  # recompilarlo con node-gyp y el build falló sin que ningún test lo notara.
+  package:
+    name: Package (Electron, --dir)
+    needs: lint-and-test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Sin scripts: no hacen falta los binarios de Electron para compilar, y
+      # electron-builder se baja su propia copia al empaquetar.
+      - run: npm ci --ignore-scripts
+
+      - name: Build web
+        run: npm run build
+
+      - name: Build server bundles
+        run: npm run build:server
+
+      - name: Empaquetar (electron-builder --dir)
+        run: npx electron-builder --win --x64 --dir
+
   e2e:
     name: E2E Tests (Playwright)
     needs: build
