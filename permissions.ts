@@ -148,7 +148,7 @@ function canonical(root: string): string {
  * código, y el usuario tendría que adivinar qué tool nueva le falta.
  * `code.fix` NO está: escribe, y esa decisión sí es del usuario.
  */
-const CORE_TOOLS = ['task', 'read_diagnostics', 'code.analyze', 'code.refactor', 'fs.propose.write', 'fs.propose.edit'];
+const CORE_TOOLS = ['task', 'read_diagnostics', 'code.analyze', 'code.refactor', 'fs.list', 'fs.propose.write', 'fs.propose.edit'];
 
 /** Rellena valores por defecto y valida la estructura. */
 export function normalizePermissions(input: unknown): Permissions {

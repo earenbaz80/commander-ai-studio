@@ -189,6 +189,7 @@ Ejecuta una tool del agente en el servidor.
 - `fs.write` — Crear/reescribir archivo (requiere aprobación)
 - `fs.edit` — Editar archivo (requiere aprobación)
 - `fs.glob` — Buscar archivos por patrón
+- `fs.list` — Listar un directorio con tipo y tamaño (no requiere aprobación)
 - `fs.grep` — Buscar texto en archivos
 - `shell.run` — Ejecutar comando shell (requiere aprobación según allowlist/denylist)
 - `read_diagnostics` — Leer diagnósticos de TypeScript

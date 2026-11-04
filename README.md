@@ -13,7 +13,7 @@ Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos
 
 - Sidebar → **Modo Agente**. Describe tarea → INICIAR TAREA.
 - Tools (vía `POST /api/agent/run-tool`,Rate-limit 60/min):
-  - `fs.read/write/edit/glob/grep`, `shell.run` (allowlist), `web.fetch/search`, `code.run` (vm sandbox), `mcp.call/list`.
+  - `fs.read/write/edit/glob/list/grep`, `shell.run` (allowlist), `web.fetch/search`, `code.run` (vm sandbox), `mcp.call/list`.
   - `code.analyze` / `code.refactor` / `code.fix`: análisis, renombrado y formateo **sin modelo** (ver [Análisis nativo](#análisis-nativo-sin-modelo)).
 - `danger=true` pide aprobación con diff preview (`fs.edit/write`).
 - Reglas repo: `AGENTS.md`, `.cursorrules`, `CLAUDE.md` se inyectan al prompt.

@@ -64,16 +64,26 @@ export const fsWriteTool: ToolDefinition<FsWriteInput, FsWriteOutput> = {
   run: async (input) => callServer('fs.write', input),
 };
 
-export interface FsEditInput {
-  path: string;
+export interface FsEditReplacement {
   oldString: string;
   newString: string;
   replaceAll?: boolean;
 }
 
+export interface FsEditInput {
+  path: string;
+  oldString?: string;
+  newString?: string;
+  replaceAll?: boolean;
+  /** Varias ediciones atómicas sobre el mismo archivo, aplicadas en orden. */
+  replacements?: FsEditReplacement[];
+}
+
 export interface FsEditOutput {
   path: string;
   replaced: number;
+  /** Número de ediciones aplicadas (1 con oldString/newString). */
+  edits?: number;
 }
 
 export const fsEditTool: ToolDefinition<FsEditInput, FsEditOutput> = {
@@ -189,6 +199,41 @@ export const fsProposeEditTool: ToolDefinition<FsProposeEditInput, FsProposeEdit
   danger: false,
   requiresApproval: () => false,
   run: async (input) => callServer('fs.propose.edit', input),
+};
+
+export interface FsListInput {
+  /** Ruta relativa al workspace; por defecto, la raíz. */
+  path?: string;
+  /** Niveles a recorrer (1-3). */
+  depth?: number;
+  /** Tope de entradas (1-500). */
+  limit?: number;
+  /** Incluir archivos y carpetas ocultos. */
+  all?: boolean;
+}
+
+export interface FsListEntry {
+  /** Ruta relativa a la raíz del workspace, con separadores `/`. */
+  path: string;
+  type: 'dir' | 'file';
+  size?: number;
+}
+
+export interface FsListOutput {
+  path: string;
+  entries: FsListEntry[];
+  total: number;
+  depth: number;
+  truncated: boolean;
+  hint?: string;
+}
+
+export const fsListTool: ToolDefinition<FsListInput, FsListOutput> = {
+  id: 'fs.list',
+  description: 'Listar un directorio del workspace con tipo y tamaño (vía servidor).',
+  danger: false,
+  requiresApproval: () => false,
+  run: async (input) => callServer('fs.list', input),
 };
 
 export const fsGlobTool: ToolDefinition<FsGlobInput, FsGlobOutput> = {
