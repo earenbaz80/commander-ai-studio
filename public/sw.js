@@ -1,5 +1,5 @@
 // Commander AI Studio - Service Worker
-// Version: 2.5.0 (Offline Cache & Core UI Templates Engine)
+// Version: 2.5.1 (Offline Cache & Core UI Templates Engine)
 
 const CACHE_NAME = 'commander-ai-studio-cache-v2';
 
