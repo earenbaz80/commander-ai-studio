@@ -419,6 +419,27 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
             </div>
           ))
         )}
+        {/* Actividad en curso: el botón ya dice Detener, así que la señal de que
+            algo está pasando vive aquí, en el propio chat. */}
+        {isGenerating && (
+          <div
+            role="status"
+            aria-live="polite"
+            data-testid="chat-activity"
+            className="flex items-center gap-2 px-1 text-[11px] font-mono text-[var(--nc-text-accent)] select-none"
+          >
+            <span
+              aria-hidden
+              className="inline-block w-2 h-3 bg-[var(--nc-text-accent)] animate-pulse"
+            />
+            <span>{lang === 'es' ? 'Procesando' : lang === 'de' ? 'Verarbeite' : 'Processing'}</span>
+            <span aria-hidden className="flex gap-0.5">
+              <span className="animate-pulse">.</span>
+              <span className="animate-pulse [animation-delay:200ms]">.</span>
+              <span className="animate-pulse [animation-delay:400ms]">.</span>
+            </span>
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
