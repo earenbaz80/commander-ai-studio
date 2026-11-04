@@ -2401,7 +2401,7 @@ app.post('/api/lmstudio/models', async (req, res) => {
 
 app.post('/api/lmstudio/generate', async (req, res) => {
   try {
-    const { prompt, model, systemInstruction = '', temperature = 0.7, maxTokens = 2048, host: bodyHost } = req.body || {};
+    const { prompt, model, systemInstruction = '', temperature = 0.7, maxTokens = 2048, host: bodyHost, tools, toolChoice } = req.body || {};
     const host = lmstudioHost(req, bodyHost);
     const target = model
       ? String(model).replace(/^lmstudio\//, '')
@@ -2413,6 +2413,10 @@ app.post('/api/lmstudio/generate', async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: target,
+        // Tool-calling: LM Studio habla Chat Completions, pero si no se reenvían
+        // las `tools` el agente recibe texto sin toolCalls y se para en el
+        // primer paso. El bucle del agente manda aquí el esquema completo.
+        ...(Array.isArray(tools) && tools.length > 0 ? { tools, tool_choice: toolChoice || 'auto' } : {}),
         messages: [
           ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
           { role: 'user', content: prompt || '' },
@@ -2431,6 +2435,25 @@ app.post('/api/lmstudio/generate', async (req, res) => {
     return res.json({
       success: true,
       text: data.choices?.[0]?.message?.content || '',
+      // Mismo formato que los handlers de OpenAI/NVIDIA: `src/agent/llm.ts` lee
+      // `toolCalls` con { name, args }, y LM Studio las devuelve como
+      // `tool_calls[].function.arguments` en texto JSON.
+      ...(() => {
+        const message = data.choices?.[0]?.message || {};
+        const calls = (Array.isArray(message.tool_calls) ? message.tool_calls : [])
+          .map((tc: any) => {
+            const fn = tc?.function || {};
+            let args: Record<string, unknown> = {};
+            try {
+              args = typeof fn.arguments === 'string' ? JSON.parse(fn.arguments) : fn.arguments || {};
+            } catch {
+              args = {};
+            }
+            return { id: tc?.id, name: fn.name, args };
+          })
+          .filter((tc: any) => typeof tc.name === 'string' && tc.name.length > 0);
+        return calls.length > 0 ? { toolCalls: calls } : {};
+      })(),
       metrics: {
         promptTokens: data.usage?.prompt_tokens || 0,
         responseTokens: data.usage?.completion_tokens || 0,

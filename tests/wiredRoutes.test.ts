@@ -26,6 +26,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import http from 'node:http';
 import { startServer, type ServerHarness } from './helpers/serverHarness.js';
 
 let srv: ServerHarness;
@@ -167,4 +168,48 @@ test('/api/xai/generate no cae en el index.html de la SPA', async (t) => {
   assert.ok(res.body, 'la ruta existe: no debe volver el HTML de la SPA');
   assert.equal(res.body.ok, false);
   assert.match(String(res.body.error), /XAI_API_KEY/);
+});
+
+test('/api/lmstudio/generate reenvía las tools y traduce las tool_calls', async () => {
+  // LM Studio remoto simulado. Sin este contrato el agente que usa
+  // `lmstudio/<modelo>` recibe texto sin toolCalls y se detiene en el primer
+  // paso: la auditoría «gratis» no leería ni un fichero.
+  const recibido: any[] = [];
+  const fake = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (chunk) => { raw += chunk; });
+    req.on('end', () => {
+      recibido.push(JSON.parse(raw || '{}'));
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({
+        choices: [{
+          message: {
+            content: 'Voy a leer el README',
+            tool_calls: [{ id: 'c1', function: { name: 'fs_read', arguments: '{"path":"README.md"}' } }],
+          },
+        }],
+      }));
+    });
+  });
+  await new Promise<void>((resolve) => fake.listen(0, '127.0.0.1', () => resolve()));
+  const { port } = fake.address() as any;
+
+  try {
+    const res = await srv.request('POST', '/api/lmstudio/generate', {
+      prompt: 'hola',
+      model: 'lmstudio/qwen2.5-7b',
+      host: `http://127.0.0.1:${port}`,
+      tools: [{ type: 'function', function: { name: 'fs_read' } }],
+    });
+
+    assert.equal(res.status, 200, res.raw);
+    assert.equal(res.body.success, true);
+    assert.equal(res.body.text, 'Voy a leer el README');
+    assert.deepEqual(res.body.toolCalls, [{ id: 'c1', name: 'fs_read', args: { path: 'README.md' } }]);
+    assert.equal(recibido[0].model, 'qwen2.5-7b');
+    assert.equal(recibido[0].tools?.length, 1, 'sin tools el modelo no puede pedir fs.read');
+    assert.equal(recibido[0].tool_choice, 'auto');
+  } finally {
+    fake.close();
+  }
 });
