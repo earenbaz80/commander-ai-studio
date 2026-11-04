@@ -144,12 +144,17 @@ export class AgentLoop {
     // El contador vive en el loop, que se reutiliza entre corridas del mismo
     // modelo: sin reiniciarlo, una corrida nueva hereda los fallos de la anterior.
     this.noProgressSteps = 0;
-    void (async () => {
-      try {
-        await serverPersistence.createThread({ id: task.id, projectPath: task.cwd, title: task.goal.slice(0, 80), model: this.model });
-        await serverPersistence.appendMessage(task.id, { requestId: `goal-${task.id}`, role: 'user', parts: { goal: task.goal, cwd: task.cwd }, ts: Date.now() });
-      } catch { /* ignore */ }
-    })();
+    // Sin hilo propio cuando la corrida ya pertenece a una conversación (la
+    // auditoría del chat): crear uno por corrida llenaba el historial de sesiones
+    // tituladas con el prompt entero, una por pulsación.
+    if (task.persistThread !== false) {
+      void (async () => {
+        try {
+          await serverPersistence.createThread({ id: task.id, projectPath: task.cwd, title: task.goal.slice(0, 80), model: this.model });
+          await serverPersistence.appendMessage(task.id, { requestId: `goal-${task.id}`, role: 'user', parts: { goal: task.goal, cwd: task.cwd }, ts: Date.now() });
+        } catch { /* ignore */ }
+      })();
+    }
     // Pre-vuelo ANTES de orchestrator.start() (que reinicia el log de steps).
     const { rules, mcpParts } = await this.prepare();
     this.orchestrator.start(task, task.plan);
@@ -265,7 +270,7 @@ export class AgentLoop {
     const cap = role === 'user' ? RESULT_TURN_CHARS : TURN_CHARS;
     this.turns.push({ role, text: clipMiddle(text, cap) });
     // Persistencia durable (fire-and-forget).
-    if (this.task) {
+    if (this.task && this.task.persistThread !== false) {
       void serverPersistence.appendMessage(this.task.id, { role, parts: { text: clipMiddle(text, cap) }, ts: Date.now() }).catch(() => { /* ignore */ });
     }
     // Puerta dura: solo compactamos cuando el contexto supera el 80% de la

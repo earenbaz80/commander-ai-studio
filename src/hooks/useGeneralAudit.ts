@@ -17,7 +17,7 @@ import type { AgentStep as ChatStep, ChatMessage, StudioMode } from '../types/st
 export interface GeneralAuditOptions {
   state: AgentState;
   /** Arranca una corrida del agente y devuelve el id de la tarea. */
-  startTask: (goal: string) => string;
+  startTask: (goal: string, plan?: undefined, opts?: { persistThread?: boolean }) => string;
   /** Detiene la corrida en curso (botón Detener). */
   stopTask?: () => void;
   /** Retoma la corrida detenida conservando pasos y plan. */
@@ -88,7 +88,10 @@ export function useGeneralAudit(opts: GeneralAuditOptions) {
       setIsGenerating(true);
       stopped.current = false;
       setCanResume(false);
-      const taskId = startTask(prompt);
+      // La corrida no abre hilo propio: la conversación (y su hilo del servidor)
+      // es la de esta pestaña. Antes cada auditoría añadía una sesión más al
+      // historial, titulada con el prompt entero.
+      const taskId = startTask(prompt, undefined, { persistThread: false });
       run.current = { taskId, messageId: id };
       last.current = { taskId, messageId: id };
     },

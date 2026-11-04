@@ -456,3 +456,32 @@ test('el contador de pasos sin progreso se reinicia en cada corrida', async () =
   assert.ok(termino, 'la corrida nueva debe llegar al final, no cortarse por fallos viejos');
   assert.equal(cortes(), 1, 'el corte no debe repetirse en la corrida nueva');
 });
+
+// ── Historial: la auditoría del chat no abre hilo propio ──
+
+test('persistThread:false no abre hilo en el servidor', async () => {
+  // Cada auditoría lanzada desde el chat creaba una sesión más en el historial,
+  // titulada con el prompt entero. La conversación ya es la de la pestaña.
+  const original = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = (async (url: any) => {
+    urls.push(String(url));
+    return { ok: false, json: async () => ({}) } as any;
+  }) as any;
+  try {
+    const sinHilo = createLoop('gemini-2.0-flash');
+    await sinHilo.loop.start({ id: 'task-audit', goal: 'auditar', cwd: '.', maxSteps: 3, persistThread: false });
+    await waitFor(() => urls.length > 0, 2000);
+    sinHilo.loop.stop();
+    assert.equal(urls.filter((u) => u.includes('/api/threads')).length, 0, 'la auditoría no debe abrir sesión');
+
+    urls.length = 0;
+    const conHilo = createLoop('gemini-2.0-flash');
+    await conHilo.loop.start({ id: 'task-agente', goal: 'arreglar', cwd: '.', maxSteps: 3 });
+    await waitFor(() => urls.some((u) => u.includes('/api/threads')), 2000);
+    conHilo.loop.stop();
+    assert.ok(urls.some((u) => u.includes('/api/threads')), 'una corrida normal sí registra su hilo');
+  } finally {
+    globalThis.fetch = original;
+  }
+});

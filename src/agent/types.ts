@@ -119,6 +119,13 @@ export interface AgentTask {
   maxSteps: number;
   /** Plan de ejecución (opcional, para sincronizar UI con orquestador). */
   plan?: Array<{ id: string; text: string; done: boolean }>;
+  /**
+   * `false` = la corrida no crea hilo propio en el historial del servidor.
+   * Lo usa la auditoría lanzada desde el chat: su conversación ya vive en la
+   * pestaña (cuyo `sessionId` es el hilo) y antes cada pulsación dejaba una
+   * sesión nueva titulada con el prompt entero.
+   */
+  persistThread?: boolean;
 }
 
 export interface AgentState {
