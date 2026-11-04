@@ -10,7 +10,7 @@
  *
  * El endpoint es el mismo que usa el chat para ese modelo (`resolveEndpoint`),
  * no uno fijo: preguntar por otra vía mediría algo que el usuario nunca va a
- * ejecutar, y con un id de Freebuff u otro proveedor la sonda ni acertaría el
+ * ejecutar, y con un id de otro proveedor la sonda ni acertaría el
  * handler.
  */
 import { resolveEndpoint } from './aiProviders';

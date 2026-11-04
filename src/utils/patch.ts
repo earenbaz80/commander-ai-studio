@@ -3,7 +3,7 @@
  *
  * Compara el contenido actual de un archivo con la propuesta de la IA y
  * permite reconstruir el archivo aplicando sólo los hunks que el usuario
- * acepte, igual que hace Cursor antes de escribir en disco.
+ * acepte antes de escribir en disco.
  *
  * Es 100 % determinista y sin dependencias: útil también en tests de Node.
  */
