@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { buildAuditPrompt } from '../data/auditPrompts';
+import { buildAuditPrompt, hasProjectPath } from '../data/auditPrompts';
 
 export interface AppPromptsOptions {
   activeTab: any;
@@ -25,8 +25,18 @@ export function useAppPrompts(opts: AppPromptsOptions) {
   } = opts;
 
   const handleGeneralAudit = useCallback(() => {
-    if (!activeTab?.projectPath) {
-      setProjectToast({ kind: 'err', text: lang === 'es' ? 'Selecciona un proyecto primero' : lang === 'de' ? 'Wähle zuerst ein Projekt aus' : 'Select a project first' });
+    // Sin proyecto real no hay nada que auditar: con «.» o vacío el agente
+    // leería el cwd del servidor y el informe hablaría de otro sitio.
+    if (!hasProjectPath(activeTab?.projectPath)) {
+      setProjectToast({
+        kind: 'err',
+        text:
+          lang === 'es'
+            ? 'Elige, añade o crea un proyecto antes de lanzar la auditoría'
+            : lang === 'de'
+              ? 'Wähle, füge hinzu oder erstelle zuerst ein Projekt'
+              : 'Pick, add or create a project before running the audit',
+      });
       return;
     }
     onAuditStart(buildAuditPrompt(activeTab.projectPath, lang as 'es' | 'en'));

@@ -116,6 +116,7 @@ import {
   RunMode
 } from './types/studio';
 import { HUGGINGFACE_MODELS } from './data/models';
+import { hasProjectPath } from './data/auditPrompts';
 
 export default function App() {
   const chat = useChatStore();
@@ -1135,6 +1136,9 @@ export default function App() {
     lang,
   });
 
+  /** Sin proyecto real la auditoría no tiene destino: el botón queda apagado. */
+  const canAudit = hasProjectPath(activeTab?.projectPath);
+
   /** Botón Detener: corta la respuesta del chat y, si hay auditoría, el agente. */
   const handleStopGeneration = useCallback(() => {
     chatAbortRef.current?.abort();
@@ -1303,6 +1307,7 @@ export default function App() {
         onRemoveProject={handleRemoveProject}
         onGeneralAudit={handleGeneralAudit}
         auditing={agent.state.running}
+        canAudit={canAudit}
         lang={lang as any}
         isolateSessions={isolateSessions}
         onToggleIsolate={() => setIsolateSessions((v) => !v)}
