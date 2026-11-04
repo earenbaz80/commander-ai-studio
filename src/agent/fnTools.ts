@@ -122,6 +122,25 @@ export const AGENT_FUNCTION_DECLARATIONS = [
     },
   },
   {
+    name: 'shell_pty',
+    description: 'Sesion PTY persistente (proceso interactivo real, ve un TTY): open abre un ejecutable con argumentos en array y devuelve id; read devuelve solo la salida nueva desde un cursor; write manda texto al stdin; resize cambia filas/columnas; close la termina; list las abiertas. Sin pipes ni shell de por medio: el ejecutable se valida y el cwd vive dentro del proyecto.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', enum: ['open', 'read', 'write', 'resize', 'close', 'list'], description: 'Accion a ejecutar' },
+        id: { type: 'STRING', description: 'Id de la sesion (read/write/resize/close)' },
+        executable: { type: 'STRING', description: 'Programa a abrir, p. ej. node, python, npm (sin argumentos en el nombre)' },
+        args: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Argumentos del programa, uno por elemento' },
+        cwd: { type: 'STRING', description: 'Directorio de trabajo, relativo al workspace (por defecto la raiz)' },
+        cols: { type: 'NUMBER', description: 'Columnas iniciales del PTY (2-500)' },
+        rows: { type: 'NUMBER', description: 'Filas iniciales del PTY (1-300)' },
+        data: { type: 'STRING', description: 'Texto a escribir en el stdin (write)' },
+        cursor: { type: 'NUMBER', description: 'Cursor devuelto por el read anterior (read)' },
+      },
+      required: ['action'],
+    },
+  },
+  {
     name: 'browser',
     description: 'Navegador headless (Chromium). open: abre sesión (url opcional). navigate: va a una url http/https. snapshot: devuelve la página como árbol de texto con un uid por elemento (e1, e2…). click/type/press: actúan sobre el uid del ÚLTIMO snapshot; si la página cambia hay que volver a leerla. scroll: desplaza dy/dx px. screenshot: guarda un PNG (path opcional dentro del proyecto). logs: errores de consola y peticiones fallidas. close: cierra la sesión. list: sesiones abiertas.',
     parameters: {
@@ -362,7 +381,7 @@ export const AGENT_FUNCTION_DECLARATIONS = [
 
 const FN_TO_TOOL: Record<string, string> = {
   fs_read: 'fs.read', fs_write: 'fs.write', fs_edit: 'fs.edit', fs_propose_write: 'fs.propose.write', fs_propose_edit: 'fs.propose.edit',
-  fs_glob: 'fs.glob', fs_list: 'fs.list', fs_grep: 'fs.grep', shell_run: 'shell.run', shell_job: 'shell.job',
+  fs_glob: 'fs.glob', fs_list: 'fs.list', fs_grep: 'fs.grep', shell_run: 'shell.run', shell_job: 'shell.job', shell_pty: 'shell.pty',
   browser: 'browser', preview: 'preview',
   read_diagnostics: 'read_diagnostics', code_analyze: 'code.analyze', code_refactor: 'code.refactor', code_fix: 'code.fix',
   task: 'task', spawn_agents: 'spawn_agents', skill: 'skill',

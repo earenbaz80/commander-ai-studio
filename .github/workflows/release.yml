@@ -33,6 +33,10 @@ jobs:
       - name: Build server bundles
         run: npm run build:server
 
+      # El updater viaja bundleado (el asar no lleva node_modules).
+      - name: Build updater bundle
+        run: npm run build:updater
+
       # Windows firma con su propio .pfx. El .p12 de Apple no se le pasa: en un
       # runner de Windows haría fallar la firma por certificado equivocado.
       - name: Build Electron App (Windows)

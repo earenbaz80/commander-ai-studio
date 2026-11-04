@@ -27,6 +27,7 @@ import path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import { spawn as spawnPty, type IPty } from 'node-pty';
 import { allowedHostsFromEnv, isAllowedHost } from '../../hostGuard.js';
+import { killPtyTree } from '../../ptySessions.js';
 
 /** Tope de un mensaje de entrada: pegar un archivo entero no debe reventar la shell. */
 const MAX_INPUT_CHARS = 64 * 1024;
@@ -45,14 +46,37 @@ function clampInt(value: unknown, min: number, max: number): number | null {
   return Math.max(min, Math.min(max, n));
 }
 
-/** Devuelve el shell y args adecuados según la plataforma. */
-function pickShell(): { shell: string; args: string[] } {
+/**
+ * Shells que el cliente puede pedir con `?shell=`. Es una lista cerrada a
+ * propósito: el valor llega por la URL y no puede convertirse en «lanza lo que
+ * diga la query». Cualquier otro valor cae al shell por defecto.
+ */
+const SHELLS_WIN: Record<string, { shell: string; args: string[] }> = {
+  cmd: { shell: process.env.COMSPEC || 'cmd.exe', args: [] },
+  powershell: { shell: 'powershell.exe', args: ['-NoLogo'] },
+  pwsh: { shell: 'pwsh.exe', args: ['-NoLogo'] },
+};
+
+const SHELLS_POSIX: Record<string, { shell: string; args: string[] }> = {
+  bash: { shell: '/bin/bash', args: ['-i'] },
+  sh: { shell: '/bin/sh', args: ['-i'] },
+  zsh: { shell: '/bin/zsh', args: ['-i'] },
+};
+
+/** Shells seleccionables en el workbench para esta plataforma. */
+export function availableShells(): string[] {
+  return Object.keys(process.platform === 'win32' ? SHELLS_WIN : SHELLS_POSIX);
+}
+
+/** Devuelve el shell y args adecuados según la plataforma y la preferencia. */
+function pickShell(preferred?: string | null): { shell: string; args: string[] } {
+  const key = String(preferred || '').trim().toLowerCase();
   if (process.platform === 'win32') {
-    return { shell: process.env.COMSPEC || 'cmd.exe', args: [] };
+    return (key && SHELLS_WIN[key]) || SHELLS_WIN.cmd;
   }
-  const sh = process.env.SHELL || '/bin/bash';
-  // -i: interactivo (prompts, historial). Fallback a sh si no existe bash.
-  return { shell: sh, args: ['-i'] };
+  if (key && SHELLS_POSIX[key]) return SHELLS_POSIX[key];
+  // -i: interactivo (prompts, historial). Fallback al shell del usuario.
+  return { shell: process.env.SHELL || '/bin/bash', args: ['-i'] };
 }
 
 /**
@@ -89,7 +113,14 @@ export function attachTerminalWs(server: Server, opts?: { projectPath?: string }
 
     const wanted = opts?.projectPath && opts.projectPath.trim() ? opts.projectPath : '';
     const cwd = wanted && isDirectory(wanted) ? wanted : process.cwd();
-    const { shell, args } = pickShell();
+    // `?shell=` elige entre la lista cerrada; sin él, el shell por defecto.
+    let preferido: string | null = null;
+    try {
+      preferido = new URL(req.url || '/', 'http://localhost').searchParams.get('shell');
+    } catch {
+      /* URL rara: se usa el shell por defecto */
+    }
+    const { shell, args } = pickShell(preferido);
 
     let term: IPty;
     try {
@@ -150,13 +181,10 @@ export function attachTerminalWs(server: Server, opts?: { projectPath?: string }
       term.write(text);
     });
 
-    // Limpieza al cerrar: `kill` en ConPTY mata el árbol, no solo el cmd.
+    // Limpieza al cerrar: se mata el árbol de ConPTY entero y se sueltan los
+    // handles (taskkill + kill de node-pty, ver killPtyTree).
     const cerrar = () => {
-      try {
-        term.kill();
-      } catch {
-        /* ya terminó */
-      }
+      killPtyTree(term);
     };
     ws.on('close', cerrar);
     ws.on('error', cerrar);

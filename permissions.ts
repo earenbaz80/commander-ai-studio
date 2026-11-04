@@ -55,7 +55,7 @@ const FILE_WRITE_TOOLS = new Set(['fs.write', 'fs.edit', 'git.commit']);
  * y readonly no debe hacerlo. Su único punto de entrada es `POST /api/worktrees`,
  * y es ese handler quien consulta `enforceTool` con esta lista.
  */
-const EXEC_TOOLS = new Set(['shell.run', 'shell.job', 'code.run', 'browser', 'preview', 'git.worktree', 'git.rebase', 'git.conflict', 'mcp.call', 'run_file_change_hooks', 'code.fix', 'worktree.create']);
+const EXEC_TOOLS = new Set(['shell.run', 'shell.job', 'shell.pty', 'code.run', 'browser', 'preview', 'git.worktree', 'git.rebase', 'git.conflict', 'mcp.call', 'run_file_change_hooks', 'code.fix', 'worktree.create']);
 
 // ── Coincidencia de globs ( ** , * , ? ) sobre rutas relativas ──
 

@@ -4,8 +4,19 @@
 const { app, BrowserWindow, ipcMain, shell, Menu, Tray, session, dialog, webContents } = require('electron');
 const path = require('path');
 const fs = require('fs');
+// El asar del paquete excluye node_modules, así que electron-updater viaja
+// bundleado en updater.cjs (lo genera build:updater). En desarrollo se resuelve
+// del node_modules normal.
 let autoUpdater = null;
-try { ({ autoUpdater } = require('electron-updater')); } catch { /* updater no disponible en el bundle */ }
+try {
+  ({ autoUpdater } = require('./updater.cjs'));
+} catch {
+  try {
+    ({ autoUpdater } = require('electron-updater'));
+  } catch {
+    /* sin updater: la UI dice «no disponible» en vez de romperse */
+  }
+}
 
 // LSP Bridge
 const {
@@ -167,27 +178,48 @@ function createWindow() {
 }
 
 // Auto-updater configuration
-if (app.isPackaged && autoUpdater) {
-  autoUpdater.checkForUpdatesAndNotify();
+//
+// Un log propio en userData: la app instalada no tiene consola visible y sin
+// esto no hay forma de saber si el updater cargó o por qué falló un chequeo.
+function updaterLog(...parts) {
+  const line = parts.map((x) => (x instanceof Error ? x.message : String(x))).join(' ');
+  try {
+    fs.appendFileSync(path.join(app.getPath('userData'), 'updater.log'), new Date().toISOString() + ' ' + line + '\n');
+  } catch { /* sin permiso de escritura: queda el console */ }
+  console.log('[AutoUpdater] ' + line);
+}
+
+function initAutoUpdater() {
+  if (!app.isPackaged) return updaterLog('desarrollo: no se buscan actualizaciones');
+  if (!autoUpdater) return updaterLog('módulo no disponible (falta updater.cjs)');
+
+  // Feed alternativo (pruebas locales u hosting propio) sin reempaquetar.
+  const feedOverride = process.env.COMMANDER_UPDATE_URL;
+  if (feedOverride) {
+    try {
+      autoUpdater.setFeedURL({ provider: 'generic', url: feedOverride });
+      updaterLog('feed alternativo: ' + feedOverride);
+    } catch (err) {
+      updaterLog('feed alternativo rechazado:', err);
+    }
+  }
 
   autoUpdater.on('checking-for-update', () => {
     console.log('[AutoUpdater] Checking for update...');
   });
 
   autoUpdater.on('update-available', (info) => {
-    console.log('[AutoUpdater] Update available:', info.version);
+    updaterLog('disponible', info.version);
     if (mainWindow) {
       mainWindow.webContents.send('update-available', { version: info.version, releaseNotes: info.releaseNotes });
     }
   });
 
   autoUpdater.on('update-not-available', (info) => {
-    console.log('[AutoUpdater] Update not available:', info.version);
+    updaterLog('sin actualizaciones', info.version);
   });
 
-  autoUpdater.on('error', (err) => {
-    console.error('[AutoUpdater] Error:', err);
-  });
+  autoUpdater.on('error', (err) => updaterLog('error:', err));
 
   autoUpdater.on('download-progress', (progressObj) => {
     if (mainWindow) {
@@ -196,11 +228,15 @@ if (app.isPackaged && autoUpdater) {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
-    console.log('[AutoUpdater] Update downloaded:', info.version);
+    updaterLog('descargada', info.version);
     if (mainWindow) {
       mainWindow.webContents.send('update-downloaded', { version: info.version, releaseNotes: info.releaseNotes });
     }
   });
+
+  // El chequeo va al final, con los listeners ya puestos: antes se lanzaba antes
+  // de registrarlos y una actualización temprana se perdía sin dejar rastro.
+  Promise.resolve(autoUpdater.checkForUpdatesAndNotify()).catch((err) => updaterLog('chequeo inicial falló:', err));
 }
 
 // IPC Handlers for Native Titlebar controls (Minimize, Maximize, Close)
@@ -268,6 +304,8 @@ ipcMain.handle('update:getStatus', () => {
   if (!app.isPackaged) return { status: 'development' };
   return {
     status: 'idle',
+    version: appVersion,
+    updater: Boolean(autoUpdater),
     // Estado real se comunica via eventos
   };
 });
@@ -406,6 +444,8 @@ app.whenReady().then(async () => {
 
   await startEmbeddedServer();
   createWindow();
+  // Después de crear la ventana: los eventos del updater avisan al renderer.
+  initAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

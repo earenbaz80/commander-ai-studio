@@ -131,6 +131,10 @@ jobs:
       - name: Build server bundles
         run: npm run build:server
 
+      # El updater viaja bundleado (el asar no lleva node_modules).
+      - name: Build updater bundle
+        run: npm run build:updater
+
       - name: Empaquetar (electron-builder --dir)
         run: npx electron-builder --win --x64 --dir
 

@@ -98,7 +98,7 @@ export interface SessionConfig {
 /** `idle`: sesión creada como contexto padre y nunca arrancada (no gasta tokens). */
 export type SessionStatus = 'idle' | 'running' | 'done' | 'error' | 'stopped';
 
-const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.list', 'fs.grep', 'shell.run', 'read_diagnostics', 'git.status', 'git.diff', 'git.log', 'git.commit', 'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list', 'task', 'spawn_agents', 'skill'];
+const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.list', 'fs.grep', 'shell.run', 'shell.pty', 'read_diagnostics', 'git.status', 'git.diff', 'git.log', 'git.commit', 'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list', 'task', 'spawn_agents', 'skill'];
 
 // ── LLM en el servidor (llamada interna a los endpoints existentes) ──
 

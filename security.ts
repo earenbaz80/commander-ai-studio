@@ -49,7 +49,7 @@ export const SHELL_ALLOW_PREFIX = [
 export const AGENT_TOOLS = new Set([
   'fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.list', 'fs.grep',
   'fs.propose.edit', 'fs.propose.write',
-  'shell.run', 'shell.job',
+  'shell.run', 'shell.job', 'shell.pty',
   'browser', 'preview',
   'read_diagnostics',
   'code.analyze', 'code.refactor', 'code.fix',
