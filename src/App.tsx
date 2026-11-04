@@ -670,6 +670,9 @@ export default function App() {
     messages,
   });
 
+  /** Control de la respuesta en curso: lo usa el botón Detener. */
+  const chatAbortRef = useRef<AbortController | null>(null);
+
   // Execution Handler for Chat
   const handleSendMessage = async (userText: string, attachments?: File[], modelOverride?: string, runMode: RunMode = 'build') => {
     const userMsg: ChatMessage = {
@@ -687,6 +690,12 @@ export default function App() {
 
     setMessages((prev) => [...prev, userMsg]);
     setIsGenerating(true);
+    // El botón Detener corta esta petición de verdad: el signal viaja a todos
+    // los fetch de la respuesta (Antigravity, streaming y no-stream).
+    const abortCtrl = new AbortController();
+    chatAbortRef.current = abortCtrl;
+    const signal = abortCtrl.signal;
+    const chatFetch = (url: string, init: RequestInit) => fetch(url, { ...init, signal });
 
     // Resolver menciones `@` (docs/params + archivos reales) e inyectarlas como contexto.
     // Nunca debe bloquear el envío: cualquier fallo se ignora silenciosamente.
@@ -842,7 +851,7 @@ export default function App() {
         const environment = lastAgentMsg?.environmentId || 'remote';
         const geminiApiKey = getCachedApiKey('GEMINI_API_KEY') || undefined;
 
-        const response = await fetch('/api/gemini/interactions/create', {
+        const response = await chatFetch('/api/gemini/interactions/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -943,7 +952,7 @@ export default function App() {
         };
         setMessages((prev) => [...prev, initialBotMsg]);
 
-        const streamResponse = await fetch(streamEndpoint, {
+        const streamResponse = await chatFetch(streamEndpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -1037,7 +1046,7 @@ export default function App() {
         // Ollama necesita el host del servidor local en la query (así llega de verdad al server).
         const isOllamaCall = endpoint === '/api/ollama/generate';
         const host = isOllamaCall ? (payload as { ollamaHost?: string }).ollamaHost : undefined;
-        const response = await fetch(
+        const response = await chatFetch(
           isOllamaCall && host ? `${endpoint}?host=${encodeURIComponent(host)}` : endpoint,
           {
             method: 'POST',
@@ -1076,6 +1085,8 @@ export default function App() {
         }
       }
     } catch (error: any) {
+      // Detenido por el usuario: se conserva lo ya escrito y no se pinta error.
+      if (error?.name === 'AbortError') return;
       setNonoStatus({ type: 'error' });
       logTelemetry({
         modelUsed: activeModel,
@@ -1101,6 +1112,7 @@ export default function App() {
         setMessages((prev) => [...prev, errorMsg]);
       }
     } finally {
+      if (chatAbortRef.current === abortCtrl) chatAbortRef.current = null;
       setIsGenerating(false);
     }
   };
@@ -1114,12 +1126,22 @@ export default function App() {
   const generalAudit = useGeneralAudit({
     state: agent.state,
     startTask: agent.startTask,
+    stopTask: agent.stop,
+    resumeTask: agent.resumeTask,
     setMessages,
     setMode,
     tabs,
     setIsGenerating,
     lang,
   });
+
+  /** Botón Detener: corta la respuesta del chat y, si hay auditoría, el agente. */
+  const handleStopGeneration = useCallback(() => {
+    chatAbortRef.current?.abort();
+    chatAbortRef.current = null;
+    if (agent.state.running) generalAudit.stop();
+    setIsGenerating(false);
+  }, [agent.state.running, generalAudit.stop]);
 
   // handleGeneralAudit and handleNewChat
   const { handleGeneralAudit, handleNewChat } = useAppPrompts({
@@ -1353,6 +1375,9 @@ export default function App() {
               selectedModel,
               setSelectedModel,
               isGenerating,
+              onStop: handleStopGeneration,
+              onResume: generalAudit.resume,
+              resumable: generalAudit.canResume,
               onSendMessage: handleSendMessage,
               onClearChat: () => setMessages([]),
               lang: lang as any,

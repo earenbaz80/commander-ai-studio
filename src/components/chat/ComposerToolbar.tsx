@@ -9,7 +9,8 @@
 import React, { useRef } from 'react';
 import {
   Send,
-  RefreshCw,
+  Play,
+  Square,
   Paperclip,
   Settings,
   HelpCircle,
@@ -40,6 +41,11 @@ interface ComposerToolbarProps {
   runMode: RunMode;
   onChangeRunMode: (mode: RunMode) => void;
   isGenerating: boolean;
+  /** Detiene la generación en curso. */
+  onStop: () => void;
+  /** Retoma una corrida detenida, si la hay. */
+  onResume?: () => void;
+  resumable?: boolean;
   canSend: boolean;
   onSend: () => void;
   onClearChat: () => void;
@@ -58,6 +64,9 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   runMode,
   onChangeRunMode,
   isGenerating,
+  onStop,
+  onResume,
+  resumable = false,
   canSend,
   onSend,
   onClearChat,
@@ -249,22 +258,43 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
             </button>
           </div>
         </details>
-        <button
-          onClick={onSend}
-          disabled={isGenerating || !canSend}
-          aria-label={lang === 'es' ? 'Enviar mensaje' : lang === 'de' ? 'Nachricht senden' : 'Send message'}
-          title={lang === 'es' ? 'Enviar mensaje' : lang === 'de' ? 'Nachricht senden' : 'Send message'}
-          className="flex min-h-10 items-center gap-2 px-4 py-2 border-2 border-[var(--nc-text-accent)] bg-[var(--nc-active-bg)] text-[var(--nc-active-text)] font-bold hover:bg-white hover:border-white disabled:bg-[var(--nc-bg-deep)] disabled:border-[var(--nc-border-dark)] disabled:text-[var(--nc-text-dim)] disabled:cursor-not-allowed transition-colors"
-        >
-          {isGenerating ? (
-            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <Send className="w-3.5 h-3.5" />
-          )}
-          {isGenerating
-            ? lang === 'es' ? 'Generando…' : lang === 'de' ? 'Generiert…' : 'Generating…'
-            : lang === 'es' ? 'Enviar' : lang === 'de' ? 'Senden' : 'Send'}
-        </button>
+        {/* Mientras corre algo el botón deja de ser Enviar y pasa a Detener: el
+            usuario puede cortar una respuesta o una corrida del agente. */}
+        {isGenerating ? (
+          <button
+            onClick={onStop}
+            aria-label={lang === 'es' ? 'Detener generación' : lang === 'de' ? 'Generierung stoppen' : 'Stop generation'}
+            title={lang === 'es' ? 'Detener la generación en curso' : lang === 'de' ? 'Laufende Generierung stoppen' : 'Stop the current generation'}
+            className="flex min-h-10 items-center gap-2 px-4 py-2 border-2 border-[var(--nc-danger)] bg-[#330000] text-[var(--nc-danger)] font-bold hover:bg-[var(--nc-danger)] hover:text-black transition-colors"
+          >
+            <Square className="w-3.5 h-3.5" />
+            {lang === 'es' ? 'Detener' : lang === 'de' ? 'Stopp' : 'Stop'}
+          </button>
+        ) : (
+          <>
+            {resumable && (
+              <button
+                onClick={onResume}
+                aria-label={lang === 'es' ? 'Continuar la corrida detenida' : lang === 'de' ? 'Gestoppten Lauf fortsetzen' : 'Resume the stopped run'}
+                title={lang === 'es' ? 'Retomar donde se quedó' : lang === 'de' ? 'Dort weitermachen, wo es aufgehört hat' : 'Continue where it stopped'}
+                className="flex min-h-10 items-center gap-2 px-3 py-2 border-2 border-[var(--nc-success)] text-[var(--nc-success)] font-bold hover:bg-[var(--nc-success)] hover:text-black transition-colors"
+              >
+                <Play className="w-3.5 h-3.5" />
+                {lang === 'es' ? 'Continuar' : lang === 'de' ? 'Fortsetzen' : 'Resume'}
+              </button>
+            )}
+            <button
+              onClick={onSend}
+              disabled={!canSend}
+              aria-label={lang === 'es' ? 'Enviar mensaje' : lang === 'de' ? 'Nachricht senden' : 'Send message'}
+              title={lang === 'es' ? 'Enviar mensaje' : lang === 'de' ? 'Nachricht senden' : 'Send message'}
+              className="flex min-h-10 items-center gap-2 px-4 py-2 border-2 border-[var(--nc-text-accent)] bg-[var(--nc-active-bg)] text-[var(--nc-active-text)] font-bold hover:bg-white hover:border-white disabled:bg-[var(--nc-bg-deep)] disabled:border-[var(--nc-border-dark)] disabled:text-[var(--nc-text-dim)] disabled:cursor-not-allowed transition-colors"
+            >
+              <Send className="w-3.5 h-3.5" />
+              {lang === 'es' ? 'Enviar' : lang === 'de' ? 'Senden' : 'Send'}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

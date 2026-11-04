@@ -122,6 +122,18 @@ export function useAgent(cwd: string, model?: string) {
     orchestrator.restoreState(copy);
     setState({ ...orchestrator.getState() });
   };
+  /**
+   * Retoma la corrida que quedó parada (el usuario pulsó Detener) sin perder
+   * pasos ni plan: es `loop.resume` sobre la tarea que ya está en el orquestador.
+   */
+  const resumeTask = (): boolean => {
+    const task = orchestrator.getState().task;
+    if (!task) return false;
+    rememberTask({ taskId: task.id, goal: task.goal, cwd: task.cwd || cwd, model });
+    setState({ ...orchestrator.getState() });
+    void loop.resume({ ...task, cwd: task.cwd || cwd });
+    return true;
+  };
   const stop = () => {
     loop.stop();
     clearActiveSession();
@@ -156,5 +168,5 @@ export function useAgent(cwd: string, model?: string) {
     setState({ ...orchestrator.getState() });
   };
 
-  return { state, startTask, stop, runTool, pendingApproval, resolveApproval, rollbackRun, undoStep, redoStep, restoreSession, continueSession, forkSession, setPlan };
+  return { state, startTask, stop, resumeTask, runTool, pendingApproval, resolveApproval, rollbackRun, undoStep, redoStep, restoreSession, continueSession, forkSession, setPlan };
 }
