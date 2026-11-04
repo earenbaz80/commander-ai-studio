@@ -193,6 +193,7 @@ Ejecuta una tool del agente en el servidor.
 - `fs.grep` — Buscar texto en archivos
 - `shell.run` — Ejecutar comando shell (requiere aprobación según allowlist/denylist); `cwd` corre en un subdirectorio, `allowUnlisted` ejecuta fuera de la allowlist tras aprobación e `interactive` abre stdin para `shell.job`
 - `shell.job` — Trabajos en segundo plano: `list`, `logs`, `read` (salida nueva desde un cursor), `write` (stdin del proceso interactivo) y `stop`
+- `shell.pty` — Sesión interactiva persistente (proceso real con TTY): `open` abre un ejecutable con `args` en array y devuelve `id`; `read` devuelve sólo la salida nueva desde un `cursor`; `write` manda texto al stdin; `resize` cambia filas/columnas; `close` la termina; `list` lista las abiertas. Sin shell ni pipes de por medio: el ejecutable se valida, el `cwd` vive dentro del proyecto y `open`/`close` piden aprobación
 - `read_diagnostics` — Leer diagnósticos de TypeScript
 - `task` — Lanzar sub-tarea
 - `git.status` / `git.diff` / `git.log` / `git.commit` — Operaciones git
@@ -245,6 +246,7 @@ Crea un nuevo proyecto.
 - **CORS**: Solo permite solicitudes desde el origen de la app
 - **Path Traversal**: Todas las rutas de fs.* se validan contra la allowlist de proyectos
 - **shell.run**: Allowlist de comandos seguros + denylist de peligrosos (fail-safe)
+- **shell.pty**: Ejecutable + argv (sin shell), lista negra de binarios, `cwd` validado y sesiones ligadas a su agente
 - **API Keys**: Se envían por HTTPS al servidor embebido, nunca expuestas al público
 - **Electron**: `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`
 
