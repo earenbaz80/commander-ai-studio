@@ -91,3 +91,7 @@ block2.txt
 /security.js
 release-build/
 release-x64/
+
+# Restos de ejecuciones locales
+*.pid
+pty-validacion-*.png
