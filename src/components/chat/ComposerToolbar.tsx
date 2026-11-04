@@ -1,7 +1,7 @@
 /**
  * Barra inferior del compositor: adjuntar, selector de modelo, indicador de
- * LLM local, modo Build/Plan/Read-only, ajustes avanzados y acciones (texto,
- * limpiar, enviar).
+ * LLM local, modo Build/Plan/Read-only, ajustes avanzados y acciones (limpiar,
+ * enviar).
  *
  * Extraído de `ChatPlayground`. Es puramente presentacional: recibe el estado
  * ya resuelto por props y devuelve callbacks, sin manejar estado propio.
@@ -29,8 +29,6 @@ const hasLocalServer = (): boolean =>
 const localServerLabel = (): string =>
   getCachedApiKey('OLLAMA_HOST') || getCachedApiKey('LMSTUDIO_HOST') || getCachedApiKey('CUSTOM_BASE_URL') || '';
 
-export type FontScale = 'normal' | 'lg' | 'xl';
-
 interface ComposerToolbarProps {
   lang: Language;
   /** Modelo activo (id). */
@@ -41,8 +39,6 @@ interface ComposerToolbarProps {
   modelGroups?: ModelGroup[];
   runMode: RunMode;
   onChangeRunMode: (mode: RunMode) => void;
-  fontScale: FontScale;
-  onCycleFontScale: () => void;
   isGenerating: boolean;
   canSend: boolean;
   onSend: () => void;
@@ -61,8 +57,6 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   modelGroups = MODEL_GROUPS,
   runMode,
   onChangeRunMode,
-  fontScale,
-  onCycleFontScale,
   isGenerating,
   canSend,
   onSend,
@@ -233,14 +227,6 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
       </button>
 
       <div className="flex items-center gap-2 ml-auto shrink-0">
-        <button
-          onClick={onCycleFontScale}
-          title={lang === 'es' ? 'Tamaño del texto' : lang === 'de' ? 'Textgröße' : 'Text size'}
-          aria-label={lang === 'es' ? 'Tamaño del texto' : lang === 'de' ? 'Textgröße' : 'Text size'}
-          className="px-2 text-cyan-200 hover:text-white"
-        >
-          A{fontScale === 'lg' ? '+' : fontScale === 'xl' ? '++' : ''}
-        </button>
         <details className="relative" onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.currentTarget.open = false;
