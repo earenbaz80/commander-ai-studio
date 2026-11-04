@@ -22,6 +22,7 @@
  * desde `resources/server.cjs` y resuelve desde ahí.
  */
 import type { IncomingMessage, Server } from 'http';
+import type { Duplex } from 'node:stream';
 import fs from 'node:fs';
 import path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -101,7 +102,27 @@ export function terminalOriginAllowed(req: IncomingMessage): boolean {
 
 /** Adjunta el WebSocket de terminal a un servidor HTTP existente. */
 export function attachTerminalWs(server: Server, opts?: { projectPath?: string }): WebSocketServer {
-  const wss = new WebSocketServer({ server, path: '/ws/terminal' });
+  // `noServer` a propósito. Con `{ server }`, la librería `ws` atiende TODOS los
+  // upgrades del servidor y destruye los que no casan con su `path`; en
+  // desarrollo eso incluye el WebSocket del HMR de Vite, que queda cerrado en
+  // cada intento («Invalid frame header» → «server connection lost. Polling for
+  // restart…»). La app parece reiniciarse sin parar. Con `noServer` sólo se toma
+  // `/ws/terminal` y el resto se deja intacto para quien lo escuche.
+  const wss = new WebSocketServer({ noServer: true, path: '/ws/terminal' });
+
+  const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    let pathname = '';
+    try {
+      pathname = new URL(req.url || '/', 'http://localhost').pathname;
+    } catch {
+      return; // URL rara: no es nuestra, que la atienda otro
+    }
+    if (pathname !== '/ws/terminal') return;
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+  };
+
+  server.on('upgrade', onUpgrade);
+  wss.on('close', () => server.off('upgrade', onUpgrade));
 
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
     // El filtro va antes de crear el proceso: una conexión rechazada no deja

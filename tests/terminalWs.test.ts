@@ -94,3 +94,33 @@ test('el mismo origen ejecuta un comando en el PTY', async () => {
   await new Promise((r) => setTimeout(r, 150));
   assert.equal(ws.readyState, WebSocket.OPEN, 'la sesión sigue viva tras el resize');
 });
+
+test('no destruye upgrades ajenos (el HMR de Vite sobrevive)', async () => {
+  // Este es el fallo que hacía «reiniciarse» la app en desarrollo: con
+  // `{ server }`, la librería `ws` cerraba cualquier upgrade que no fuera
+  // `/ws/terminal`, incluido el WebSocket del HMR de Vite («Invalid frame
+  // header» → «server connection lost. Polling for restart…»). El servidor de la
+  // prueba hace de Vite: su propio `upgrade` tiene que seguir funcionando.
+  const hmr = new WebSocketServer({ noServer: true });
+  const onUpgrade = (req: http.IncomingMessage, socket: import('node:stream').Duplex, head: Buffer) => {
+    if (new URL(req.url || '/', 'http://localhost').pathname !== '/hmr') return;
+    hmr.handleUpgrade(req, socket, head, (ws) => hmr.emit('connection', ws, req));
+  };
+  servidor.on('upgrade', onUpgrade);
+  hmr.on('connection', (socket) => socket.on('message', (data) => socket.send(data)));
+
+  const ws = new WebSocket(`ws://${host}/hmr`);
+  abiertos.push(ws);
+  try {
+    const eco = await new Promise<string>((resolve, reject) => {
+      ws.on('open', () => ws.send('ping-hmr'));
+      ws.on('message', (data) => resolve(data.toString()));
+      ws.on('error', reject);
+      ws.on('close', () => reject(new Error('el upgrade ajeno se cerró: la terminal lo destruyó')));
+    });
+    assert.equal(eco, 'ping-hmr', 'los frames del HMR deben viajar enteros');
+  } finally {
+    servidor.off('upgrade', onUpgrade);
+    hmr.close();
+  }
+});
