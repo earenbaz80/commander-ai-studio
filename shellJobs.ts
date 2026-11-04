@@ -16,6 +16,7 @@
  */
 
 import { spawn, execFile, type ChildProcess } from 'node:child_process';
+import type { Writable } from 'node:stream';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -56,6 +57,11 @@ export const MAX_JOBS = 10;
 export const JOB_DIR = path.join(os.tmpdir(), 'commander-jobs');
 
 const jobs = new Map<string, ShellJob>();
+/**
+ * Stdin de los trabajos interactivos. Vive fuera de `ShellJob` porque un
+ * stream no se serializa: `listJobs` manda el trabajo tal cual al cliente.
+ */
+const jobStdin = new Map<string, Writable>();
 let seq = 0;
 
 function spawnSegment(segment: string, cwd: string, stdio: any[], grupo = false): ChildProcess {
@@ -251,6 +257,7 @@ export function startJob(
   segments: string[],
   cwd: string,
   sessionId: string | null = null,
+  opts: { interactive?: boolean } = {},
 ): { ok: true; job: PublicJob } | { ok: false; error: string } {
   const full = evictIfFull();
   if (full) return { ok: false, error: full };
@@ -297,8 +304,12 @@ export function startJob(
   let input: any = 'ignore';
   segments.forEach((segment, i) => {
     const isLast = i === segments.length - 1;
-    const child = spawnSegment(segment, cwd, [input, isLast ? fd : 'pipe', fd]);
+    // El stdin se abre sólo en la primera etapa (es la que lee) y sólo si se
+    // pidió interactivo: en un pipeline las demás ya leen del proceso anterior.
+    const stdinMode = i === 0 && opts.interactive ? 'pipe' : input;
+    const child = spawnSegment(segment, cwd, [stdinMode, isLast ? fd : 'pipe', fd]);
     if (child.pid) job.pids.push(child.pid);
+    if (i === 0 && opts.interactive && child.stdin) jobStdin.set(id, child.stdin);
     input = isLast ? null : child.stdout;
 
     child.on('error', (e: any) => {
@@ -316,6 +327,7 @@ export function startJob(
         job.exitCode = 1;
         job.endedAt = Date.now();
       }
+      jobStdin.delete(id);
       closeLog();
     });
 
@@ -327,6 +339,7 @@ export function startJob(
           job.exitCode = code ?? 0;
           job.endedAt = Date.now();
         }
+        jobStdin.delete(id);
         closeLog();
       });
     }
@@ -388,6 +401,74 @@ export function readJobLog(id: string, tail = 40, maxChars = 8000) {
 }
 
 /**
+ * Longitud útil de un buffer leído: deja fuera una secuencia UTF-8 que quedó a
+ * medias, para que el siguiente `read` la devuelva completa en vez de partir un
+ * carácter en dos.
+ */
+function completeUtf8Length(buf: Buffer): number {
+  for (let back = 1; back <= 4 && back <= buf.length; back++) {
+    const byte = buf[buf.length - back];
+    if ((byte & 0xc0) !== 0x80) {
+      const need = byte >= 0xf0 ? 4 : byte >= 0xe0 ? 3 : byte >= 0xc0 ? 2 : 1;
+      return need > back ? buf.length - back : buf.length;
+    }
+  }
+  return buf.length;
+}
+
+/**
+ * Salida incremental desde `cursor` (en bytes). Es lo que permite seguir un
+ * proceso vivo sin releer el log entero en cada vuelta: el modelo guarda el
+ * cursor y pide sólo lo nuevo.
+ */
+export function readJobChunk(id: string, cursor = 0) {
+  const job = jobs.get(id);
+  if (!job) return { ok: false as const, error: `Trabajo desconocido: ${id}. Usa action "list".` };
+
+  let buf: Buffer = Buffer.alloc(0);
+  try {
+    buf = fs.readFileSync(job.logPath);
+  } catch {
+    /* el log aún no existe */
+  }
+
+  const from = Math.max(0, Math.min(Math.trunc(Number(cursor) || 0), buf.length));
+  const rest = buf.subarray(from);
+  const usable = rest.subarray(0, completeUtf8Length(rest));
+  return {
+    ok: true as const,
+    data: {
+      ...toPublicJob(job),
+      chunk: usable.toString('utf8'),
+      cursor: from + usable.length,
+      /** Quedó un carácter a medias: vuelve a leer cuando haya más. */
+      pending: usable.length < rest.length,
+    },
+  };
+}
+
+/**
+ * Escribe en el stdin del trabajo. Sólo funciona si se arrancó con
+ * `interactive:true`; sin esa bandera el proceso tiene la entrada cerrada.
+ */
+export function writeJob(id: string, data: string) {
+  const job = jobs.get(id);
+  if (!job) return { ok: false as const, error: `Trabajo desconocido: ${id}. Usa action "list".` };
+  if (job.status !== 'running') return { ok: false as const, error: `El trabajo ${id} ya terminó (${job.status}).` };
+
+  const stream = jobStdin.get(id);
+  if (!stream || stream.destroyed || stream.writableEnded) {
+    return { ok: false as const, error: `El trabajo ${id} no acepta entrada: no se abrió con interactive:true.` };
+  }
+  try {
+    stream.write(data);
+  } catch (e: any) {
+    return { ok: false as const, error: `No se pudo escribir en ${id}: ${String(e?.message || e).slice(0, 200)}` };
+  }
+  return { ok: true as const, data: { id, written: data.length } };
+}
+
+/**
  * Para un trabajo arrancado por el agente. Si se pasa `pid`, debe pertenecer a
  * ese trabajo: es la única forma de nombrar un proceso, y siempre se resuelve
  * contra el registro.
@@ -424,4 +505,5 @@ export async function stopJob(id: string, pid?: number) {
 /** Solo para tests: vacía el registro sin tocar procesos. */
 export function _resetJobs(): void {
   jobs.clear();
+  jobStdin.clear();
 }

@@ -91,26 +91,31 @@ export const AGENT_FUNCTION_DECLARATIONS = [
   },
   {
     name: 'shell_run',
-    description: 'Ejecutar comando allowlist (npm, node, git, tsc, vite...). Admite pipes `|` entre etapas permitidas. Con background:true lo lanza en segundo plano y devuelve id/pid/logPath.',
+    description: 'Ejecutar comando allowlist (npm, node, git, tsc, vite...). Admite pipes `|` entre etapas permitidas. Con background:true lo lanza en segundo plano y devuelve id/pid/logPath. cwd fija el directorio dentro del proyecto; allowUnlisted permite un comando fuera de la allowlist (el usuario lo aprueba antes); interactive abre stdin y exige background.',
     parameters: {
       type: 'OBJECT',
       properties: {
         command: { type: 'STRING', description: 'Comando; las etapas se separan con |' },
         timeoutMs: { type: 'NUMBER', description: 'Timeout en primer plano (máx 60000)' },
         background: { type: 'BOOLEAN', description: 'Dejarlo corriendo y devolver id para shell_job' },
+        cwd: { type: 'STRING', description: 'Directorio de ejecución, relativo al workspace (por defecto la raíz)' },
+        allowUnlisted: { type: 'BOOLEAN', description: 'Ejecutar un comando fuera de la allowlist tras la aprobación del usuario' },
+        interactive: { type: 'BOOLEAN', description: 'Abrir stdin para responder prompts; requiere background:true y sin pipes' },
       },
       required: ['command'],
     },
   },
   {
     name: 'shell_job',
-    description: 'Trabajos en segundo plano: list, logs (tail de líneas) y stop por id. El pid de stop debe pertenecer al trabajo; no se puede matar un proceso ajeno.',
+    description: 'Trabajos en segundo plano: list, logs (tail de líneas), read (sólo lo nuevo desde cursor), write (stdin del proceso interactivo) y stop por id. El pid de stop debe pertenecer al trabajo; no se puede matar un proceso ajeno.',
     parameters: {
       type: 'OBJECT',
       properties: {
-        action: { type: 'STRING', enum: ['list', 'logs', 'stop'], description: 'Acción a ejecutar' },
-        id: { type: 'STRING', description: 'Id del trabajo (requerido en logs/stop)' },
+        action: { type: 'STRING', enum: ['list', 'logs', 'read', 'write', 'stop'], description: 'Acción a ejecutar' },
+        id: { type: 'STRING', description: 'Id del trabajo (requerido en logs/read/write/stop)' },
         tail: { type: 'NUMBER', description: 'Líneas de log a devolver (1-500, por defecto 40)' },
+        cursor: { type: 'NUMBER', description: 'Byte desde el que leer en read (usa el que devolvió la llamada anterior)' },
+        data: { type: 'STRING', description: 'Texto a escribir en el stdin del proceso (write)' },
         pid: { type: 'NUMBER', description: 'Comprobación extra en stop: debe pertenecer al trabajo' },
       },
       required: ['action'],

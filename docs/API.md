@@ -191,7 +191,8 @@ Ejecuta una tool del agente en el servidor.
 - `fs.glob` — Buscar archivos por patrón
 - `fs.list` — Listar un directorio con tipo y tamaño (no requiere aprobación)
 - `fs.grep` — Buscar texto en archivos
-- `shell.run` — Ejecutar comando shell (requiere aprobación según allowlist/denylist)
+- `shell.run` — Ejecutar comando shell (requiere aprobación según allowlist/denylist); `cwd` corre en un subdirectorio, `allowUnlisted` ejecuta fuera de la allowlist tras aprobación e `interactive` abre stdin para `shell.job`
+- `shell.job` — Trabajos en segundo plano: `list`, `logs`, `read` (salida nueva desde un cursor), `write` (stdin del proceso interactivo) y `stop`
 - `read_diagnostics` — Leer diagnósticos de TypeScript
 - `task` — Lanzar sub-tarea
 - `git.status` / `git.diff` / `git.log` / `git.commit` — Operaciones git

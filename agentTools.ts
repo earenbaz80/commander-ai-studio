@@ -14,7 +14,7 @@ import { diagnoseProposed } from './src/agent/proposedDiagnostics';
 import { analyzeSource, findReferences, invalidateCodeIntel, planRename, rulesFor } from './src/agent/codeIntel';
 import { newViolations } from './src/agent/projectRules';
 import { splitPipeline } from './src/agent/shellCommand';
-import { listJobs, readJobLog, runPipeline, startJob, stopJob } from './shellJobs';
+import { listJobs, readJobChunk, readJobLog, runPipeline, startJob, stopJob, writeJob } from './shellJobs';
 import { assertSafeOutboundUrl, safeFetch } from './ssrf';
 import { displayPath, listRoots, resolveProjectPath } from './projects';
 import { createWorktree } from './worktrees';
@@ -284,6 +284,7 @@ export interface ToolResult {
 export function checkShellSegments(
   command: unknown,
   rootHint?: string,
+  opts: { allowUnlisted?: boolean } = {},
 ): { ok: true; segments: string[]; command: string } | { ok: false; error: string; status: number } {
   const parsed = splitPipeline(command);
   if (!parsed.ok) return { ok: false, error: parsed.error, status: 403 };
@@ -295,7 +296,10 @@ export function checkShellSegments(
     if (blocked) {
       return { ok: false, error: `Comando bloqueado por seguridad (${blocked.trim()})`, status: 403 };
     }
-    if (!SHELL_ALLOW_PREFIX.some((a) => lower.startsWith(a))) {
+    // `allowUnlisted` salta SÓLO la lista de prefijos. Los patrones bloqueados,
+    // los operadores prohibidos y las rutas siguen aplicando, y el cliente ya
+    // exigió aprobación para un comando que no está en la allowlist.
+    if (!opts.allowUnlisted && !SHELL_ALLOW_PREFIX.some((a) => lower.startsWith(a))) {
       return {
         ok: false,
         error: `Comando no permitido: ${segment.slice(0, 80)}. Usa npm/npx/node/python/git/ls/cat/echo/tsc/vite.`,
@@ -1003,24 +1007,51 @@ export async function executeAgentTool(
   if (toolId === 'shell.run') {
     // Allowlist, denylist y rutas: las mismas reglas que usa `preview`, para que
     // arrancar un dev server no sea una puerta trasera al shell.
-    const checked = checkShellSegments(input.command, rootHint);
+    const checked = checkShellSegments(input.command, rootHint, { allowUnlisted: input.allowUnlisted === true });
     if (!checked.ok) return checked;
     const cmd = checked.command;
     const segments = checked.segments;
-    // El comando corre en el root del proyecto activo (siempre uno registrado).
-    const cwd = rootHint ? resolveProjectPath('.', rootHint).abs : AGENT_ROOT;
+    // El comando corre en el root del proyecto activo (siempre uno registrado),
+    // salvo que se pida un subdirectorio concreto con `cwd`.
+    let cwd = rootHint ? resolveProjectPath('.', rootHint).abs : AGENT_ROOT;
+    if (input.cwd) {
+      const rel = String(input.cwd).slice(0, 500);
+      const pathErr = enforcePath(perms, rel, 'read');
+      if (pathErr) return { ok: false, error: pathErr, status: 403 };
+      try {
+        cwd = resolveProjectPath(rel, rootHint).abs;
+      } catch {
+        return { ok: false, error: `cwd fuera del proyecto: ${rel}`, status: 403 };
+      }
+      if (!fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
+        return { ok: false, error: `cwd no es un directorio: ${rel}` };
+      }
+    }
+    // Escribir en stdin sólo tiene sentido con un proceso vivo y una sola etapa
+    // (en un pipeline el primero ya lee del otro extremo del pipe).
+    if (input.interactive === true && input.background !== true) {
+      return { ok: false, error: 'interactive requiere background:true' };
+    }
+    if (input.interactive === true && segments.length > 1) {
+      return { ok: false, error: 'interactive sólo admite un comando sin pipes' };
+    }
 
     // Segundo plano: el proceso escribe a un log y se consulta por id. Nada de
     // esperar a que termine un servidor de desarrollo.
     if (input.background === true) {
-      const started = startJob(cmd, segments, cwd, opts?.sessionId ?? null);
+      const started = startJob(cmd, segments, cwd, opts?.sessionId ?? null, {
+        interactive: input.interactive === true,
+      });
       if (!started.ok) return { ok: false, error: started.error };
       return {
         ok: true,
         data: {
           ...started.job,
           background: true,
-          hint: `Sigue la salida con shell.job { action: "logs", id: "${started.job.id}" } y páralo con { action: "stop", id: "${started.job.id}" }.`,
+          ...(input.interactive === true ? { interactive: true } : {}),
+          hint: input.interactive === true
+            ? `Escribe con shell.job { action: "write", id: "${started.job.id}", data }, lee sólo lo nuevo con { action: "read", id: "${started.job.id}", cursor } y páralo con { action: "stop", id }.`
+            : `Sigue la salida con shell.job { action: "logs", id: "${started.job.id}" } y páralo con { action: "stop", id: "${started.job.id}" }.`,
         },
       };
     }
@@ -1058,6 +1089,20 @@ export async function executeAgentTool(
       const res = readJobLog(id, Number(input.tail) || 40);
       return res.ok ? { ok: true, data: res.data } : { ok: false, error: res.error };
     }
+    if (action === 'read') {
+      const id = String(input.id || '').slice(0, 100);
+      if (!id) return { ok: false, error: 'id requerido para read' };
+      const res = readJobChunk(id, Number(input.cursor) || 0);
+      return res.ok ? { ok: true, data: res.data } : { ok: false, error: res.error };
+    }
+    if (action === 'write') {
+      const id = String(input.id || '').slice(0, 100);
+      if (!id) return { ok: false, error: 'id requerido para write' };
+      const data = String(input.data ?? '').slice(0, 4000);
+      if (!data) return { ok: false, error: 'data requerido para write' };
+      const res = writeJob(id, data);
+      return res.ok ? { ok: true, data: res.data } : { ok: false, error: res.error };
+    }
     if (action === 'stop') {
       const id = String(input.id || '').slice(0, 100);
       if (!id) return { ok: false, error: 'id requerido para stop' };
@@ -1066,7 +1111,7 @@ export async function executeAgentTool(
       const res = await stopJob(id, pid);
       return res.ok ? { ok: true, data: res.data } : { ok: false, error: res.error };
     }
-    return { ok: false, error: 'action debe ser list, logs o stop' };
+    return { ok: false, error: 'action debe ser list, logs, read, write o stop' };
   }
 
   if (toolId === 'browser') {
