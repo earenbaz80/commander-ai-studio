@@ -244,6 +244,7 @@
       "category": "Development"
     },
     "nsis": {
+      "artifactName": "Commander-AI-Studio-Setup-${version}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
