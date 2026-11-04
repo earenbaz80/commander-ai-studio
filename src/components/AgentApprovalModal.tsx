@@ -14,6 +14,7 @@ import { readProjectFile, runAgentTool } from '../utils/agentToolsApi';
 import type { RuleFinding } from '../agent/tools/fs';
 import { applyExactEdit } from '../utils/patch';
 import { DiffViewer } from './DiffViewer';
+import { addRule, ruleTarget } from '../agent/permissionRules';
 
 interface AgentApprovalModalProps {
   approval: ApprovalRequest;
@@ -84,6 +85,8 @@ export function AgentApprovalModal({ approval, onResolve, lang = 'es' }: AgentAp
    * typecheck, que ya costó su segundo en el flujo del agente.
    */
   const [rules, setRules] = useState<RuleFinding[]>([]);
+  // Regla "no volver a preguntar" para este comando o ruta exactos.
+  const [remember, setRemember] = useState(false);
 
   useEffect(() => {
     if (!showDiff) {
@@ -182,12 +185,22 @@ export function AgentApprovalModal({ approval, onResolve, lang = 'es' }: AgentAp
             ) : (
               <pre className="bg-black/50 text-[10px] text-white p-2 mb-3 overflow-x-auto">{JSON.stringify(approval.meta, null, 2)}</pre>
             )}
+            {ruleTarget(toolId, input) && (
+              <label className="flex items-center gap-2 text-[10px] text-white/80 mb-2">
+                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+                {t('No volver a preguntar por', 'Do not ask again for')} «{ruleTarget(toolId, input)}»
+              </label>
+            )}
             <div className="flex gap-2 justify-end">
               <button onClick={() => onResolve(false)} className="nc-button text-xs px-3 py-1">
                 {t('Denegar', 'Deny')}
               </button>
               <button
-                onClick={() => onResolve(true)}
+                onClick={() => {
+                  const target = ruleTarget(toolId, input);
+                  if (remember && target) addRule({ tool: toolId, pattern: target, decision: 'allow' });
+                  onResolve(true);
+                }}
                 className="nc-button text-xs px-3 py-1 bg-[var(--nc-active-bg)] text-black font-bold"
               >
                 {t('Aprobar', 'Approve')}

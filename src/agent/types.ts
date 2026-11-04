@@ -30,7 +30,8 @@ export type ToolId =
   | 'code.analyze'
   | 'code.refactor'
   | 'code.fix'
-  | 'worktree.create';
+  | 'worktree.create'
+  | 'ask_user';
 
 export interface ToolContext {
   cwd: string;
@@ -50,6 +51,8 @@ export interface ApprovalRequest {
 export interface ApprovalResult {
   approved: boolean;
   reason?: string;
+  /** Respuesta del usuario cuando la aprobación era una pregunta (`ask_user`). */
+  answer?: string;
   /**
    * Si la UI modificó la propuesta (p.ej. el usuario aplicó sólo algunos hunks
    * del diff), se ejecuta esta tool con estos inputs en lugar del original.
@@ -82,6 +85,8 @@ export interface ToolDefinition<Input = unknown, Output = unknown> {
   /** Si true (default), la tool fuerza el siguiente paso del agente. Tools de solo lectura/consulta pueden marcar false. */
   endsAgentStep?: boolean;
   schema?: unknown;
+  /** Metadatos extra para el modal (p.ej. una pregunta de `ask_user`). */
+  approvalMeta?: (input: Input) => Record<string, any>;
   requiresApproval: (input: Input, ctx: ToolContext) => boolean;
   run: (input: Input, ctx: ToolContext) => Promise<ToolResult<Output>>;
 }

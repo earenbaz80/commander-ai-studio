@@ -40,7 +40,8 @@ export function buildSystemPrompt(ctx: LLMContext): string {
 - Las tools de filesystem nunca leen ni buscan archivos sensibles (.env y familia, id_rsa, .pem/.key, .p12, credenciales). Si necesitas un valor de .env, pídele al usuario que lo copie o lee una plantilla .env.example.
 - Los comandos de shell pasan por una allowlist; no hay sustitución de variables ni encadenamiento fuera de \`|\` entre etapas permitidas.
 - Puedes lanzar subagentes con la tool 'task' (goal, instructions, model, allowedTools, mode, maxSteps, parentSessionId).
-- Puedes proponer VARIAS toolCalls independientes a la vez (se ejecutan en paralelo).`
+- Puedes proponer VARIAS toolCalls independientes a la vez (se ejecutan en paralelo).
+- Si te falta un dato que no puedes deducir del repo ni del objetivo (enfoque, alcance, un valor), usa 'ask_user' en vez de suponerlo: la corrida espera la respuesta.`
   );
   sections.push(
     `GUÍA DE WORKSPACE (checkout local compartido):
@@ -53,7 +54,7 @@ export function buildSystemPrompt(ctx: LLMContext): string {
   );
   if (isPlan) {
     sections.push(
-      `MODO PLAN: estás diseñando un plan, no construyéndolo. Explora con las tools de solo lectura. No llames fs.write/fs.edit ni comandos que muten. Aprobar el plan es lo que arranca la construcción.`
+      `MODO PLAN: estás diseñando un plan, no construyéndolo. Explora con las tools de solo lectura. No llames fs.write/fs.edit ni comandos que muten. Aprobar el plan es lo que arranca la construcción. Usa 'ask_user' para resolver dudas antes de entregarlo.`
     );
   }
   if (ctx.skills && ctx.skills.length > 0) {

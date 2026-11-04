@@ -602,9 +602,28 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                 }
               />
             ) : (
-              state.steps.map((step) => (
-                <StepCard key={step.id} step={step} lang={lang} />
-              ))
+              <>
+                {filesTouched(state.steps).length > 0 && (
+                  <div className="border border-[var(--nc-border-light)]/40 bg-black/30 px-2 py-1.5">
+                    <div className="text-[10px] font-bold text-[var(--nc-text-accent)] mb-1">
+                      {lang === 'es' ? 'FICHEROS TOCADOS' : lang === 'de' ? 'GEÄNDERTE DATEIEN' : 'FILES TOUCHED'}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {filesTouched(state.steps).map((path) => (
+                        <span
+                          key={path}
+                          className="text-[10px] text-white/90 bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)]/40 px-1.5 py-0.5 font-mono break-all"
+                        >
+                          {path}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {state.steps.map((step) => (
+                  <StepCard key={step.id} step={step} lang={lang} />
+                ))}
+              </>
             )}
           </div>
         </div>
@@ -1166,21 +1185,95 @@ function backgroundJob(step: AgentStep): { id: string; command?: string } | null
   return { id: data.id, command: typeof data.command === 'string' ? data.command : undefined };
 }
 
+/** Ruta, comando o patrón sobre el que actúa el paso. */
+function stepTarget(step: AgentStep): string {
+  const input = (step.input ?? {}) as any;
+  if (typeof input.path === 'string' && input.path) return input.path;
+  if (typeof input.command === 'string' && input.command) return input.command;
+  if (typeof input.url === 'string' && input.url) return input.url;
+  if (typeof input.pattern === 'string' && input.pattern) return input.pattern;
+  return '';
+}
+
+/** Líneas que añade y quita una edición, contadas sobre sus argumentos. */
+function editDelta(step: AgentStep): { added: number; removed: number } | null {
+  const input = (step.input ?? {}) as any;
+  if (step.toolId !== 'fs.edit' || typeof input.oldString !== 'string' || typeof input.newString !== 'string') {
+    return null;
+  }
+  const lines = (value: string) => (value ? value.split('\n').length : 0);
+  return { added: lines(input.newString), removed: lines(input.oldString) };
+}
+
+/** Archivos que el agente ha modificado en la sesión, en orden de aparición. */
+function filesTouched(steps: AgentStep[]): string[] {
+  const seen = new Set<string>();
+  for (const step of steps) {
+    if (step.type !== 'tool_call') continue;
+    const input = (step.input ?? {}) as any;
+    if (step.toolId === 'fs.write' || step.toolId === 'fs.edit') {
+      if (typeof input.path === 'string' && input.path) seen.add(input.path);
+    }
+    if (step.toolId === 'code.fix' && Array.isArray(input.paths)) {
+      for (const path of input.paths) if (typeof path === 'string' && path) seen.add(path);
+    }
+  }
+  return Array.from(seen);
+}
+
+const STEP_LABEL: Record<string, string> = {
+  thought: 'PENSAMIENTO',
+  tool_call: 'ACCIÓN',
+  tool_result: 'RESULTADO',
+  plan: 'PLAN',
+  subagent: 'SUBAGENTE',
+};
+
 const StepCard: React.FC<{ step: AgentStep; lang: Language }> = ({ step, lang }) => {
   const job = backgroundJob(step);
+  const target = stepTarget(step);
+  const delta = editDelta(step);
+  const isThought = step.type === 'thought';
   return (
-    <div className="bg-[var(--nc-bg-deep)] border-2 border-[var(--nc-border-light)]/40 rounded p-2 space-y-1.5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold text-[var(--nc-text-accent)] uppercase">{step.type}</span>
-          {step.toolId && <span className="text-[10px] text-[var(--nc-text)]">{step.toolId}</span>}
+    <div
+      className={
+        isThought
+          ? 'border-l-2 border-[var(--nc-text-accent)] bg-black/20 px-2 py-1.5 space-y-1'
+          : 'bg-[var(--nc-bg-deep)] border-2 border-[var(--nc-border-light)]/40 rounded p-2 space-y-1.5'
+      }
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[10px] font-bold text-[var(--nc-text-accent)]">
+            {STEP_LABEL[step.type] || step.type}
+          </span>
+          {step.toolId && <span className="text-[10px] text-[var(--nc-text)] shrink-0">{step.toolId}</span>}
+          {step.status === 'running' && <span className="text-[10px] text-[var(--nc-highlight-bg)]">en curso…</span>}
+          {step.status === 'failed' && <span className="text-[10px] text-red-400 font-bold">ERROR</span>}
         </div>
-        <span className="text-[10px] text-white/60">
-          {new Date(step.ts).toLocaleTimeString() + (step.durationMs ? ` • ${step.durationMs}ms` : '')}
+        <span className="text-[10px] text-white/60 shrink-0">
+          {new Date(step.ts).toLocaleTimeString() + (step.durationMs ? ' • ' + step.durationMs + 'ms' : '')}
         </span>
       </div>
-      {step.title && <div className="text-[11px] text-white font-bold">{step.title}</div>}
-      {step.content && <div className="text-[11px] text-white/90 whitespace-pre-wrap break-all">{step.content}</div>}
+      {target && <div className="text-[11px] text-[var(--nc-text-accent)] font-mono break-all">{target}</div>}
+      {delta && (
+        <div className="flex gap-2 text-[10px] font-mono">
+          <span className="text-green-400">+{delta.added}</span>
+          <span className="text-red-400">-{delta.removed}</span>
+        </div>
+      )}
+      {step.title && !isThought && <div className="text-[11px] text-white font-bold">{step.title}</div>}
+      {step.content && (
+        <div
+          className={
+            isThought
+              ? 'text-[11px] text-white/80 italic whitespace-pre-wrap break-words'
+              : 'text-[11px] text-white/90 whitespace-pre-wrap break-all'
+          }
+        >
+          {step.content}
+        </div>
+      )}
       {step.input != null && (
         <details className="text-[10px]">
           <summary className="cursor-pointer text-[var(--nc-text)]">input</summary>

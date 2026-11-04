@@ -134,7 +134,9 @@ function buildPayload(
   };
   // El CLI no pinta el plan y su bucle manda los nombres tal cual al backend:
   // no le ofrecemos `update_plan`, que aquí no existe como tool.
-  const declarations = AGENT_FUNCTION_DECLARATIONS.filter((d) => d.name !== PLAN_TOOL);
+  const declarations = AGENT_FUNCTION_DECLARATIONS.filter(
+    (d) => d.name !== PLAN_TOOL && d.name !== 'ask_user'
+  );
   payload.tools =
     dialect === 'gemini'
       ? [{ functionDeclarations: declarations }]

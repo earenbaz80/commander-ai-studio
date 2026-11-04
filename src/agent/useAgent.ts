@@ -58,7 +58,10 @@ export function useAgent(cwd: string, model?: string) {
       },
       onStateChange: (s) => { setState(s); autosave(s); },
       approve: async (req) => {
-        if (!req.danger) return { approved: true };
+        // Las preguntas de `ask_user` viajan por este canal aunque no sean
+        // peligrosas: es el único punto donde el bucle espera al usuario.
+        const isQuestion = (req.meta as any)?.kind === 'question';
+        if (!req.danger && !isQuestion) return { approved: true };
         setPendingApproval(req);
         const result = await new Promise<ApprovalResult>((resolve) => { resolver.current = resolve; });
         setPendingApproval(null);
@@ -126,8 +129,8 @@ export function useAgent(cwd: string, model?: string) {
     } catch { /* ignore */ }
   };
   const runTool = (toolId: string, input: unknown) => orchestrator.runTool(toolId, input);
-  const resolveApproval = (ok: boolean, override?: { toolId: string; input: unknown }) =>
-    resolver.current?.({ approved: ok, override });
+  const resolveApproval = (ok: boolean, override?: { toolId: string; input: unknown }, answer?: string) =>
+    resolver.current?.({ approved: ok, override, answer });
   const rollbackRun = async () => {
     const r = await orchestrator.rollbackRun();
     setState({ ...orchestrator.getState() });

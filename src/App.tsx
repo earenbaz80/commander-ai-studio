@@ -64,6 +64,9 @@ const AgentMode = React.lazy(() =>
 const AgentApprovalModal = React.lazy(() =>
   import('./components/AgentApprovalModal').then((m) => ({ default: m.AgentApprovalModal }))
 );
+const AgentQuestionModal = React.lazy(() =>
+  import('./components/AgentQuestionModal').then((m) => ({ default: m.AgentQuestionModal }))
+);
 import { CommandPalette } from './components/CommandPalette';
 import { NonoDock } from './features/nono/NonoDock';
 import { StatusBar } from './components/StatusBar';
@@ -1412,13 +1415,20 @@ export default function App() {
                 goalRequest={agentGoalRequest}
                 lang={lang as any}
               />
-              {agent.pendingApproval && (
-                <AgentApprovalModal
-                  approval={agent.pendingApproval}
-                  onResolve={agent.resolveApproval}
-                  lang={lang as any}
-                />
-              )}
+              {agent.pendingApproval &&
+                ((agent.pendingApproval.meta as any)?.kind === 'question' ? (
+                  <AgentQuestionModal
+                    approval={agent.pendingApproval}
+                    onResolve={(ok, answer) => agent.resolveApproval(ok, undefined, answer)}
+                    lang={lang as any}
+                  />
+                ) : (
+                  <AgentApprovalModal
+                    approval={agent.pendingApproval}
+                    onResolve={agent.resolveApproval}
+                    lang={lang as any}
+                  />
+                ))}
             </>
             </React.Suspense>
           )}

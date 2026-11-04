@@ -7,6 +7,7 @@ import { codeAnalyzeTool, codeRefactorTool, codeFixTool } from './tools/code';
 import { taskTool } from './tools/task';
 import { spawnAgentsTool } from './tools/spawnAgents';
 import { skillTool } from './tools/skill';
+import { askUserTool } from './tools/askUser';
 import { webFetchTool, webSearchTool, codeRunTool } from './tools/web';
 import { runFileChangeHooksTool } from './tools/hooks';
 import { worktreeCreateTool } from './tools/worktreeCreate';
@@ -42,6 +43,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition<any, any>> = {
   [taskTool.id]: taskTool,
   [spawnAgentsTool.id]: spawnAgentsTool,
   [skillTool.id]: skillTool,
+  [askUserTool.id]: askUserTool,
   [webFetchTool.id]: webFetchTool,
   [webSearchTool.id]: webSearchTool,
   [codeRunTool.id]: codeRunTool,
