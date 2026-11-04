@@ -31,7 +31,9 @@ export type ToolId =
   | 'code.refactor'
   | 'code.fix'
   | 'worktree.create'
-  | 'ask_user';
+  | 'ask_user'
+  | 'github.pr'
+  | 'github.comment';
 
 export interface ToolContext {
   cwd: string;

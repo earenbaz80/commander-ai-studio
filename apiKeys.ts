@@ -26,6 +26,7 @@ export const VALID_KEYS: ReadonlySet<string> = new Set([
   'CUSTOM_MODEL',
   'OLLAMA_HOST',
   'LMSTUDIO_HOST',
+  'GITHUB_TOKEN',
 ]);
 
 function sanitizeValue(value: string): string {

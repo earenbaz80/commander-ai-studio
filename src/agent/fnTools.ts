@@ -391,6 +391,16 @@ export const AGENT_FUNCTION_DECLARATIONS = [
       required: ['items'],
     },
   },
+  {
+    name: 'github_pr',
+    description: 'Lee un pull request de GitHub: título, estado, autor, cuerpo y diff por archivo. Acepta repo "owner/repo" + number, o url del PR.',
+    parameters: { type: 'OBJECT', properties: { repo: { type: 'STRING' }, url: { type: 'STRING' }, number: { type: 'NUMBER' } }, required: [] },
+  },
+  {
+    name: 'github_comment',
+    description: 'Publica un comentario en un pull request de GitHub. Requiere aprobación y GITHUB_TOKEN con permiso de escritura.',
+    parameters: { type: 'OBJECT', properties: { repo: { type: 'STRING' }, url: { type: 'STRING' }, number: { type: 'NUMBER' }, body: { type: 'STRING' } }, required: ['body'] },
+  },
 ];
 
 const FN_TO_TOOL: Record<string, string> = {
@@ -402,6 +412,7 @@ const FN_TO_TOOL: Record<string, string> = {
   git_status: 'git.status', git_diff: 'git.diff', git_log: 'git.log', git_commit: 'git.commit', git_worktree: 'git.worktree', git_rebase: 'git.rebase', git_conflict: 'git.conflict',
   web_fetch: 'web.fetch', web_search: 'web.search', code_run: 'code.run', run_file_change_hooks: 'run_file_change_hooks', worktree_create: 'worktree.create',
   mcp_call: 'mcp.call', ask_user: 'ask_user',
+  github_pr: 'github.pr', github_comment: 'github.comment',
 };
 
 export function mapFunctionCall(name: string, args: any): { tool: string; input: unknown } | null {

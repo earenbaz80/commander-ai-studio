@@ -11,6 +11,7 @@ import { askUserTool } from './tools/askUser';
 import { webFetchTool, webSearchTool, codeRunTool } from './tools/web';
 import { runFileChangeHooksTool } from './tools/hooks';
 import { worktreeCreateTool } from './tools/worktreeCreate';
+import { githubPrTool, githubCommentTool } from './tools/github';
 import { mcpCallToolDef, mcpListToolDef } from './tools/mcp';
 import {
   gitStatusTool,
@@ -58,6 +59,8 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition<any, any>> = {
   [gitWorktreeTool.id]: gitWorktreeTool,
   [gitRebaseTool.id]: gitRebaseTool,
   [gitConflictTool.id]: gitConflictTool,
+  [githubPrTool.id]: githubPrTool,
+  [githubCommentTool.id]: githubCommentTool,
 };
 
 export function getTool(id: string): ToolDefinition<any, any> | undefined {

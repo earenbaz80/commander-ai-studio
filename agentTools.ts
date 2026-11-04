@@ -20,6 +20,7 @@ import { assertSafeOutboundUrl, safeFetch } from './ssrf';
 import { displayPath, listRoots, resolveProjectPath } from './projects';
 import { createWorktree } from './worktrees';
 import { snapshotPath } from './checkpoints';
+import { commentOnPullRequest, parsePullRequest, pullRequestData } from './github';
 import { uid } from './src/agent/id';
 import { invalidateIndex } from './repoIndex';
 import { getPermissions, enforceTool, enforcePath } from './permissions';
@@ -1847,6 +1848,16 @@ export async function executeAgentTool(
       error: r.status === 'rejected' ? String(r.reason) : (r.status === 'fulfilled' ? (r.value as any).error : undefined),
     }));
     return { ok: true, data: { results: out, spawned: capped.length, capped: agents.length > 6 } };
+  }
+
+  // GitHub: lectura del PR y comentario. El token es del servidor
+  // (`GITHUB_TOKEN`) y no viaja al modelo ni al navegador.
+  if (toolId === 'github.pr' || toolId === 'github.comment') {
+    const ref = parsePullRequest((input ?? {}) as any);
+    if (!ref) return { ok: false, error: 'Indica repo "owner/repo" + number, o la url del PR', status: 400 };
+    const token = process.env.GITHUB_TOKEN || '';
+    if (toolId === 'github.pr') return pullRequestData(ref, token);
+    return commentOnPullRequest(ref, String((input as any)?.body || ''), token);
   }
 
   // `ask_user` necesita la UI del chat: sin usuario al otro lado no hay a

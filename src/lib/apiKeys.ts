@@ -29,6 +29,7 @@ export const CLIENT_VALID_KEYS: readonly string[] = [
   'CUSTOM_MODEL',
   'OLLAMA_HOST',
   'LMSTUDIO_HOST',
+  'GITHUB_TOKEN',
 ];
 
 export function getCachedApiKey(key: string): string | undefined {
