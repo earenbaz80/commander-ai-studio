@@ -31,7 +31,7 @@ export class ComposerError extends Error {
   }
 }
 
-const SYSTEM_PROMPT = `Eres Commander Composer, un agente de ingeniería de software experto similar a Cursor Composer.
+const SYSTEM_PROMPT = `Eres Commander Composer, un agente de ingeniería de software experto.
 El usuario te dará una instrucción para modificar o crear archivos en el proyecto.
 
 REGLAS DE RESPUESTA:

@@ -126,7 +126,7 @@ export function createGitWorktree(projectPath: string, threadId: string): { path
   const ok = gitWorktreeAdd(src, dest, branch);
   if (!ok) throw new Error('No se pudo crear el worktree');
 
-  // Copy ignored env files (Freebuff pattern)
+  // Copia los .env ignorados por git al worktree.
   const envFiles = ['.env', '.env.local', '.env.development', '.env.development.local', '.infisical.json', '.vercel/project.json'];
   for (const f of envFiles) {
     const srcFile = path.join(src, f);
