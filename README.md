@@ -14,6 +14,7 @@ Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos
 - Sidebar → **Modo Agente**. Describe tarea → INICIAR TAREA.
 - Tools (vía `POST /api/agent/run-tool`,Rate-limit 60/min):
   - `fs.read/write/edit/glob/list/grep`, `shell.run` (allowlist), `web.fetch/search`, `code.run` (vm sandbox), `mcp.call/list`.
+  - `shell.pty`: sesión interactiva persistente (REPL, `npm init`, un TUI) con `open/read/write/resize/close/list`. Proceso real con TTY, sin shell interpretando la orden y con el `cwd` dentro del proyecto.
   - `code.analyze` / `code.refactor` / `code.fix`: análisis, renombrado y formateo **sin modelo** (ver [Análisis nativo](#análisis-nativo-sin-modelo)).
 - `danger=true` pide aprobación con diff preview (`fs.edit/write`).
 - Reglas repo: `AGENTS.md`, `.cursorrules`, `CLAUDE.md` se inyectan al prompt.
@@ -27,6 +28,19 @@ Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos
 
 - `POST /api/agent/run-tool {toolId, input}` — sandbox a `process.cwd()`, validación y allowlist shell.
 - `GET /api/health` — smoke.
+
+## Sesiones PTY
+
+`shell.run` ejecuta y devuelve salida; `shell.pty` abre un proceso y lo mantiene vivo entre llamadas:
+
+```json
+{"toolId": "shell.pty", "input": {"action": "open", "executable": "node", "args": ["-i"]}}
+{"toolId": "shell.pty", "input": {"action": "write", "id": "pty-1", "data": "1+1"}}
+{"toolId": "shell.pty", "input": {"action": "read", "id": "pty-1", "cursor": 0}}
+{"toolId": "shell.pty", "input": {"action": "close", "id": "pty-1"}}
+```
+
+`read` devuelve la salida nueva y el `cursor` actualizado: se pasa en la siguiente lectura para no repetir lo ya entregado (si el buffer descartó lo viejo, lo dice en `dropped`). Hay un máximo de 4 sesiones, cada una ligada a la tanda del agente que la abrió, y se cierran solas tras 15 minutos sin uso.
 
 ## Análisis nativo (sin modelo)
 

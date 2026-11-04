@@ -81,6 +81,7 @@ AppStoreProvider
 
 - **Electron**: `contextIsolation`, `sandbox`, `nodeIntegration: false`
 - **shell.run**: Allowlist de comandos seguros + denylist de peligrosos (fail-safe)
+- **shell.pty**: Ejecutable + argv, sin shell; denylist, `cwd` validado y sesiones por agente
 - **fs.***: Validación de rutas contra allowlist de proyectos
 - **API Keys**: Solo al servidor embebido vía HTTPS
 - **CORS**: Restringido al origen de la app
