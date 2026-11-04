@@ -181,7 +181,7 @@ export const AGENT_FUNCTION_DECLARATIONS = [
   },
   {
     name: 'read_diagnostics',
-    description: 'Diagnósticos estáticos TypeScript del proyecto (tsc --noEmit). Opcional path para filtrar un archivo.',
+    description: 'Diagnósticos estáticos del proyecto (tsc y, si hay marcadores, pyright/go vet/cargo check). Opcional path para filtrar un archivo.',
     parameters: { type: 'OBJECT', properties: { path: { type: 'STRING', description: 'Ruta relativa a filtrar (opcional)' } } },
   },
   {

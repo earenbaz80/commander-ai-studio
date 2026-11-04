@@ -37,13 +37,14 @@ async function callServer(toolId: string, input: unknown): Promise<any> {
 }
 
 /**
- * Diagnósticos estáticos del proyecto vía `tsc --noEmit` (lenguaje TypeScript).
- * Es la base del `read_diagnostics` del roadmap P0 #3: el agente puede comprobar
- * si su edición introdujo errores sin ejecutar un build completo.
+ * Diagnósticos estáticos del proyecto: `tsc --noEmit` y, si el proyecto declara
+ * Python/Go/Rust, la herramienta de cada lenguaje. Es la base del
+ * `read_diagnostics` del roadmap P0 #3: el agente puede comprobar si su edición
+ * introdujo errores sin ejecutar un build completo.
  */
 export const readDiagnosticsTool: ToolDefinition<ReadDiagnosticsInput, ReadDiagnosticsOutput> = {
   id: 'read_diagnostics',
-  description: 'Diagnósticos estáticos del proyecto (errores/warnings de TypeScript vía tsc).',
+  description: 'Diagnósticos estáticos del proyecto (TypeScript y, si aplica, Python/Go/Rust).',
   danger: false,
   requiresApproval: () => false,
   run: async (input) => callServer('read_diagnostics', input),

@@ -66,10 +66,14 @@ test('parseTscOutput respeta el límite de diagnósticos pero cuenta todos', () 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'cmdr-diag-'));
 
 /** Crea un "proyecto" con un tsc simulado que imprime diagnósticos fijos. */
-function makeFakeProject(name: string, opts: { tsconfig?: boolean; fake?: boolean } = {}): string {
+function makeFakeProject(
+  name: string,
+  opts: { tsconfig?: boolean; fake?: boolean; files?: string[] } = {}
+): string {
   const dir = path.join(TMP, name);
   fs.mkdirSync(dir, { recursive: true });
   if (opts.tsconfig !== false) fs.writeFileSync(path.join(dir, 'tsconfig.json'), '{}', 'utf8');
+  for (const file of opts.files || []) fs.writeFileSync(path.join(dir, file), '', 'utf8');
   if (opts.fake !== false) {
     const binDir = path.join(dir, 'node_modules', 'typescript', 'bin');
     fs.mkdirSync(binDir, { recursive: true });
@@ -175,6 +179,25 @@ test('read_diagnostics sin typescript instalado devuelve una nota', async () => 
   assert.equal(res.body.ok, true);
   assert.deepEqual(res.body.data.diagnostics, []);
   assert.match(res.body.data.note, /typescript no está instalado/);
+});
+
+test('read_diagnostics suma los lenguajes detectados sin tocar los conteos de tsc', async () => {
+  const dir = makeFakeProject('proj-python', { files: ['pyproject.toml'] });
+  const res = mockRes();
+  await handleAgentRunTool(mockReq({ toolId: 'read_diagnostics', input: { root: dir } }), res);
+  assert.equal(res.body.ok, true);
+  assert.deepEqual(res.body.data.languages.detected, ['python']);
+  assert.ok(Array.isArray(res.body.data.languages.skipped));
+  // Los 3 diagnósticos del tsc simulado siguen ahí, con o sin pyright instalado.
+  assert.equal(res.body.data.diagnostics.length >= 3, true);
+  assert.equal(res.body.data.errorCount >= 2, true);
+});
+
+test('read_diagnostics sin marcadores de lenguaje devuelve la lista vacía', async () => {
+  const dir = makeFakeProject('proj-tsonly');
+  const res = mockRes();
+  await handleAgentRunTool(mockReq({ toolId: 'read_diagnostics', input: { root: dir } }), res);
+  assert.deepEqual(res.body.data.languages, { detected: [], skipped: [] });
 });
 
 test('read_diagnostics está allowlisted en el servidor', () => {

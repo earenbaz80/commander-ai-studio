@@ -21,6 +21,8 @@ import { displayPath, listRoots, resolveProjectPath } from './projects';
 import { createWorktree } from './worktrees';
 import { snapshotPath } from './checkpoints';
 import { commentOnPullRequest, parsePullRequest, pullRequestData } from './github';
+import { detectProjectLanguages, runLanguageDiagnostics } from './languageDiagnostics';
+import { runAfterToolHooks, runBeforeToolHooks, type PluginError } from './pluginsRuntime';
 import { uid } from './src/agent/id';
 import { invalidateIndex } from './repoIndex';
 import { getPermissions, enforceTool, enforcePath } from './permissions';
@@ -168,13 +170,13 @@ function normalizeRel(p: string): string {
 }
 
 /** Ejecuta `tsc --noEmit` en el root del proyecto. */
-async function computeDiagnostics(rootAbs: string): Promise<{ ok: boolean; data?: any; error?: string }> {
+async function computeTypeScriptDiagnostics(rootAbs: string): Promise<{ ok: boolean; data?: any; error?: string }> {
   if (!fs.existsSync(path.join(rootAbs, 'tsconfig.json'))) {
     return {
       ok: true,
       data: {
         diagnostics: [], errorCount: 0, warningCount: 0, root: rootAbs,
-        note: 'Sin tsconfig.json: read_diagnostics solo analiza proyectos TypeScript.',
+        note: 'Sin tsconfig.json: no se analiza TypeScript (read_diagnostics también revisa Python, Go y Rust cuando el proyecto los declara).',
       },
     };
   }
@@ -218,6 +220,76 @@ async function computeDiagnostics(rootAbs: string): Promise<{ ok: boolean; data?
       exitCode: run.code,
       durationMs: Date.now() - start,
       root: rootAbs,
+    },
+  };
+}
+
+/** Pasa una ruta de diagnóstico (absoluta o con `./`) a relativa al proyecto. */
+function normalizeDiagFile(file: string, rootAbs: string): string {
+  if (!file) return '';
+  const rel = path.isAbsolute(file) ? path.relative(rootAbs, file) : file;
+  return normalizeRel(rel);
+}
+
+/**
+ * Diagnósticos de Python, Go y Rust del proyecto.
+ *
+ * `read_diagnostics` es la verificación del agente tras editar: en un repo con
+ * `pyproject.toml` o `Cargo.toml`, mirar sólo TypeScript no dice nada. Los
+ * lenguajes se detectan por los marcadores de la raíz, así que en un proyecto
+ * TS esta función no lanza ningún proceso. Si la herramienta del lenguaje no
+ * está instalada queda anotada en `skipped`, no se falla la tool.
+ */
+async function computeLanguageDiagnostics(rootAbs: string): Promise<{
+  detected: string[];
+  skipped: Array<{ lang: string; reason: string }>;
+  diagnostics: Diagnostic[];
+}> {
+  let files: string[] = [];
+  try {
+    files = fs.readdirSync(rootAbs);
+  } catch {
+    return { detected: [], skipped: [], diagnostics: [] };
+  }
+  const detected = detectProjectLanguages(files);
+  if (detected.length === 0) return { detected: [], skipped: [], diagnostics: [] };
+  const res = await runLanguageDiagnostics(rootAbs, files, 100);
+  return {
+    detected,
+    skipped: res.skipped,
+    diagnostics: res.diagnostics.map((d) => ({ ...d, file: normalizeDiagFile(d.file, rootAbs) })),
+  };
+}
+
+/** Diagnósticos completos del proyecto: TypeScript más los lenguajes detectados. */
+async function computeDiagnostics(rootAbs: string): Promise<{ ok: boolean; data?: any; error?: string }> {
+  const [ts, lang] = await Promise.all([
+    computeTypeScriptDiagnostics(rootAbs),
+    computeLanguageDiagnostics(rootAbs).catch(() => ({ detected: [], skipped: [], diagnostics: [] })),
+  ]);
+  // Un fallo de tsc (timeout) sigue siendo el resultado; los lenguajes no lo tapan.
+  if (!ts.ok) return ts;
+  const base: any = ts.data || {};
+  const ownDiagnostics: Diagnostic[] = Array.isArray(base.diagnostics) ? base.diagnostics : [];
+  const merged = [...ownDiagnostics, ...lang.diagnostics];
+  const notes: string[] = [];
+  if (base.note) notes.push(base.note);
+  if (lang.skipped.length > 0) {
+    notes.push(
+      `Herramientas no instaladas: ${lang.skipped.map((s) => `${s.lang} (${s.reason})`).join(', ')}.`
+    );
+  }
+  return {
+    ok: true,
+    data: {
+      ...base,
+      diagnostics: merged,
+      // Los conteos de tsc cubren diagnósticos más allá del tope de la lista,
+      // así que se suman en vez de recalcular sobre la lista recortada.
+      errorCount: (base.errorCount || 0) + lang.diagnostics.filter((d) => d.severity === 'error').length,
+      warningCount: (base.warningCount || 0) + lang.diagnostics.filter((d) => d.severity === 'warning').length,
+      languages: { detected: lang.detected, skipped: lang.skipped },
+      ...(notes.length > 0 ? { note: notes.join(' ') } : {}),
     },
   };
 }
@@ -533,7 +605,7 @@ function isReadOnlyCall(toolId: string, input: any): boolean {
  * `opts.sessionId` deja el trabajo en segundo plano a nombre de esa sesión, para
  * que cancelar la tanda lo pare.
  */
-export async function executeAgentTool(
+async function executeAgentToolCore(
   toolId: string,
   input: any,
   opts?: { signal?: AbortSignal; sessionId?: string },
@@ -1910,6 +1982,43 @@ export async function executeAgentTool(
     return { ok: true, data: { name, path: found, description: desc, content: raw } };
   }
   return { ok: false, error: `Tool desconocida: ${toolId}`, status: 400 };
+}
+
+/** Root del proyecto al que pertenecen los plugins de esta llamada. */
+function pluginRootFor(input: any): string {
+  if (!input?.root) return AGENT_ROOT;
+  try {
+    return resolveProjectPath('.', String(input.root).slice(0, 1024)).abs;
+  } catch {
+    return AGENT_ROOT;
+  }
+}
+
+/** Los errores de un hook se ven en el resultado, pero no lo invalidan. */
+function withPluginErrors<T extends ToolResult>(result: T, errors: PluginError[]): T {
+  if (errors.length === 0) return result;
+  const data = result.data && typeof result.data === 'object' ? result.data : {};
+  return { ...result, data: { ...data, pluginErrors: errors } };
+}
+
+/**
+ * Punto único de ejecución de tools.
+ *
+ * Los plugins del proyecto ven la llamada antes y después del núcleo, así que
+ * un hook puede normalizar la entrada o anotar el resultado sin tocar cada
+ * tool. Un plugin roto no puede tumbar la tool: sus errores se adjuntan a
+ * `data.pluginErrors`.
+ */
+export async function executeAgentTool(
+  toolId: string,
+  input: any,
+  opts?: { signal?: AbortSignal; sessionId?: string },
+): Promise<ToolResult> {
+  const pluginRoot = pluginRootFor(input);
+  const before = await runBeforeToolHooks(pluginRoot, toolId, input || {});
+  const result = await executeAgentToolCore(toolId, before.input, opts);
+  const after = await runAfterToolHooks(pluginRoot, toolId, before.input, result);
+  return withPluginErrors(after.result as ToolResult, [...before.errors, ...after.errors]);
 }
 
 /** HTTP wrapper delgado sobre `executeAgentTool` (rate-limit + respuesta JSON). */
