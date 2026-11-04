@@ -13,7 +13,7 @@ import * as persistence from './persistence';
 import * as worktrees from './worktrees';
 import { runAutonomousCampaign, planCampaign } from './autonomousRun';
 import { setServerBaseUrl } from './serverRuntime';
-import { addRoot, isInsideRoots, listRoots, removeRoot, removableRoots, resolveProjectPath } from './projects';
+import { addRoot, listRoots, removeRoot, removableRoots, resolveProjectPath } from './projects';
 import { enforceTool, getPermissions, setPermissions } from './permissions';
 // `listSessions` ya lo exporta `sessionWorkspace` (sesiones de UI): se aliasa.
 import { createSession, getSession, listSessions as listAgentSessions, removeSession, stopSession } from './agentSession';
@@ -537,9 +537,16 @@ app.use('/api/skills', skillsRouter);
 app.get('/api/agent/prompts', (req, res) => {
   try {
     const root = checkpointsRoot(req.query.root);
-    // Sólo proyectos registrados: un root libre permitiría listar los .md de
-    // cualquier carpeta del disco a través de esta ruta.
-    if (!isInsideRoots(root)) {
+    // Debe ser un proyecto registrado exacto: estar «dentro» de una raíz
+    // registrada dejaba pasar subcarpetas y rutas como `../..`.
+    const propio = (value: string) => {
+      try {
+        return fs.realpathSync.native(value);
+      } catch {
+        return path.resolve(value);
+      }
+    };
+    if (!listRoots().some((registrado) => propio(registrado) === propio(root))) {
       return res.status(400).json({ success: false, error: 'root fuera de los proyectos del Studio' });
     }
     res.json({ success: true, ...listProjectPrompts(root) });
