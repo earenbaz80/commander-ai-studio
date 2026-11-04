@@ -143,6 +143,7 @@
   "build": {
     "appId": "com.commander.ai.studio",
     "productName": "Commander AI Studio",
+    "npmRebuild": false,
     "copyright": "Copyright © 2026 Edel Arencibia Baez",
     "directories": {
       "output": "release",
