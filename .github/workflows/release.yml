@@ -37,30 +37,24 @@ jobs:
       - name: Build updater bundle
         run: npm run build:updater
 
-      # Windows firma con su propio .pfx. El .p12 de Apple no se le pasa: en un
-      # runner de Windows haría fallar la firma por certificado equivocado.
+      # Sin firma a propósito: es una app personal y no hay certificado. El
+      # instalador sale NotSigned y SmartScreen avisa la primera vez.
       - name: Build Electron App (Windows)
         if: runner.os == 'Windows'
         run: npm run build:electron
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WIN_CSC_LINK: ${{ secrets.WIN_CERTIFICATE }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CERTIFICATE_PASSWORD }}
 
       - name: Build Electron App (macOS/Linux)
         if: runner.os != 'Windows'
         run: npm run build:electron
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE }}
-          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
 
-      # Un tag no publica instaladores sin firmar. Sin secreto de certificado,
-      # electron-builder genera el .exe igual y sólo avisa; aquí se corta.
-      # Para una prerelease sin certificado: SIGNING_OPTIONAL=1 en el job.
-      - name: Verificar firma (Windows)
-        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/')
-        run: node scripts/check-signing.cjs --require --dir release
+      # Antes había aquí un `check-signing --require` que cortaba el tag si
+      # los .exe no estaban firmados. Se quitó: el proyecto es personal y sin
+      # certificado el gate sólo bloqueaba releases legítimas. El script sigue
+      # disponible para inspeccionar a mano.
 
       - name: Upload Release Artifacts
         uses: softprops/action-gh-release@v2

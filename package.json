@@ -199,6 +199,7 @@
           ]
         }
       ],
+      "verifyUpdateCodeSignature": false,
       "icon": "build/icon.ico"
     },
     "mac": {

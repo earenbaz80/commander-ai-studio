@@ -156,18 +156,20 @@ Runpm run build:server to regenerate electron/server.cjs and electron/server.mjs
 
 ## Firma de código
 
-Los instaladores se firman en `release.yml` con los secretos del repo:
+**No se firma.** Commander AI Studio es una aplicación personal: no se vende ni se distribuye a terceros, así que no hay certificado de firma de código ni se va a comprar. Los instaladores salen `NotSigned` y Windows SmartScreen mostrará el aviso de editor desconocido la primera vez; es lo esperado.
 
-| Secreto | Plataforma | Qué es |
-| --- | --- | --- |
-| `WIN_CERTIFICATE` | Windows | `.pfx` en base64 (o ruta) del certificado de firma de código |
-| `WIN_CERTIFICATE_PASSWORD` | Windows | Contraseña del `.pfx` |
-| `APPLE_CERTIFICATE` | macOS | `.p12` en base64 con el certificado Developer ID |
-| `APPLE_CERTIFICATE_PASSWORD` | macOS | Contraseña del `.p12` |
+`scripts/check-signing.cjs` sigue existiendo para inspeccionarlo cuando haga falta:
 
-Sin certificado, electron-builder **no falla**: avisa con `no code signing certificate configured, signing is skipped` y produce instaladores sin firmar que SmartScreen bloquea. Por eso, en un tag, el job corre `node scripts/check-signing.cjs --require --dir release` y corta si algún `.exe` no está firmado. Para una prerelease sin certificado se puede definir `SIGNING_OPTIONAL=1` en el job, aceptando el aviso de SmartScreen a cambio de publicar.
+```bash
+node scripts/check-signing.cjs --dir release        # informativo
+node scripts/check-signing.cjs --require --dir release  # sólo si algún día hay certificado
+```
 
-Para firmar en local: `WIN_CSC_LINK=/ruta/cert.pfx WIN_CSC_KEY_PASSWORD=… npm run build:electron` y comprobar con `node scripts/check-signing.cjs --dir release`.
+Ningún workflow lo usa como puerta. Antes un tag cortaba en `--require`, y ese candado se quitó: sin certificado sólo bloqueaba releases legítimas.
+
+El auto-update funciona igual sin firma: `win.verifyUpdateCodeSignature` está en `false`, así que electron-updater no exige un firmante en el instalador que descarga, y las actualizaciones llegan por HTTPS desde los releases del propio repositorio.
+
+Si algún día se distribuyera a terceros, haría falta un certificado de firma de código —hoy las CA públicas lo entregan con la clave en hardware o en un servicio en la nube— y volver a poner `verifyUpdateCodeSignature` en `true` junto con el `publisherName` del certificado.
 
 ## Empaquetado
 
