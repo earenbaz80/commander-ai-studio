@@ -11,8 +11,8 @@
     "dev:legacy": "concurrently \"cross-env NODE_ENV=development npx tsx server.ts\" \"vite\"",
     "build": "tsc --noEmit && vite build",
     "build:server": "npm run build:server:cjs && npm run build:server:mjs",
-    "build:server:cjs": "npx esbuild server.ts --bundle --platform=node --format=cjs --target=node20 --external:vite --external:playwright --outfile=electron/server.cjs",
-    "build:server:mjs": "npx esbuild server.ts --bundle --platform=node --format=esm --target=node20 --external:vite --external:playwright --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" --outfile=electron/server.mjs",
+    "build:server:cjs": "npx esbuild server.ts --bundle --platform=node --format=cjs --target=node20 --external:vite --external:playwright --external:node-pty --outfile=electron/server.cjs",
+    "build:server:mjs": "npx esbuild server.ts --bundle --platform=node --format=esm --target=node20 --external:vite --external:playwright --external:node-pty --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" --outfile=electron/server.mjs",
     "build:electron": "electron-builder --win",
     "build:all": "npm run build && npm run build:server && npm run build:electron",
     "build:tauri": "npm run build && cargo build --release --manifest-path src-tauri/Cargo.toml",
@@ -81,6 +81,7 @@
     "firebase": "^13.1.0",
     "jszip": "^3.10.2",
     "lucide-react": "^1.59.0",
+    "node-pty": "^1.1.0",
     "ws": "^8.22.0",
     "xterm": "^5.3.0",
     "xterm-addon-fit": "^0.8.0",
@@ -163,6 +164,10 @@
       {
         "from": "electron/server.mjs",
         "to": "server.mjs"
+      },
+      {
+        "from": "node_modules/node-pty",
+        "to": "node_modules/node-pty"
       }
     ],
     "win": {

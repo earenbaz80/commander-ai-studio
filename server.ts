@@ -3105,9 +3105,10 @@ const server = app.listen(PORT, HOST, () => {
     console.log('Server closed');
   });
 
-  // Terminal persistente vía WebSocket en /ws/terminal (deshabilitado temporalmente).
-  // const { attachTerminalWs } = await import('./src/terminal/wsServer.js');
-  // attachTerminalWs(server);
+  // Terminal persistente con PTY en /ws/terminal. El proceso ve un terminal de
+  // verdad (vim, top, REPLs): el frontend ya habla este protocolo con xterm.js.
+  const { attachTerminalWs } = await import('./src/terminal/wsServer.js');
+  attachTerminalWs(server, { projectPath: process.cwd() });
 
   // Mantener proceso vivo en desarrollo
   if (process.env.NODE_ENV !== 'production') {
