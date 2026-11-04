@@ -1,5 +1,5 @@
 /**
- * Reglas de permisos por patrón, al estilo de OpenCode.
+ * Reglas de permisos por patrón.
  *
  * Sin reglas, cada tool peligrosa abre el modal (o usa su allowlist). Con
  * reglas, `allow` ejecuta sin preguntar, `deny` bloquea y `ask` fuerza el modal

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODELS, MAX_FALLBACK_MODELS } from './geminiModels';
 
 /**
- * Filtros comunes a todos los proveedores, con el mismo criterio que opencode.
+ * Filtros comunes a todos los proveedores, con el mismo criterio en todo el catálogo.
  *
  * `enabled: false` apaga un proveedor sin borrar sus credenciales, y las listas
  * recortan su catálogo (`claude-*` casa por prefijo). Son opcionales: sin ellas
