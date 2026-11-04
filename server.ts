@@ -42,6 +42,7 @@ import { handleOAuthLogin, handleOAuthCallback, handleLogout, getCurrentUser } f
 import { executeWithFallback, getProviderMetrics, checkAllProvidersHealth, resetCircuitBreaker, setProviderEnabled } from './fallbackRouter';
 import { GEMINI_DEFAULT_MODEL } from './src/config/geminiModels';
 import { handleFreebuffGenerate } from './freebuff';
+import { listProjectPrompts } from './promptsApi';
 import { normalizeLmStudioHost, parseLmStudioModels } from './src/lib/lmStudio';
 
 dotenv.config();
@@ -531,6 +532,16 @@ app.get('/api/agent/sessions/:id/events', (req, res) => {
 
 // Monta el router de skills bajo /api/skills
 app.use('/api/skills', skillsRouter);
+
+// Comandos y agentes del proyecto (`.commander/commands` y `.commander/agents`).
+app.get('/api/agent/prompts', (req, res) => {
+  try {
+    const root = checkpointsRoot(req.query.root);
+    res.json({ success: true, ...listProjectPrompts(root) });
+  } catch (e: any) {
+    res.status(400).json({ success: false, error: e?.message || 'Error leyendo comandos del proyecto' });
+  }
+});
 
 // ==================== SESSION WORKSPACES (aislamiento por sesión) ====================
 app.get('/api/sessions', (_req, res) => {
