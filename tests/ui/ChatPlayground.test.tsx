@@ -120,6 +120,24 @@ describe('ChatPlayground', () => {
     });
   });
 
+  describe('actividad en el chat', () => {
+    test('mientras genera el chat muestra que está procesando, y lo retira al terminar', () => {
+      const props = baseProps();
+      const { rerender } = render(<ChatPlayground {...props} />);
+      // En reposo no hay señal: el chat no finge actividad.
+      expect(screen.queryByTestId('chat-activity')).toBeNull();
+
+      rerender(<ChatPlayground {...props} isGenerating={true} />);
+      const actividad = screen.getByTestId('chat-activity');
+      expect(actividad).toHaveTextContent('Procesando');
+      // Es un estado anunciable, no decoración: lectores de pantalla lo leen.
+      expect(actividad).toHaveAttribute('role', 'status');
+
+      rerender(<ChatPlayground {...props} isGenerating={false} />);
+      expect(screen.queryByTestId('chat-activity')).toBeNull();
+    });
+  });
+
   describe('render de mensajes', () => {
     test('muestra las etiquetas TÚ / AI', () => {
       render(

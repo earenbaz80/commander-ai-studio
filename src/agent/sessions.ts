@@ -42,6 +42,10 @@ export function saveSession(s: AgentSession): void {
   saveLocal(sessions);
 
   // 2. Servidor (durable, asíncrono, fire-and-forget). No bloquea la UI.
+  // Una corrida que no persiste hilo (la auditoría del chat) tampoco debe crear
+  // sesión al guardarse: parar o el autoguardado abría una sesión más por
+  // corrida, y el botón Detener seguía llenando el historial.
+  if (s.state?.task?.persistThread === false) return;
   void (async () => {
     try {
       const projectId = (s.state as any)?.projectPath || (s.state as any)?.cwd || undefined;
