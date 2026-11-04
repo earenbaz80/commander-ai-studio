@@ -252,7 +252,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "EdelArencibia",
+      "owner": "earenbaz80",
       "repo": "commander-ai-studio"
     }
   },
