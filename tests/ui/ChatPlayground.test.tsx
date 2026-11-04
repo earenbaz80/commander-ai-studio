@@ -220,18 +220,6 @@ describe('ChatPlayground', () => {
     });
   });
 
-  describe('tamaño de fuente', () => {
-    test('el botón A+ cicla la escala de fuente', () => {
-      render(<ChatPlayground {...baseProps()} messages={[modelMessage('Texto')]} />);
-      const fontButton = screen.getByText('A');
-      expect(fontButton).toBeInTheDocument();
-      fireEvent.click(fontButton);
-      expect(screen.getByText('A+')).toBeInTheDocument();
-      fireEvent.click(screen.getByText('A+'));
-      expect(screen.getByText('A++')).toBeInTheDocument();
-    });
-  });
-
   describe('selector de modelo', () => {
     test('muestra el modelo actual seleccionado', () => {
       render(<ChatPlayground {...baseProps()} />);

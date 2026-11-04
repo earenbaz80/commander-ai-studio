@@ -20,7 +20,7 @@ import { MentionItem, filterMentions } from '../data/contextMentions';
 import { searchFiles } from '../utils/codeSearchApi';
 import { ChatMessage, ParameterConfig, StudioMode, RunMode } from '../types/studio';
 import { Language } from '../i18n/translations';
-import { ComposerToolbar, type FontScale } from './chat/ComposerToolbar';
+import { ComposerToolbar } from './chat/ComposerToolbar';
 import { MentionHelpModal } from './chat/MentionHelpModal';
 import { buildModelGroups, findModel } from './chat/modelGroups';
 import { useModelsCatalog } from '../data/modelsLoader';
@@ -83,9 +83,6 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [fontScale, setFontScale] = useState<FontScale>('normal');
-  const cycleFontScale = () =>
-    setFontScale((prev) => (prev === 'normal' ? 'lg' : prev === 'lg' ? 'xl' : 'normal'));
 
   // Modo de ejecución: Build / Plan / Sólo lectura (persistente)
   const [runMode, setRunMode] = useState<RunMode>(() => {
@@ -295,8 +292,6 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
     scrollToBottom();
   }, [messages]);
 
-  const fontScaleClass = fontScale === 'lg' ? 'text-lg' : fontScale === 'xl' ? 'text-xl' : 'text-sm';
-
   return (
     <div className="flex flex-col h-full bg-[var(--nc-bg-panel)] text-white font-mono relative">
       {/* Messages Area */}
@@ -359,7 +354,7 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className={`${fontScaleClass} whitespace-pre-wrap`}>
+                  <div className="text-sm whitespace-pre-wrap">
                     <MarkdownRenderer content={msg.content} />
                   </div>
                 )}
@@ -474,8 +469,6 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
           modelGroups={modelGroups}
           runMode={runMode}
           onChangeRunMode={changeRunMode}
-          fontScale={fontScale}
-          onCycleFontScale={cycleFontScale}
           isGenerating={isGenerating}
           canSend={Boolean(inputText.trim()) || attachments.length > 0}
           onSend={handleSend}
