@@ -66,6 +66,8 @@ interface AgentModeProps {
   onContinue?: (s: AgentSession) => void;
   onFork?: (s: AgentSession) => void;
   onRollbackRun?: () => Promise<{ ok: boolean; error?: string; restored?: number; deleted?: number; skipped?: number }>;
+  onUndoStep?: () => Promise<{ ok: boolean; error?: string; restored?: number; deleted?: number }>;
+  onRedoStep?: () => Promise<{ ok: boolean; error?: string; restored?: number; deleted?: number }>;
   onPlanChange?: (plan: Array<{ id: string; text: string; done: boolean }>) => void;
   /** Avisa al pie de que hay una campaña autónoma corriendo en el servidor. */
   onAutonomousRunningChange?: (running: boolean) => void;
@@ -84,6 +86,8 @@ export const AgentMode: React.FC<AgentModeProps> = ({
   onContinue,
   onFork,
   onRollbackRun,
+  onUndoStep,
+  onRedoStep,
   onPlanChange,
   onAutonomousRunningChange,
   goalRequest,
@@ -418,6 +422,8 @@ export const AgentMode: React.FC<AgentModeProps> = ({
     onPlanChange?.(newPlan);
   };
 
+  const [historyMsg, setHistoryMsg] = useState<string | null>(null);
+
   const handleRollbackTo = async (index: number) => {
     if (onRollbackRun) {
       await onRollbackRun();
@@ -508,6 +514,29 @@ export const AgentMode: React.FC<AgentModeProps> = ({
           >
             <span>{lang === 'es' ? 'EXPORTAR' : lang === 'de' ? 'EXPORTIEREN' : 'EXPORT'}</span>
           </button>
+          <button
+            type="button"
+            onClick={async () => {
+              const r = await onUndoStep?.();
+              setHistoryMsg(r && !r.ok ? r.error || 'no se pudo deshacer' : null);
+            }}
+            disabled={state.running || !onUndoStep}
+            className="px-2.5 py-1 rounded border-2 font-bold text-xs bg-[var(--nc-bg-panel)] text-[var(--nc-text)] hover:bg-white hover:text-black border-[var(--nc-border-light)] disabled:opacity-50"
+          >
+            {lang === 'es' ? 'PASO ATRÁS' : lang === 'de' ? 'SCHRITT ZURÜCK' : 'STEP BACK'}
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              const r = await onRedoStep?.();
+              setHistoryMsg(r && !r.ok ? r.error || 'no se pudo rehacer' : null);
+            }}
+            disabled={state.running || !onRedoStep}
+            className="px-2.5 py-1 rounded border-2 font-bold text-xs bg-[var(--nc-bg-panel)] text-[var(--nc-text)] hover:bg-white hover:text-black border-[var(--nc-border-light)] disabled:opacity-50"
+          >
+            {lang === 'es' ? 'REHACER' : lang === 'de' ? 'WIEDERHOLEN' : 'REDO'}
+          </button>
+          {historyMsg && <span className="text-[10px] text-red-300 max-w-[180px] truncate">{historyMsg}</span>}
           {state.running ? (
             <button
               type="button"

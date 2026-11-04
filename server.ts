@@ -1070,6 +1070,7 @@ app.delete('/api/plugins/:id', (req, res) => {
 import {
   listCheckpoints,
   snapshotProject,
+  snapshotPath,
   restoreCheckpoint,
   listWorktreeCheckpoints,
   createWorktreeCheckpoint,
@@ -1103,6 +1104,15 @@ app.post('/api/checkpoints', (req, res) => {
   try {
     const root = checkpointsRoot(req.body?.root);
     const label = typeof req.body?.label === 'string' ? req.body.label.slice(0, 200) : 'Punto de control';
+    // `paths` guarda sólo esas rutas: es lo que necesita rehacer un paso sin
+    // copiar el proyecto entero.
+    const paths = Array.isArray(req.body?.paths)
+      ? (req.body.paths as unknown[]).filter((p): p is string => typeof p === 'string').slice(0, 20)
+      : [];
+    if (paths.length > 0) {
+      const cps = paths.map((p) => snapshotPath(root, p, label));
+      return res.json({ success: true, checkpoint: cps[0], checkpoints: cps });
+    }
     const cp = snapshotProject(root, label);
     res.json({ success: true, checkpoint: cp });
   } catch (e: any) {

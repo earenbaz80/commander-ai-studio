@@ -17,6 +17,7 @@ Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos
   - `shell.pty`: sesión interactiva persistente (REPL, `npm init`, un TUI) con `open/read/write/resize/close/list`. Proceso real con TTY, sin shell interpretando la orden y con el `cwd` dentro del proyecto.
   - `ask_user`: el agente pregunta y espera tu respuesta (opciones clicables y texto libre) por el canal de aprobación, así que la corrida se para hasta que contestas.
   - Reglas de permisos por patrón para `shell.run` y las tools de escritura (`allow`/`ask`/`deny`, `*` como comodín, gana la última que coincide); se guardan en la máquina, no en el repo.
+  - Deshacer y rehacer el último paso que escribió en disco (`PASO ATRÁS` / `REHACER`): cada escritura guarda el contenido previo y, antes de revertir, se captura el estado actual para poder rehacerlo.
   - `code.analyze` / `code.refactor` / `code.fix`: análisis, renombrado y formateo **sin modelo** (ver [Análisis nativo](#análisis-nativo-sin-modelo)).
 - `danger=true` pide aprobación con diff preview (`fs.edit/write`).
 - Reglas repo: `AGENTS.md`, `.cursorrules`, `CLAUDE.md` se inyectan al prompt.

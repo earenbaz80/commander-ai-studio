@@ -137,11 +137,22 @@ export function useAgent(cwd: string, model?: string) {
     return r;
   };
 
+  const undoStep = async () => {
+    const r = await orchestrator.undoStep();
+    setState({ ...orchestrator.getState() });
+    return r;
+  };
+  const redoStep = async () => {
+    const r = await orchestrator.redoStep();
+    setState({ ...orchestrator.getState() });
+    return r;
+  };
+
   /** Llama a orchestrator.setPlan y refresca el estado local. */
   const setPlan = (newPlan: Array<{ id: string; text: string; done: boolean }>) => {
     orchestrator.setPlan(newPlan);
     setState({ ...orchestrator.getState() });
   };
 
-  return { state, startTask, stop, runTool, pendingApproval, resolveApproval, rollbackRun, restoreSession, continueSession, forkSession, setPlan };
+  return { state, startTask, stop, runTool, pendingApproval, resolveApproval, rollbackRun, undoStep, redoStep, restoreSession, continueSession, forkSession, setPlan };
 }
