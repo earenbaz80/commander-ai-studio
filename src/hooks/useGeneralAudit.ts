@@ -6,8 +6,11 @@
  * y la respuesta queda en el chat con sus pasos a la vista. El chat simple del
  * proveedor no tiene tools, así que la corrida va por el bucle del agente y sus
  * pasos se reflejan en el mensaje del modelo (`agentSteps`).
+ *
+ * La corrida se puede **detener** y **retomar**: el bucle del agente conserva
+ * pasos y plan, así que parar no es perder lo leído ni empezar de cero.
  */
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentState, AgentStep as RunStep } from '../agent/types';
 import type { AgentStep as ChatStep, ChatMessage, StudioMode } from '../types/studio';
 
@@ -15,6 +18,10 @@ export interface GeneralAuditOptions {
   state: AgentState;
   /** Arranca una corrida del agente y devuelve el id de la tarea. */
   startTask: (goal: string) => string;
+  /** Detiene la corrida en curso (botón Detener). */
+  stopTask?: () => void;
+  /** Retoma la corrida detenida conservando pasos y plan. */
+  resumeTask?: () => boolean;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   setMode: (mode: StudioMode) => void;
   tabs: { updateTab: (patch: Record<string, unknown>) => void };
@@ -58,10 +65,14 @@ export function auditReportFrom(state: AgentState): string {
 const stamp = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 export function useGeneralAudit(opts: GeneralAuditOptions) {
-  const { state, startTask, setMessages, setMode, tabs, setIsGenerating, lang } = opts;
+  const { state, startTask, stopTask, resumeTask, setMessages, setMode, tabs, setIsGenerating, lang } = opts;
   // Corrida en curso: sólo se pinta el estado de SU tarea, no el de una corrida
   // anterior que quedó en el orquestador.
   const run = useRef<{ taskId: string; messageId: string } | null>(null);
+  /** Última corrida, para poder retomarla después de detenerla. */
+  const last = useRef<{ taskId: string; messageId: string } | null>(null);
+  const stopped = useRef(false);
+  const [canResume, setCanResume] = useState(false);
 
   const start = useCallback(
     (prompt: string) => {
@@ -75,10 +86,36 @@ export function useGeneralAudit(opts: GeneralAuditOptions) {
       setMode('chat');
       tabs.updateTab({ mode: 'chat' });
       setIsGenerating(true);
-      run.current = { taskId: startTask(prompt), messageId: id };
+      stopped.current = false;
+      setCanResume(false);
+      const taskId = startTask(prompt);
+      run.current = { taskId, messageId: id };
+      last.current = { taskId, messageId: id };
     },
     [startTask, setMessages, setMode, tabs, setIsGenerating]
   );
+
+  /** Corta la corrida sin borrar sus pasos: queda lista para continuar. */
+  const stop = useCallback(() => {
+    if (!run.current) return;
+    stopped.current = true;
+    stopTask?.();
+  }, [stopTask]);
+
+  /** Retoma la corrida detenida sobre el mismo mensaje del chat. */
+  const resume = useCallback(() => {
+    const prev = last.current;
+    if (!prev) return;
+    stopped.current = false;
+    setCanResume(false);
+    setIsGenerating(true);
+    run.current = { ...prev };
+    if (!(resumeTask?.() ?? false)) {
+      run.current = null;
+      setIsGenerating(false);
+      setCanResume(true);
+    }
+  }, [resumeTask, setIsGenerating]);
 
   useEffect(() => {
     const active = run.current;
@@ -99,6 +136,22 @@ export function useGeneralAudit(opts: GeneralAuditOptions) {
     if (state.running) return;
     run.current = null;
     setIsGenerating(false);
+
+    if (stopped.current) {
+      stopped.current = false;
+      setCanResume(true);
+      const detenido =
+        lang === 'es'
+          ? '⏹ Detenido. Pulsa «Continuar» para retomar la auditoría donde se quedó.'
+          : lang === 'de'
+            ? '⏹ Gestoppt. „Fortsetzen“ setzt die Prüfung dort fort, wo sie aufgehört hat.'
+            : '⏹ Stopped. Press “Resume” to continue the audit where it left off.';
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === active.messageId ? { ...msg, content: report || detenido } : msg))
+      );
+      return;
+    }
+
     if (!report) {
       const sinRespuesta =
         lang === 'es'
@@ -112,5 +165,5 @@ export function useGeneralAudit(opts: GeneralAuditOptions) {
     }
   }, [state, setMessages, setIsGenerating, lang]);
 
-  return { start };
+  return { start, stop, resume, canResume };
 }

@@ -108,14 +108,15 @@ describe('ChatPlayground', () => {
       expect(getSendButton()).toBeDisabled();
     });
 
-    test('el botón está deshabilitado mientras genera', () => {
+    test('mientras genera, el hueco de Enviar lo ocupa Detener', () => {
       const props = baseProps();
       const { rerender } = render(<ChatPlayground {...props} />);
       fireEvent.change(getTextarea(), { target: { value: 'Hola' } });
       expect(getSendButton()).not.toBeDisabled();
-      // isGenerating llega por props
+      // isGenerating llega por props: ya no se bloquea, se puede cortar.
       rerender(<ChatPlayground {...props} isGenerating={true} />);
-      expect(getSendButton()).toBeDisabled();
+      expect(screen.queryByLabelText('Enviar mensaje')).toBeNull();
+      expect(screen.getByLabelText('Detener generación')).toBeEnabled();
     });
   });
 
@@ -246,6 +247,28 @@ describe('ChatPlayground', () => {
       const enviar = screen.getByLabelText('Enviar mensaje');
       expect(options.nextElementSibling).toBe(enviar);
       expect(enviar).toHaveTextContent('Enviar');
+    });
+
+    test('mientras genera el botón pasa a Detener y llama a onStop', () => {
+      const onStop = vi.fn();
+      render(<ChatPlayground {...baseProps()} isGenerating={true} onStop={onStop} />);
+
+      const detener = screen.getByLabelText('Detener generación');
+      expect(detener).toHaveTextContent('Detener');
+      fireEvent.click(detener);
+
+      expect(onStop).toHaveBeenCalledTimes(1);
+      // Mientras corre no hay Enviar: el mismo hueco lo ocupa Detener.
+      expect(screen.queryByLabelText('Enviar mensaje')).toBeNull();
+    });
+
+    test('una corrida detenida ofrece Continuar', () => {
+      const onResume = vi.fn();
+      render(<ChatPlayground {...baseProps()} resumable={true} onResume={onResume} />);
+
+      fireEvent.click(screen.getByLabelText('Continuar la corrida detenida'));
+
+      expect(onResume).toHaveBeenCalledTimes(1);
     });
 
     test('ya no se muestra el texto de atajos de teclado', () => {

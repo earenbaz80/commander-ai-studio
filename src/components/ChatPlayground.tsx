@@ -32,6 +32,11 @@ export interface ChatPlaygroundProps {
   selectedModel: string;
   setSelectedModel: (model: string) => void;
   isGenerating: boolean;
+  /** Detiene la generación en curso (respuesta del chat o corrida del agente). */
+  onStop?: () => void;
+  /** Retoma la corrida que se detuvo, si el hook la conserva. */
+  onResume?: () => void;
+  resumable?: boolean;
   onSendMessage: (userText: string, attachments?: any[], modelOverride?: string, runMode?: RunMode) => void;
   onClearChat: () => void;
   lang?: Language;
@@ -50,6 +55,9 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
   selectedModel,
   setSelectedModel,
   isGenerating,
+  onStop,
+  onResume,
+  resumable = false,
   onSendMessage,
   onClearChat,
   lang = 'es',
@@ -470,6 +478,9 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
           runMode={runMode}
           onChangeRunMode={changeRunMode}
           isGenerating={isGenerating}
+          onStop={() => onStop?.()}
+          onResume={onResume}
+          resumable={resumable}
           canSend={Boolean(inputText.trim()) || attachments.length > 0}
           onSend={handleSend}
           onClearChat={onClearChat}
