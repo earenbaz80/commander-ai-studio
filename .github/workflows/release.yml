@@ -1,5 +1,10 @@
 name: Build & Release
 
+# action-gh-release publica con el GITHUB_TOKEN, que hereda los permisos por
+# defecto del repo; si están en sólo lectura el tag termina en 403. Se declara.
+permissions:
+  contents: write
+
 on:
   push:
     tags:
