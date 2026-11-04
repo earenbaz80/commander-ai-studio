@@ -3043,7 +3043,16 @@ async function bootstrap() {
   // Vite middleware for dev mode
   if (process.env.NODE_ENV === 'production') {
     // Serve static files in production only
-    const distPath = path.join(currentDir, '..', 'dist');
+    // En el paquete, server.cjs vive en resources/ y el dist se copia ahí
+    // (extraResources); en el repo está en ../dist. Se prueban las dos rutas
+    // en vez de asumir una: asumirla dejaba la UI empaquetada en 404.
+    const distPath =
+      [process.env.COMMANDER_DIST, path.join(currentDir, 'dist'), path.join(currentDir, '..', 'dist')]
+        .filter((p): p is string => Boolean(p))
+        .find((p) => fs.existsSync(path.join(p, 'index.html'))) || path.join(currentDir, '..', 'dist');
+    if (!fs.existsSync(path.join(distPath, 'index.html'))) {
+      console.warn(`[server] no se encontró dist/index.html (probado en ${distPath})`);
+    }
     app.use(express.static(distPath));
     // @ts-ignore
     app.get(/.*/, (req, res) => {
