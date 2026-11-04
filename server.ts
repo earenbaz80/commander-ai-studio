@@ -13,7 +13,7 @@ import * as persistence from './persistence';
 import * as worktrees from './worktrees';
 import { runAutonomousCampaign, planCampaign } from './autonomousRun';
 import { setServerBaseUrl } from './serverRuntime';
-import { addRoot, listRoots, removeRoot, removableRoots, resolveProjectPath } from './projects';
+import { addRoot, isInsideRoots, listRoots, removeRoot, removableRoots, resolveProjectPath } from './projects';
 import { enforceTool, getPermissions, setPermissions } from './permissions';
 // `listSessions` ya lo exporta `sessionWorkspace` (sesiones de UI): se aliasa.
 import { createSession, getSession, listSessions as listAgentSessions, removeSession, stopSession } from './agentSession';
@@ -537,6 +537,11 @@ app.use('/api/skills', skillsRouter);
 app.get('/api/agent/prompts', (req, res) => {
   try {
     const root = checkpointsRoot(req.query.root);
+    // Sólo proyectos registrados: un root libre permitiría listar los .md de
+    // cualquier carpeta del disco a través de esta ruta.
+    if (!isInsideRoots(root)) {
+      return res.status(400).json({ success: false, error: 'root fuera de los proyectos del Studio' });
+    }
     res.json({ success: true, ...listProjectPrompts(root) });
   } catch (e: any) {
     res.status(400).json({ success: false, error: e?.message || 'Error leyendo comandos del proyecto' });
