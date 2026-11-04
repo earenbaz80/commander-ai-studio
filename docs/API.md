@@ -195,6 +195,8 @@ Ejecuta una tool del agente en el servidor.
 - `shell.job` — Trabajos en segundo plano: `list`, `logs`, `read` (salida nueva desde un cursor), `write` (stdin del proceso interactivo) y `stop`
 - `shell.pty` — Sesión interactiva persistente (proceso real con TTY): `open` abre un ejecutable con `args` en array y devuelve `id`; `read` devuelve sólo la salida nueva desde un `cursor`; `write` manda texto al stdin; `resize` cambia filas/columnas; `close` la termina; `list` lista las abiertas. Sin shell ni pipes de por medio: el ejecutable se valida, el `cwd` vive dentro del proyecto y `open`/`close` piden aprobación
 - `ask_user` — Pregunta al usuario y espera respuesta: `question` (obligatorio), `header`, `options` (máx. 6) y `allowFreeText`. La corrida queda en pausa hasta que respondes y el texto vuelve como resultado de la tool.
+- `github.pr` — Lee un pull request: `repo` ("owner/repo") + `number`, o `url`. Devuelve título, estado, autor, cuerpo y diff por archivo (recortado a 4 000 caracteres por archivo). Sin `GITHUB_TOKEN` responde con el motivo, sin salir a la red.
+- `github.comment` — Publica un comentario en el PR (`body` obligatorio). Pide aprobación y usa el mismo `GITHUB_TOKEN`.
 - `read_diagnostics` — Leer diagnósticos de TypeScript
 - `task` — Lanzar sub-tarea
 - `git.status` / `git.diff` / `git.log` / `git.commit` — Operaciones git
@@ -249,6 +251,7 @@ Crea un nuevo proyecto.
 - **shell.run**: Allowlist de comandos seguros + denylist de peligrosos (fail-safe)
 - **shell.pty**: Ejecutable + argv (sin shell), lista negra de binarios, `cwd` validado y sesiones ligadas a su agente
 - **ask_user**: Sólo transporta texto; no toca el workspace y la pregunta siempre pasa por el modal (nunca se autocompleta).
+- **github.pr / github.comment**: El token sale de `GITHUB_TOKEN` en el servidor, nunca del modelo ni del navegador. `comment` es escritura externa y siempre pide aprobación.
 - **Reglas de permisos por patrón**: `shell.run`, `fs.write`/`fs.edit` y `fs.propose.*` aceptan reglas `allow`/`ask`/`deny` con `*` como comodín, y gana la última que coincide. `allow` ejecuta sin modal, `deny` bloquea antes de ejecutar y `ask` fuerza el modal; viven en el `localStorage` de la máquina, no en el repo.
 - **API Keys**: Se envían por HTTPS al servidor embebido, nunca expuestas al público
 - **Electron**: `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`

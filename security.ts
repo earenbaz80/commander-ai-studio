@@ -61,6 +61,8 @@ export const AGENT_TOOLS = new Set([
   // Vive en el cliente (pregunta al usuario por el modal), pero el id está
   // aquí para que el gestor de permisos y run-tool lo conozcan.
   'ask_user',
+  'github.pr',
+  'github.comment',
 ]);
 
 // ── Rutas sensibles: nunca se leen ni se buscan ──
