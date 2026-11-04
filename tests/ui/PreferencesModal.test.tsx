@@ -1,5 +1,5 @@
 import { describe, test, expect, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { PreferencesModal } from '../../src/components/PreferencesModal';
 import { ATASCO_KEY, PREFERENCIAS_EVENT } from '../../src/components/ServerSubAgents';
 
@@ -9,9 +9,19 @@ import { ATASCO_KEY, PREFERENCIAS_EVENT } from '../../src/components/ServerSubAg
  * acotarlo y avisar al panel sin recargar.
  */
 
-const abrir = () => {
-  // Toda la configuración está en una sola página: el umbral ya está visible.
-  return render(<PreferencesModal isOpen onClose={() => {}} />);
+/** Entra a una sección desde el menú lateral del panel. */
+const irASeccion = (nombre: string) =>
+  fireEvent.click(
+    within(screen.getByRole('navigation', { name: 'Secciones de configuración' })).getByRole('button', {
+      name: nombre,
+    })
+  );
+
+/** Abre el panel y entra en la sección pedida (el umbral vive en «Agente»). */
+const abrir = (seccion = 'Agente') => {
+  const utils = render(<PreferencesModal isOpen onClose={() => {}} />);
+  irASeccion(seccion);
+  return utils;
 };
 
 afterEach(() => {
@@ -94,14 +104,24 @@ describe('PreferencesModal · umbral de atasco', () => {
     expect((screen.getByTestId('stuck-threshold-input') as HTMLInputElement).value).toBe('15');
   });
 
-  test('muestra todo en una sola página, sin menú de secciones', () => {
+  test('se navega por secciones desde el menú lateral', () => {
     render(<PreferencesModal isOpen onClose={() => {}} />);
 
-    expect(screen.queryByRole('navigation')).toBeNull();
+    const nav = screen.getByRole('navigation', { name: 'Secciones de configuración' });
+    expect(within(nav).getAllByRole('button')).toHaveLength(4);
+    // Sólo la sección pedida está montada: no se pinta la página entera.
     expect(screen.getByRole('heading', { name: 'General' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Modelo' })).toBeNull();
+
+    fireEvent.click(within(nav).getByRole('button', { name: 'Modelo' }));
     expect(screen.getByRole('heading', { name: 'Modelo' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Proveedores' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'General' })).toBeNull();
+  });
+
+  test('los accesos directos abren su sección', () => {
+    render(<PreferencesModal isOpen onClose={() => {}} initialSection="agente" />);
     expect(screen.getByRole('heading', { name: 'Agente' })).toBeInTheDocument();
+    expect(screen.getByTestId('stuck-threshold-input')).toBeInTheDocument();
   });
 
   test('la sección Modelo reúne los parámetros de generación', () => {
@@ -124,6 +144,7 @@ describe('PreferencesModal · umbral de atasco', () => {
         selectedProvider="google"
       />
     );
+    irASeccion('Modelo');
     expect(screen.getByRole('slider', { name: 'Temperatura' })).toBeInTheDocument();
     expect(screen.getByRole('spinbutton', { name: 'Máximo de tokens' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Instrucciones del sistema' })).toHaveValue('base');
@@ -159,6 +180,7 @@ describe('PreferencesModal · umbral de atasco', () => {
       />
     );
 
+    irASeccion('Modelo');
     const busqueda = screen.getByLabelText('Búsqueda web') as HTMLInputElement;
     expect(busqueda).toBeChecked();
     fireEvent.click(busqueda);
@@ -199,6 +221,7 @@ describe('PreferencesModal · umbral de atasco', () => {
       />
     );
 
+    irASeccion('Modelo');
     expect(screen.getByText('Ejemplos few-shot')).toBeInTheDocument();
     expect(screen.queryByText(/fine-tuning/i)).toBeNull();
 

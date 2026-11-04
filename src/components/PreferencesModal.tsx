@@ -144,6 +144,25 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
 
   const contentRef = React.useRef<HTMLDivElement>(null);
 
+  // El panel reúne cuatro bloques largos: se navega por secciones en vez de
+  // recorrer una página kilométrica. `initialSection` abre directo la sección
+  // que pide cada acceso de la app.
+  const [active, setActive] = React.useState<SettingsSection>(initialSection);
+  React.useEffect(() => {
+    if (isOpen) setActive(initialSection);
+  }, [isOpen, initialSection]);
+  React.useEffect(() => {
+    // Al cambiar de sección el scroll arranca arriba, no a mitad del bloque.
+    contentRef.current?.scrollTo?.({ top: 0 });
+  }, [active]);
+
+  const secciones: { id: SettingsSection; label: string; icon: React.ReactNode }[] = [
+    { id: 'general', label: t('General', 'General', 'Allgemein'), icon: <Settings2 className="w-3.5 h-3.5" /> },
+    { id: 'modelo', label: t('Modelo', 'Model', 'Modell'), icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
+    { id: 'proveedores', label: t('Proveedores', 'Providers', 'Anbieter'), icon: <Globe className="w-3.5 h-3.5" /> },
+    { id: 'agente', label: t('Agente', 'Agent', 'Agent'), icon: <Timer className="w-3.5 h-3.5" /> },
+  ];
+
   // Tamaño de texto (antes en el menú del Header; ahora solo aquí).
   const [fontScale, setFontScale] = React.useState<'normal' | 'lg' | 'xl'>('normal');
 
@@ -495,8 +514,34 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
             </button>
           </div>
 
-          <div className="flex-1 min-h-0">
-            <div ref={contentRef} className="h-full overflow-y-auto p-3 space-y-5 bg-[var(--nc-bg-panel)] text-[var(--nc-text)]">
+          <div className="flex-1 min-h-0 flex flex-col sm:flex-row">
+            <nav
+              aria-label={t('Secciones de configuración', 'Settings sections', 'Einstellungsbereiche')}
+              className="flex sm:flex-col flex-row flex-wrap gap-1 p-2 border-b sm:border-b-0 sm:border-r border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] sm:w-44 shrink-0"
+            >
+              {secciones.map((seccion) => {
+                const activa = active === seccion.id;
+                return (
+                  <button
+                    key={seccion.id}
+                    type="button"
+                    onClick={() => setActive(seccion.id)}
+                    aria-current={activa ? 'page' : undefined}
+                    className={`nc-button !py-1 !px-2 text-[10px] font-bold flex items-center gap-1.5 justify-start ${
+                      activa
+                        ? 'bg-[var(--nc-active-bg)] text-[var(--nc-active-text)]'
+                        : 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)]'
+                    }`}
+                  >
+                    {seccion.icon}
+                    <span className="truncate">{seccion.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            <div ref={contentRef} className="flex-1 min-w-0 h-full overflow-y-auto p-3 space-y-5 bg-[var(--nc-bg-panel)] text-[var(--nc-text)]">
+              {active === 'general' && (
               <section data-settings-section="general" className="space-y-3 scroll-mt-2">
                 {groupTitle(t('General', 'General', 'Allgemein'))}
                 {sectionBlock(
@@ -621,7 +666,9 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                     </MenuRow>
                   )}
               </section>
+              )}
 
+              {active === 'modelo' && (
               <section data-settings-section="modelo" className="space-y-3 scroll-mt-2">
                 {groupTitle(t('Modelo', 'Model', 'Modell'))}
                 {sectionBlock(
@@ -1276,7 +1323,9 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                     </>
                   )}
               </section>
+              )}
 
+              {active === 'proveedores' && (
               <section data-settings-section="proveedores" className="space-y-3 scroll-mt-2">
                 {groupTitle(t('Proveedores', 'Providers', 'Anbieter'))}
                 <div className="space-y-2">
@@ -1290,7 +1339,9 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                   <ProviderManager isOpen embedded lang={lang} />
                 </div>
               </section>
+              )}
 
+              {active === 'agente' && (
               <section data-settings-section="agente" className="space-y-3 scroll-mt-2">
                 {groupTitle(t('Agente', 'Agent', 'Agent'))}
                 {sectionBlock(
@@ -1321,6 +1372,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                   </MenuRow>
                 )}
               </section>
+              )}
             </div>
           </div>
 
