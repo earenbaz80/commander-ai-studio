@@ -20,8 +20,30 @@ export const AGENT_FUNCTION_DECLARATIONS = [
   },
   {
     name: 'fs_edit',
-    description: 'Editar archivo reemplazando texto exacto (oldString debe coincidir al carácter).',
-    parameters: { type: 'OBJECT', properties: { path: { type: 'STRING' }, oldString: { type: 'STRING' }, newString: { type: 'STRING' }, replaceAll: { type: 'BOOLEAN' } }, required: ['path', 'oldString', 'newString'] },
+    description: 'Editar archivo reemplazando texto exacto (oldString debe coincidir al carácter). Con replacements aplica varias ediciones en orden y de forma atómica: si una no encuentra su texto, no se escribe nada.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        path: { type: 'STRING' },
+        oldString: { type: 'STRING' },
+        newString: { type: 'STRING' },
+        replaceAll: { type: 'BOOLEAN' },
+        replacements: {
+          type: 'ARRAY',
+          description: 'Varias ediciones atómicas sobre el mismo archivo (máx 50), aplicadas en orden',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              oldString: { type: 'STRING' },
+              newString: { type: 'STRING' },
+              replaceAll: { type: 'BOOLEAN' },
+            },
+            required: ['oldString', 'newString'],
+          },
+        },
+      },
+      required: ['path'],
+    },
   },
   {
     name: 'fs_propose_write',
@@ -52,6 +74,19 @@ export const AGENT_FUNCTION_DECLARATIONS = [
         context: { type: 'NUMBER', description: 'Atajo: before y after a la vez (0-20)' },
       },
       required: ['pattern'],
+    },
+  },
+  {
+    name: 'fs_list',
+    description: 'Listar un directorio del workspace: entradas con tipo y tamaño, directorios primero. Omite los ocultos salvo all:true. Devuelve rutas relativas a la raíz, listas para fs.read.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        path: { type: 'STRING', description: 'Ruta relativa al workspace (por defecto la raíz)' },
+        depth: { type: 'NUMBER', description: 'Niveles a recorrer (1-3, por defecto 1)' },
+        limit: { type: 'NUMBER', description: 'Tope de entradas (1-500, por defecto 200)' },
+        all: { type: 'BOOLEAN', description: 'Incluir archivos y carpetas ocultos' },
+      },
     },
   },
   {
@@ -322,7 +357,7 @@ export const AGENT_FUNCTION_DECLARATIONS = [
 
 const FN_TO_TOOL: Record<string, string> = {
   fs_read: 'fs.read', fs_write: 'fs.write', fs_edit: 'fs.edit', fs_propose_write: 'fs.propose.write', fs_propose_edit: 'fs.propose.edit',
-  fs_glob: 'fs.glob', fs_grep: 'fs.grep', shell_run: 'shell.run', shell_job: 'shell.job',
+  fs_glob: 'fs.glob', fs_list: 'fs.list', fs_grep: 'fs.grep', shell_run: 'shell.run', shell_job: 'shell.job',
   browser: 'browser', preview: 'preview',
   read_diagnostics: 'read_diagnostics', code_analyze: 'code.analyze', code_refactor: 'code.refactor', code_fix: 'code.fix',
   task: 'task', spawn_agents: 'spawn_agents', skill: 'skill',

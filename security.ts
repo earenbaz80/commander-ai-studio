@@ -47,7 +47,7 @@ export const SHELL_ALLOW_PREFIX = [
  * línea, y una que el servidor acepta pero nadie define es la mitad de un unit.
  */
 export const AGENT_TOOLS = new Set([
-  'fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.grep',
+  'fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.list', 'fs.grep',
   'fs.propose.edit', 'fs.propose.write',
   'shell.run', 'shell.job',
   'browser', 'preview',

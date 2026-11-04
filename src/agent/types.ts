@@ -3,6 +3,7 @@ export type ToolId =
   | 'fs.write'
   | 'fs.edit'
   | 'fs.glob'
+  | 'fs.list'
   | 'fs.grep'
   | 'fs.propose.write'
   | 'fs.propose.edit'

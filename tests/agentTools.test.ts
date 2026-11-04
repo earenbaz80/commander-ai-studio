@@ -98,6 +98,64 @@ test('fs.edit no interpreta $& ni $1 en newString', async () => {
   assert.equal(fs.readFileSync(TEST_FILE, 'utf8'), 'valor = $& $1 $$');
 });
 
+test('fs.edit con replacements aplica todas las ediciones en orden', async () => {
+  fs.writeFileSync(TEST_FILE, 'uno dos tres', 'utf8');
+  const res = mockRes();
+  await handleAgentRunTool(
+    mockReq({
+      toolId: 'fs.edit',
+      input: {
+        path: 'tests/tmp/test.txt',
+        replacements: [
+          { oldString: 'uno', newString: '1' },
+          { oldString: 'tres', newString: '3' },
+        ],
+      },
+    }),
+    res,
+  );
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.data.replaced, 2);
+  assert.equal(res.body.data.edits, 2);
+  assert.equal(fs.readFileSync(TEST_FILE, 'utf8'), '1 dos 3');
+});
+
+test('fs.edit con replacements no escribe nada si una edición no encuentra su texto', async () => {
+  fs.writeFileSync(TEST_FILE, 'alfa beta', 'utf8');
+  const res = mockRes();
+  await handleAgentRunTool(
+    mockReq({
+      toolId: 'fs.edit',
+      input: {
+        path: 'tests/tmp/test.txt',
+        replacements: [
+          { oldString: 'alfa', newString: 'A' },
+          { oldString: 'no-existe', newString: 'B' },
+        ],
+      },
+    }),
+    res,
+  );
+  assert.equal(res.body.ok, false);
+  assert.match(String(res.body.error), /replacements\[1\]/);
+  assert.equal(fs.readFileSync(TEST_FILE, 'utf8'), 'alfa beta', 'la edición que sí coincidía no debe quedar escrita');
+});
+
+test('fs.list devuelve directorios primero y omite los ocultos', async () => {
+  fs.mkdirSync(path.join(TEST_DIR, 'sub'), { recursive: true });
+  fs.writeFileSync(path.join(TEST_DIR, 'visible.txt'), 'x', 'utf8');
+  fs.writeFileSync(path.join(TEST_DIR, '.oculto'), 'x', 'utf8');
+  const res = mockRes();
+  await handleAgentRunTool(mockReq({ toolId: 'fs.list', input: { path: 'tests/tmp' } }), res);
+  assert.equal(res.body.ok, true);
+  const entries = res.body.data.entries as { path: string; type: string }[];
+  assert.ok(entries.some((e) => e.path === 'tests/tmp/sub' && e.type === 'dir'));
+  assert.ok(entries.some((e) => e.path === 'tests/tmp/visible.txt' && e.type === 'file'));
+  assert.ok(!entries.some((e) => e.path.includes('.oculto')));
+  assert.equal(entries[0].type, 'dir', 'los directorios van primero');
+  fs.rmSync(path.join(TEST_DIR, 'sub'), { recursive: true, force: true });
+});
+
 test('fs.glob lista archivos', async () => {
   const req = mockReq({ toolId: 'fs.glob', input: { pattern: '*.txt' } });
   const res = mockRes();

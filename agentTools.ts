@@ -632,20 +632,48 @@ export async function executeAgentTool(
     const p = String(input.path || '').slice(0, 500);
     const oldStr = String(input.oldString || '');
     const newStr = String(input.newString || '');
-    if (!p || !oldStr) return { ok: false, error: 'path y oldString requeridos' };
+    if (!p) return { ok: false, error: 'path requerido' };
     if (isSensitivePath(p)) return { ok: false, error: SENSITIVE_READ_MESSAGE, status: 403 };
     const pathErr = enforcePath(perms, p, 'write');
     if (pathErr) return { ok: false, error: pathErr, status: 403 };
     const target = agentSafePath(p, rootHint);
     if (!fs.existsSync(target)) return { ok: false, error: `No existe: ${p}` };
+    // Varias ediciones en una sola pasada: o entran todas, o no se escribe nada.
+    // Se aplican en orden sobre el texto en memoria, así una edición puede
+    // depender del resultado de la anterior (lo normal al renombrar).
+    const edits = Array.isArray(input.replacements) && input.replacements.length > 0
+      ? input.replacements.slice(0, 50).map((r: any) => ({
+          oldString: String(r?.oldString ?? ''),
+          newString: String(r?.newString ?? ''),
+          replaceAll: r?.replaceAll === true,
+        }))
+      : [{ oldString: oldStr, newString: newStr, replaceAll: input.replaceAll === true }];
     const content = fs.readFileSync(target, 'utf8');
-    if (!content.includes(oldStr)) return { ok: false, error: 'oldString no encontrado en el archivo' };
-    const count = input.replaceAll
-      ? content.split(oldStr).length - 1
-      : 1;
-    const updated = input.replaceAll
-      ? content.replace(new RegExp(oldStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), () => newStr)
-      : content.replace(oldStr, () => newStr);
+    let updated = content;
+    let count = 0;
+    for (let i = 0; i < edits.length; i++) {
+      const edit = edits[i];
+      if (!edit.oldString) {
+        return {
+          ok: false,
+          error: edits.length > 1 ? `replacements[${i}].oldString requerido` : 'path y oldString requeridos',
+        };
+      }
+      if (!updated.includes(edit.oldString)) {
+        return {
+          ok: false,
+          error: edits.length > 1
+            ? `replacements[${i}]: oldString no encontrado (no se escribió nada)`
+            : 'oldString no encontrado en el archivo',
+        };
+      }
+      // split/join en vez de RegExp: el texto es literal, así que un `$&` o un
+      // `$1` dentro del reemplazo no se interpreta como referencia.
+      count += edit.replaceAll ? updated.split(edit.oldString).length - 1 : 1;
+      updated = edit.replaceAll
+        ? updated.split(edit.oldString).join(edit.newString)
+        : updated.replace(edit.oldString, () => edit.newString);
+    }
     // Snapshot del estado previo (undo). Nunca debe bloquear la escritura.
     let rootAbs = target;
     try {
@@ -659,7 +687,7 @@ export async function executeAgentTool(
     invalidateCodeIntel(rootAbs);
     // Hooks de cambio de archivo: formateador sobre el archivo recién editado.
     const hooks = await runFileChangeHooks(target, rootAbs);
-    return { ok: true, data: { path: p, replaced: count, hooks } };
+    return { ok: true, data: { path: p, replaced: count, edits: edits.length, hooks } };
   }
 
   // ── Dry-run: proponer un cambio sin tocar disco ──
@@ -762,6 +790,65 @@ export async function executeAgentTool(
       if (files.length >= 500) break;
     }
     return { ok: true, data: { files: files.slice(0, 500), roots } };
+  }
+
+  // `fs.list`: vecindario de un directorio con tipo y tamaño, en el orden en que
+  // se lee (directorios primero). `fs.glob` responde «¿qué archivos hay?» pero no
+  // «¿qué hay en esta carpeta, y cuánto pesa?», que es la pregunta previa a
+  // decidir qué leer.
+  if (toolId === 'fs.list') {
+    const p = String(input.path || '').trim().slice(0, 500) || '.';
+    if (isSensitivePath(p)) return { ok: false, error: SENSITIVE_READ_MESSAGE, status: 403 };
+    const target = agentSafePath(p, rootHint);
+    if (!fs.existsSync(target)) return { ok: false, error: `No existe: ${p}` };
+    if (!fs.statSync(target).isDirectory()) {
+      return { ok: false, error: `${p} es un archivo: usa fs.read con offset/limit.` };
+    }
+    const maxDepth = Math.max(1, Math.min(3, Math.trunc(Number(input.depth) || 1)));
+    const limit = Math.max(1, Math.min(500, Math.trunc(Number(input.limit) || 200)));
+    const showHidden = input.all === true;
+    // Las rutas se devuelven relativas a la RAÍZ del workspace (no al directorio
+    // listado): así se pueden pasar tal cual a fs.read/fs.edit.
+    let base = target;
+    try { base = resolveProjectPath('.', rootHint).abs; } catch { /* se usa el directorio listado */ }
+    const entries: { path: string; type: 'dir' | 'file'; size?: number }[] = [];
+    let truncated = false;
+    const walk = (dir: string, depth: number) => {
+      if (entries.length >= limit) { truncated = true; return; }
+      let list: { name: string; isDirectory(): boolean; isFile(): boolean }[];
+      try {
+        list = fs.readdirSync(dir, { withFileTypes: true });
+      } catch { return; }
+      list.sort((a, b) => (Number(b.isDirectory()) - Number(a.isDirectory())) || a.name.localeCompare(b.name));
+      for (const e of list) {
+        if (entries.length >= limit) { truncated = true; return; }
+        if (!showHidden && e.name.startsWith('.')) continue;
+        const full = path.join(dir, e.name);
+        const rel = path.relative(base, full).split(path.sep).join('/');
+        if (isSensitivePath(rel)) continue;
+        if (e.isDirectory()) {
+          if (SKIP_DIRS.has(e.name)) continue;
+          entries.push({ path: rel, type: 'dir' });
+          if (depth < maxDepth) walk(full, depth + 1);
+        } else if (e.isFile()) {
+          let size: number | undefined;
+          try { size = fs.statSync(full).size; } catch { /* sin acceso */ }
+          entries.push({ path: rel, type: 'file', ...(size !== undefined ? { size } : {}) });
+        }
+      }
+    };
+    walk(target, 1);
+    return {
+      ok: true,
+      data: {
+        path: p,
+        entries,
+        total: entries.length,
+        depth: maxDepth,
+        truncated,
+        ...(truncated ? { hint: `Listado recortado a ${limit} entradas: acota path, baja depth o sube limit (máx 500).` } : {}),
+      },
+    };
   }
 
   if (toolId === 'fs.grep') {
