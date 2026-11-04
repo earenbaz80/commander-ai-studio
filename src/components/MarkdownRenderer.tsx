@@ -69,7 +69,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isS
           const code = part.substring(firstLineEnd + 1, part.length - 3);
 
           return (
-            <div key={index} className="my-2.5 bg-[#0e0f14] border-2 border-black rounded overflow-hidden shadow-lg">
+            <div key={index} className="my-2.5 max-w-full min-w-0 bg-[#0e0f14] border-2 border-black rounded overflow-hidden shadow-lg">
               <div className="bg-[#1c1d29] px-3 py-1.5 flex items-center justify-between border-b border-[#2d2f42] text-[11px] font-mono text-[var(--nc-text)] select-none">
                 <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider">
                   <Code2 className="w-3.5 h-3.5 text-[var(--nc-text)]" />
@@ -163,7 +163,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isS
               }
 
               return (
-                <p key={pIdx} className="text-white leading-relaxed whitespace-pre-wrap">
+                <p key={pIdx} className="text-white leading-relaxed whitespace-pre-wrap break-words">
                   {renderInlineFormatting(paragraph)}
                 </p>
               );

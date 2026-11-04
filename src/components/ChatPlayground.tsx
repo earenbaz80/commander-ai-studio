@@ -303,7 +303,9 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
   return (
     <div className="flex flex-col h-full bg-[var(--nc-bg-panel)] text-white font-mono relative">
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Laterales mínimos: con la barra lateral y el panel abiertos, 16px a cada
+          lado se comían el ancho útil del texto. */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-2 py-3 sm:px-4 sm:py-4 space-y-3 sm:space-y-4">
         {messages.length === 0 ? (
           <EmptyState
             title="Commander AI Studio"
@@ -318,13 +320,16 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
             <div
               key={msg.id}
               data-msg-id={msg.id}
-              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[80%] rounded-lg p-3 ${
+                // La respuesta ocupa todo el ancho (una guía lateral basta para
+                // separarla); la pregunta se queda en burbuja, más corta. Así el
+                // texto aprovecha la ventana al redimensionarla.
+                className={`min-w-0 break-words rounded-sm px-3 py-2 sm:px-4 sm:py-3 ${
                   msg.role === 'user'
-                    ? 'bg-[var(--nc-bg-main)] border border-cyan-400/30'
-                    : 'bg-[var(--nc-bg-deep)] border border-[var(--nc-text-accent)]/40'
+                    ? 'max-w-[85%] sm:max-w-[70%] bg-[var(--nc-bg-main)] border border-cyan-400/30'
+                    : 'w-full max-w-full bg-[var(--nc-bg-deep)] border-l-2 border-[var(--nc-text-accent)]/40'
                 }`}
               >
                 <div className="flex items-center gap-2 mb-1">
@@ -444,7 +449,7 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
       </div>
 
       {/* Input Area */}
-      <div data-chat-divider className="border-t border-[var(--nc-border-mid)]/40 bg-[var(--nc-bg-deep)] p-4">
+      <div data-chat-divider className="border-t border-[var(--nc-border-mid)]/40 bg-[var(--nc-bg-deep)] p-2 sm:p-4">
         {attachments.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
             {attachments.map((file, idx) => (
