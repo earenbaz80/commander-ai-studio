@@ -89,3 +89,5 @@ block2.txt
 /agentTools.js
 /apiKeys.js
 /security.js
+release-build/
+release-x64/
