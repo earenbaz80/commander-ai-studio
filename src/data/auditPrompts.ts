@@ -1,10 +1,10 @@
 import type { Language } from '../i18n/translations';
 /**
- * Prompt de «Audición General»: revisión del proyecto activo.
+ * Prompt de «Auditoría General»: revisión del proyecto activo.
  * Se mantiene aparte para poder ajustarlo y testearlo sin tocar la UI.
  */
 
-export const AUDIT_LABEL_ES = 'Audición General';
+export const AUDIT_LABEL_ES = 'Auditoría General';
 export const AUDIT_LABEL_EN = 'General Audit';
 export const AUDIT_LABEL_DE = 'Allgemeine Prüfung';
 
