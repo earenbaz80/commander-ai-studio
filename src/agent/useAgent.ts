@@ -82,7 +82,8 @@ export function useAgent(cwd: string, model?: string) {
 
   const loop = useMemo(() => new AgentLoop(orchestrator, model), [orchestrator, model]);
 
-  const startTask = (goal: string, plan?: Array<{ id: string; text: string; done: boolean }>) => {
+  /** Arranca una corrida y devuelve el id de la tarea (para seguirla desde la UI). */
+  const startTask = (goal: string, plan?: Array<{ id: string; text: string; done: boolean }>): string => {
     // Deja anotada la tarea para que `spawn_agents` pueda registrar después su
     // sesión padre (objetivo, cwd, modelo). Sin red aquí: la sesión se crea en
     // el primer uso y no arranca el bucle del LLM.
@@ -90,6 +91,7 @@ export function useAgent(cwd: string, model?: string) {
     rememberTask({ taskId, goal, cwd, model });
     // maxSteps cuenta micro-steps (thought/call/result); 40 ≈ 6-8 turnos LLM
     loop.start({ id: taskId, goal, cwd, maxSteps: 40, plan });
+    return taskId;
   };
   const restoreSession = (s: import('./sessions').AgentSession) => {
     orchestrator.restoreState(s.state);

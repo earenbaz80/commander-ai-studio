@@ -1,8 +1,7 @@
 /**
- * «Auditoría General»: el prompt pide herramientas (fs.*, read_diagnostics,
- * shell.run), así que el botón tiene que arrancar una corrida del agente
- * (`onAuditStart`) y no mandar el texto al chat simple, que responde sin leer
- * el proyecto. Estos casos fijan ese contrato.
+ * «Auditoría General»: el hook valida el proyecto y entrega el prompt a
+ * `onAuditStart`, que lo corre en el chat con herramientas (`useGeneralAudit`).
+ * Mandarlo al chat simple sería responder sin leer el proyecto.
  */
 import { describe, test, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
@@ -18,7 +17,6 @@ const baseOpts = (over: any = {}) => ({
   setProjectToast: vi.fn(),
   lang: 'es',
   tabs: { updateTab: vi.fn(), newTab: vi.fn() },
-  setMode: vi.fn(),
   onAuditStart: vi.fn(),
   currentSessionId: { current: '' },
   setPromptTitle: vi.fn(),
@@ -27,14 +25,12 @@ const baseOpts = (over: any = {}) => ({
 });
 
 describe('useAppPrompts · Auditoría General', () => {
-  test('cambia a modo agente y lanza la corrida con el prompt de auditoría', () => {
+  test('lanza la auditoría con el prompt del proyecto activo', () => {
     const opts = baseOpts();
     const { getByText } = render(<Probe opts={opts} />);
 
     fireEvent.click(getByText('auditar'));
 
-    expect(opts.setMode).toHaveBeenCalledWith('agent');
-    expect(opts.tabs.updateTab).toHaveBeenCalledWith({ mode: 'agent' });
     expect(opts.onAuditStart).toHaveBeenCalledTimes(1);
     const prompt = opts.onAuditStart.mock.calls[0][0] as string;
     expect(prompt).toContain('AUDITORÍA GENERAL');
@@ -51,7 +47,6 @@ describe('useAppPrompts · Auditoría General', () => {
     fireEvent.click(getByText('auditar'));
 
     expect(opts.onAuditStart).not.toHaveBeenCalled();
-    expect(opts.setMode).not.toHaveBeenCalled();
     expect(opts.setProjectToast).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'err' })
     );

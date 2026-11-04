@@ -72,11 +72,8 @@ interface AgentModeProps {
   onPlanChange?: (plan: Array<{ id: string; text: string; done: boolean }>) => void;
   /** Avisa al pie de que hay una campaña autónoma corriendo en el servidor. */
   onAutonomousRunningChange?: (running: boolean) => void;
-  /**
-   * Tarea preparada desde fuera (paleta o «Auditoría General»).
-   * Con `autoStart` se lanza en el acto, sin esperar a pulsar INICIAR.
-   */
-  goalRequest?: { text: string; nonce: number; autoStart?: boolean } | null;
+  /** Tarea preparada desde la paleta (herramienta o subagente elegido). */
+  goalRequest?: { text: string; nonce: number } | null;
   lang: Language;
 }
 
@@ -153,13 +150,6 @@ export const AgentMode: React.FC<AgentModeProps> = ({
     if (!goalRequest?.text) return;
     setGoal(goalRequest.text);
     setActivePanel('plan');
-    // «Auditoría General» tiene que correr de verdad: el prompt pide leer y
-    // verificar el proyecto con tools, y eso sólo pasa por `onStartTask`. Si ya
-    // hay una corrida viva se respeta y queda el objetivo preparado.
-    if (goalRequest.autoStart && !state.running) {
-      onStartTask(goalRequest.text, plan);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goalRequest]);
   const [autonomousGoal, setAutonomousGoal] = useState('');
   const [autonomousStatus, setAutonomousStatus] = useState<string | null>(null);

@@ -11,6 +11,7 @@ import { useAppEffects } from './hooks/useAppEffects';
 import { useAppAuth } from './hooks/useAppAuth';
 import { useAppModels } from './hooks/useAppModels';
 import { useAppPrompts } from './hooks/useAppPrompts';
+import { useGeneralAudit } from './hooks/useGeneralAudit';
 import { useHistoryHandlers } from './hooks/useHistoryHandlers';
 import { useCommandPaletteShortcut } from './hooks/useCommandPaletteShortcut';
 import { useTabProjectHandlers } from './hooks/useTabProjectHandlers';
@@ -265,7 +266,7 @@ export default function App() {
   const tabs = useTabs();
   const [serverSessions, setServerSessions] = useState<any[]>([]);
   const [paletteFiles, setPaletteFiles] = useState<string[]>([]);
-  const [agentGoalRequest, setAgentGoalRequest] = useState<{ text: string; nonce: number; autoStart?: boolean } | null>(null);
+  const [agentGoalRequest, setAgentGoalRequest] = useState<{ text: string; nonce: number } | null>(null);
   const [agentRoots, setAgentRoots] = useState<AgentRoot[]>([]);
 
   /** Convierte los mensajes persistidos (SQLite) al formato del chat. */
@@ -1104,11 +1105,21 @@ export default function App() {
     }
   };
 
-  /** «Auditoría General»: arranca el agente con el prompt de auditoría. */
-  const handleAuditStart = useCallback((prompt: string) => {
-    setAgentGoalRequest({ text: prompt, nonce: Date.now(), autoStart: true });
-    setMode('agent');
-  }, [setMode]);
+  /**
+   * «Auditoría General»: igual que pedírtelo en el chat —mensaje del usuario,
+   * corrida con herramientas y los pasos a la vista—. El chat simple responde
+   * sin leer el proyecto, así que la corrida va por el bucle del agente y sus
+   * pasos se pintan en el propio mensaje (`agentSteps`).
+   */
+  const generalAudit = useGeneralAudit({
+    state: agent.state,
+    startTask: agent.startTask,
+    setMessages,
+    setMode,
+    tabs,
+    setIsGenerating,
+    lang,
+  });
 
   // handleGeneralAudit and handleNewChat
   const { handleGeneralAudit, handleNewChat } = useAppPrompts({
@@ -1116,8 +1127,7 @@ export default function App() {
     setProjectToast,
     lang,
     tabs,
-    setMode,
-    onAuditStart: handleAuditStart,
+    onAuditStart: generalAudit.start,
     currentSessionId,
     setPromptTitle,
     setNonoStatus,
