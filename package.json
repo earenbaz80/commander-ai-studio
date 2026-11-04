@@ -152,20 +152,25 @@
     },
     "files": [
       "dist/**/*",
-      "electron/**/*",
+      "electron/main.cjs",
+      "electron/preload.cjs",
+      "electron/lspBridge.cjs",
       "public/**/*",
       "resources/**/*",
-      "!**/node_modules/*",
+      "!electron/.commander/**",
+      "!electron/.agent-roots.json",
+      "!**/node_modules/**/*",
       "!**/.git/*"
+    ],
+    "electronLanguages": [
+      "en-US",
+      "es",
+      "de"
     ],
     "extraResources": [
       {
         "from": "electron/server.cjs",
         "to": "server.cjs"
-      },
-      {
-        "from": "electron/server.mjs",
-        "to": "server.mjs"
       },
       {
         "from": "node_modules/node-pty",
