@@ -58,7 +58,9 @@ describe('useGeneralAudit', () => {
 
     fireEvent.click(getByText('auditar'));
 
-    expect(audit.startTask).toHaveBeenCalledWith('Realiza una AUDITORÍA GENERAL');
+    // `persistThread: false`: la auditoría no abre una sesión nueva en el
+    // historial, la conversación es la de la pestaña.
+    expect(audit.startTask).toHaveBeenCalledWith('Realiza una AUDITORÍA GENERAL', undefined, { persistThread: false });
     expect(audit.setMode).toHaveBeenCalledWith('chat');
     expect(audit.tabs.updateTab).toHaveBeenCalledWith({ mode: 'chat' });
     expect(audit.setIsGenerating).toHaveBeenCalledWith(true);
