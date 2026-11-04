@@ -50,9 +50,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Electron App (macOS/Linux)
-        if: runner.os != 'Windows'
-        run: npm run build:electron
+      # build:electron escribe --win: en Linux eso intenta un NSIS de Windows y
+      # electron-builder necesita wine, que el runner no trae (ENOENT). Cada
+      # sistema compila su propio formato.
+      - name: Build Electron App (macOS)
+        if: runner.os == 'macOS'
+        run: npx electron-builder --mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Electron App (Linux)
+        if: runner.os == 'Linux'
+        run: npx electron-builder --linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
