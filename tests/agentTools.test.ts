@@ -141,6 +141,86 @@ test('fs.edit con replacements no escribe nada si una edición no encuentra su t
   assert.equal(fs.readFileSync(TEST_FILE, 'utf8'), 'alfa beta', 'la edición que sí coincidía no debe quedar escrita');
 });
 
+test('shell.run respeta cwd dentro del workspace', async () => {
+  fs.mkdirSync(path.join(TEST_DIR, 'sub'), { recursive: true });
+  fs.writeFileSync(path.join(TEST_DIR, 'sub', 'cwd-probe.js'), 'console.log(process.cwd());\n', 'utf8');
+  // `node <script>` queda fuera de la allowlist a propósito (ejecuta código), así
+  // que aquí se pide el permiso explícito: lo que se prueba es el cwd.
+  const res: any = await executeAgentTool('shell.run', {
+    command: 'node cwd-probe.js',
+    cwd: 'tests/tmp/sub',
+    allowUnlisted: true,
+  });
+  assert.equal(res.ok, true, res.ok ? '' : res.error);
+  const last = String(res.data.stdout).trim().split(/[\\/]/).pop();
+  assert.equal(last, 'sub', 'el proceso debe arrancar en el cwd pedido');
+  fs.rmSync(path.join(TEST_DIR, 'sub'), { recursive: true, force: true });
+});
+
+test('shell.run sin allowUnlisted rechaza un comando fuera de la lista', async () => {
+  const res: any = await executeAgentTool('shell.run', { command: 'node --version' });
+  assert.equal(res.ok, false);
+  assert.equal(res.status, 403);
+});
+
+test('shell.run con allowUnlisted ejecuta el comando pero respeta los bloqueos', async () => {
+  const permitido: any = await executeAgentTool('shell.run', { command: 'node --version', allowUnlisted: true });
+  assert.equal(permitido.ok, true, permitido.ok ? '' : permitido.error);
+  assert.match(String(permitido.data.stdout), /v\d+\./);
+
+  const bloqueado: any = await executeAgentTool('shell.run', { command: 'sudo whoami', allowUnlisted: true });
+  assert.equal(bloqueado.ok, false, 'allowUnlisted no debe abrir los patrones bloqueados');
+  assert.equal(bloqueado.status, 403);
+});
+
+test('shell.run interactive escribe en el stdin del proceso', async () => {
+  // Root temporal: la lista blanca de este repo no incluye shell.job, y lo que
+  // se prueba aquí es el stdin, no la configuración del proyecto.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-stdin-'));
+  fs.writeFileSync(
+    path.join(dir, 'echo-stdin.js'),
+    // Sale tras el primer dato: un proceso vivo al final del test dejaría abierto
+    // el event loop del runner (que entonces espera para siempre).
+    "process.stdin.setEncoding('utf8');\nprocess.stdin.on('data', (d) => { process.stdout.write('ECO:' + d); process.exit(0); });\n",
+    'utf8',
+  );
+  addRoot(dir);
+  setPermissions(dir, {
+    mode: 'build',
+    allowedTools: ['shell.run', 'shell.job'],
+    deniedTools: [],
+    files: { read: [], write: [] },
+  } as any);
+  let id = '';
+  try {
+    const started: any = await executeAgentTool('shell.run', {
+      command: 'node echo-stdin.js',
+      // Sin cwd: el directorio del proceso ya es el root del proyecto.
+      root: dir,
+      background: true,
+      interactive: true,
+      allowUnlisted: true,
+    });
+    assert.equal(started.ok, true, started.ok ? '' : started.error);
+    id = String(started.data.id);
+    const written: any = await executeAgentTool('shell.job', { action: 'write', id, data: 'hola\n', root: dir });
+    assert.equal(written.ok, true, written.ok ? '' : written.error);
+
+    // Sondeo acotado, no un sleep fijo: el proceso escribe cuando le llega el dato.
+    let texto = '';
+    for (let i = 0; i < 120 && !texto.includes('ECO:hola'); i++) {
+      const read: any = await executeAgentTool('shell.job', { action: 'read', id, cursor: 0, root: dir });
+      texto = String(read.data?.chunk || '');
+      if (!texto.includes('ECO:hola')) await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.match(texto, /ECO:hola/);
+  } finally {
+    if (id) await executeAgentTool('shell.job', { action: 'stop', id, root: dir });
+    removeRoot(dir);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('fs.list devuelve directorios primero y omite los ocultos', async () => {
   fs.mkdirSync(path.join(TEST_DIR, 'sub'), { recursive: true });
   fs.writeFileSync(path.join(TEST_DIR, 'visible.txt'), 'x', 'utf8');

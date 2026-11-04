@@ -7,6 +7,16 @@ export interface ShellRunInput {
   timeoutMs?: number;
   /** Arranca el comando en segundo plano: devuelve id, pid y log. */
   background?: boolean;
+  /** Directorio de ejecución dentro del workspace (por defecto, la raíz). */
+  cwd?: string;
+  /**
+   * Permitir un comando que no está en la allowlist. La aprobación del usuario
+   * ya se pidió (`requiresApproval` la exige siempre para esos comandos): esto
+   * sólo le dice al servidor que no rechace la ejecución.
+   */
+  allowUnlisted?: boolean;
+  /** Abrir stdin para escribirle con `shell.job { action: "write" }`. Exige background. */
+  interactive?: boolean;
 }
 
 export interface ShellRunOutput {
@@ -87,9 +97,14 @@ function commandRequiresApproval(command: string): boolean {
 
 export const shellRunTool: ToolDefinition<ShellRunInput, ShellRunOutput> = {
   id: 'shell.run',
-  description: 'Ejecutar comando shell en el servidor (admite pipes; con aprobación si es peligroso).',
+  description:
+    'Ejecutar comando shell en el servidor (admite pipes; con aprobación si es peligroso). ' +
+    'cwd fija el directorio dentro del proyecto; allowUnlisted ejecuta algo fuera de la ' +
+    'allowlist una vez aprobado; interactive abre stdin para shell.job write.',
   danger: true,
   // Un pipeline pide aprobación si cualquiera de sus etapas la pediría sola.
+  // `allowUnlisted` NO relaja esto: un comando fuera de la lista siempre pasa
+  // por el usuario, aunque el modelo pida el permiso en la propia llamada.
   requiresApproval: (input) => {
     const parsed = splitPipeline(input.command || '');
     if (!parsed.ok) return true;
@@ -123,17 +138,23 @@ export function isCommandSafe(command: string): boolean {
  * ese trabajo), así que aquí no hay forma de matar un proceso arbitrario.
  */
 export interface ShellJobInput {
-  action: 'list' | 'logs' | 'stop';
+  action: 'list' | 'logs' | 'stop' | 'read' | 'write';
   id?: string;
   /** Líneas de log a devolver en `logs` (1-500, por defecto 40). */
   tail?: number;
+  /** Con `read`: byte desde el que devolver lo nuevo (lo devuelve la llamada anterior). */
+  cursor?: number;
+  /** Con `write`: texto a enviar al stdin del proceso interactivo. */
+  data?: string;
   /** Comprobación extra en `stop`: debe pertenecer al trabajo indicado. */
   pid?: number;
 }
 
 export const shellJobTool: ToolDefinition<ShellJobInput, any> = {
   id: 'shell.job',
-  description: 'Trabajos en segundo plano: listar, leer el log (tail) y parar por id.',
+  description:
+    'Trabajos en segundo plano: listar, leer el log (tail), leer sólo lo nuevo desde un cursor ' +
+    '(read), escribir en el stdin de un proceso interactivo (write) y parar por id.',
   danger: true,
   requiresApproval: (input) => input.action === 'stop',
   run: async (input) => {
