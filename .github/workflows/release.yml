@@ -27,16 +27,36 @@ jobs:
       - name: Build (Vite)
         run: npm run build
 
-      - name: Build Electron App
+      # Los bundles del servidor se regeneran aquí: el release empaqueta
+      # electron/server.cjs y server.mjs, y sin este paso se publicaría el que
+      # quedó commiteado, que puede ser de una versión anterior.
+      - name: Build server bundles
+        run: npm run build:server
+
+      # Windows firma con su propio .pfx. El .p12 de Apple no se le pasa: en un
+      # runner de Windows haría fallar la firma por certificado equivocado.
+      - name: Build Electron App (Windows)
+        if: runner.os == 'Windows'
         run: npm run build:electron
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS code signing (opcional, solo si hay certificados)
-          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE }}
-          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          # Windows code signing (opcional)
           WIN_CSC_LINK: ${{ secrets.WIN_CERTIFICATE }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CERTIFICATE_PASSWORD }}
+
+      - name: Build Electron App (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: npm run build:electron
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      # Un tag no publica instaladores sin firmar. Sin secreto de certificado,
+      # electron-builder genera el .exe igual y sólo avisa; aquí se corta.
+      # Para una prerelease sin certificado: SIGNING_OPTIONAL=1 en el job.
+      - name: Verificar firma (Windows)
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/')
+        run: node scripts/check-signing.cjs --require --dir release
 
       - name: Upload Release Artifacts
         uses: softprops/action-gh-release@v2

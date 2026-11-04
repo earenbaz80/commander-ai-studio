@@ -1,4 +1,4 @@
-# Commander AI Studio v2.5.0
+# Commander AI Studio v2.5.1
 
 Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos Gemini/HF y exportador nativo (Electron/Tauri).
 
@@ -152,5 +152,25 @@ Cada pasada live se anota en `evals/results.jsonl` con el commit (`git rev-parse
 
 ## Runtime Server Build
 
-Run 
-pm run build:server to regenerate electron/server.cjs and electron/server.mjs from server.ts.
+Runpm run build:server to regenerate electron/server.cjs and electron/server.mjs from server.ts.
+
+## Firma de código
+
+Los instaladores se firman en `release.yml` con los secretos del repo:
+
+| Secreto | Plataforma | Qué es |
+| --- | --- | --- |
+| `WIN_CERTIFICATE` | Windows | `.pfx` en base64 (o ruta) del certificado de firma de código |
+| `WIN_CERTIFICATE_PASSWORD` | Windows | Contraseña del `.pfx` |
+| `APPLE_CERTIFICATE` | macOS | `.p12` en base64 con el certificado Developer ID |
+| `APPLE_CERTIFICATE_PASSWORD` | macOS | Contraseña del `.p12` |
+
+Sin certificado, electron-builder **no falla**: avisa con `no code signing certificate configured, signing is skipped` y produce instaladores sin firmar que SmartScreen bloquea. Por eso, en un tag, el job corre `node scripts/check-signing.cjs --require --dir release` y corta si algún `.exe` no está firmado. Para una prerelease sin certificado se puede definir `SIGNING_OPTIONAL=1` en el job, aceptando el aviso de SmartScreen a cambio de publicar.
+
+Para firmar en local: `WIN_CSC_LINK=/ruta/cert.pfx WIN_CSC_KEY_PASSWORD=… npm run build:electron` y comprobar con `node scripts/check-signing.cjs --dir release`.
+
+## Empaquetado
+
+`npm run build:all` encadena tipos, Vite, los bundles del servidor y `electron-builder`. El paquete lleva `node-pty` como `extraResources` (no recompilado: es N-API y su prebuild sirve para Node y Electron) y un hook `afterPack` recorta sus prebuilds a la plataforma y arquitectura compiladas.
+
+Un tag que no pase `scripts/check-signing.cjs --require` no publica: es la única forma de que un instalador sin firmar no llegue a nadie por descuido.

@@ -27,6 +27,16 @@ let mainWindow = null;
 let tray = null;
 const SERVER_PORT = 3001;
 
+// Versión con una sola fuente: package.json la escribe `npm version` y
+// electron-builder la reescribe dentro del paquete. Antes estaba copiada a mano
+// aquí y el "Acerca de" se quedaba en la versión vieja.
+let appVersion = '2.5.1';
+try {
+  appVersion = require('../package.json').version || appVersion;
+} catch {
+  /* sin package.json legible: se queda el valor por defecto */
+}
+
 async function startEmbeddedServer() {
   if (app.isPackaged || !process.env.ELECTRON_START_URL) {
     try {
@@ -219,7 +229,7 @@ ipcMain.handle('window:isMaximized', () => {
 ipcMain.handle('app:getInfo', () => {
   return {
     name: 'Commander AI Studio',
-    version: '2.5.0',
+    version: appVersion,
     electronVersion: process.versions.electron,
     nodeVersion: process.versions.node,
     platform: process.platform,
