@@ -18,6 +18,7 @@ Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos
   - `ask_user`: el agente pregunta y espera tu respuesta (opciones clicables y texto libre) por el canal de aprobación, así que la corrida se para hasta que contestas.
   - Reglas de permisos por patrón para `shell.run` y las tools de escritura (`allow`/`ask`/`deny`, `*` como comodín, gana la última que coincide); se guardan en la máquina, no en el repo.
   - Deshacer y rehacer el último paso que escribió en disco (`PASO ATRÁS` / `REHACER`): cada escritura guarda el contenido previo y, antes de revertir, se captura el estado actual para poder rehacerlo.
+  - Comandos y agentes del proyecto en `.commander/commands/*.md` y `.commander/agents/*.md` (front-matter opcional `name`/`description`). Escribir `/nombre args` expande el cuerpo con `$ARGUMENTS` o `$1..$9` (y añade los args al final si la plantilla no tiene marcadores); el agente elegido prefija sus instrucciones al objetivo. `GET /api/agent/prompts?root=…` los lista.
   - `code.analyze` / `code.refactor` / `code.fix`: análisis, renombrado y formateo **sin modelo** (ver [Análisis nativo](#análisis-nativo-sin-modelo)).
 - `danger=true` pide aprobación con diff preview (`fs.edit/write`).
 - Reglas repo: `AGENTS.md`, `.cursorrules`, `CLAUDE.md` se inyectan al prompt.

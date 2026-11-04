@@ -15,6 +15,7 @@ import { ParallelLaunch } from './ParallelLaunch';
 import { ShellJobLog } from './ShellJobLog';
 import { EmptyState } from './EmptyState';
 import { ensureServerSession, registerServerSession } from '../agent/activeSession';
+import { expandCommand, withAgentInstructions, type ProjectPrompt } from '../agent/customPrompts';
 
 /** Cada cuánto se mira la cola mientras la campaña corre en el servidor. */
 const CAMPAIGN_POLL_MS = 2500;
@@ -97,6 +98,13 @@ export const AgentMode: React.FC<AgentModeProps> = ({
   // alemán sale del diccionario. El resto del panel ya usa ternarios es/de/en.
   const t = (es: string, en: string) => (lang === 'es' ? es : lang === 'de' ? deText(en) : en);
   const [goal, setGoal] = useState('');
+  // Comandos y agentes del proyecto: se cargan del servidor por si el repo trae
+  // `.commander/commands` o `.commander/agents`.
+  const [prompts, setPrompts] = useState<{ commands: ProjectPrompt[]; agents: ProjectPrompt[] }>({
+    commands: [],
+    agents: [],
+  });
+  const [agentId, setAgentId] = useState('');
   const [toolId, setToolId] = useState('fs.read');
   const [toolInput, setToolInput] = useState('{"path":"README.md"}');
   const [mcpServers, setMcpServers] = useState<MCPServerConfig[]>(() => loadMCPServers());
@@ -219,8 +227,29 @@ export const AgentMode: React.FC<AgentModeProps> = ({
 
   const canRun = useMemo(() => !state.running && goal.trim().length > 0, [state.running, goal]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/agent/prompts?root=${encodeURIComponent(cwd)}`);
+        const body = await res.json();
+        if (!cancelled && body?.success) {
+          setPrompts({ commands: body.commands || [], agents: body.agents || [] });
+        }
+      } catch {
+        /* sin servidor no hay comandos del proyecto */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [cwd]);
+
   const handleStart = () => {
-    if (canRun) onStartTask(goal.trim(), plan);
+    if (!canRun) return;
+    const texto = expandCommand(goal.trim(), prompts.commands);
+    const agent = prompts.agents.find((item) => item.id === agentId) || null;
+    onStartTask(withAgentInstructions(texto, agent), plan);
   };
 
   const handleRunTool = async () => {
@@ -588,6 +617,41 @@ export const AgentMode: React.FC<AgentModeProps> = ({
                 className="w-full bg-[var(--nc-bg-deep)] text-white p-2 border-2 border-[var(--nc-border-light)] text-xs font-mono outline-none min-h-[60px] resize-y"
                 disabled={state.running}
               />
+              {(prompts.commands.length > 0 || prompts.agents.length > 0) && (
+                <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                  <span className="text-[var(--nc-text-accent)] font-bold">
+                    {lang === 'es' ? 'DEL PROYECTO' : lang === 'de' ? 'AUS DEM PROJEKT' : 'FROM PROJECT'}
+                  </span>
+                  {prompts.commands.map((command) => (
+                    <button
+                      key={command.id}
+                      type="button"
+                      title={command.description || command.name}
+                      onClick={() => setGoal('/' + command.id + ' ' + goal)}
+                      disabled={state.running}
+                      className="px-1.5 py-0.5 border border-[var(--nc-border-light)]/50 text-[var(--nc-text)] hover:bg-[var(--nc-highlight-bg)] hover:text-black font-mono disabled:opacity-50"
+                    >
+                      /{command.id}
+                    </button>
+                  ))}
+                  {prompts.agents.length > 0 && (
+                    <select
+                      value={agentId}
+                      onChange={(e) => setAgentId(e.target.value)}
+                      disabled={state.running}
+                      aria-label={lang === 'es' ? 'Agente del proyecto' : 'Project agent'}
+                      className="bg-[var(--nc-bg-deep)] text-[var(--nc-text)] border border-[var(--nc-border-light)] px-1 py-0.5 text-[10px] disabled:opacity-50"
+                    >
+                      <option value="">{lang === 'es' ? 'sin agente' : lang === 'de' ? 'ohne Agent' : 'no agent'}</option>
+                      {prompts.agents.map((agent) => (
+                        <option key={agent.id} value={agent.id}>
+                          {agent.name || agent.id}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   value={toolId}
