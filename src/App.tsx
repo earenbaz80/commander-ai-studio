@@ -1410,6 +1410,8 @@ export default function App() {
                 onContinue={agent.continueSession}
                 onFork={agent.forkSession}
                 onRollbackRun={agent.rollbackRun}
+                onUndoStep={agent.undoStep}
+                onRedoStep={agent.redoStep}
                 onPlanChange={agent.setPlan}
                 onAutonomousRunningChange={setAutonomousRunning}
                 goalRequest={agentGoalRequest}

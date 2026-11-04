@@ -76,6 +76,26 @@ export async function createCheckpoint(
   }
 }
 
+/** Snapshot puntual de rutas (estado actual antes de rehacer un paso). */
+export async function snapshotPaths(
+  paths: string[],
+  label: string,
+  root?: string
+): Promise<{ ok: boolean; checkpoint?: CheckpointMeta; error?: string }> {
+  try {
+    const res = await fetch('/api/checkpoints', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: rootParam(root), label, paths }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.success) return { ok: false, error: json.error || `HTTP ${res.status}` };
+    return { ok: true, checkpoint: json.checkpoint as CheckpointMeta };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Error de red' };
+  }
+}
+
 /** Restaura un checkpoint file-based (revierte o elimina los archivos afectados). */
 export async function restoreCheckpoint(id: string, root?: string): Promise<RestoreResult> {
   try {

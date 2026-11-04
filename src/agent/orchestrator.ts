@@ -1,5 +1,6 @@
 import { uid } from './id';
 import { decide } from './permissionRules';
+import { checkpointPaths, nextUndoCandidate } from './undoRedo';
 import type {
   AgentState,
   OrchestratorOptions,
@@ -10,6 +11,8 @@ import { getTool } from './registry';
 import {
   createCheckpoint,
   restoreCheckpoint,
+  listCheckpoints as apiListCheckpoints,
+  snapshotPaths,
   listWorktreeCheckpoints as apiListWorktreeCheckpoints,
   createWorktreeCheckpoint as apiCreateWorktreeCheckpoint,
   restoreWorktreeCheckpoint as apiRestoreWorktreeCheckpoint,
@@ -34,6 +37,9 @@ export class AgentOrchestrator {
   private currentPlan: any[] = [];
   private isExecutingPlan: boolean = false;
   private executionQueue: any[] = [];
+  /** Pasos deshechos (para no volver a restaurarlos) y su pareja para rehacer. */
+  private undoneIds: string[] = [];
+  private redoStack: Array<{ before: string; after: string }> = [];
 
   constructor(opts: OrchestratorOptions) {
     this.opts = opts;
@@ -242,6 +248,48 @@ export class AgentOrchestrator {
       this.emit();
       return { ok: false, error: err };
     }
+  }
+
+  /**
+   * Deshace el último paso que escribió en disco.
+   *
+   * Antes de revertir guarda el estado actual de las mismas rutas: sin eso
+   * rehacer sería imposible sin volver a ejecutar la tool (y una edición no es
+   * determinista).
+   */
+  async undoStep(): Promise<{ ok: boolean; restored?: number; deleted?: number; error?: string }> {
+    if (this.state.running) return { ok: false, error: 'para el agente antes de deshacer un paso' };
+    const { checkpoints } = await apiListCheckpoints(this.ctx.cwd);
+    const target = nextUndoCandidate(checkpoints, this.undoneIds);
+    if (!target) return { ok: false, error: 'no hay pasos que deshacer' };
+    const paths = checkpointPaths(target);
+    const after = await snapshotPaths(paths, 'estado antes de deshacer ' + target.label, this.ctx.cwd);
+    if (!after.ok || !after.checkpoint) {
+      return { ok: false, error: after.error || 'no se pudo guardar el estado actual' };
+    }
+    const res = await restoreCheckpoint(target.id, this.ctx.cwd);
+    if (!res.ok) return { ok: false, error: res.error };
+    this.undoneIds.push(target.id);
+    this.redoStack.push({ before: target.id, after: after.checkpoint.id });
+    this.addThought('Deshacer', 'Revertido ' + target.label + ' (' + paths.join(', ') + ')');
+    this.emit();
+    return { ok: true, restored: res.restored?.length, deleted: res.deleted?.length };
+  }
+
+  /** Vuelve a aplicar el último paso deshecho. */
+  async redoStep(): Promise<{ ok: boolean; restored?: number; deleted?: number; error?: string }> {
+    if (this.state.running) return { ok: false, error: 'para el agente antes de rehacer un paso' };
+    const last = this.redoStack.pop();
+    if (!last) return { ok: false, error: 'no hay pasos que rehacer' };
+    const res = await restoreCheckpoint(last.after, this.ctx.cwd);
+    if (!res.ok) {
+      this.redoStack.push(last);
+      return { ok: false, error: res.error };
+    }
+    this.undoneIds = this.undoneIds.filter((id) => id !== last.before);
+    this.addThought('Rehacer', 'Vuelto a aplicar el último paso deshecho');
+    this.emit();
+    return { ok: true, restored: res.restored?.length, deleted: res.deleted?.length };
   }
 
   private async ensureRunCheckpoint(): Promise<void> {
