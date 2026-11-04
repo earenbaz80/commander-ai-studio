@@ -151,7 +151,6 @@
       "buildResources": "build"
     },
     "files": [
-      "dist/**/*",
       "electron/main.cjs",
       "electron/preload.cjs",
       "electron/lspBridge.cjs",
@@ -168,6 +167,10 @@
       "de"
     ],
     "extraResources": [
+      {
+        "from": "dist",
+        "to": "dist"
+      },
       {
         "from": "electron/server.cjs",
         "to": "server.cjs"
