@@ -1,5 +1,4 @@
 import { useCallback } from 'react';
-import type { StudioMode } from '../types/studio';
 import { buildAuditPrompt } from '../data/auditPrompts';
 
 export interface AppPromptsOptions {
@@ -7,11 +6,10 @@ export interface AppPromptsOptions {
   setProjectToast: (toast: any) => void;
   lang: string;
   tabs: any;
-  setMode: (mode: StudioMode) => void;
   /**
-   * Arranca una corrida del agente con ese objetivo.
-   * La auditoría pide herramientas (fs.*, read_diagnostics, shell.run), así que
-   * tiene que ir por el bucle del agente y no por el chat simple.
+   * Arranca la auditoría como un turno del chat con herramientas.
+   * El chat simple del proveedor no tiene tools, así que la corrida va por el
+   * bucle del agente (`useGeneralAudit`).
    */
   onAuditStart: (prompt: string) => void;
   currentSessionId: React.MutableRefObject<string>;
@@ -21,7 +19,7 @@ export interface AppPromptsOptions {
 
 export function useAppPrompts(opts: AppPromptsOptions) {
   const {
-    activeTab, setProjectToast, lang, tabs, setMode,
+    activeTab, setProjectToast, lang, tabs,
     onAuditStart, currentSessionId,
     setPromptTitle, setNonoStatus,
   } = opts;
@@ -31,11 +29,8 @@ export function useAppPrompts(opts: AppPromptsOptions) {
       setProjectToast({ kind: 'err', text: lang === 'es' ? 'Selecciona un proyecto primero' : lang === 'de' ? 'Wähle zuerst ein Projekt aus' : 'Select a project first' });
       return;
     }
-    const prompt = buildAuditPrompt(activeTab.projectPath, lang as 'es' | 'en');
-    tabs.updateTab({ mode: 'agent' });
-    setMode('agent');
-    onAuditStart(prompt);
-  }, [activeTab, setProjectToast, lang, tabs, setMode, onAuditStart]);
+    onAuditStart(buildAuditPrompt(activeTab.projectPath, lang as 'es' | 'en'));
+  }, [activeTab, setProjectToast, lang, onAuditStart]);
 
   const handleNewChat = useCallback(() => {
     const sessionId = `sess-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
