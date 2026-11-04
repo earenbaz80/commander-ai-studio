@@ -1,7 +1,7 @@
 /**
  * Filtros de proveedor y de modelos.
  *
- * Mismo criterio que opencode: un proveedor se puede apagar sin borrar sus
+ * Un proveedor se puede apagar sin borrar sus
  * credenciales, y su catálogo se puede recortar con una lista blanca y otra
  * negra. Las listas admiten un `*` al final (`claude-*`), que es lo que hace
  * usable un catálogo de cientos de modelos.

@@ -1,7 +1,7 @@
 /**
  * Registro de proveedores y su catálogo de modelos.
  *
- * El catálogo sale de models.dev (el mismo que usa opencode). Su API no
+ * El catálogo sale de models.dev. Su API no
  * devuelve una lista plana: es un mapa `proveedor → { env, models }`, así que
  * se normaliza aquí una sola vez. Antes `server.ts` esperaba `data.models` en
  * la raíz, cosa que models.dev no manda: el catálogo "vivo" llegaba vacío y el

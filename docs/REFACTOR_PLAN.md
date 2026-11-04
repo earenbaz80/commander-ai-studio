@@ -8,7 +8,7 @@
 > `tests/ui/FloatingAssistant.test.tsx`. Se conserva como registro de decisiones,
 > no como hoja de ruta.
 
-**Objetivo:** Llevar el código al nivel de OpenCode / FreeBuff / Antigravity - un agente de coding real, no un juguete.
+**Objetivo:** Llevar el código al nivel de un agente de coding real, no un juguete.
 
 ---
 

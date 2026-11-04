@@ -140,7 +140,7 @@ mcpRouter.post('/uninstall', (req, res) => {
 });
 
 /**
- * Importa servidores MCP desde una carpeta externa (ej. .config/opencode/mcp o similar).
+ * Importa servidores MCP desde una carpeta externa (ej. .config/mcp o similar).
  * body: { sourceDir: string }
  */
 mcpRouter.post('/import', (req, res) => {
