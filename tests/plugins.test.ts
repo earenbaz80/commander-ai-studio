@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { startServer, type ServerHarness } from './helpers/serverHarness.js';
+import { executeAgentTool } from '../agentTools.js';
 
 let srv: ServerHarness;
 let root: string;
@@ -68,6 +69,43 @@ test('POST /api/plugins instala con un id válido y DELETE lo quita', async () =
   assert.equal(baja.body.success, true);
   assert.equal(fs.existsSync(zipDe(id)), false, 'el zip se borra');
   assert.equal(fs.existsSync(manifestDe(id)), false, 'el manifiesto se borra');
+});
+
+test('un plugin del proyecto ve la tool antes y después de ejecutarse', async () => {
+  // El runtime busca `<root>/.commander/plugins/<id>/index.js`, no el manifiesto.
+  const dir = path.join(pluginsDir(), 'etiqueta');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'index.js'),
+    [
+      'export default {',
+      '  beforeTool: (ctx) => ({ input: { ...ctx.input, ordenar: true } }),',
+      '  afterTool: (ctx) => ({ result: { ...ctx.result, data: { ...ctx.result.data, desdePlugin: true } } }),',
+      '};',
+    ].join('\n'),
+    'utf8'
+  );
+
+  const res: any = await executeAgentTool('fs.list', { root, path: '.' });
+
+  assert.equal(res.ok, true, res.error);
+  assert.equal(res.data.desdePlugin, true, 'el afterTool anota el resultado');
+});
+
+test('un plugin que lanza no rompe la tool: el error queda en data.pluginErrors', async () => {
+  const dir = path.join(pluginsDir(), 'falla');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'index.js'),
+    'export default { afterTool: () => { throw new Error("plugin roto"); } };',
+    'utf8'
+  );
+
+  const res: any = await executeAgentTool('fs.list', { root, path: '.' });
+
+  assert.equal(res.ok, true, res.error);
+  assert.equal(res.data.pluginErrors[0].plugin, 'falla');
+  assert.equal(res.data.pluginErrors[0].error, 'plugin roto');
 });
 
 test('DELETE /api/plugins/:id rechaza ids con traversal y no toca el archivo vecino', async () => {

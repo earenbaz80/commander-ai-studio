@@ -26,7 +26,7 @@ export function buildSystemPrompt(ctx: LLMContext): string {
 - Cambios pequeños: fs.edit con oldString idéntico al archivo. Crear archivos: fs.write.
 - En cuanto tengas el texto delante, haz la edición en el paso siguiente: no vuelvas a buscar ni a releer lo ya leído.
 - Para un cambio que quieras revisar antes de aplicar, usa fs.propose.write / fs.propose.edit: devuelven un diff unificado sin tocar disco (funcionan incluso en modo plan).
-- Tras editar código, usa read_diagnostics (o code.analyze si quieres el detalle del archivo) para verificar que no introdujiste errores de TypeScript.`
+- Tras editar código, usa read_diagnostics (o code.analyze si quieres el detalle del archivo) para verificar que no introdujiste errores de tipos o compilación (TypeScript, Python, Go o Rust según el proyecto).`
   );
   sections.push(
     `ANÁLISIS NATIVO (sin modelo, sin cuota, sin red):

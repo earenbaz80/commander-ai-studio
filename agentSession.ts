@@ -169,7 +169,7 @@ REGLAS:
 - Objetivo: cumplir ${ctx.goal} en ${ctx.cwd}.
 - Puedes usar herramientas: ${ALLOWED_TOOLS.join(', ')}.
 - Si necesitas leer archivos, usar fs.glob/fs.grep primero. Para docs web usa web.search/web.fetch.
-- Tras editar código, usa read_diagnostics para verificar que no introdujiste errores de TypeScript.
+- Tras editar código, usa read_diagnostics para verificar que no introdujiste errores de tipos o compilación (TypeScript, Python, Go o Rust según el proyecto).
 - Puedes proponer VARIAS toolCalls independientes a la vez (se ejecutan en paralelo).
 - Si vas a editar, lee el archivo completo para obtener contexto exacto.
 - Para cambios pequeños usa fs.edit con oldString EXACTO. Para crear archivos usa fs.write.

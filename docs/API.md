@@ -197,7 +197,7 @@ Ejecuta una tool del agente en el servidor.
 - `ask_user` — Pregunta al usuario y espera respuesta: `question` (obligatorio), `header`, `options` (máx. 6) y `allowFreeText`. La corrida queda en pausa hasta que respondes y el texto vuelve como resultado de la tool.
 - `github.pr` — Lee un pull request: `repo` ("owner/repo") + `number`, o `url`. Devuelve título, estado, autor, cuerpo y diff por archivo (recortado a 4 000 caracteres por archivo). Sin `GITHUB_TOKEN` responde con el motivo, sin salir a la red.
 - `github.comment` — Publica un comentario en el PR (`body` obligatorio). Pide aprobación y usa el mismo `GITHUB_TOKEN`.
-- `read_diagnostics` — Leer diagnósticos de TypeScript
+- `read_diagnostics` — Leer diagnósticos del proyecto: `tsc` si hay `tsconfig.json` y, además, Python (`pyright`), Go (`go vet`) o Rust (`cargo check`) según los marcadores de la raíz (`pyproject.toml`, `go.mod`, `Cargo.toml`). `path` filtra a un archivo. `data.languages` dice qué se detectó y qué herramienta faltaba; una herramienta ausente es una nota, nunca un error.
 - `task` — Lanzar sub-tarea
 - `git.status` / `git.diff` / `git.log` / `git.commit` — Operaciones git
 - `web.fetch` — Obtener contenido web
@@ -212,6 +212,24 @@ Ejecuta una tool del agente en el servidor.
   "data": {}
 }
 ```
+
+---
+
+## 🔌 Endpoints de Plugins
+
+Un plugin instalado desde la UI vive como manifiesto en `.commander/plugins/<id>.manifest.json`; el runtime ejecuta además `.commander/plugins/<id>/index.js`.
+
+### `GET /api/plugins?root=`
+Lista los manifiestos instalados: `{success, plugins: [{id, name, version, entr}]}`.
+
+### `POST /api/plugins`
+**Body:** `{id, name?, version?, entrypoint?, root?}`. El `id` es un nombre de archivo (`[A-Za-z0-9._-]`, sin `..`); cualquier otra cosa responde 400.
+
+### `DELETE /api/plugins/:id?root=`
+Borra el manifiesto y el `.zip` del plugin, con el mismo filtro de `id`.
+
+### Hooks del runtime
+`beforeTool(ctx)` y `afterTool(ctx)` en `.commander/plugins/<id>/index.js` (ESM). `beforeTool` devuelve `{input}` para reemplazar la entrada; `afterTool` devuelve `{result}`. `ctx` incluye `toolId`, `input`, `root` y, en `afterTool`, `result`. Si un hook lanza, la tool se ejecuta igual y el fallo aparece en `data.pluginErrors`.
 
 ---
 

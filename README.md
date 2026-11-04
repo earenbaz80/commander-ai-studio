@@ -70,7 +70,20 @@ En el editor del Workbench, el botón de revisar abre un panel con ese análisis
 
 Las listas blancas de `allowedTools` escritas antes de estas tools no las incluyen: `code.analyze` y `code.refactor` están en `CORE_TOOLS` (no escriben) y entran igual; `code.fix` escribe, así que hay que permitirla a mano en el proyecto.
 
-## Desktop
+## Plugins del proyecto
+
+Un plugin es un módulo ESM en `.commander/plugins/<id>/index.js` (o `index.mjs`) con ganchos opcionales. Se carga desde el proyecto que estás trabajando, se recarga solo cuando cambia el fichero y no hace falta reiniciar el servidor.
+
+```js
+export default {
+  // Puede reemplazar la entrada devolviendo { input }.
+  beforeTool: (ctx) => ({ input: { ...ctx.input, path: String(ctx.input.path || '').trim() } }),
+  // Puede reemplazar el resultado devolviendo { result }.
+  afterTool: (ctx) => ({ result: { ...ctx.result, data: { ...ctx.result.data, plugin: ctx.toolId } } }),
+};
+```
+
+`ctx` trae `toolId`, `input` y `root`; en `afterTool` también `result`. Los hooks corren dentro del proceso del servidor con sus mismos permisos: son código de confianza, como un script de `package.json`. Un hook que lanza no rompe la tool —el fallo se adjunta a `data.pluginErrors`— y un plugin que no compila tampoco impide cargar los demás.
 
 - `npm run electron:dev` / `npm run build:electron` (puerto embebido 3280).
 - SW deshabilitado en Electron; rutas `index.html` relativas (`./`) para `loadFile`.
