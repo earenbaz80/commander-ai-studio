@@ -493,6 +493,21 @@ export const AgentMode: React.FC<AgentModeProps> = ({
           <span className="text-[var(--nc-text)] text-[10px] hidden sm:inline">cwd: {cwd}</span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={async () => {
+              // Carga diferida: el serializador sólo hace falta al exportar.
+              const { downloadSessionMarkdown } = await import('../agent/sessionExport');
+              downloadSessionMarkdown({
+                task: typeof state.task === 'string' ? state.task : '',
+                steps: state.steps,
+              });
+            }}
+            disabled={state.steps.length === 0}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded border-2 font-bold text-xs bg-[var(--nc-bg-panel)] text-[var(--nc-text)] hover:bg-[var(--nc-active-bg)] hover:text-black border-[var(--nc-border-light)] disabled:opacity-50"
+          >
+            <span>{lang === 'es' ? 'EXPORTAR' : lang === 'de' ? 'EXPORTIEREN' : 'EXPORT'}</span>
+          </button>
           {state.running ? (
             <button
               type="button"
