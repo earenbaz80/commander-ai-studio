@@ -64,6 +64,7 @@ export const TOOL_RESULT_LIMITS: Record<string, number> = {
   'git.diff': 18_000,
   'fs.grep': 12_000,
   'shell.run': 12_000,
+  'shell.pty': 12_000,
   'read_diagnostics': 12_000,
   'web.fetch': 12_000,
   'web.search': 8_000,

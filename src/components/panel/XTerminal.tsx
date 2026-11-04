@@ -33,6 +33,18 @@ export const XTerminal: React.FC<XTerminalProps> = ({ projectPath = '', lang = '
   const wsRef = useRef<WebSocket | null>(null);
   const [conn, setConn] = useState<ConnState>('connecting');
   const [nonce, setNonce] = useState(0); // para forzar reconexion
+  // Shell elegida en la barra de estado; el servidor valida contra su lista
+  // cerrada (`?shell=`), así que aquí sólo se ofrecen las soportadas.
+  const shells = typeof navigator !== 'undefined' && /Win/i.test(navigator.userAgent)
+    ? ['cmd', 'powershell', 'pwsh']
+    : ['bash', 'sh', 'zsh'];
+  const [shell, setShell] = useState(() => {
+    try {
+      return window.localStorage.getItem('commander.terminal.shell') || shells[0];
+    } catch {
+      return shells[0];
+    }
+  });
 
   const t = (es: string, en: string) => (lang === 'es' ? es : lang === 'de' ? deText(en) : en);
 
@@ -77,7 +89,7 @@ export const XTerminal: React.FC<XTerminalProps> = ({ projectPath = '', lang = '
 
     // --- Conecta al WebSocket de la terminal ---
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = proto + '//' + window.location.host + '/ws/terminal';
+    const wsUrl = proto + '//' + window.location.host + '/ws/terminal?shell=' + encodeURIComponent(shell);
     let ws: WebSocket;
     try {
       ws = new WebSocket(wsUrl);
@@ -152,7 +164,7 @@ export const XTerminal: React.FC<XTerminalProps> = ({ projectPath = '', lang = '
       term.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectPath, nonce]);
+  }, [projectPath, nonce, shell]);
 
   const reconnect = () => {
     setConn('connecting');
@@ -186,6 +198,26 @@ export const XTerminal: React.FC<XTerminalProps> = ({ projectPath = '', lang = '
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
+          <select
+            value={shell}
+            onChange={(e) => {
+              const nueva = e.target.value;
+              setShell(nueva);
+              try {
+                window.localStorage.setItem('commander.terminal.shell', nueva);
+              } catch {
+                /* sin almacenamiento: la elección dura la sesión */
+              }
+            }}
+            className="bg-[var(--nc-bg-deep)] text-[var(--nc-text)] border border-[var(--nc-border-dark)] text-[10px] font-mono px-1 py-0.5 rounded"
+            title={t('Shell de esta terminal', 'Shell for this terminal')}
+          >
+            {shells.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
           <button
             onClick={() => fitRef.current?.fit()}
             className="p-1 text-[var(--nc-text)]/70 hover:text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] rounded"

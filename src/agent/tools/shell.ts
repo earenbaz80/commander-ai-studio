@@ -169,4 +169,43 @@ export const shellJobTool: ToolDefinition<ShellJobInput, any> = {
     }
     return res.json();
   },
+};/**
+ * `shell.pty`: sesión interactiva persistente (proceso real con TTY).
+ *
+ * No reemplaza a `shell.run`: eso ejecuta y devuelve salida. Esto abre un
+ * proceso —un REPL, `npm init`, un TUI— y habla con él a lo largo de varias
+ * llamadas. Abrir y cerrar siempre piden aprobación: es un proceso vivo en la
+ * máquina del usuario.
+ */
+export interface ShellPtyInput {
+  action: 'open' | 'read' | 'write' | 'resize' | 'close' | 'list';
+  id?: string;
+  executable?: string;
+  args?: string[];
+  cwd?: string;
+  cols?: number;
+  rows?: number;
+  data?: string;
+  cursor?: number;
+}
+
+export const shellPtyTool: ToolDefinition<ShellPtyInput, any> = {
+  id: 'shell.pty',
+  description:
+    'Sesión PTY persistente: abre un ejecutable con argumentos en array (sin shell ni pipes), ' +
+    'lee sólo la salida nueva desde un cursor, escribe en su stdin, redimensiona y cierra.',
+  danger: true,
+  requiresApproval: (input) => input.action === 'open' || input.action === 'close',
+  run: async (input) => {
+    const res = await fetch('/api/agent/run-tool', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toolId: 'shell.pty', input: withActiveRoot(input as any) }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return { ok: false, error: (err as any).error || `HTTP ${res.status}` };
+    }
+    return res.json();
+  },
 };

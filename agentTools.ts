@@ -15,6 +15,7 @@ import { analyzeSource, findReferences, invalidateCodeIntel, planRename, rulesFo
 import { newViolations } from './src/agent/projectRules';
 import { splitPipeline } from './src/agent/shellCommand';
 import { listJobs, readJobChunk, readJobLog, runPipeline, startJob, stopJob, writeJob } from './shellJobs';
+import { closePty, isDeniedExecutable, listPtys, openPty, readPty, resizePty, resolveExecutable, writePty } from './ptySessions';
 import { assertSafeOutboundUrl, safeFetch } from './ssrf';
 import { displayPath, listRoots, resolveProjectPath } from './projects';
 import { createWorktree } from './worktrees';
@@ -1112,6 +1113,66 @@ export async function executeAgentTool(
       return res.ok ? { ok: true, data: res.data } : { ok: false, error: res.error };
     }
     return { ok: false, error: 'action debe ser list, logs, read, write o stop' };
+  }
+
+  if (toolId === 'shell.pty') {
+    // Proceso interactivo real, sin shell de por medio: ejecutable + argv.
+    const action = String(input.action || 'list').trim().toLowerCase();
+    const sessionKey = opts?.sessionId ?? null;
+    if (action === 'list') return { ok: true, data: { sessions: listPtys() } };
+    if (action === 'open') {
+      const executable = String(input.executable || '').trim().slice(0, 300);
+      if (!executable) return { ok: false, error: 'executable requerido' };
+      if (isDeniedExecutable(executable)) {
+        return { ok: false, error: `«${path.basename(executable)}» no se puede abrir desde una tool` };
+      }
+      if (!resolveExecutable(executable)) return { ok: false, error: `No se encontró el ejecutable: ${executable}` };
+      let cwd = rootHint ? resolveProjectPath('.', rootHint).abs : AGENT_ROOT;
+      if (input.cwd) {
+        const rel = String(input.cwd).slice(0, 500);
+        const pathErr = enforcePath(perms, rel, 'read');
+        if (pathErr) return { ok: false, error: pathErr, status: 403 };
+        try {
+          cwd = resolveProjectPath(rel, rootHint).abs;
+        } catch {
+          return { ok: false, error: `cwd fuera del proyecto: ${rel}`, status: 403 };
+        }
+        if (!fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
+          return { ok: false, error: `cwd no es un directorio: ${rel}` };
+        }
+      }
+      const opened = openPty({ executable, args: input.args, cwd, sessionId: sessionKey, cols: input.cols, rows: input.rows });
+      if (!opened.ok) return { ok: false, error: opened.error };
+      return {
+        ok: true,
+        data: {
+          ...opened.pty,
+          hint: `Lee con { action: "read", id: "${opened.pty.id}", cursor } y guarda el cursor que devuelve; escribe con { action: "write", id, data } y ciérralo con { action: "close", id }.`,
+        },
+      };
+    }
+    const id = String(input.id || '').slice(0, 100);
+    if (!id) return { ok: false, error: `id requerido para ${action}` };
+    if (action === 'read') {
+      const res = readPty(id, Number(input.cursor) || 0, sessionKey);
+      if (!res.ok) return { ok: false, error: res.error };
+      return { ok: true, data: { output: res.output, cursor: res.cursor, dropped: res.dropped, session: res.pty } };
+    }
+    if (action === 'write') {
+      const res = writePty(id, String(input.data ?? ''), sessionKey);
+      return res.ok
+        ? { ok: true, data: { written: String(input.data ?? '').length, session: res.pty } }
+        : { ok: false, error: res.error };
+    }
+    if (action === 'resize') {
+      const res = resizePty(id, Number(input.cols), Number(input.rows), sessionKey);
+      return res.ok ? { ok: true, data: { session: res.pty } } : { ok: false, error: res.error };
+    }
+    if (action === 'close') {
+      const res = closePty(id, sessionKey);
+      return res.ok ? { ok: true, data: { session: res.pty } } : { ok: false, error: res.error };
+    }
+    return { ok: false, error: 'action debe ser open, read, write, resize, close o list' };
   }
 
   if (toolId === 'browser') {

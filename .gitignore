@@ -65,6 +65,7 @@ vitest-output.txt
 # Servidores empaquetados (los genera `npm run build:server`, ~3.4 MB cada uno)
 electron/server.cjs
 electron/server.mjs
+electron/updater.cjs
 
 # Archivos de notas sueltas en la raíz
 agentmode.txt

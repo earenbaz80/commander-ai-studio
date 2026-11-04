@@ -14,7 +14,7 @@
     "build:server:cjs": "npx esbuild server.ts --bundle --platform=node --format=cjs --target=node20 --external:vite --external:playwright --external:node-pty --outfile=electron/server.cjs",
     "build:server:mjs": "npx esbuild server.ts --bundle --platform=node --format=esm --target=node20 --external:vite --external:playwright --external:node-pty --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" --outfile=electron/server.mjs",
     "build:electron": "electron-builder --win",
-    "build:all": "npm run build && npm run build:server && npm run build:electron",
+    "build:all": "npm run build && npm run build:server && npm run build:updater && npm run build:electron",
     "build:tauri": "npm run build && cargo build --release --manifest-path src-tauri/Cargo.toml",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
@@ -51,7 +51,8 @@
     "db:migrate": "tsx scripts/migrate-firebase.ts",
     "skills:import": "tsx bin/commander.ts skills import",
     "tauri:info": "tauri info",
-    "tauri:icon": "tauri icon"
+    "tauri:icon": "tauri icon",
+    "build:updater": "npx esbuild electron/updaterEntry.cjs --bundle --platform=node --format=cjs --target=node20 --external:electron --outfile=electron/updater.cjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -77,6 +78,7 @@
     "@tauri-apps/api": "^2.12.3",
     "canvas-confetti": "^1.9.4",
     "dotenv": "^17.2.3",
+    "electron-updater": "^6.8.11",
     "express": "^5.3.0",
     "firebase": "^13.1.0",
     "jszip": "^3.10.2",
@@ -151,6 +153,7 @@
       "buildResources": "build"
     },
     "files": [
+      "electron/updater.cjs",
       "electron/main.cjs",
       "electron/preload.cjs",
       "electron/lspBridge.cjs",

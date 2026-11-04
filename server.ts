@@ -1,4 +1,5 @@
 import express from 'express';
+import { createServer as createHttpServer } from 'node:http';
 import dotenv from 'dotenv';
 import path from 'path';
 import os from 'os';
@@ -18,6 +19,7 @@ import { enforceTool, getPermissions, setPermissions } from './permissions';
 import { createSession, getSession, listSessions as listAgentSessions, removeSession, stopSession } from './agentSession';
 import { cancelSubAgents, clearSubAgents, listSubAgents, subscribeSubAgents } from './subAgents';
 import { stopJobsForSession } from './shellJobs';
+import { closePtysForSession } from './ptySessions';
 import {
   handleGeminiGenerate,
   handleGeminiStream,
@@ -458,8 +460,12 @@ app.post('/api/agent/sessions/:id/cancel', async (req, res) => {
     const cancelados = ids.filter((sid) => stopSession(sid)).length;
     const idsTanda = new Set<string>([...ids, ...listSubAgents(id).map((r) => r.id)]);
     const jobsStopped: string[] = [];
-    for (const sid of idsTanda) jobsStopped.push(...(await stopJobsForSession(sid)));
-    res.json({ success: true, cancelled: cancelados, ids, jobsStopped });
+    let ptysClosed = 0;
+    for (const sid of idsTanda) {
+      jobsStopped.push(...(await stopJobsForSession(sid)));
+      ptysClosed += closePtysForSession(sid);
+    }
+    res.json({ success: true, cancelled: cancelados, ids, jobsStopped, ptysClosed });
   } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
 });
 
@@ -3040,6 +3046,13 @@ app.post('/api/freebuff/generate', handleFreebuffGenerate);
 // Bootstrap asíncrono (sin top-level await) para que server.ts siga siendo
 // empaquetable a CJS con esbuild (electron/server.cjs, el que carga main.cjs).
 async function bootstrap() {
+  const PORT = Number(process.env.PORT || loadConfig().server?.port || 3280);
+  const HOST = '127.0.0.1';
+  // Servidor HTTP explícito (no `app.listen`) para compartirlo con Vite: el
+  // WebSocket de HMR viaja por el mismo puerto de la app. Antes Vite abría el
+  // suyo en el 24678 y chocaba con cualquier otro vite corriendo en la máquina.
+  const server = createHttpServer(app);
+
   // Vite middleware for dev mode
   if (process.env.NODE_ENV === 'production') {
     // Serve static files in production only
@@ -3062,7 +3075,12 @@ async function bootstrap() {
     // Desarrollo: montar Vite como middleware (HMR + API en mismo puerto)
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      // `hmr.server` comparte el WebSocket de HMR con este servidor HTTP: el
+      // cliente se conecta al mismo puerto de la app en vez de al 24678, que
+      // Vite abre por su cuenta y choca con otro vite corriendo en la máquina.
+      // (La forma nueva sería `server.ws`, pero esta versión de Vite aún no la
+      // aplica en middlewareMode: abre el 24678 igualmente.)
+      server: { middlewareMode: true, hmr: { server } },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -3088,9 +3106,7 @@ app.get('/api/system/info', (_req, res) => {
   }
 });
 
-const PORT = Number(process.env.PORT || loadConfig().server?.port || 3280);
-const HOST = '127.0.0.1';
-const server = app.listen(PORT, HOST, () => {
+server.listen(PORT, HOST, () => {
     // Con PORT=0 el SO elige el puerto: el propio server tiene que anunciar y
     // usar el real, no el 0 pedido. Las llamadas internas del agente
     // (llm/fallback/autonomous) se resuelven contra esta base URL.

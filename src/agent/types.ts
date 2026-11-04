@@ -9,6 +9,7 @@ export type ToolId =
   | 'fs.propose.edit'
   | 'shell.run'
   | 'shell.job'
+  | 'shell.pty'
   | 'browser'
   | 'preview'
   | 'read_diagnostics'
