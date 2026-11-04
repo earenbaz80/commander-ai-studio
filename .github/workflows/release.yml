@@ -64,8 +64,6 @@ jobs:
         run: npx electron-builder --linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Antes había aquí un `check-signing --require` que cortaba el tag si
       # los .exe no estaban firmados. Se quitó: el proyecto es personal y sin
