@@ -164,41 +164,16 @@ export const HUGGINGFACE_MODELS: AIModel[] = [
   }
 ];
 
-export const OLLAMA_MODELS: AIModel[] = [
-  {
-    id: 'ollama/llama3.2',
-    name: 'Llama 3.2 (Ollama local, gratis)',
-    provider: 'ollama',
-    description: 'Corre 100% gratis en tu PC con Ollama. Requiere `ollama serve` + `ollama pull llama3.2`.',
-    badge: 'Gratis Local',
-    contextWindow: '128K tokens',
-  },
-  {
-    id: 'ollama/qwen2.5-coder',
-    name: 'Qwen 2.5 Coder (Ollama local, gratis)',
-    provider: 'ollama',
-    description: 'Coder local gratuito. Requiere `ollama pull qwen2.5-coder`.',
-    badge: 'Gratis Coder',
-    contextWindow: '32K tokens',
-  },
-  {
-    id: 'ollama/deepseek-r1',
-    name: 'DeepSeek R1 (Ollama local, gratis)',
-    provider: 'ollama',
-    description: 'Razonador local gratuito. Requiere `ollama pull deepseek-r1`.',
-    badge: 'Gratis Reasoning',
-    contextWindow: '128K tokens',
-    supportsThinking: true,
-  },
-  {
-    id: 'ollama/mistral',
-    name: 'Mistral (Ollama local, gratis)',
-    provider: 'ollama',
-    description: 'Modelo Mistral local gratuito. Requiere `ollama pull mistral`.',
-    badge: 'Gratis',
-    contextWindow: '32K tokens',
-  },
-];
+/**
+ * Ollama no tiene catálogo fijo: sus modelos son los que hay descargados en el
+ * servidor (`ollama pull`). Se listan desde `/api/models/live`, que lee
+ * `/api/tags` y guarda la última detección por host, igual que LM Studio.
+ *
+ * Antes había aquí cuatro modelos escritos a mano que parecían instalados sin
+ * estarlo; el modal sigue ofreciendo esos nombres en «Descargar modelos»,
+ * donde sí son sugerencias explícitas.
+ */
+export const OLLAMA_MODELS: AIModel[] = [];
 
 export const OPENROUTER_FREE_MODELS: AIModel[] = [
   {
