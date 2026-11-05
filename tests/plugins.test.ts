@@ -118,3 +118,74 @@ test('DELETE /api/plugins/:id rechaza ids con traversal y no toca el archivo vec
   assert.equal(res.body.success, false);
   assert.equal(fs.existsSync(centinela), true, 'el archivo fuera del directorio sigue ahí');
 });
+
+test('GET /api/plugins lista los plugins instalados desde un marketplace', async () => {
+  // Los instalados por marketplace viven en `<id>.manifest.json`, no en un zip:
+  // antes el listado los ignoraba y la UI nunca ofrecía desinstalarlos.
+  const id = `market-${Date.now()}`;
+  fs.mkdirSync(path.join(pluginsDir(), id, 'files'), { recursive: true });
+  fs.writeFileSync(
+    manifestDe(id),
+    JSON.stringify({
+      id,
+      name: 'Market Demo',
+      version: '1.2.3',
+      marketplace: 'anthropics/claude-plugins-official',
+      components: { commands: ['commit'], agents: ['helper'], skills: [], mcp: ['demo'] },
+      written: [],
+      files: 2,
+      installedAt: new Date().toISOString(),
+    }),
+    'utf8'
+  );
+
+  const res = await srv.request('GET', `/api/plugins${rootQuery()}`);
+  assert.equal(res.status, 200, res.raw);
+  assert.equal(res.body.success, true);
+
+  const found = (res.body.plugins || []).find((plugin: any) => plugin.id === id);
+  assert.ok(found, `el plugin ${id} debía aparecer en la lista`);
+  assert.equal(found.name, 'Market Demo');
+  assert.equal(found.version, '1.2.3');
+  assert.equal(found.marketplace, 'anthropics/claude-plugins-official');
+  assert.deepEqual(found.components.commands, ['commit']);
+});
+
+test('DELETE /api/plugins/:id borra las skills y agentes que copió el plugin', async () => {
+  const id = `market-del-${Date.now()}`;
+  const commandsDir = path.join(root, 'skills', 'commands');
+  const agentsDir = path.join(root, 'skills', 'agents');
+  fs.mkdirSync(commandsDir, { recursive: true });
+  fs.mkdirSync(agentsDir, { recursive: true });
+  fs.mkdirSync(path.join(pluginsDir(), id, 'files'), { recursive: true });
+
+  const propios = [
+    path.join(commandsDir, 'commit.md'),
+    path.join(commandsDir, `${id}-commit.md`),
+    path.join(agentsDir, 'helper.md'),
+  ];
+  const ajeno = path.join(commandsDir, 'ajeno.md');
+  for (const file of [...propios, ajeno]) fs.writeFileSync(file, 'x');
+
+  fs.writeFileSync(
+    manifestDe(id),
+    JSON.stringify({
+      id,
+      name: id,
+      components: { commands: ['commit'], agents: ['helper'], skills: [], mcp: [] },
+    }),
+    'utf8'
+  );
+
+  const res = await srv.request('DELETE', `/api/plugins/${encodeURIComponent(id)}${rootQuery()}`);
+  assert.equal(res.status, 200, res.raw);
+  assert.equal(res.body.success, true);
+
+  for (const file of propios) {
+    assert.equal(fs.existsSync(file), false, `${path.basename(file)} debía borrarse`);
+  }
+  assert.equal(fs.existsSync(ajeno), true, 'un archivo que no era del plugin se queda');
+  assert.equal(fs.existsSync(path.join(pluginsDir(), id)), false, 'la copia del plugin se borra');
+  assert.equal(fs.existsSync(manifestDe(id)), false, 'el manifiesto se borra');
+  assert.ok((res.body.removed || []).length >= 4, 'la respuesta detalla lo borrado');
+});
