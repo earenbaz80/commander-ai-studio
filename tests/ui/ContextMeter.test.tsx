@@ -2,7 +2,7 @@
  * Indicador de contexto: porcentaje estimado, desglose al pulsarlo y perfiles
  * de esfuerzo que salen del `thinkingLevel` vigente.
  */
-import { describe, test, expect, vi } from 'vitest';
+import { beforeEach, describe, test, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ContextMeter } from '../../src/components/chat/ContextMeter';
 import type { AIModel, ChatMessage, ParameterConfig } from '../../src/types/studio';
@@ -32,6 +32,10 @@ const messages: ChatMessage[] = [
 ];
 
 describe('ContextMeter', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
   test('muestra el porcentaje y el total estimados', () => {
     render(<ContextMeter messages={messages} parameters={params} model={model} lang="es" />);
 
@@ -73,6 +77,23 @@ describe('ContextMeter', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Potente' }));
     expect(onChangeEffort).toHaveBeenCalledWith('powerful');
+  });
+
+  test('se pliega y recuerda el estado al volver a montar', () => {
+    const { unmount } = render(<ContextMeter messages={messages} parameters={params} model={model} lang="es" />);
+
+    fireEvent.click(screen.getByLabelText('Plegar barra de contexto'));
+    expect(screen.queryByRole('button', { name: 'Potente' })).toBeNull();
+    expect(screen.getByLabelText('Mostrar barra de contexto')).toBeInTheDocument();
+    expect(screen.getByTestId('context-percent').textContent).toBe('25%');
+
+    unmount();
+    render(<ContextMeter messages={messages} parameters={params} model={model} lang="es" />);
+    expect(screen.getByLabelText('Mostrar barra de contexto')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Potente' })).toBeNull();
+
+    fireEvent.click(screen.getByLabelText('Mostrar barra de contexto'));
+    expect(screen.getByRole('button', { name: 'Potente' })).toBeInTheDocument();
   });
 
   test('sin callback los perfiles quedan desactivados', () => {

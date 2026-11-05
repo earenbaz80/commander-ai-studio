@@ -8,7 +8,7 @@
  * el máximo de tokens y el nivel de razonamiento.
  */
 import React, { useId, useState } from 'react';
-import { Activity, ChevronDown } from 'lucide-react';
+import { Activity, ChevronDown, ChevronUp } from 'lucide-react';
 import type { AIModel, ChatMessage, ParameterConfig } from '../../types/studio';
 import type { Language } from '../../i18n/translations';
 import { computeContextStats, formatTokens } from '../../lib/contextStats';
@@ -28,6 +28,16 @@ const effortLabels: Record<EffortLevel, { es: string; en: string; de: string }> 
   fast: { es: 'Rápido', en: 'Fast', de: 'Schnell' },
   balanced: { es: 'Equilibrado', en: 'Balanced', de: 'Ausgeglichen' },
   powerful: { es: 'Potente', en: 'Powerful', de: 'Leistungsstark' },
+};
+
+const CONTEXT_METER_COLLAPSED_KEY = 'commander_context_meter_collapsed';
+
+const readCollapsed = (): boolean => {
+  try {
+    return window.localStorage.getItem(CONTEXT_METER_COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
 };
 
 const effortHints: Record<EffortLevel, { es: string; en: string; de: string }> = {
@@ -56,6 +66,7 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
   onChangeEffort,
 }) => {
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState<boolean>(readCollapsed);
   const panelId = useId();
 
   const stats = React.useMemo(
@@ -75,6 +86,49 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
     `Context: ${stats.percent === null ? 'unknown window' : `${percent}%`} · ${formatTokens(stats.totalTokens)} estimated tokens across ${stats.messages} message(s)`,
     `Kontext: ${stats.percent === null ? 'Fenster unbekannt' : `${percent}%`} · geschätzt ${formatTokens(stats.totalTokens)} Token aus ${stats.messages} Nachricht(en)`
   );
+
+  const toggleCollapsed = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    if (next) setOpen(false);
+    try {
+      window.localStorage.setItem(CONTEXT_METER_COLLAPSED_KEY, next ? '1' : '0');
+    } catch {
+      /* sin almacenamiento: se pliega igual, sólo no se recuerda */
+    }
+  };
+
+  if (collapsed) {
+    return (
+      <div
+        data-testid="context-meter"
+        className="mt-2 flex flex-wrap items-center gap-2 font-mono text-[10px] text-[var(--nc-text)]"
+      >
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-expanded={false}
+          aria-label={L('Mostrar barra de contexto', 'Show context bar', 'Kontextleiste anzeigen')}
+          title={summary}
+          className="flex min-h-7 items-center gap-1.5 rounded-sm border border-[var(--nc-border-mid)]/60 bg-[var(--nc-bg-main)] px-2 py-1 hover:bg-[var(--nc-bg-hover)] focus-visible:outline-2 focus-visible:outline-[var(--nc-text-accent)]"
+        >
+          <Activity className="h-3 w-3 text-[var(--nc-text-accent)]" aria-hidden />
+          <span className="font-bold text-[var(--nc-text-accent)]">CTX</span>
+          <span className="tabular-nums" data-testid="context-percent">
+            {stats.percent === null ? '—' : `${percent}%`}
+          </span>
+          <span className="tabular-nums opacity-70">
+            {formatTokens(stats.totalTokens)}
+            {stats.limit ? `/${formatTokens(stats.limit)}` : ''}
+          </span>
+          <ChevronDown className="h-3 w-3" aria-hidden />
+        </button>
+        <span className="opacity-60">
+          {L('Barra plegada', 'Context bar collapsed', 'Kontextleiste eingeklappt')}
+        </span>
+      </div>
+    );
+  }
 
   const rows: Array<{ label: string; value: string }> = [
     { label: L('Instrucciones y ejemplos', 'Instructions & examples', 'Anweisungen & Beispiele'), value: formatTokens(stats.systemTokens) },
@@ -153,6 +207,21 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
             );
           })}
         </div>
+
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-expanded={true}
+          aria-label={L('Plegar barra de contexto', 'Collapse context bar', 'Kontextleiste einklappen')}
+          title={L(
+            'Oculta la barra; se recordará la próxima vez',
+            'Hide the bar; it will be remembered next time',
+            'Blendet die Leiste aus; wird beim nächsten Mal gemerkt'
+          )}
+          className="flex min-h-7 items-center justify-center border border-[var(--nc-border-mid)]/60 bg-[var(--nc-bg-panel)] px-1.5 py-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] focus-visible:outline-2 focus-visible:outline-[var(--nc-text-accent)]"
+        >
+          <ChevronUp className="h-3 w-3" aria-hidden />
+        </button>
       </div>
 
       {open && (
