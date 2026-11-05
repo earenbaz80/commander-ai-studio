@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback, useImperativeHandle, useEffect } from 'react';
-import type { Message, FloatingAssistantHandle, FloatingAssistantProps, Language } from '../../../components/nono/content';
-import { askNono } from '../../../utils/nonoAsk';
+import type { Message, FloatingAssistantHandle, FloatingAssistantProps, Language, NonoExpression } from '../../../components/nono/content';
+import { askNonoDetailed, type AskNonoResult } from '../../../utils/nonoAsk';
 import { GREETINGS_ES, GREETINGS_EN, GREETINGS_DE, getExpressionForText, getResponse } from '../../../components/nono/content';
+import { loadNonoChat, saveNonoChat, clearNonoChat } from '../nonoChatPersistence';
 
 interface UseNonoChatOptions {
   lang: Language;
@@ -15,11 +16,13 @@ interface UseNonoChatOptions {
   selectedProvider?: string;
   parameters?: FloatingAssistantProps['parameters'];
   codeContext?: string;
+  /** Proyecto activo: separa el historial guardado de cada workspace. */
+  projectId?: string | null;
+  /** Contexto de proyecto que se manda al modelo (framework, tests, objetivo). */
+  projectInfo?: FloatingAssistantProps['projectInfo'];
   inputRef: React.RefObject<HTMLInputElement | null>;
   ref: React.ForwardedRef<FloatingAssistantHandle>;
 }
-
-import type { NonoExpression } from '../../../components/nono/content';
 
 interface UseNonoChatReturn {
   isOpen: boolean;
@@ -43,9 +46,9 @@ interface UseNonoChatReturn {
 
 /**
  * Hook para lógica de chat de Nono.
- * - Mensajes + input + typing state
+ * - Mensajes + input + typing state, con historial persistido por proyecto
  * - Comandos rápidos (/workbench, /compile, etc.)
- * - Fallback a respuestas plantilla si IA tarda
+ * - Respuesta real con el proveedor activo y fallback a plantillas si tarda
  * - Handle imperativo para abrir con prompt desde fuera
  */
 export function useNonoChat({
@@ -60,28 +63,47 @@ export function useNonoChat({
   selectedProvider,
   parameters,
   codeContext,
+  projectId = null,
+  projectInfo,
   inputRef,
   ref,
 }: UseNonoChatOptions): UseNonoChatReturn {
   const [isOpen, setIsOpen] = useState(false);
   const [expression, setExpression] = useState<NonoExpression>('neutral');
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => loadNonoChat(projectId));
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [actionFeedback, setActionFeedback] = useState('');
 
-  const onAskRef = useRef<(text: string) => Promise<string | null>>(async () => null);
+  const onAskRef = useRef<(text: string) => Promise<AskNonoResult>>(async () => ({ text: null }));
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const handleSendRef = useRef<(() => void) | undefined>(undefined);
 
-  // Mantiene ask actualizado con parámetros actuales
+  // Se guarda el hilo para poder retomarlo tras recargar. El `<FloatingAssistant>`
+  // se remonta al cambiar de proyecto, así que la clave no cambia en caliente.
+  useEffect(() => {
+    saveNonoChat(projectId, messages);
+  }, [projectId, messages]);
+
+  // Mantiene ask actualizado con parámetros e historial actuales.
   const ask = useCallback(
     async (text: string) => {
-      return askNono(text, { selectedModel, selectedProvider, parameters, lang, codeContext });
+      return askNonoDetailed(text, {
+        selectedModel,
+        selectedProvider,
+        parameters,
+        lang,
+        codeContext,
+        projectInfo,
+        history: messages
+          .filter((m) => m.text.trim().length > 0)
+          .slice(-8)
+          .map((m) => ({ fromUser: m.fromUser, text: m.text })),
+      });
     },
-    [selectedModel, selectedProvider, parameters, lang, codeContext]
+    [selectedModel, selectedProvider, parameters, lang, codeContext, projectInfo, messages]
   );
   onAskRef.current = ask;
 
@@ -199,7 +221,7 @@ export function useNonoChat({
 
     setIsTyping(true);
 
-    // Fallback con plantillas (timing predecible)
+    // Fallback con plantillas (timing predecible) si el modelo no contesta.
     if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
     fallbackTimerRef.current = setTimeout(() => {
       const response = getResponse(text, lang);
@@ -210,21 +232,26 @@ export function useNonoChat({
     }, 1000 + Math.random() * 1500);
 
     void (async () => {
-      let reply: string | null = null;
+      let result: AskNonoResult = { text: null };
       try {
-        reply = await onAskRef.current(text);
-      } catch {
-        reply = null;
+        result = await onAskRef.current(text);
+      } catch (e) {
+        result = { text: null, error: e instanceof Error ? e.message : 'error de red' };
       }
-      if (reply && reply.trim()) {
-        clearTimeout(fallbackTimerRef.current!);
-        addMessage(reply.trim(), false);
+      if (result.text && result.text.trim()) {
+        if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+        addMessage(result.text.trim(), false);
         setIsTyping(false);
         setExpression('happy');
         setTimeout(() => setExpression('neutral'), 3000);
+      } else if (result.error) {
+        // El proveedor estaba configurado pero no respondió (LM Studio apagado,
+        // red caída, clave rechazada): Nono lo siente en vez de fingir.
+        setExpression('sad');
+        setTimeout(() => setExpression('neutral'), 3000);
       }
     })();
-  }, [inputValue, lang, addMessage, handleCommand, getExpressionForText]);
+  }, [inputValue, lang, addMessage, handleCommand, setExpression]);
 
   // Actualizar ref después de definir handleSend
   handleSendRef.current = handleSend;
@@ -235,9 +262,12 @@ export function useNonoChat({
 
   const handleClearChat = useCallback(() => {
     setMessages([]);
-    setExpression('happy');
+    clearNonoChat(projectId);
+    // Guiño de complicidad al vaciar el hilo.
+    setExpression('wink');
+    setTimeout(() => setExpression('neutral'), 1200);
     showActionFeedback(lang === 'es' ? '🗑️ Chat limpiado' : lang === 'de' ? '🗑️ Chat geleert' : '🗑️ Chat cleared');
-  }, [lang, showActionFeedback]);
+  }, [lang, projectId, showActionFeedback]);
 
   const handleCopyLast = useCallback(async () => {
     const last = messages[messages.length - 1];
@@ -247,7 +277,8 @@ export function useNonoChat({
     }
     try {
       await navigator.clipboard.writeText(last.text);
-      setExpression('happy');
+      setExpression('wink');
+      setTimeout(() => setExpression('neutral'), 1500);
       showActionFeedback(lang === 'es' ? '📋 ¡Copiado!' : lang === 'de' ? '📋 Kopiert!' : '📋 Copied!');
     } catch {
       showActionFeedback(lang === 'es' ? 'Error al copiar' : lang === 'de' ? 'Kopieren fehlgeschlagen' : 'Copy failed');
