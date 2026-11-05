@@ -48,6 +48,7 @@ describe('proveedores añadidos en el registro', () => {
     const groq = list.find((provider) => provider.id === 'groq');
     expect(groq?.configured).toBe(true);
     expect(groq?.modelCount).toBe(2);
+    expect(groq?.allModels).toHaveLength(2);
     expect(groq?.models.map((model) => model.id)).toEqual([
       'openai-compatible/groq/llama-3.3-70b',
       'openai-compatible/groq/mixtral-8x7b',
@@ -60,9 +61,12 @@ describe('proveedores añadidos en el registro', () => {
       new Set(),
       []
     );
-    expect(list.find((provider) => provider.id === 'groq')?.models.map((model) => model.id)).toEqual([
+    const filtered = list.find((provider) => provider.id === 'groq');
+    expect(filtered?.models.map((model) => model.id)).toEqual([
       'openai-compatible/groq/llama-3.3-70b',
     ]);
+    // El apagado sigue viajando en `allModels` para poder reactivarlo en Ajustes.
+    expect(filtered?.allModels).toHaveLength(2);
   });
 
   test('el catálogo de models.dev conserva la URL base y los ids retirados se omiten', () => {

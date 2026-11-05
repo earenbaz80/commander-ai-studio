@@ -175,6 +175,8 @@ export interface ProviderStatus {
 export interface ProviderEntry extends ProviderSpec, ProviderStatus {
   /** Modelos visibles tras aplicar whitelist/blacklist. */
   models: CatalogModel[];
+  /** Todos los modelos detectados, incluidos los apagados. */
+  allModels: CatalogModel[];
   modelCount: number;
   /** Modelos del catálogo antes de filtrar. */
   totalModels: number;
@@ -348,6 +350,7 @@ export function buildProviderList(
       env,
       ...describeProvider(spec, scopedConfig, envIds),
       models,
+      allModels,
       modelCount: models.length,
       totalModels: allModels.length,
       enabled: isProviderEnabled(scopedConfig, spec.id),

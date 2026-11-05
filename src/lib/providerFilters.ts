@@ -15,6 +15,9 @@ export interface ModelFilter {
   blacklist: string[];
 }
 
+/** Evento para que el chat recargue los filtros tras cambiarlos en Ajustes. */
+export const PROVIDER_FILTERS_CHANGED = 'commander:provider-filters';
+
 export const EMPTY_FILTER: ModelFilter = { whitelist: [], blacklist: [] };
 
 const asList = (value: unknown): string[] =>
