@@ -63,7 +63,10 @@ export function resolveChatRoute({
 }: RouteInput): ResolvedRoute {
   const isAnthropic = provider === 'anthropic' || modelId.startsWith('claude');
 
-  const isCustom = provider === 'custom' || modelId.startsWith('custom/');
+  const isCustom =
+    provider === 'custom' ||
+    modelId.startsWith('custom/') ||
+    modelId.startsWith('openai-compatible/');
 
   // Si la UI ya resolvió el proveedor, manda él: un id de OpenRouter como
   // `openai/gpt-4o` no debe acabar en la ruta de OpenAI.

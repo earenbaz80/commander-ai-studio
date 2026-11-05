@@ -45,6 +45,8 @@ export interface LiveProviderStatus {
   available: boolean;
   count?: number;
   host?: string;
+  /** Nombre visible del proveedor (incluye los añadidos por el usuario). */
+  name?: string;
   /** `true` si hay credenciales en config o entorno, no sólo modelos listados. */
   configured?: boolean;
   /** De dónde salen las credenciales: `env`, `file`, `local` o `none`. */

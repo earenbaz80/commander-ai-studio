@@ -78,7 +78,7 @@ export function buildModelGroups(models: AIModel[], statuses?: ProviderStatus): 
       const known = MODEL_GROUPS.find((g) => g.id === provider);
       group = {
         id: provider,
-        label: known?.label || providerLabel(provider),
+        label: known?.label || statuses?.[provider]?.name || providerLabel(provider),
         models: [],
         status: modelGroupStatus(statuses?.[provider]),
       };
