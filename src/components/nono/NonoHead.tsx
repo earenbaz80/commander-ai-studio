@@ -1,12 +1,12 @@
 import React from 'react';
 import type { NonoExpression } from './content';
 
-/** Columnas de binario que recorren la pantalla mientras Nono procesa. */
+/** Matriz de binario que recorre la pantalla mientras Nono procesa. */
 const BINARY_COLUMNS = [
-  { x: 15, digits: '10110101', color: '#00ffff', delay: '0s', duration: '1.4s' },
-  { x: 26, digits: '01011010', color: '#ffff55', delay: '-0.35s', duration: '1.8s' },
-  { x: 37, digits: '11001011', color: '#00ffff', delay: '-0.7s', duration: '1.15s' },
-  { x: 48, digits: '00110100', color: '#00ffff', delay: '-0.15s', duration: '2s' },
+  { x: 14, digits: '1011010110', color: '#eaffff', delay: '0s', duration: '1.2s' },
+  { x: 25, digits: '0101101001', color: '#00ffff', delay: '-0.35s', duration: '1.6s' },
+  { x: 36, digits: '1100101110', color: '#ffff55', delay: '-0.7s', duration: '1.35s' },
+  { x: 47, digits: '0011010010', color: '#eaffff', delay: '-0.15s', duration: '1.5s' },
 ];
 
 /** Cabeza de Nono: ojos que miran al puntero, parpadeo, expresiones dinámicas - Estilo 3D mejorado */
@@ -274,15 +274,15 @@ export const NonoHead: React.FC<{
                 <text
                   key={`${column.x}-${index}`}
                   x={column.x}
-                  y={16 + index * 6}
+                  y={15 + index * 9}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   className="nono-binary-digit"
                   fill={column.color}
-                  fontSize="5.5"
+                  fontSize="9"
                   fontFamily="'Courier New', monospace"
                   fontWeight="700"
-                  style={{ animationDelay: `${(index % 4) * 0.13}s` }}
+                  opacity="1"
                 >
                   {digit}
                 </text>
