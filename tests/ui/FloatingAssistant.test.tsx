@@ -58,12 +58,16 @@ describe('FloatingAssistant (Nono)', () => {
       expect(getExpression()).toBe('thinking');
       expect(screen.getByTestId('nono-working')).toBeInTheDocument();
       expect(screen.getByTestId('nono-face-process')).toBeInTheDocument();
+      expect(screen.queryByTestId('nono-face-eyes')).toBeNull();
+      expect(screen.queryByTestId('nono-face-mouth')).toBeNull();
       expect(getHead().className).toContain('nono-busy');
 
-      // Al terminar, el chip desaparece y Nono celebra un instante.
+      // Al terminar, el chip desaparece, vuelve la cara y Nono celebra un instante.
       rerender(<FloatingAssistant lang="es" busy={false} />);
       expect(screen.queryByTestId('nono-working')).toBeNull();
       expect(screen.queryByTestId('nono-face-process')).toBeNull();
+      expect(screen.getByTestId('nono-face-eyes')).toBeInTheDocument();
+      expect(screen.getByTestId('nono-face-mouth')).toBeInTheDocument();
       expect(getHead().className).not.toContain('nono-busy');
       // Terminar bien se celebra con gafas de sol.
       expect(getExpression()).toBe('cool');

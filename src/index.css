@@ -229,15 +229,21 @@
 }
 
 /* ===== Procesando: la pantalla de la cara muestra el trabajo ===== */
-/* El cuerpo mantiene su flotación; la señal de proceso vive dentro de la
-   pantalla, como un indicador que gira sobre el cristal. */
-@keyframes nono-face-spin {
-  to { transform: rotate(360deg); }
+/* El cuerpo mantiene su flotación; dentro de la pantalla sólo se ve binario.
+   Cada columna sube a distinta velocidad y los dígitos parpadean por separado. */
+@keyframes nono-binary-stream {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-6px); }
 }
-.nono-face-process {
-  animation: nono-face-spin 2.4s linear infinite;
-  transform-box: fill-box;
-  transform-origin: center;
+@keyframes nono-binary-flicker {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+.nono-binary-column {
+  animation: nono-binary-stream 1.4s linear infinite;
+}
+.nono-binary-digit {
+  animation: nono-binary-flicker 1.1s steps(2, end) infinite;
 }
 .nono-busy .nono-face-screen {
   filter: drop-shadow(0 0 4px rgba(0, 255, 255, 0.45));
@@ -271,7 +277,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root:not(.nono-force-motion) .nono-face-process {
+  :root:not(.nono-force-motion) .nono-binary-column,
+  :root:not(.nono-force-motion) .nono-binary-digit {
     animation: none;
   }
   :root:not(.nono-force-motion) .nono-work-dot {

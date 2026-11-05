@@ -1,6 +1,14 @@
 import React from 'react';
 import type { NonoExpression } from './content';
 
+/** Columnas de binario que recorren la pantalla mientras Nono procesa. */
+const BINARY_COLUMNS = [
+  { x: 15, digits: '10110101', color: '#00ffff', delay: '0s', duration: '1.4s' },
+  { x: 26, digits: '01011010', color: '#ffff55', delay: '-0.35s', duration: '1.8s' },
+  { x: 37, digits: '11001011', color: '#00ffff', delay: '-0.7s', duration: '1.15s' },
+  { x: 48, digits: '00110100', color: '#00ffff', delay: '-0.15s', duration: '2s' },
+];
+
 /** Cabeza de Nono: ojos que miran al puntero, parpadeo, expresiones dinámicas - Estilo 3D mejorado */
 export const NonoHead: React.FC<{
   expression: NonoExpression;
@@ -216,6 +224,10 @@ export const NonoHead: React.FC<{
         <pattern id="nonoScanlines" width="4" height="4" patternUnits="userSpaceOnUse">
           <rect width="4" height="0.6" fill="#00ffff" opacity="0.1" />
         </pattern>
+        {/* El binario se recorta a la pantalla: al desplazarse no invade la cara. */}
+        <clipPath id="nonoScreenClip">
+          <rect x="9" y="13" width="46" height="42" rx="11" />
+        </clipPath>
         {/* Filtro de sombra vectorial para profundidad */}
         <filter id="nonoShadow" x="-20%" y="-20%" width="140%" height="140%">
           <feDropShadow dx="3" dy="6" stdDeviation="4" floodColor="#000000" floodOpacity="0.4" />
@@ -243,30 +255,40 @@ export const NonoHead: React.FC<{
         <rect x="9" y="13" width="46" height="42" rx="11" fill="url(#nonoScanlines)" />
         <rect x="9.5" y="13.5" width="45" height="41" rx="10.5" fill="none" stroke="#00ffff" strokeWidth="0.6" opacity="0.35" />
       </g>
-      {/* Proceso: un anillo y un arco que giran dentro de la pantalla, sin
-          mover el cuerpo entero. */}
+      {/* Proceso: la pantalla sólo muestra columnas de binario. Los ojos y la
+          boca se omiten para que la cara entera se lea como una máquina. */}
       {busy && (
-        <g className="nono-face-process" data-testid="nono-face-process" aria-hidden="true">
-          <circle
-            cx="32"
-            cy="36"
-            r="18"
-            fill="none"
-            stroke="#00ffff"
-            strokeWidth="1.4"
-            strokeDasharray="5 10"
-            strokeLinecap="round"
-            opacity="0.9"
-            filter="drop-shadow(0 0 3px rgba(0,255,255,0.8))"
-          />
-          <path
-            d="M32 18 A18 18 0 0 1 49.5 28"
-            fill="none"
-            stroke="#ffff55"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            opacity="0.9"
-          />
+        <g
+          className="nono-face-process"
+          data-testid="nono-face-process"
+          aria-hidden="true"
+          clipPath="url(#nonoScreenClip)"
+        >
+          {BINARY_COLUMNS.map((column) => (
+            <g
+              key={column.x}
+              className="nono-binary-column"
+              style={{ animationDelay: column.delay, animationDuration: column.duration }}
+            >
+              {column.digits.split('').map((digit, index) => (
+                <text
+                  key={`${column.x}-${index}`}
+                  x={column.x}
+                  y={16 + index * 6}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  className="nono-binary-digit"
+                  fill={column.color}
+                  fontSize="5.5"
+                  fontFamily="'Courier New', monospace"
+                  fontWeight="700"
+                  style={{ animationDelay: `${(index % 4) * 0.13}s` }}
+                >
+                  {digit}
+                </text>
+              ))}
+            </g>
+          ))}
         </g>
       )}
       {/* Antena */}
@@ -276,12 +298,12 @@ export const NonoHead: React.FC<{
         <circle cx="32" cy="5" r="6" fill={antennaColor} opacity="0.25" className="nono-led-halo" filter="drop-shadow(0 0 8px currentColor)" />
         <circle cx="32" cy="5" r="3" fill={antennaColor} className="nono-led-core" filter="drop-shadow(0 0 4px currentColor)" />
       </g>
-      {/* Ojos */}
-      {renderEyes()}
-      {/* Boca */}
-      {renderMouth()}
+      {/* Ojos y boca desaparecen mientras procesa: en la pantalla sólo queda
+          el binario. */}
+      {!busy && <g data-testid="nono-face-eyes">{renderEyes()}</g>}
+      {!busy && <g data-testid="nono-face-mouth">{renderMouth()}</g>}
       {/* Mejillas */}
-      {(expression === 'happy' || expression === 'love') && (
+      {!busy && (expression === 'happy' || expression === 'love') && (
         <>
           <circle cx="14" cy="48" r="3" fill="#ff5555" opacity="0.3" filter="drop-shadow(0 1px 2px rgba(255,0,0,0.3))" />
           <circle cx="50" cy="48" r="3" fill="#ff5555" opacity="0.3" filter="drop-shadow(0 1px 2px rgba(255,0,0,0.3))" />
