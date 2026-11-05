@@ -1010,6 +1010,98 @@ app.get('/api/providers/available', async (_req, res) => {
   }
 });
 
+/**
+ * Comprueba si una URL habla el API de OpenAI.
+ *
+ * Se pide `GET /models` porque es la ruta que usa el resto de la app: si no
+ * devuelve `{ data: [...] }` (o `{ models: [...] }`), el endpoint no puede
+ * alimentar el selector. Un 401/403 no se trata como incompatible: el host
+ * responde, pero la clave no vale, y conviene avisar de eso por separado.
+ */
+type OpenAiCompatibility = {
+  compatible: boolean;
+  status: 'compatible' | 'incompatible' | 'auth' | 'unreachable';
+  models: string[];
+  httpStatus?: number;
+  error?: string;
+};
+
+async function probeOpenAiCompatibility(baseURL: string, apiKey?: string): Promise<OpenAiCompatibility> {
+  const url = String(baseURL || '').trim().replace(/\/+$/, '');
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('protocolo');
+  } catch {
+    return { compatible: false, status: 'incompatible', models: [], error: 'URL base inválida (http o https)' };
+  }
+
+  try {
+    const response = await fetch(`${url}/models`, {
+      method: 'GET',
+      headers: {
+        ...(apiKey?.trim() ? { Authorization: `Bearer ${apiKey.trim()}` } : {}),
+        Accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(8_000),
+    });
+    const text = await response.text().catch(() => '');
+    let data: any = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+
+    if (!response.ok) {
+      return {
+        compatible: false,
+        status: response.status === 401 || response.status === 403 ? 'auth' : 'incompatible',
+        models: [],
+        httpStatus: response.status,
+        error: `HTTP ${response.status}`,
+      };
+    }
+
+    const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.models) ? data.models : null;
+    if (!list) {
+      return {
+        compatible: false,
+        status: 'incompatible',
+        models: [],
+        httpStatus: response.status,
+        error: text.trim().startsWith('<') ? 'respondió HTML en vez de JSON' : 'respuesta sin lista de modelos',
+      };
+    }
+
+    const models = list
+      .map((model: any) => (typeof model === 'string' ? model : model?.id || model?.name))
+      .filter((value: unknown): value is string => typeof value === 'string' && value.length > 0);
+    return { compatible: true, status: 'compatible', models, httpStatus: response.status };
+  } catch (error: any) {
+    return {
+      compatible: false,
+      status: 'unreachable',
+      models: [],
+      error: error?.name === 'TimeoutError' ? 'sin respuesta en 8 s' : error?.message || 'no se pudo conectar',
+    };
+  }
+}
+
+// Comprueba la compatibilidad antes de dar de alta: el formulario puede pedir
+// confirmación explícita (`force`) para endpoints que no exponen `/models`.
+app.post('/api/providers/detect', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const probe = await probeOpenAiCompatibility(
+      String(body.baseURL || body.baseUrl || ''),
+      typeof body.apiKey === 'string' ? body.apiKey : undefined
+    );
+    return res.json({ success: true, ...probe });
+  } catch (e: any) {
+    return res.status(500).json({ success: false, error: e?.message || 'Error comprobando el endpoint' });
+  }
+});
+
 // Añade un proveedor OpenAI-compatible con nombre propio (Groq, DeepSeek, vLLM…).
 app.post('/api/providers/custom', async (req, res) => {
   try {
@@ -1032,6 +1124,19 @@ app.post('/api/providers/custom', async (req, res) => {
       .map((value: string) => value.trim())
       .filter(Boolean)
       .slice(0, 500);
+    if (body.force !== true) {
+      const probe = await probeOpenAiCompatibility(baseUrl, typeof body.apiKey === 'string' ? body.apiKey : undefined);
+      if (!probe.compatible) {
+        return res.status(409).json({
+          success: false,
+          incompatible: true,
+          status: probe.status,
+          httpStatus: probe.httpStatus,
+          models: probe.models,
+          error: probe.error || 'No se pudo confirmar la compatibilidad con OpenAI',
+        });
+      }
+    }
     const entry = {
       name,
       baseUrl,
