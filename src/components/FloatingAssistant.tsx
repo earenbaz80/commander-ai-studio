@@ -1,5 +1,5 @@
 import React, { forwardRef, useRef, useEffect, useState } from 'react';
-import { Clipboard, PanelRight, Hammer, Library, Search, Trash2, Plus, Send, X, Activity } from 'lucide-react';
+import { Clipboard, PanelRight, Hammer, Library, Search, Trash2, Plus, Send, X, Activity, Maximize2, Minimize2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FloatingAssistantProps, FloatingAssistantHandle, NonoExpression } from './nono/content';
 import { NonoHead } from './nono/NonoHead';
@@ -9,6 +9,8 @@ import {
   useNonoSuggestions,
   useNonoMemory,
   useNonoContext,
+  useNonoToasts,
+  NonoToaster,
 } from '../features/nono/hooks';
 
 /** Umbral de auto-sueño de Nono: 5 minutos de inactividad. */
@@ -100,6 +102,8 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
     selectedProvider,
     parameters,
     codeContext,
+    projectId,
+    projectInfo,
     inputRef,
     ref,
   });
@@ -129,6 +133,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
 
   const { memory, updateUI } = useNonoMemory();
   const { suggestions, refresh, dismiss } = useNonoContext(memory.ui.showNono, projectId ?? null);
+  const { showToast } = useNonoToasts();
 
   /**
    * Animación completa aunque el sistema pida menos movimiento.
@@ -144,10 +149,36 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
     return () => root.classList.remove('nono-force-motion');
   }, [memory.ui.forceMotion]);
 
-  // Refrescar contexto cuando se abre Nono
+  // El contexto (diagnósticos, git, TODOs) se revisa al arrancar y cada 3 min
+  // aunque el panel esté cerrado: antes sólo se calculaba al abrirlo, así que
+  // la sugerencia llegaba cuando ya estabas dentro.
   useEffect(() => {
-    if (isOpen && memory.ui.showNono) refresh();
-  }, [isOpen, memory.ui.showNono, refresh]);
+    if (!memory.ui.showNono || hidden) return;
+    refresh();
+    const timer = setInterval(() => {
+      if (!isOpen) refresh();
+    }, 180_000);
+    return () => clearInterval(timer);
+  }, [isOpen, memory.ui.showNono, hidden, refresh]);
+
+  // Sugerencias que llegan con el panel cerrado: se avisan con el toast que ya
+  // existía pero no se montaba en ninguna parte. Cada id se avisa una sola vez.
+  const toastedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (isOpen || hidden || suggestions.length === 0) return;
+    const fresh = suggestions.find((s) => !toastedRef.current.has(s.id));
+    if (!fresh) return;
+    toastedRef.current.add(fresh.id);
+    showToast({
+      type: fresh.severity,
+      message: fresh.text,
+      duration: 6000,
+      action: {
+        label: lang === 'es' ? 'Abrir Nono' : lang === 'de' ? 'Nono öffnen' : 'Open Nono',
+        onClick: () => setIsOpen(true),
+      },
+    });
+  }, [suggestions, isOpen, hidden, showToast, lang, setIsOpen]);
 
   // En modo docked el panel está siempre abierto (no hay cabeza flotante para abrirlo).
   useEffect(() => { if (docked) setIsOpen(true); }, [docked, setIsOpen]);
@@ -190,7 +221,8 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
     }
     // Al acabar: alivio breve, salvo que el panel o el teclado lleven el mando.
     if (isOpen || isTyping || asleepRef.current) return;
-    setExpression('happy');
+    // Gafas de sol: la corrida terminó bien.
+    setExpression('cool');
     showContextPhrase(lang === 'es' ? '¡Listo!' : lang === 'de' ? 'Fertig!' : 'Done!', 2500);
   }, [busy, isOpen, isTyping, lang, setExpression, showContextPhrase]);
 
@@ -376,6 +408,24 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
             <button onClick={handleCopyLast} aria-label="Copiar último" className="text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] border border-[var(--nc-border-dark)] rounded px-1.5 py-0.5 text-[10px] font-bold"><Clipboard className="w-3.5 h-3.5" /></button>
             {onNewPrompt && <button onClick={handleNewPromptClick} aria-label="Nuevo chat" className="text-[var(--nc-text-accent)] hover:bg-[var(--nc-bg-hover)] border border-[var(--nc-border-dark)] rounded px-1.5 py-0.5 text-[10px] font-bold"><Plus className="w-3.5 h-3.5" /></button>}
             <button
+              onClick={() => updateUI('compactMode', !memory.ui.compactMode)}
+              aria-label={
+                memory.ui.compactMode
+                  ? tr('Tamaño normal', 'Normal size', 'Normale Größe')
+                  : tr('Tamaño compacto', 'Compact size', 'Kompakte Größe')
+              }
+              aria-pressed={memory.ui.compactMode}
+              title={
+                memory.ui.compactMode
+                  ? tr('Volver al tamaño normal', 'Back to normal size', 'Zurück zur normalen Größe')
+                  : tr('Hacer a Nono más pequeño', 'Make Nono smaller', 'Nono kleiner machen')
+              }
+              className="flex items-center gap-1 border rounded px-1.5 py-0.5 text-[10px] font-bold text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] border-[var(--nc-border-dark)]"
+            >
+              {memory.ui.compactMode ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
+              {lang === 'es' ? 'tamaño' : lang === 'de' ? 'Größe' : 'size'}
+            </button>
+            <button
               onClick={() => updateUI('forceMotion', !memory.ui.forceMotion)}
               aria-label={memory.ui.forceMotion ? 'Animar siempre: activado' : 'Animar siempre: desactivado'}
               aria-pressed={memory.ui.forceMotion}
@@ -452,6 +502,14 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
         tabIndex={0}
         role="button"
         aria-label="Nono"
+        aria-expanded={isOpen}
+        onKeyDown={(e) => {
+          // La cabeza ya era focusable: Enter/Espacio tienen que abrirla.
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleToggle();
+          }
+        }}
         className={`fixed z-[9998] select-none touch-none focus-visible:outline-2 focus-visible:outline-[var(--nc-text-accent)] cursor-pointer ${expression !== 'sleepy' ? (idle ? 'nono-awake nono-idle' : 'nono-awake') : 'nono-asleep'} ${busy ? 'nono-busy' : ''} ${isChatTyping && !dragPos ? 'nono-lean-chat' : ''}`}
         style={headStyle}
       >
@@ -493,6 +551,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
         )}
       </div>
       )}
+      <NonoToaster />
     </>
   );
 });

@@ -63,7 +63,8 @@ describe('FloatingAssistant (Nono)', () => {
       rerender(<FloatingAssistant lang="es" busy={false} />);
       expect(screen.queryByTestId('nono-working')).toBeNull();
       expect(getHead().className).not.toContain('nono-busy');
-      expect(getExpression()).toBe('happy');
+      // Terminar bien se celebra con gafas de sol.
+      expect(getExpression()).toBe('cool');
     });
 
     test('se ancla a la línea del chat cuando existe', () => {
@@ -153,7 +154,8 @@ describe('FloatingAssistant (Nono)', () => {
       const input = screen.getByPlaceholderText('Escribe...');
       fireEvent.change(input, { target: { value: 'hubo un error' } });
       fireEvent.keyDown(input, { key: 'Enter' });
-      expect(getExpression()).toBe('error');
+      // La frustración del usuario enfada a Nono; el aspa de error es para la app.
+      expect(getExpression()).toBe('angry');
     });
   });
 
