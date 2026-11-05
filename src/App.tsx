@@ -154,6 +154,20 @@ export default function App() {
   const [autonomousRunning, setAutonomousRunning] = useState(false);
   const sidebarResize = useResizableWidth({ key: 'commander_sidebar_width', defaultWidth: 256, min: 180, max: 400 });
 
+  /**
+   * Contexto real que se le pasa a Nono. Antes iban `hasPackageJson: true`,
+   * `hasTsConfig: true`, `hasGit: false`, `framework: 'react'` y `files: []`
+   * fijos: Nono afirmaba cosas del proyecto que nadie había comprobado. Sólo
+   * se envía lo que la app sabe de verdad (modo y objetivo de la sesión).
+   */
+  const nonoProjectInfo = React.useMemo(
+    () => ({
+      mode: (mode === 'agent' || mode === 'freeform' ? mode : 'chat') as 'chat' | 'agent' | 'freeform',
+      goal: promptTitle,
+    }),
+    [mode, promptTitle]
+  );
+
   // Modals
   const {
     isCodeModalOpen, isLibraryModalOpen, isPreferencesModalOpen, isPaletteOpen,
@@ -1265,8 +1279,6 @@ export default function App() {
         guestName={identity.guestName}
         promptTitle={promptTitle}
         lang={lang as any}
-        onOpenHelp={() => setIsHelpModalOpen(true)}
-        onOpenAbout={() => setIsAboutModalOpen(true)}
         onOpenCommandPalette={() => setIsPaletteOpen(true)}
         onOpenPreferences={() => openSettings('general')}
         onToggleNono={() => setShowNono((v) => !v)}
@@ -1377,6 +1389,7 @@ export default function App() {
               messages,
               setMessages,
               parameters,
+              setParameters,
               selectedModel,
               setSelectedModel,
               isGenerating,
@@ -1514,9 +1527,10 @@ export default function App() {
               selectedModel={selectedModel}
               selectedProvider={selectedProvider}
               parameters={parameters}
+              busy={isGenerating || agent.state.running || autonomousRunning}
               suggestionConfig={suggestionConfig}
               hidden={false}
-              projectInfo={{ mode: (mode === 'agent' || mode === 'freeform') ? mode : 'chat', goal: promptTitle, hasPackageJson: true, hasTsConfig: true, hasGit: false, framework: 'react', mainLanguage: 'typescript', files: [] }}
+              projectInfo={nonoProjectInfo}
               codeContext={savedCodeContext || ''}
               docked={true}
               onToggleDock={() => setNonoDocked(v => { const n = !v; try { localStorage.setItem('commander_nono_docked', String(n)); } catch {} return n; })}
@@ -1585,6 +1599,12 @@ export default function App() {
             parameters={parameters}
             setParameters={setParameters}
             initialSection={preferencesSection}
+            onOpenExtensions={() => {
+              // El gestor completo vive en otro modal: se cierra Configuración
+              // para que no quede uno detrás del otro.
+              setIsPreferencesModalOpen(false);
+              setIsExtensionsOpen(true);
+            }}
           />
         </React.Suspense>
       )}
@@ -1732,16 +1752,8 @@ export default function App() {
         parameters={parameters}
         suggestionConfig={suggestionConfig}
         hidden={!showNono}
-        projectInfo={{
-          mode: (mode === 'agent' || mode === 'freeform') ? mode : 'chat',
-          goal: promptTitle,
-          hasPackageJson: true,
-          hasTsConfig: true,
-          hasGit: false,
-          framework: 'react',
-          mainLanguage: 'typescript',
-          files: [],
-        }}
+        busy={isGenerating || agent.state.running || autonomousRunning}
+        projectInfo={nonoProjectInfo}
         codeContext={savedCodeContext ||
           (() => {
             const msgs = (messages || []) as Array<{ text?: string; content?: string }>;

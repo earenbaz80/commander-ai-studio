@@ -17,6 +17,9 @@ import {
   FlaskConical,
   Plus,
   Trash2,
+  Puzzle,
+  HelpCircle,
+  Info,
 } from 'lucide-react';
 import { ConsoleTheme } from './Header';
 import { Language } from '../i18n/translations';
@@ -24,13 +27,30 @@ import { Language } from '../i18n/translations';
 // para que no haya dos copias del nombre que se puedan desincronizar.
 import { ATASCO_KEY, PREFERENCIAS_EVENT, normalizarUmbralAtasco } from './ServerSubAgents';
 import { ProviderManager } from './panel/ProviderManager';
+import { ExtensionsSettings } from './settings/ExtensionsSettings';
 import { ParameterConfig, StructuredExample } from '../types/studio';
 import { SYSTEM_PRESETS } from '../data/systemPresets';
 import { GEMINI_FALLBACK_MODELS, MAX_FALLBACK_MODELS } from '../config/geminiModels';
 import { probeFirstResponder, probeModel, type ChainProbeResult } from '../lib/modelProbe';
 
+// El manual y la ficha se cargan sólo al abrir su sección: el panel de
+// configuración no arrastra su contenido en el trozo de código inicial.
+const HelpModalInline = React.lazy(() =>
+  import('./HelpModal').then((m) => ({ default: m.HelpModal }))
+);
+const AboutModalInline = React.lazy(() =>
+  import('./AboutModal').then((m) => ({ default: m.AboutModal }))
+);
+
 /** Secciones del único panel de configuración. */
-export type SettingsSection = 'general' | 'modelo' | 'proveedores' | 'agente';
+export type SettingsSection =
+  | 'general'
+  | 'modelo'
+  | 'proveedores'
+  | 'agente'
+  | 'extensiones'
+  | 'ayuda'
+  | 'acerca';
 
 export interface PreferencesModalProps {
   isOpen: boolean;
@@ -56,6 +76,9 @@ export interface PreferencesModalProps {
   setParameters?: React.Dispatch<React.SetStateAction<ParameterConfig>>;
   /** Sección que se muestra al abrir (útil para accesos contextuales). */
   initialSection?: SettingsSection;
+  /** Abre el gestor completo de extensiones (pestaña MCP con OAuth y tools). */
+  onOpenExtensions?: () => void;
+
 }
 
 // Todos los colores salen de los tokens del tema (`--nc-*`). Los literales
@@ -136,6 +159,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
   parameters,
   setParameters,
   initialSection = 'general',
+  onOpenExtensions,
 }) => {
   const t = React.useCallback(
     (es: string, en: string, de: string) => (lang === 'es' ? es : lang === 'de' ? de : en),
@@ -143,6 +167,8 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
   );
 
   const contentRef = React.useRef<HTMLDivElement>(null);
+  /** Contenedor del diálogo: recibe el foco al abrir y encierra el tabulador. */
+  const panelRef = React.useRef<HTMLDivElement>(null);
 
   // El panel reúne cuatro bloques largos: se navega por secciones en vez de
   // recorrer una página kilométrica. `initialSection` abre directo la sección
@@ -161,6 +187,13 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
     { id: 'modelo', label: t('Modelo', 'Model', 'Modell'), icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
     { id: 'proveedores', label: t('Proveedores', 'Providers', 'Anbieter'), icon: <Globe className="w-3.5 h-3.5" /> },
     { id: 'agente', label: t('Agente', 'Agent', 'Agent'), icon: <Timer className="w-3.5 h-3.5" /> },
+    {
+      id: 'extensiones',
+      label: t('Extensiones', 'Extensions', 'Erweiterungen'),
+      icon: <Puzzle className="w-3.5 h-3.5" />,
+    },
+    { id: 'ayuda', label: t('Ayuda', 'Help', 'Hilfe'), icon: <HelpCircle className="w-3.5 h-3.5" /> },
+    { id: 'acerca', label: t('Acerca de', 'About', 'Über'), icon: <Info className="w-3.5 h-3.5" /> },
   ];
 
   // Tamaño de texto (antes en el menú del Header; ahora solo aquí).
@@ -407,11 +440,45 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
 
   React.useEffect(() => {
     if (!isOpen) return;
+    // El fondo sigue montado tras el modal: el foco entra en el panel y el
+    // tabulador da la vuelta dentro, en vez de escaparse a la aplicación.
+    const previo = document.activeElement as HTMLElement | null;
+    const panel = panelRef.current;
+    panel?.focus();
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab' || !panel) return;
+      const focusables = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => el.offsetParent !== null);
+      if (focusables.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const primero = focusables[0];
+      const ultimo = focusables[focusables.length - 1];
+      const activo = document.activeElement as HTMLElement | null;
+      const fuera = !activo || activo === panel || !panel.contains(activo);
+      if (e.shiftKey && (activo === primero || fuera)) {
+        e.preventDefault();
+        ultimo.focus();
+      } else if (!e.shiftKey && (activo === ultimo || fuera)) {
+        e.preventDefault();
+        primero.focus();
+      }
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      // Devolver el foco a quien abrió el modal (botón del Header o Ctrl+,).
+      previo?.focus?.();
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
@@ -486,7 +553,9 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
       <div className="relative w-full max-w-4xl h-[calc(100vh-3rem)] max-h-[720px] mx-3">
         <div
-          className="nc-panel flex flex-col h-full w-full border-2 border-[var(--nc-border-light)] rounded-lg overflow-hidden shadow-[0_0_40px_rgba(0,255,255,0.25)]"
+          ref={panelRef}
+          tabIndex={-1}
+          className="nc-panel flex flex-col h-full w-full border-2 border-[var(--nc-border-light)] rounded-lg overflow-hidden shadow-[0_0_40px_rgba(0,255,255,0.25)] outline-none"
           role="dialog"
           aria-modal="true"
           aria-label={t('Configuración', 'Settings', 'Einstellungen')}
@@ -498,9 +567,9 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
               </div>
               <div className="text-[10px] text-[var(--nc-header-text)] opacity-70 truncate">
                 {t(
-                  'Modelo, proveedores, apariencia, agente y rutas en un solo lugar',
-                  'Model, providers, appearance, agent and paths in one place',
-                  'Modell, Anbieter, Darstellung, Agent und Pfade an einem Ort'
+                  'Modelo, proveedores, apariencia, agente, extensiones, ayuda y rutas en un solo lugar',
+                  'Model, providers, appearance, agent, extensions, help and paths in one place',
+                  'Modell, Anbieter, Darstellung, Agent, Erweiterungen, Hilfe und Pfade an einem Ort'
                 )}
               </div>
             </div>
@@ -1371,6 +1440,47 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                     />
                   </MenuRow>
                 )}
+              </section>
+              )}
+
+              {active === 'extensiones' && (
+              <section data-settings-section="extensiones" className="space-y-3 scroll-mt-2">
+                {groupTitle(t('Extensiones', 'Extensions', 'Erweiterungen'))}
+                {sectionBlock(
+                  t('MCP, skills y plugins', 'MCP, skills and plugins', 'MCP, Skills und Plugins'),
+                  <ExtensionsSettings lang={lang} onOpenManager={onOpenExtensions} />
+                )}
+              </section>
+              )}
+
+              {active === 'ayuda' && (
+              <section data-settings-section="ayuda" className="space-y-3 scroll-mt-2">
+                {groupTitle(t('Ayuda', 'Help', 'Hilfe'))}
+                <React.Suspense
+                  fallback={
+                    <p className="px-2 py-2 text-[10px] text-[var(--nc-text)] opacity-70">
+                      {t('Cargando el manual…', 'Loading the manual…', 'Handbuch wird geladen…')}
+                    </p>
+                  }
+                >
+                  {/* El manual se lee aquí mismo: sin ventana encima ni un cierre aparte. */}
+                  <HelpModalInline isOpen inline onClose={() => {}} lang={lang} />
+                </React.Suspense>
+              </section>
+              )}
+
+              {active === 'acerca' && (
+              <section data-settings-section="acerca" className="space-y-3 scroll-mt-2">
+                {groupTitle(t('Acerca de', 'About', 'Über'))}
+                <React.Suspense
+                  fallback={
+                    <p className="px-2 py-2 text-[10px] text-[var(--nc-text)] opacity-70">
+                      {t('Cargando la ficha…', 'Loading details…', 'Details werden geladen…')}
+                    </p>
+                  }
+                >
+                  <AboutModalInline isOpen inline onClose={() => {}} lang={lang} />
+                </React.Suspense>
               </section>
               )}
             </div>

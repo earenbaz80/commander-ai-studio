@@ -6,12 +6,15 @@ interface AboutModalProps {
   isOpen: boolean;
   onClose: () => void;
   lang: Language;
+  /** Se pinta dentro de Configuración, sin overlay ni cabecera propia. */
+  inline?: boolean;
 }
 
 export const AboutModal: React.FC<AboutModalProps> = ({
   isOpen,
   onClose,
   lang,
+  inline = false,
 }) => {
   if (!isOpen) return null;
 
@@ -19,14 +22,23 @@ export const AboutModal: React.FC<AboutModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 font-mono select-none cursor-pointer"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      className={
+        inline
+          ? 'border border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] text-xs'
+          : 'fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 font-mono select-none cursor-pointer'
+      }
+      onClick={(e) => { if (!inline && e.target === e.currentTarget) onClose(); }}
     >
       <div 
-        className="nc-panel w-full max-w-2xl bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] shadow-[10px_10px_0px_var(--nc-shadow)] cursor-default text-xs"
+        className={
+          inline
+            ? 'w-full min-w-0'
+            : 'nc-panel w-full max-w-2xl bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] shadow-[10px_10px_0px_var(--nc-shadow)] cursor-default text-xs'
+        }
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Title Bar */}
+        {/* Title Bar: embebido ya tiene la cabecera de Configuración. */}
+        {!inline && (
         <div className="nc-header p-2 flex items-center justify-between border-b-2 border-black">
           <div className="flex items-center gap-2">
             <Cpu className="w-5 h-5 text-black" />
@@ -42,9 +54,10 @@ export const AboutModal: React.FC<AboutModalProps> = ({
             <X className="w-4 h-4" />
           </button>
         </div>
+        )}
 
         {/* Content Box */}
-        <div className="p-4 sm:p-6 space-y-4 text-[var(--nc-text)]">
+        <div className={inline ? 'p-3 space-y-3 text-[var(--nc-text)]' : 'p-4 sm:p-6 space-y-4 text-[var(--nc-text)]'}>
           {/* Header Banner */}
           <div className="bg-[var(--nc-bg-main)] border-2 border-[var(--nc-border-light)] p-3 text-center space-y-2 shadow-[4px_4px_0px_var(--nc-shadow)] flex flex-col items-center justify-center">
             <img 
@@ -95,7 +108,8 @@ export const AboutModal: React.FC<AboutModalProps> = ({
           </div>
         </div>
 
-        {/* Footer */}
+        {/* Footer: sólo en ventana propia. */}
+        {!inline && (
         <div className="bg-[var(--nc-header-bg)] p-2 flex justify-end border-t-2 border-black">
           <button 
             type="button" 
@@ -105,6 +119,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({
             {t.close} [ESC]
           </button>
         </div>
+        )}
       </div>
     </div>
   );

@@ -108,7 +108,10 @@ describe('PreferencesModal · umbral de atasco', () => {
     render(<PreferencesModal isOpen onClose={() => {}} />);
 
     const nav = screen.getByRole('navigation', { name: 'Secciones de configuración' });
-    expect(within(nav).getAllByRole('button')).toHaveLength(4);
+    expect(within(nav).getAllByRole('button')).toHaveLength(7);
+    expect(within(nav).getByRole('button', { name: 'Extensiones' })).toBeInTheDocument();
+    expect(within(nav).getByRole('button', { name: 'Ayuda' })).toBeInTheDocument();
+    expect(within(nav).getByRole('button', { name: 'Acerca de' })).toBeInTheDocument();
     // Sólo la sección pedida está montada: no se pinta la página entera.
     expect(screen.getByRole('heading', { name: 'General' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Modelo' })).toBeNull();
@@ -116,6 +119,17 @@ describe('PreferencesModal · umbral de atasco', () => {
     fireEvent.click(within(nav).getByRole('button', { name: 'Modelo' }));
     expect(screen.getByRole('heading', { name: 'Modelo' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'General' })).toBeNull();
+  });
+
+  test('Ayuda y Acerca de se leen dentro del panel, sin ventana aparte', async () => {
+    render(<PreferencesModal isOpen onClose={() => {}} />);
+
+    irASeccion('Ayuda');
+    expect(await screen.findByPlaceholderText('Buscar en el manual…')).toBeInTheDocument();
+    expect(screen.getByText('6. Atajos de Teclado')).toBeInTheDocument();
+
+    irASeccion('Acerca de');
+    expect(await screen.findByText('COMMANDER AI STUDIO')).toBeInTheDocument();
   });
 
   test('los accesos directos abren su sección', () => {
