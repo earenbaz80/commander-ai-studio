@@ -56,6 +56,11 @@ local_models/
 .commander/
 runtime/
 
+# Plugins y skills instalados desde el catálogo: se regeneran al instalar y no
+# son fuente del proyecto. Las skills propias (skills/agents, skills/commands)
+# siguen versionadas.
+skills/plugins/
+
 # Logs y salidas de build
 build.log
 build_output.txt

@@ -38,6 +38,30 @@ function skillsRootDir(): string {
   return process.env.SKILLS_ROOT || path.join(process.cwd(), 'skills');
 }
 
+/**
+ * Slugs de comandos ya instalados: las skills propias viven en
+ * `skills/commands` y las de cada plugin en `skills/plugins/<id>/commands`.
+ */
+function installedCommandSlugs(): Set<string> {
+  const root = skillsRootDir();
+  const dirs = [path.join(root, 'commands')];
+  const pluginsRoot = path.join(root, 'plugins');
+  if (fs.existsSync(pluginsRoot)) {
+    for (const entry of fs.readdirSync(pluginsRoot, { withFileTypes: true })) {
+      if (entry.isDirectory()) dirs.push(path.join(pluginsRoot, entry.name, 'commands'));
+    }
+  }
+
+  const slugs = new Set<string>();
+  for (const dir of dirs) {
+    if (!fs.existsSync(dir)) continue;
+    for (const file of fs.readdirSync(dir)) {
+      if (file.toLowerCase().endsWith('.md')) slugs.add(file.replace(/\.md$/i, '').toLowerCase());
+    }
+  }
+  return slugs;
+}
+
 type MarketplaceSkill = {
   id: string;
   name: string;
@@ -115,14 +139,7 @@ router.get('/discover', async (req: Request, res: Response) => {
       .map(normalizeMarketplaceSkill)
       .filter((s: MarketplaceSkill | null): s is MarketplaceSkill => Boolean(s));
 
-    const installed = new Set(
-      fs.existsSync(path.join(skillsRootDir(), 'commands'))
-        ? fs
-            .readdirSync(path.join(skillsRootDir(), 'commands'))
-            .filter((f) => f.endsWith('.md'))
-            .map((f) => f.replace(/\.md$/i, '').toLowerCase())
-        : []
-    );
+    const installed = installedCommandSlugs();
 
     const body = {
       success: true,

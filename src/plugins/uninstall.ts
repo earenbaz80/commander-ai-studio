@@ -106,6 +106,22 @@ export function uninstallInstalledPlugin(id: string, options: { root?: string } 
     }
   }
 
+  // Formato nuevo: el plugin tiene su propia carpeta bajo `skills/plugins`.
+  const pluginSkillsDir = path.join(skillsDir, 'plugins', id);
+  if (fs.existsSync(pluginSkillsDir)) {
+    fs.rmSync(pluginSkillsDir, { recursive: true, force: true });
+    removed.push(path.relative(root, pluginSkillsDir));
+  }
+  const pluginsSkillsRoot = path.join(skillsDir, 'plugins');
+  try {
+    if (fs.existsSync(pluginsSkillsRoot) && fs.readdirSync(pluginsSkillsRoot).length === 0) {
+      fs.rmdirSync(pluginsSkillsRoot);
+      removed.push(path.relative(root, pluginsSkillsRoot));
+    }
+  } catch {
+    // La carpeta no está vacía o ya no existe: no es un error.
+  }
+
   const pluginDir = path.join(pluginsDir, id);
   if (fs.existsSync(pluginDir)) {
     fs.rmSync(pluginDir, { recursive: true, force: true });
