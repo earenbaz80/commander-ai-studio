@@ -1,7 +1,7 @@
 import React from 'react';
-import { X, Settings, PanelLeft, PanelRight, User, Search, Minus, Square, HelpCircle, Info, Eye, EyeOff } from 'lucide-react';
+import { X, Settings, PanelLeft, PanelRight, User, Search, Minus, Square, Eye, EyeOff } from 'lucide-react';
 import { StudioMode } from '../types/studio';
-import { Language, TRANSLATIONS } from '../i18n/translations';
+import { Language } from '../i18n/translations';
 
 export type ConsoleTheme = 'norton' | 'matrix' | 'amber' | 'dos' | 'light' | 'solarized';
 
@@ -20,8 +20,6 @@ interface HeaderProps {
   guestName?: string;
   promptTitle: string;
   lang?: Language;
-  onOpenHelp?: () => void;
-  onOpenAbout?: () => void;
   /** Abre la paleta de comandos (Ctrl+K). */
   onOpenCommandPalette?: () => void;
   /** Abre el modal de preferencias de la aplicación (apariencia, energía, rutas…). */
@@ -39,15 +37,11 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAuth,
   currentUser,
   lang = 'es',
-  onOpenHelp,
-  onOpenAbout,
   onOpenCommandPalette,
   onOpenPreferences,
   onToggleNono,
   isNonoVisible = true,
 }) => {
-  const t = TRANSLATIONS[lang];
-
   // Aplica el tamaño de texto guardado al montar (el control vive en Configuración).
   React.useEffect(() => {
     try {
@@ -99,6 +93,7 @@ export const Header: React.FC<HeaderProps> = ({
           className="nc-button !px-1 !py-0.5 !mx-0 shrink-0" 
           data-tooltip="Alternar Barra Lateral"
           data-tooltip-sub="Oculta o muestra el menú de navegación e historial"
+          aria-label={lang === 'es' ? 'Alternar barra lateral' : lang === 'de' ? 'Seitenleiste umschalten' : 'Toggle sidebar'}
         >
             <PanelLeft className="w-4 h-4" />
         </button>
@@ -107,6 +102,7 @@ export const Header: React.FC<HeaderProps> = ({
           className={`nc-button !px-1 !py-0.5 !mx-0 shrink-0 ${isWorkbenchOpen ? 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)]' : ''}`}
           data-tooltip="Workbench (Panel Derecho)"
           data-tooltip-sub="Archivos, pestañas, terminal y navegador integrados"
+          aria-label={lang === 'es' ? 'Alternar panel Workbench' : lang === 'de' ? 'Workbench-Panel umschalten' : 'Toggle workbench panel'}
         >
           <PanelRight className="w-4 h-4" />
         </button>
@@ -116,6 +112,13 @@ export const Header: React.FC<HeaderProps> = ({
             className={`nc-button !px-1 !py-0.5 !mx-0 shrink-0 ${isNonoVisible ? 'bg-[var(--nc-bg-panel)] text-[var(--nc-text)]' : ''}`}
             data-tooltip={isNonoVisible ? 'Ocultar asistente Nono' : 'Mostrar asistente Nono'}
             data-tooltip-sub="Activa o desactiva el flotante en pantalla"
+            aria-label={
+              lang === 'es'
+                ? isNonoVisible ? 'Ocultar asistente Nono' : 'Mostrar asistente Nono'
+                : lang === 'de'
+                  ? isNonoVisible ? 'Nono-Assistent ausblenden' : 'Nono-Assistent einblenden'
+                  : isNonoVisible ? 'Hide Nono assistant' : 'Show Nono assistant'
+            }
           >
             {isNonoVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
           </button>
@@ -143,6 +146,7 @@ export const Header: React.FC<HeaderProps> = ({
           onClick={onOpenAuth}
           className="nc-button text-xs !px-1 !py-0.5 !mx-0 flex items-center gap-1"
           data-tooltip={currentUser ? "Cuenta de Usuario & Perfil" : "Iniciar Sesión / Registro"}
+          aria-label={lang === 'es' ? 'Cuenta de usuario' : lang === 'de' ? 'Benutzerkonto' : 'User account'}
           data-tooltip-sub={
             currentUser
               ? `Conectado como ${currentUser.email || currentUser.displayName}`
@@ -163,34 +167,10 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={onOpenPreferences}
             className="nc-button !px-1 !py-0.5 !mx-0 flex items-center gap-1"
             data-tooltip="Configuración"
-            data-tooltip-sub="Modelo, proveedores, apariencia, agente y rutas (Ctrl+,)"
+            data-tooltip-sub="Modelo, proveedores, apariencia, agente, extensiones, ayuda y rutas (Ctrl+,)"
             aria-label={lang === 'es' ? 'Abrir configuración' : lang === 'de' ? 'Konfiguration öffnen' : 'Open settings'}
           >
             <Settings className="w-4 h-4 text-[var(--nc-text-accent)]" />
-          </button>
-        )}
-
-        {onOpenHelp && (
-          <button
-            type="button"
-            onClick={onOpenHelp}
-            className="nc-button !px-1 !py-0.5 !mx-0"
-            data-tooltip={t.helpManual}
-            aria-label={t.helpManual}
-          >
-            <HelpCircle className="w-4 h-4" />
-          </button>
-        )}
-
-        {onOpenAbout && (
-          <button
-            type="button"
-            onClick={onOpenAbout}
-            className="nc-button !px-1 !py-0.5 !mx-0"
-            data-tooltip={t.aboutApp}
-            aria-label={t.aboutApp}
-          >
-            <Info className="w-4 h-4" />
           </button>
         )}
 
@@ -201,6 +181,7 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={handleMinimize}
             className="nc-button !px-1 !py-0.5 !mx-0 text-xs hover:bg-[var(--nc-highlight-bg)] hover:text-black font-bold"
             data-tooltip="Minimizar Ventana"
+            aria-label={lang === 'es' ? 'Minimizar ventana' : lang === 'de' ? 'Fenster minimieren' : 'Minimize window'}
           >
             <Minus className="w-3.5 h-3.5" />
           </button>
@@ -209,6 +190,7 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={handleMaximize}
             className="nc-button !px-1 !py-0.5 !mx-0 text-xs hover:bg-[var(--nc-active-bg)] hover:text-black font-bold"
             data-tooltip="Pantalla Completa / Maximizar"
+            aria-label={lang === 'es' ? 'Pantalla completa' : lang === 'de' ? 'Vollbild' : 'Full screen'}
           >
             <Square className="w-3 h-3" />
           </button>
@@ -217,6 +199,7 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={handleClose}
             className="nc-button group !px-1 !py-0.5 !mx-0 text-xs hover:bg-red-600 font-bold"
             data-tooltip="Cerrar Aplicación"
+            aria-label={lang === 'es' ? 'Cerrar aplicación' : lang === 'de' ? 'Anwendung schließen' : 'Close application'}
           >
             <X className="w-3.5 h-3.5 text-red-500 group-hover:text-white" />
           </button>

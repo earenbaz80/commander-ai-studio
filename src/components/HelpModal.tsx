@@ -35,6 +35,11 @@ interface HelpModalProps {
   isOpen: boolean;
   onClose: () => void;
   lang: Language;
+  /**
+   * Se pinta dentro de otro panel (Configuración) en vez de en su propia
+   * ventana: sin overlay, sin cabecera y sin botón de cerrar.
+   */
+  inline?: boolean;
 }
 
 type HelpTab = 'overview' | 'modes' | 'workbench' | 'hf' | 'export' | 'shortcuts';
@@ -54,7 +59,7 @@ interface HelpCard {
  * —no sólo la pestaña abierta— y añadir una sección no obliga a tocar el
  * renderizado. Los textos siguen pasando por `L`, que resuelve es/de/en.
  */
-export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) => {
+export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang, inline = false }) => {
   const [activeTab, setActiveTab] = useState<HelpTab>('overview');
   const [query, setQuery] = useState('');
 
@@ -316,8 +321,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
       'Panels with nothing to show explain what is missing instead of going blank.'
     ),
     L(
-      'El botón Configuración de la cabecera (Ctrl+,) abre un único panel con modelo, proveedores, apariencia, agente y rutas; Ayuda y Acerca de están al lado.',
-      'The Settings button in the header (Ctrl+,) opens a single panel with model, providers, appearance, agent and paths; Help and About sit next to it.'
+      'El botón Configuración de la cabecera (Ctrl+,) reúne modelo, proveedores, apariencia, agente, extensiones, Ayuda y Acerca de en un único panel.',
+      'The Settings button in the header (Ctrl+,) gathers model, providers, appearance, agent, extensions, Help and About in a single panel.'
     ),
   ];
 
@@ -387,32 +392,31 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-2 sm:p-4 font-mono select-none cursor-pointer"
+      className={
+        inline
+          ? 'flex flex-col border border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] text-xs'
+          : 'fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-2 sm:p-4 font-mono select-none cursor-pointer'
+      }
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (!inline && e.target === e.currentTarget) onClose();
       }}
     >
       <div
-        className="nc-panel w-full max-w-4xl max-h-[88vh] flex flex-col bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] shadow-[10px_10px_0px_var(--nc-shadow)] cursor-default text-xs"
+        className={
+          inline
+            ? 'w-full min-w-0 flex flex-col'
+            : 'nc-panel w-full max-w-4xl max-h-[88vh] flex flex-col bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] shadow-[10px_10px_0px_var(--nc-shadow)] cursor-default text-xs'
+        }
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
+        {/* Header: sólo en ventana propia; embebido ya tiene el de Configuración. */}
+        {!inline && (
         <div className="nc-header p-2 flex items-center justify-between border-b-2 border-black gap-2">
           <div className="flex items-center gap-2">
             <HelpCircle className="w-5 h-5 text-black" />
             <span className="font-bold text-black text-xs sm:text-sm tracking-wider">{t.helpTitle}</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-1.5 top-1/2 -translate-y-1/2 text-black/60 pointer-events-none" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={L('Buscar en el manual…', 'Search the manual…')}
-                aria-label={L('Buscar en el manual', 'Search the manual')}
-                className="w-40 sm:w-56 bg-white/90 text-black text-[11px] pl-6 pr-1.5 py-0.5 border border-black outline-none placeholder:text-black/40"
-              />
-            </div>
             <button
               type="button"
               onClick={onClose}
@@ -423,6 +427,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
             </button>
           </div>
         </div>
+        )}
 
         {/* Tab Navigation */}
         <div className={`bg-[var(--nc-bg-main)] border-b-2 border-[var(--nc-border-light)] p-1.5 flex flex-wrap gap-1 text-xs ${q ? 'opacity-60' : ''}`}>
@@ -449,10 +454,22 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
               </button>
             );
           })}
+          {/* La búsqueda vive con las pestañas para que también exista cuando
+              el manual se pinta dentro de Configuración, sin cabecera propia. */}
+          <div className="relative ml-auto">
+            <Search className="w-3.5 h-3.5 absolute left-1.5 top-1/2 -translate-y-1/2 text-[var(--nc-text)] opacity-60 pointer-events-none" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={L('Buscar en el manual…', 'Search the manual…')}
+              aria-label={L('Buscar en el manual', 'Search the manual')}
+              className="w-40 sm:w-56 bg-[var(--nc-bg-main)] text-[var(--nc-text)] text-[11px] pl-6 pr-1.5 py-1 border border-[var(--nc-border-light)] outline-none focus:border-[var(--nc-text-accent)] placeholder:opacity-50"
+            />
+          </div>
         </div>
 
         {/* Help Content Area */}
-        <div className="p-4 overflow-y-auto flex-1 space-y-4 text-[var(--nc-text)] leading-relaxed">
+        <div className={inline ? 'p-3 space-y-3 text-[var(--nc-text)] leading-relaxed' : 'p-4 overflow-y-auto flex-1 space-y-4 text-[var(--nc-text)] leading-relaxed'}>
           {q ? (
             <div className="space-y-2" data-testid="help-search-results">
               <p className="text-[11px] text-[var(--nc-text-accent)] font-bold">
@@ -663,13 +680,20 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
           )}
         </div>
 
-        {/* Footer */}
-        <div className="bg-[var(--nc-header-bg)] p-2 flex items-center justify-between gap-2 border-t-2 border-black">
-          <span className="text-[10px] text-black/70 font-bold">
+        {/* Footer: embebido sólo lleva el contador, porque no hay nada que cerrar. */}
+        <div
+          className={
+            inline
+              ? 'bg-[var(--nc-bg-main)] p-1.5 flex items-center border-t border-[var(--nc-border-light)]'
+              : 'bg-[var(--nc-header-bg)] p-2 flex items-center justify-between gap-2 border-t-2 border-black'
+          }
+        >
+          <span className={inline ? 'text-[9px] text-[var(--nc-text)] opacity-60' : 'text-[10px] text-black/70 font-bold'}>
             {q
               ? L('Mostrando resultados de búsqueda', 'Showing search results')
               : L('Sección ' + (tabs.findIndex((tab) => tab.id === activeTab) + 1) + ' de ' + tabs.length, 'Section ' + (tabs.findIndex((tab) => tab.id === activeTab) + 1) + ' of ' + tabs.length)}
           </span>
+          {!inline && (
           <button
             type="button"
             onClick={onClose}
@@ -677,6 +701,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang }) =
           >
             {t.close} [ESC]
           </button>
+          )}
         </div>
       </div>
     </div>
