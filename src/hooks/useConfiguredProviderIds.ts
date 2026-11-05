@@ -6,6 +6,13 @@ const asList = (value: unknown): string[] =>
     ? value.filter((v): v is string => typeof v === 'string').map((v) => v.trim()).filter(Boolean)
     : [];
 
+/** Proveedor local configurado cuyo host no responde. */
+export interface OfflineLocalProvider {
+  id: string;
+  name: string;
+  host: string;
+}
+
 /**
  * Proveedores utilizables y sus filtros de modelos.
  *
@@ -14,17 +21,23 @@ const asList = (value: unknown): string[] =>
  * que el servidor. `failed` distingue «no hay ninguno configurado» de «no pude
  * preguntar»: en el segundo caso el selector vuelve a mostrar la lista base en
  * vez de quedarse vacío por un fallo de red.
+ *
+ * `offline` son los locales configurados que no contestan: sin esto, un LM
+ * Studio apagado se veía igual que uno sin configurar (cero modelos y nada
+ * más).
  */
 export function useConfiguredProviderIds(): {
   ids: Set<string>;
   filters: Record<string, ModelFilter>;
   loaded: boolean;
   failed: boolean;
+  offline: OfflineLocalProvider[];
 } {
   const [ids, setIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<Record<string, ModelFilter>>({});
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [offline, setOffline] = useState<OfflineLocalProvider[]>([]);
 
   useEffect(() => {
     let dead = false;
@@ -39,6 +52,7 @@ export function useConfiguredProviderIds(): {
         if (dead) return;
         const next = new Set<string>();
         const nextFilters: Record<string, ModelFilter> = {};
+        const nextOffline: OfflineLocalProvider[] = [];
         for (const provider of Array.isArray(data?.providers) ? data.providers : []) {
           if (!provider?.configured) continue;
           const id = String(provider.id);
@@ -47,9 +61,13 @@ export function useConfiguredProviderIds(): {
             blacklist: asList(provider.blacklist),
           };
           if (provider.enabled !== false) next.add(id);
+          if (provider.enabled !== false && typeof provider.host === 'string' && provider.reachable === false) {
+            nextOffline.push({ id, name: String(provider.name || id), host: provider.host });
+          }
         }
         setIds(next);
         setFilters(nextFilters);
+        setOffline(nextOffline);
         setLoaded(true);
       })
       .catch(() => {
@@ -62,5 +80,5 @@ export function useConfiguredProviderIds(): {
     };
   }, []);
 
-  return { ids, filters, loaded, failed };
+  return { ids, filters, loaded, failed, offline };
 }
