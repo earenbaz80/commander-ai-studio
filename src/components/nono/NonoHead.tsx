@@ -10,6 +10,9 @@ export const NonoHead: React.FC<{
   show3D?: boolean;
 }> = ({ expression, eyeOffset, blink, size = 64, show3D = true }) => {
   const strokeColor = expression === 'angry' || expression === 'error' ? '#ff5555' : '#00ffff';
+  // La cabeza también va con contorno blanco, como ojos y boca. El estado
+  // (error) no se pierde: lo sigue avisando la antena con su color y su LED.
+  const headStroke = '#ffffff';
 
   const pupilOffsetX = Math.max(-3, Math.min(3, eyeOffset.x * 0.5));
   const pupilOffsetY = Math.max(-2, Math.min(2, eyeOffset.y * 0.5));
@@ -26,8 +29,8 @@ export const NonoHead: React.FC<{
 
   const renderEyes = () => {
     // Ojos con contorno blanco: resaltan sobre el azul del cuerpo. El trazo
-    // heredado (cian/rojo) queda para la cabeza y la antena, que sigue avisando
-    // del estado con su LED.
+    // heredado (cian/rojo) queda sólo para la antena, que sigue avisando del
+    // estado con su LED.
     const strokeColor = '#ffffff';
     // 3D eye whites with gradient
     const eyeHighlight = show3D ? (
@@ -224,7 +227,7 @@ export const NonoHead: React.FC<{
       </defs>
       {/* Cabeza con sombra vectorial 3D */}
       <g filter="url(#nonoShadow)">
-        <rect x="8" y="12" width="48" height="44" rx="12" fill="url(#nonoBody)" stroke={strokeColor} strokeWidth={strokeWidth} />
+        <rect x="8" y="12" width="48" height="44" rx="12" fill="url(#nonoBody)" stroke={headStroke} strokeWidth={strokeWidth} />
         {/* Inner highlight for 3D depth */}
         <rect x="10" y="14" width="44" height="18" rx="10" fill="url(#nonoHighlight)" stroke="none" opacity="0.3" />
       </g>
