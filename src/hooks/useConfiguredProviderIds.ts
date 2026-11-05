@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { toggleModelFilter, type ModelFilter } from '../lib/providerFilters';
+import { PROVIDER_FILTERS_CHANGED, toggleModelFilter, type ModelFilter } from '../lib/providerFilters';
 
 const asList = (value: unknown): string[] =>
   Array.isArray(value)
@@ -40,6 +40,15 @@ export function useConfiguredProviderIds(): {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [offline, setOffline] = useState<OfflineLocalProvider[]>([]);
+  // Los filtros también se editan en Ajustes → Proveedores. Este contador
+  // fuerza a releerlos para que el selector del chat no siga con los viejos.
+  const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    const onChange = () => setRevision((value) => value + 1);
+    window.addEventListener(PROVIDER_FILTERS_CHANGED, onChange);
+    return () => window.removeEventListener(PROVIDER_FILTERS_CHANGED, onChange);
+  }, []);
 
   useEffect(() => {
     let dead = false;
@@ -80,7 +89,7 @@ export function useConfiguredProviderIds(): {
     return () => {
       dead = true;
     };
-  }, []);
+  }, [revision]);
 
   // Optimista: el interruptor responde al instante y se revierte si el PATCH
   // falla. El estado local evita recargar todo el catálogo por un modelo.
