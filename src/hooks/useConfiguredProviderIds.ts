@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import type { ModelFilter } from '../lib/providerFilters';
+import { useCallback, useEffect, useState } from 'react';
+import { toggleModelFilter, type ModelFilter } from '../lib/providerFilters';
 
 const asList = (value: unknown): string[] =>
   Array.isArray(value)
@@ -32,6 +32,8 @@ export function useConfiguredProviderIds(): {
   loaded: boolean;
   failed: boolean;
   offline: OfflineLocalProvider[];
+  /** Activa o desactiva un modelo guardando las listas del proveedor. */
+  toggleModel: (providerId: string, modelId: string, enabled: boolean) => Promise<boolean>;
 } {
   const [ids, setIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<Record<string, ModelFilter>>({});
@@ -80,5 +82,30 @@ export function useConfiguredProviderIds(): {
     };
   }, []);
 
-  return { ids, filters, loaded, failed, offline };
+  // Optimista: el interruptor responde al instante y se revierte si el PATCH
+  // falla. El estado local evita recargar todo el catálogo por un modelo.
+  const toggleModel = useCallback(
+    async (providerId: string, modelId: string, enabled: boolean): Promise<boolean> => {
+      const previous = filters[providerId] ?? { whitelist: [], blacklist: [] };
+      const next = toggleModelFilter(previous, modelId, enabled);
+      setFilters((prev) => ({ ...prev, [providerId]: next }));
+      try {
+        const res = await fetch(`/api/providers/${encodeURIComponent(providerId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(next),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data?.success !== true) throw new Error(data?.error || 'Error');
+        return true;
+      } catch {
+        setFilters((prev) => ({ ...prev, [providerId]: previous }));
+        return false;
+      }
+    },
+    [filters]
+  );
+
+  return { ids, filters, loaded, failed, offline, toggleModel };
 }

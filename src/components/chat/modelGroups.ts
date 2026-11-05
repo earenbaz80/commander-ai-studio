@@ -50,6 +50,12 @@ export const MODEL_GROUPS: ModelGroup[] = [
   { id: 'custom', label: 'OpenAI-compatible', models: CUSTOM_MODELS },
 ];
 
+/** Etiqueta visible de un proveedor aunque todavía no tenga modelos listados. */
+export const providerLabel = (id: string): string =>
+  MODEL_GROUPS.find((group) => group.id === id)?.label ||
+  (PROVIDER_CONFIGS as Record<string, { name?: string } | undefined>)[id]?.name ||
+  id;
+
 /** Orden estable de los grupos; los proveedores nuevos caen al final. */
 const GROUP_ORDER = ['google', 'openai', 'anthropic', 'nvidia', 'xai', 'openrouter', 'huggingface', 'ollama', 'lmstudio', 'custom', 'freebuff', 'local'];
 
@@ -72,7 +78,7 @@ export function buildModelGroups(models: AIModel[], statuses?: ProviderStatus): 
       const known = MODEL_GROUPS.find((g) => g.id === provider);
       group = {
         id: provider,
-        label: known?.label || PROVIDER_CONFIGS[provider]?.name || provider,
+        label: known?.label || providerLabel(provider),
         models: [],
         status: modelGroupStatus(statuses?.[provider]),
       };

@@ -6,7 +6,7 @@
  * Extraído de `ChatPlayground`. Es puramente presentacional: recibe el estado
  * ya resuelto por props y devuelve callbacks, sin manejar estado propio.
  */
-import React, { useRef } from 'react';
+import React, { useMemo, useRef } from 'react';
 import {
   Send,
   Play,
@@ -22,9 +22,9 @@ import {
 import { getCachedApiKey } from '../../lib/apiKeys';
 import type { Language } from '../../i18n/translations';
 import type { RunMode } from '../../types/studio';
-import { MODEL_GROUPS, isLocalModelId, type ModelGroup } from './modelGroups';
+import { MODEL_GROUPS, isLocalModelId, providerLabel, type ModelGroup } from './modelGroups';
 import { useConfiguredProviderIds } from '../../hooks/useConfiguredProviderIds';
-import { filterModelIds } from '../../lib/providerFilters';
+import { isModelDisabledByFilter } from '../../lib/providerFilters';
 import { lmStudioHostScope } from '../../lib/lmStudio';
 import { ModelPicker } from './ModelPicker';
 
@@ -122,15 +122,48 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
     filters: providerFilters,
     loaded: providersLoaded,
     failed: providersFailed,
+    offline,
+    toggleModel,
   } = useConfiguredProviderIds();
   // Mientras llega la respuesta se muestra la lista base: el filtro estricto
   // se aplica en cuanto se sabe qué proveedores están configurados. Los
-  // apagados no aparecen y las listas blanca/negra recortan cada grupo.
-  const visibleGroups = (providersFailed || !providersLoaded
+  // apagados no aparecen, pero un proveedor configurado sí aunque no tenga
+  // modelos ahora: el grupo queda visible con su estado.
+  const offlineIds = new Set(offline.map((provider) => provider.id));
+  const baseGroups = providersFailed || !providersLoaded
     ? modelGroups
-    : modelGroups.filter((group) => configuredIds.has(group.id)))
-    .map((group) => ({ ...group, models: filterModelIds(group.models, providerFilters[group.id]) }))
-    .filter((group) => group.models.length > 0);
+    : modelGroups.filter((group) => configuredIds.has(group.id));
+  const visibleGroups = providersFailed || !providersLoaded
+    ? baseGroups
+    : [
+        ...baseGroups,
+        ...[...configuredIds]
+          .filter((id) => !baseGroups.some((group) => group.id === id))
+          .map((id) => ({
+            id,
+            label: providerLabel(id),
+            models: [],
+            status: offlineIds.has(id) ? ('offline' as const) : undefined,
+          })),
+      ];
+
+  // El selector recibe los ids apagados en vez de una lista ya recortada: así
+  // puede enseñarlos atenuados y reactivarlos sin recargar el catálogo.
+  const disabledModelIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const group of modelGroups) {
+      for (const model of group.models) {
+        if (isModelDisabledByFilter(model.id, providerFilters[group.id])) ids.add(model.id);
+      }
+    }
+    return ids;
+  }, [modelGroups, providerFilters]);
+
+  const handleToggleModel = (modelId: string, enabled: boolean) => {
+    const model = modelGroups.flatMap((group) => group.models).find((item) => item.id === modelId);
+    if (!model) return;
+    void toggleModel(model.provider, modelId, enabled);
+  };
 
   return (
     <div className="relative mt-2 flex flex-wrap items-center gap-2 text-xs font-mono [&_button]:min-h-9 [&_button]:min-w-9 [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-[var(--nc-text-accent)]">
@@ -252,6 +285,8 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
         onSelectModel={onSelectModel}
         loading={providersLoaded}
         failed={providersFailed}
+        disabledIds={disabledModelIds}
+        onToggleModel={providersLoaded && !providersFailed ? handleToggleModel : undefined}
       />
 
 
