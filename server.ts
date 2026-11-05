@@ -980,6 +980,8 @@ import { mcpRouter } from './src/mcp/index.js';
 import { pluginMarketRouter } from './src/plugins/marketplace.js';
 import { uninstallInstalledPlugin } from './src/plugins/uninstall.js';
 app.use('/api/mcp', mcpRouter);
+// Catálogo de plugins (marketplace.json) bajo el mismo prefijo: sus rutas
+// `/discover` e `/install-from-marketplace` no chocan con las de arriba.
 app.use('/api/plugins', pluginMarketRouter);
 
 // ==================== PLUGINS ECOSISTEMA ====================
@@ -1803,25 +1805,34 @@ app.get('/api/hf/search', async (req, res) => {
   try {
     const q = String(req.query.q || '').slice(0, 200);
     const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
+    // `pipeline_tag` de Hugging Face. Antes la categoría que elegía el usuario
+    // se recibía y se descartaba, así que el desplegable no filtraba nada.
+    const pipelineRaw = String(req.query.pipeline || '').slice(0, 64).trim();
+    const pipeline = pipelineRaw && pipelineRaw !== 'all' ? pipelineRaw : '';
 
     // Check cache first
-    const cacheKey = `${q}_${limit}`;
+    const cacheKey = `${q}_${pipeline}_${limit}`;
     const cached = hfSearchCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < HF_CACHE_TTL_MS) {
       return res.json({ success: true, models: cached.models, cached: true });
     }
 
     // Search Hugging Face API
-    const url = `https://huggingface.co/api/models?search=${encodeURIComponent(q)}&limit=${limit}&sort=downloads&direction=-1`;
+    const params = new URLSearchParams({ limit: String(limit), sort: 'downloads', direction: '-1' });
+    if (q) params.set('search', q);
+    if (pipeline) params.set('pipeline_tag', pipeline);
+    const url = `https://huggingface.co/api/models?${params.toString()}`;
     const response = await fetch(url, {
       headers: { 'User-Agent': 'CommanderAIStudio/2.5' },
     });
 
     if (!response.ok) {
       // Fallback to built-in catalog
-      const filtered = POPULAR_HF_CATALOG.filter((m) =>
-        m.id.toLowerCase().includes(q.toLowerCase()) ||
-        m.tags.some((t) => t.includes(q.toLowerCase()))
+      const needle = q.toLowerCase();
+      const filtered = POPULAR_HF_CATALOG.filter(
+        (m) =>
+          (!pipeline || m.pipeline_tag === pipeline) &&
+          (!needle || m.id.toLowerCase().includes(needle) || m.tags.some((t) => t.includes(needle)))
       ).slice(0, limit);
       return res.json({ success: true, models: filtered, fallback: true });
     }

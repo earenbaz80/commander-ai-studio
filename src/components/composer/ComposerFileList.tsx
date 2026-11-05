@@ -54,7 +54,7 @@ export function ComposerFileList({ files, selected, onSelect, onCreate, onDelete
   };
 
   return (
-    <aside className="w-56 shrink-0 min-h-0 flex flex-col bg-[var(--nc-bg-panel)] border-r border-[var(--nc-border-dark)]">
+    <aside className="w-56 shrink-0 min-h-0 flex flex-col bg-[var(--nc-bg-deep)] border-r-2 border-[var(--nc-border-dark)]">
       <div className="flex items-center gap-1 px-2 h-8 shrink-0 border-b border-[var(--nc-border-dark)]">
         <FileCode className="w-3.5 h-3.5 text-[var(--nc-text-accent)] shrink-0" />
         <span className="text-[10px] font-bold tracking-wide truncate">{t('ARCHIVOS', 'FILES')}</span>
