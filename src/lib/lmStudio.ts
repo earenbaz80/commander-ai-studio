@@ -18,6 +18,22 @@ export function normalizeLmStudioHost(raw: string): string {
 }
 
 /**
+ * `local` si el host apunta a este equipo y `remoto` si es de la red.
+ *
+ * Se usa para nombrar cada servidor en la UI: el de casa y el del portátil
+ * pueden estar configurados a la vez y no deben aparecer como «LM Studio» a
+ * secas, porque no se sabe cuál es cuál.
+ */
+export function lmStudioHostScope(host: string): 'local' | 'remoto' {
+  try {
+    const hostname = new URL(normalizeLmStudioHost(host)).hostname.replace(/^\[|\]$/g, '');
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' ? 'local' : 'remoto';
+  } catch {
+    return 'remoto';
+  }
+}
+
+/**
  * Extrae ids de las dos formas de respuesta de LM Studio:
  * OpenAI (`{ data: [{ id }] }`) y nativa (`{ data: [{ id, type }] }` o strings).
  */

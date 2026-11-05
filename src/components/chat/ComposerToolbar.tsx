@@ -23,14 +23,24 @@ import type { RunMode } from '../../types/studio';
 import { MODEL_GROUPS, isLocalModelId, type ModelGroup } from './modelGroups';
 import { useConfiguredProviderIds } from '../../hooks/useConfiguredProviderIds';
 import { filterModelIds } from '../../lib/providerFilters';
+import { lmStudioHostScope } from '../../lib/lmStudio';
 import { ModelPicker } from './ModelPicker';
 
 /** `true` si hay un servidor local configurado (Ollama, LM Studio u otro). */
 const hasLocalServer = (): boolean =>
   !!(getCachedApiKey('OLLAMA_HOST') || getCachedApiKey('LMSTUDIO_HOST') || getCachedApiKey('CUSTOM_BASE_URL'));
 
-const localServerLabel = (): string =>
-  getCachedApiKey('OLLAMA_HOST') || getCachedApiKey('LMSTUDIO_HOST') || getCachedApiKey('CUSTOM_BASE_URL') || '';
+const localServerLabel = (): string => {
+  const ollama = getCachedApiKey('OLLAMA_HOST');
+  if (ollama) return ollama;
+  const lmstudio = getCachedApiKey('LMSTUDIO_HOST');
+  if (lmstudio) return `LM Studio ${lmStudioHostScope(lmstudio)}`;
+  return getCachedApiKey('CUSTOM_BASE_URL') || '';
+};
+
+/** «LM Studio remoto» o «LM Studio local» según a dónde apunte el host. */
+const providerLabel = (provider: { id: string; name: string; host?: string }): string =>
+  provider.id === 'lmstudio' ? `LM Studio ${lmStudioHostScope(provider.host || '')}` : provider.name;
 
 interface ComposerToolbarProps {
   lang: Language;
@@ -172,10 +182,10 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
           <span className="truncate">
             {lang === 'es'
-              ? `${provider.name}: sin respuesta`
+              ? `${providerLabel(provider)}: sin respuesta`
               : lang === 'de'
-                ? `${provider.name}: keine Antwort`
-                : `${provider.name}: no response`}
+                ? `${providerLabel(provider)}: keine Antwort`
+                : `${providerLabel(provider)}: no response`}
           </span>
           <span className="hidden truncate text-amber-200/70 lg:inline">{provider.host}</span>
         </span>
