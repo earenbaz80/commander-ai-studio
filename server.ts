@@ -36,6 +36,7 @@ import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList
 import { isAllowedHost, allowedHostsFromEnv } from './hostGuard';
 import { getConfig, getConfigPath, getEnvProviderIds, getGlobalConfigPath, getProviderSecret, loadConfig, removeProviderConfig } from './src/config/index';
 import { PROVIDER_SPECS, buildProviderList, describeProvider, getProviderCatalog } from './src/providers/registry';
+import { probeLocalProvider } from './src/providers/localProbe';
 import skillsRouter from './skills/api';
 import { forkSessionWorkspace, deleteSessionWorkspace, listSessions, createGitWorktree } from './sessionWorkspace';
 import { handleOAuthLogin, handleOAuthCallback, handleLogout, getCurrentUser } from './oauth';
@@ -916,11 +917,35 @@ app.post('/api/providers', async (req, res) => {
 
 // Lista real de proveedores: `configured` sale de la config de fichero o del
 // entorno, no de que el catálogo tenga entradas. Es lo que pinta el gestor.
-app.get('/api/providers', async (_req, res) => {
+app.get('/api/providers', async (req, res) => {
   try {
     const catalog = await getProviderCatalog();
     const envIds = new Set(getEnvProviderIds());
-    const providers = buildProviderList(getConfig().providers as any, envIds, catalog);
+    const config = getConfig().providers as any;
+    let providers: any[] = buildProviderList(config, envIds, catalog);
+
+    // Proveedores locales: se dice si su host responde, para que «0 modelos» no
+    // signifique lo mismo que «sin configurar». La sonda va cacheada (15 s) y
+    // con timeout corto, en paralelo, para no frenar el gestor.
+    const localHosts: Record<string, string> = {
+      ollama: process.env.OLLAMA_HOST || config?.ollama?.host || 'http://localhost:11434',
+      lmstudio: lmstudioHost(req),
+      custom: process.env.CUSTOM_BASE_URL || config?.custom?.baseUrl || '',
+    };
+    providers = await Promise.all(
+      providers.map(async (provider) => {
+        const host = localHosts[provider.id];
+        if (!host) return provider;
+        const probe = await probeLocalProvider(provider.id, host);
+        return {
+          ...provider,
+          host,
+          reachable: probe.reachable,
+          ...(probe.error ? { probeError: probe.error } : {}),
+        };
+      })
+    );
+
     return res.json({ success: true, providers, configPath: getConfigPath(), writePath: getGlobalConfigPath() });
   } catch (e: any) {
     return res.status(500).json({ success: false, error: e?.message || 'Error listando proveedores' });

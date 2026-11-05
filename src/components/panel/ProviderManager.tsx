@@ -53,6 +53,12 @@ interface ProviderEntry {
   whitelist: string[];
   blacklist: string[];
   defaultModel?: string;
+  /** Host que se está usando (sólo proveedores locales). */
+  host?: string;
+  /** `false` si el host local está configurado pero no responde. */
+  reachable?: boolean;
+  /** Motivo del fallo de la sonda (HTTP 503, timeout…). */
+  probeError?: string;
 }
 
 interface ProviderManagerProps {
@@ -411,6 +417,12 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                     <AlertTriangle className="w-4 h-4 text-[var(--nc-text-accent)] shrink-0" />
                   )}
                   <span className="text-[var(--nc-text)] font-bold text-xs truncate">{provider.name}</span>
+                  {provider.reachable === false && (
+                    <AlertTriangle
+                      className="w-3.5 h-3.5 text-amber-300 shrink-0"
+                      aria-label={t('sin respuesta', 'not responding', 'keine Antwort')}
+                    />
+                  )}
                   {provider.source !== 'none' && (
                     <span className="text-[9px] px-1 border border-[var(--nc-border-light)] text-[var(--nc-text)] shrink-0">
                       {lang === 'es'
@@ -433,6 +445,33 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
 
                 {open && (
                   <div className="px-2 pb-2 space-y-2 border-t border-[var(--nc-border-dark)]">
+                    {provider.host && provider.reachable === false && (
+                      <div
+                        role="status"
+                        className="mt-2 flex items-start gap-1 border border-amber-400/40 bg-amber-400/10 px-1.5 py-1 text-[9px] leading-snug text-amber-200"
+                      >
+                        <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" aria-hidden="true" />
+                        <span>
+                          {t(
+                            `Sin respuesta en ${provider.host}.`,
+                            `No response at ${provider.host}.`,
+                            `Keine Antwort unter ${provider.host}.`
+                          )}{' '}
+                          {provider.id === 'lmstudio'
+                            ? t(
+                                'Comprueba que LM Studio esté abierto y sirviendo en esa IP y puerto.',
+                                'Check that LM Studio is open and serving on that IP and port.',
+                                'Prüfe, ob LM Studio geöffnet ist und unter dieser IP und diesem Port dient.'
+                              )
+                            : t(
+                                'Comprueba que el servidor local esté levantado y sea accesible desde aquí.',
+                                'Check that the local server is running and reachable from here.',
+                                'Prüfe, ob der lokale Server läuft und von hier erreichbar ist.'
+                              )}
+                          {provider.probeError ? ` (${provider.probeError})` : ''}
+                        </span>
+                      </div>
+                    )}
                     {provider.env.length > 0 && (
                       <div className="pt-2 text-[9px] text-[var(--nc-text)] break-all">
                         {t('También por entorno:', 'Also via env:', 'Auch per Umgebung:')} {provider.env.join(' / ')}
