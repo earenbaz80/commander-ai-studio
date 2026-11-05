@@ -25,6 +25,10 @@ export const NonoHead: React.FC<{
   const strokeWidth = 1.5;
 
   const renderEyes = () => {
+    // Ojos con contorno blanco: resaltan sobre el azul del cuerpo. El trazo
+    // heredado (cian/rojo) queda para la cabeza y la antena, que sigue avisando
+    // del estado con su LED.
+    const strokeColor = '#ffffff';
     // 3D eye whites with gradient
     const eyeHighlight = show3D ? (
       <>
@@ -124,10 +128,10 @@ export const NonoHead: React.FC<{
       case 'error':
         return (
           <>
-            <line x1="14" y1="32" x2="26" y2="44" stroke="#ff5555" strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(255,0,0,0.3))" />
-            <line x1="26" y1="32" x2="14" y2="44" stroke="#ff5555" strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(255,0,0,0.3))" />
-            <line x1="38" y1="32" x2="50" y2="44" stroke="#ff5555" strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(255,0,0,0.3))" />
-            <line x1="50" y1="32" x2="38" y2="44" stroke="#ff5555" strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(255,0,0,0.3))" />
+            <line x1="14" y1="32" x2="26" y2="44" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
+            <line x1="26" y1="32" x2="14" y2="44" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
+            <line x1="38" y1="32" x2="50" y2="44" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
+            <line x1="50" y1="32" x2="38" y2="44" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
           </>
         );
       case 'cool':
@@ -154,6 +158,8 @@ export const NonoHead: React.FC<{
   };
 
   const renderMouth = () => {
+    // La boca acompaña a los ojos: mismo contorno blanco en todas las expresiones.
+    const strokeColor = '#ffffff';
     switch (expression) {
       case 'happy':
       case 'love':
@@ -163,7 +169,7 @@ export const NonoHead: React.FC<{
       case 'surprised':
         return <ellipse cx="32" cy="52" rx="4" ry="5" fill="none" stroke={strokeColor} strokeWidth="2" />;
       case 'angry':
-        return <path d="M22 54 L42 50" stroke="#ff5555" strokeWidth="2.5" strokeLinecap="round" />;
+        return <path d="M22 54 L42 50" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" />;
       case 'wink':
         return <path d="M22 52 Q32 56 42 52" fill="none" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" />;
       case 'sleepy':
@@ -174,7 +180,7 @@ export const NonoHead: React.FC<{
       case 'curious':
         return <ellipse cx="32" cy="52" rx="3" ry="4" fill="none" stroke={strokeColor} strokeWidth="2" />;
       case 'error':
-        return <path d="M24 56 L40 50" stroke="#ff5555" strokeWidth="2.5" strokeLinecap="round" />;
+        return <path d="M24 56 L40 50" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" />;
       case 'cool':
         return <path d="M24 52 Q32 56 40 52" fill="none" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" />;
       default:
