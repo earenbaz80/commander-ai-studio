@@ -9,9 +9,8 @@ export const NonoHead: React.FC<{
   size?: number;
   show3D?: boolean;
 }> = ({ expression, eyeOffset, blink, size = 64, show3D = true }) => {
-  const strokeColor = expression === 'angry' || expression === 'error' ? '#ff5555' : '#00ffff';
-  // La cabeza también va con contorno blanco, como ojos y boca. El estado
-  // (error) no se pierde: lo sigue avisando la antena con su color y su LED.
+  // Cabeza, ojos, boca y antena van con contorno blanco; el estado (error,
+  // reposo, actividad) lo sigue avisando sólo el LED de la antena.
   const headStroke = '#ffffff';
 
   const pupilOffsetX = Math.max(-3, Math.min(3, eyeOffset.x * 0.5));
@@ -232,7 +231,7 @@ export const NonoHead: React.FC<{
         <rect x="10" y="14" width="44" height="18" rx="10" fill="url(#nonoHighlight)" stroke="none" opacity="0.3" />
       </g>
       {/* Antena */}
-      <line x1="32" y1="12" x2="32" y2="6" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.3))" />
+      <line x1="32" y1="12" x2="32" y2="6" stroke={headStroke} strokeWidth="2.5" strokeLinecap="round" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.3))" />
       {/* LED de la antena: único parpadeo de Nono (halo + núcleo) */}
       <g className="nono-antenna-led" data-led={ledState}>
         <circle cx="32" cy="5" r="6" fill={antennaColor} opacity="0.25" className="nono-led-halo" filter="drop-shadow(0 0 8px currentColor)" />
