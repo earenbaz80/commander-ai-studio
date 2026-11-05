@@ -82,6 +82,8 @@ export interface FloatingAssistantProps {
   codeContext?: string;
   /** Si true, Nono no se renderiza en pantalla. */
   hidden?: boolean;
+  /** Hay algo procesándose en el chat o en el agente: Nono lo acompaña. */
+  busy?: boolean;
 }
 
 /** Handle imperativo para abrir Nono desde fuera (ej. @nono en el chat general). */

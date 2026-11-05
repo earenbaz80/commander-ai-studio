@@ -228,6 +228,55 @@
   }
 }
 
+/* ===== Procesando: Nono acompaña la espera con un gesto propio ===== */
+/* Se superpone a las animaciones de reposo: el personaje deja de flotar y
+   pasa a mecerse con más ritmo mientras el chat o el agente trabajan. */
+@keyframes nono-work {
+  0%, 100% { translate: 0 0; rotate: 0deg; }
+  30%      { translate: 0 -9px; rotate: -2deg; }
+  70%      { translate: 0 -5px; rotate: 2deg; }
+}
+.nono-busy svg {
+  animation: nono-work 1.2s ease-in-out infinite;
+}
+
+/* Chip de puntos junto a la cabeza: se lee incluso sin la frase flotante. */
+.nono-working-chip {
+  top: -4px;
+  right: -6px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  background: var(--nc-bg-main);
+  border: 1px solid var(--nc-text-accent);
+  border-radius: 3px;
+  box-shadow: 0 0 8px rgba(0, 255, 255, 0.35);
+}
+.nono-work-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--nc-text-accent);
+  animation: nono-work-dot 1s ease-in-out infinite;
+}
+.nono-work-dot:nth-child(2) { animation-delay: 0.15s; }
+.nono-work-dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes nono-work-dot {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  50%      { opacity: 1; transform: translateY(-2px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not(.nono-force-motion) .nono-busy svg {
+    animation: nono-breathe 3s ease-in-out infinite;
+  }
+  :root:not(.nono-force-motion) .nono-work-dot {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 /* ===== Tech Tree Symbol (árbol tecnológico / red neuronal) ===== */
 @keyframes tech-tree-float {
   0%, 100% { transform: translateY(0) rotate(0deg); }

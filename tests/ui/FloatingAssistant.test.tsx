@@ -52,6 +52,20 @@ describe('FloatingAssistant (Nono)', () => {
       expect(['neutral', 'happy']).toContain(getExpression());
     });
 
+    test('mientras el chat procesa, Nono piensa y muestra el chip de proceso', () => {
+      const { rerender } = render(<FloatingAssistant lang="es" busy />);
+
+      expect(getExpression()).toBe('thinking');
+      expect(screen.getByTestId('nono-working')).toBeInTheDocument();
+      expect(getHead().className).toContain('nono-busy');
+
+      // Al terminar, el chip desaparece y Nono celebra un instante.
+      rerender(<FloatingAssistant lang="es" busy={false} />);
+      expect(screen.queryByTestId('nono-working')).toBeNull();
+      expect(getHead().className).not.toContain('nono-busy');
+      expect(getExpression()).toBe('happy');
+    });
+
     test('se ancla a la línea del chat cuando existe', () => {
       const divider = document.createElement('div');
       divider.setAttribute('data-chat-divider', '');
