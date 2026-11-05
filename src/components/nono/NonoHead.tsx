@@ -8,7 +8,9 @@ export const NonoHead: React.FC<{
   blink: boolean;
   size?: number;
   show3D?: boolean;
-}> = ({ expression, eyeOffset, blink, size = 64, show3D = true }) => {
+  /** El chat o el agente están procesando: la pantalla muestra actividad. */
+  busy?: boolean;
+}> = ({ expression, eyeOffset, blink, size = 64, show3D = true, busy = false }) => {
   // Cabeza, ojos, boca y antena van con contorno blanco; el estado (error,
   // reposo, actividad) lo sigue avisando sólo el LED de la antena.
   const headStroke = '#ffffff';
@@ -210,6 +212,10 @@ export const NonoHead: React.FC<{
           <stop offset="0%" stopColor="#00ffff" stopOpacity="0.15" />
           <stop offset="100%" stopColor="#00ffff" stopOpacity="0" />
         </linearGradient>
+        {/* Scanlines del cristal: la cara se lee como una pantalla CRT. */}
+        <pattern id="nonoScanlines" width="4" height="4" patternUnits="userSpaceOnUse">
+          <rect width="4" height="0.6" fill="#00ffff" opacity="0.1" />
+        </pattern>
         {/* Filtro de sombra vectorial para profundidad */}
         <filter id="nonoShadow" x="-20%" y="-20%" width="140%" height="140%">
           <feDropShadow dx="3" dy="6" stdDeviation="4" floodColor="#000000" floodOpacity="0.4" />
@@ -230,6 +236,39 @@ export const NonoHead: React.FC<{
         {/* Inner highlight for 3D depth */}
         <rect x="10" y="14" width="44" height="18" rx="10" fill="url(#nonoHighlight)" stroke="none" opacity="0.3" />
       </g>
+      {/* La cara es la pantalla: marco interior y scanlines quedan por debajo
+          de los ojos y la boca, que se leen como la imagen del CRT. */}
+      <g className="nono-face-screen" data-nono-screen="true">
+        <rect x="9" y="13" width="46" height="42" rx="11" fill="#001a33" opacity="0.35" />
+        <rect x="9" y="13" width="46" height="42" rx="11" fill="url(#nonoScanlines)" />
+        <rect x="9.5" y="13.5" width="45" height="41" rx="10.5" fill="none" stroke="#00ffff" strokeWidth="0.6" opacity="0.35" />
+      </g>
+      {/* Proceso: un anillo y un arco que giran dentro de la pantalla, sin
+          mover el cuerpo entero. */}
+      {busy && (
+        <g className="nono-face-process" data-testid="nono-face-process" aria-hidden="true">
+          <circle
+            cx="32"
+            cy="36"
+            r="18"
+            fill="none"
+            stroke="#00ffff"
+            strokeWidth="1.4"
+            strokeDasharray="5 10"
+            strokeLinecap="round"
+            opacity="0.9"
+            filter="drop-shadow(0 0 3px rgba(0,255,255,0.8))"
+          />
+          <path
+            d="M32 18 A18 18 0 0 1 49.5 28"
+            fill="none"
+            stroke="#ffff55"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            opacity="0.9"
+          />
+        </g>
+      )}
       {/* Antena */}
       <line x1="32" y1="12" x2="32" y2="6" stroke={headStroke} strokeWidth="2.5" strokeLinecap="round" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.3))" />
       {/* LED de la antena: único parpadeo de Nono (halo + núcleo) */}

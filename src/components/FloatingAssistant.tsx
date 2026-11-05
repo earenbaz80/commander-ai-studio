@@ -530,7 +530,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
           }}
         />
         {/* `key` remonta el SVG al empezar a escribir, reiniciando el rebote. */}
-        <NonoHead key={chatBounceToken} expression={expression as NonoExpression} eyeOffset={eyeOffset} blink={blink} size={memory.ui.compactMode ? 36 : 48} show3D={true} />
+        <NonoHead key={chatBounceToken} expression={expression as NonoExpression} eyeOffset={eyeOffset} blink={blink} size={memory.ui.compactMode ? 36 : 48} show3D={true} busy={busy} />
         {/* Mientras el chat procesa, un chip de puntos confirma que Nono lo
             está siguiendo aunque su frase flotante ya se haya apagado. */}
         {busy && (

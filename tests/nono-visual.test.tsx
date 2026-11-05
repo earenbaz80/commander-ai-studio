@@ -110,6 +110,20 @@ test('NonoHead: pupilas se mueven verticalmente con eyeOffset', () => {
   }
 });
 
+test('NonoHead: la cara es una pantalla y el proceso gira dentro', () => {
+  const idle = renderToStaticMarkup(
+    <NonoHead expression="thinking" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} />
+  );
+  const busy = renderToStaticMarkup(
+    <NonoHead expression="thinking" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} busy />
+  );
+
+  assert.ok(idle.includes('nono-face-screen'), 'La pantalla debe existir siempre');
+  assert.ok(idle.includes('nonoScanlines'), 'La pantalla debe incluir scanlines');
+  assert.ok(!idle.includes('nono-face-process'), 'Sin proceso no debe haber indicador giratorio');
+  assert.ok(busy.includes('nono-face-process'), 'Con proceso debe aparecer el indicador en la cara');
+});
+
 test('NonoHead: incluye filtro de sombra vectorial feDropShadow', () => {
   const markup = renderToStaticMarkup(
     <NonoHead expression="neutral" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} />
