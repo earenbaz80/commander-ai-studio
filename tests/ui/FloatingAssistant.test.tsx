@@ -52,17 +52,17 @@ describe('FloatingAssistant (Nono)', () => {
       expect(['neutral', 'happy']).toContain(getExpression());
     });
 
-    test('mientras el chat procesa, Nono piensa y muestra el chip de proceso', () => {
+    test('mientras el chat procesa, Nono muestra el binario en la cara sin chip aparte', () => {
       const { rerender } = render(<FloatingAssistant lang="es" busy />);
 
       expect(getExpression()).toBe('thinking');
-      expect(screen.getByTestId('nono-working')).toBeInTheDocument();
+      expect(screen.queryByTestId('nono-working')).toBeNull();
       expect(screen.getByTestId('nono-face-process')).toBeInTheDocument();
       expect(screen.queryByTestId('nono-face-eyes')).toBeNull();
       expect(screen.queryByTestId('nono-face-mouth')).toBeNull();
       expect(getHead().className).toContain('nono-busy');
 
-      // Al terminar, el chip desaparece, vuelve la cara y Nono celebra un instante.
+      // Al terminar, el proceso desaparece, vuelve la cara y Nono celebra un instante.
       rerender(<FloatingAssistant lang="es" busy={false} />);
       expect(screen.queryByTestId('nono-working')).toBeNull();
       expect(screen.queryByTestId('nono-face-process')).toBeNull();
