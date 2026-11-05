@@ -159,6 +159,8 @@ test('DELETE /api/plugins/:id borra las skills y agentes que copió el plugin', 
   fs.mkdirSync(agentsDir, { recursive: true });
   fs.mkdirSync(path.join(pluginsDir(), id, 'files'), { recursive: true });
 
+  // Formato viejo (archivos sueltos en skills/commands y skills/agents): un
+  // plugin instalado antes del cambio de carpeta se desinstala igual.
   const propios = [
     path.join(commandsDir, 'commit.md'),
     path.join(commandsDir, `${id}-commit.md`),
@@ -166,6 +168,17 @@ test('DELETE /api/plugins/:id borra las skills y agentes que copió el plugin', 
   ];
   const ajeno = path.join(commandsDir, 'ajeno.md');
   for (const file of [...propios, ajeno]) fs.writeFileSync(file, 'x');
+
+  // Formato nuevo: cada plugin en su carpeta bajo skills/plugins/<id>.
+  const pluginSkillsDir = path.join(root, 'skills', 'plugins', id);
+  const nuevos = [
+    path.join(pluginSkillsDir, 'commands', 'commit.md'),
+    path.join(pluginSkillsDir, 'agents', 'helper.md'),
+  ];
+  for (const file of nuevos) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'x');
+  }
 
   fs.writeFileSync(
     manifestDe(id),
@@ -185,6 +198,12 @@ test('DELETE /api/plugins/:id borra las skills y agentes que copió el plugin', 
     assert.equal(fs.existsSync(file), false, `${path.basename(file)} debía borrarse`);
   }
   assert.equal(fs.existsSync(ajeno), true, 'un archivo que no era del plugin se queda');
+  assert.equal(fs.existsSync(pluginSkillsDir), false, 'la carpeta del plugin bajo skills/plugins se borra entera');
+  assert.equal(
+    fs.existsSync(path.join(root, 'skills', 'plugins')),
+    false,
+    'sin plugins instalados, la carpeta contenedora tampoco queda'
+  );
   assert.equal(fs.existsSync(path.join(pluginsDir(), id)), false, 'la copia del plugin se borra');
   assert.equal(fs.existsSync(manifestDe(id)), false, 'el manifiesto se borra');
   assert.ok((res.body.removed || []).length >= 4, 'la respuesta detalla lo borrado');

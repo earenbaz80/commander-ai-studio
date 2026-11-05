@@ -330,11 +330,18 @@ pluginMarketRouter.post('/install-from-marketplace', async (req, res) => {
 
       const slug = (classified.slug || name).toLowerCase().replace(/[^a-z0-9._-]+/g, '-');
       if (!slug) continue;
-      const targetDir = path.join(skillsRootDir(), classified.kind === 'agent' ? 'agents' : 'commands');
+      // Cada plugin en su propia carpeta bajo `skills/plugins/<id>/`: así no
+      // colisiona con las skills propias ni con otro plugin, y git puede
+      // ignorar `skills/plugins/` entero.
+      const targetDir = path.join(
+        skillsRootDir(),
+        'plugins',
+        name,
+        classified.kind === 'agent' ? 'agents' : 'commands'
+      );
       fs.mkdirSync(targetDir, { recursive: true });
 
-      let dest = path.join(targetDir, `${slug}.md`);
-      if (fs.existsSync(dest)) dest = path.join(targetDir, `${name}-${slug}.md`);
+      const dest = path.join(targetDir, `${slug}.md`);
 
       const summary =
         (file.text.match(/^---\r?\n[\s\S]*?^description\s*:\s*(.+)$/m)?.[1] || '').trim() ||

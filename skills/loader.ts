@@ -173,21 +173,47 @@ export async function loadSkill(filePath: string): Promise<Skill | null> {
   } as Skill;
 }
 
+/** Carpetas con las que se clasifica cada skill. */
+const SKILL_CATEGORIES = ['commands', 'agents', 'templates'] as const;
+
+/** Markdown de una carpeta, vacío si no existe. */
+function markdownFilesIn(dirPath: string): string[] {
+  if (!fs.existsSync(dirPath)) return [];
+  return fs
+    .readdirSync(dirPath)
+    .filter((file) => file.endsWith('.md'))
+    .map((file) => path.join(dirPath, file));
+}
+
 /**
  * Carga todos los skills del directorio `skills/`.
+ *
+ * Los plugins instalados viven cada uno en `skills/plugins/<id>/<categoría>/`,
+ * separados de las skills propias: así git puede ignorar `skills/plugins/`
+ * entero sin ocultar lo que sí forma parte del proyecto.
  */
 export async function loadAllSkills(): Promise<Skill[]> {
   const root = skillsRoot();
-  const skills: Skill[] = [];
-  const dirs = ['commands', 'agents', 'templates'];
-  for (const dir of dirs) {
-    const dirPath = path.join(root, dir);
-    if (!fs.existsSync(dirPath)) continue;
-    const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.md'));
-    for (const file of files) {
-      const skill = await loadSkill(path.join(dirPath, file));
-      if (skill) skills.push(skill);
+  const files: string[] = [];
+
+  for (const dir of SKILL_CATEGORIES) {
+    files.push(...markdownFilesIn(path.join(root, dir)));
+  }
+
+  const pluginsRoot = path.join(root, 'plugins');
+  if (fs.existsSync(pluginsRoot)) {
+    for (const entry of fs.readdirSync(pluginsRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      for (const dir of SKILL_CATEGORIES) {
+        files.push(...markdownFilesIn(path.join(pluginsRoot, entry.name, dir)));
+      }
     }
+  }
+
+  const skills: Skill[] = [];
+  for (const file of files) {
+    const skill = await loadSkill(file);
+    if (skill) skills.push(skill);
   }
   return skills;
 }
