@@ -977,7 +977,10 @@ app.delete('/api/providers/:id', (req, res) => {
 
 // Monta el router de MCP bajo /api/mcp
 import { mcpRouter } from './src/mcp/index.js';
+import { pluginMarketRouter } from './src/plugins/marketplace.js';
+import { uninstallInstalledPlugin } from './src/plugins/uninstall.js';
 app.use('/api/mcp', mcpRouter);
+app.use('/api/plugins', pluginMarketRouter);
 
 // ==================== PLUGINS ECOSISTEMA ====================
 // Rutas basicas para discovery, instalacion y listado de plugins.
@@ -999,19 +1002,45 @@ if (!fs.existsSync(path.join(pluginsRoot, PLUGINS_DIR))) {
   fs.mkdirSync(path.join(pluginsRoot, PLUGINS_DIR), { recursive: true });
 }
 
-// Listar plugins instalados
+// Listar plugins instalados: manifiestos (marketplace) y zips legados.
+// Los plugins del catálogo viven en `<id>.manifest.json`, no en un zip; al
+// ignorarlos la lista salía vacía y la UI no ofrecía desinstalarlos.
 app.get('/api/plugins', (req, res) => {
   try {
     const root = getPluginsRoot(req.query.root);
     const p = path.join(root, PLUGINS_DIR);
     if (!fs.existsSync(p)) return res.json({ success: true, plugins: [] });
-    const entries = fs.readdirSync(p).filter(f => f.endsWith('.zip'));
-    const plugins = entries.map(f => {
+
+    const files = fs.readdirSync(p);
+    const plugins: any[] = [];
+    for (const file of files) {
+      if (!file.endsWith('.manifest.json')) continue;
+      const fallbackId = file.replace(/\.manifest\.json$/, '');
       try {
-        const manifest = JSON.parse(fs.readFileSync(path.join(p, f), 'utf8'));
-        return { id: manifest.id, name: manifest.name, version: manifest.version, entr: manifest.entrypoint };
-      } catch { return { id: f.replace('.zip', ''), name: f, version: 'unknown' }; }
-    });
+        const manifest = JSON.parse(fs.readFileSync(path.join(p, file), 'utf8'));
+        plugins.push({
+          id: manifest.id || fallbackId,
+          name: manifest.name || fallbackId,
+          version: manifest.version ?? null,
+          source: manifest.source || 'marketplace',
+          marketplace: manifest.marketplace || null,
+          components: manifest.components || null,
+          installedAt: manifest.installedAt || null,
+        });
+      } catch {
+        plugins.push({ id: fallbackId, name: fallbackId, version: null, source: 'manifest' });
+      }
+    }
+
+    const listed = new Set(plugins.map((plugin) => plugin.id));
+    for (const file of files) {
+      if (!file.endsWith('.zip')) continue;
+      const id = file.replace(/\.zip$/, '');
+      if (listed.has(id)) continue;
+      plugins.push({ id, name: id, version: null, source: 'zip' });
+    }
+
+    plugins.sort((a, b) => String(a.name).localeCompare(String(b.name)));
     return res.json({ success: true, plugins });
   } catch (e: any) {
     return res.status(400).json({ success: false, error: e?.message || 'Error listando plugins' });
@@ -1069,17 +1098,15 @@ app.post('/api/plugins', async (req, res) => {
   }
 });
 
-// Desinstalar plugin
+// Desinstalar plugin: manifiesto, zip y lo que el plugin copió al proyecto
+// (skills, agentes y servidores MCP), según su manifiesto.
 app.delete('/api/plugins/:id', (req, res) => {
   try {
     const id = req.params.id;
     if (!isSafePluginId(id)) return res.status(400).json({ success: false, error: 'Id de plugin inválido' });
     const root = getPluginsRoot(req.query.root);
-    const zipPath = pluginPath(root, id, '.zip');
-    const manifestPath = pluginPath(root, id, '.manifest.json');
-    if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
-    if (fs.existsSync(manifestPath)) fs.unlinkSync(manifestPath);
-    return res.json({ success: true, id });
+    const result = uninstallInstalledPlugin(id, { root });
+    return res.json({ success: true, ...result });
   } catch (e: any) {
     return res.status(400).json({ success: false, error: e?.message || 'Error desinstalando plugin' });
   }

@@ -194,6 +194,154 @@ mcpRouter.post('/import', (req, res) => {
   }
 });
 
+// ==================== DESCUBRIMIENTO (registro público) ====================
+
+/**
+ * Búsqueda en el registro público de servidores MCP
+ * (registry.modelcontextprotocol.io). Se hace en el servidor y no en el
+ * navegador por CORS y para poder cachear: el registro no está pensado para
+ * una consulta por pulsación.
+ *
+ * Sólo son instalables los paquetes npm/pypi, porque la config de la app es
+ * stdio (`command` + `args`). Los servidores que sólo exponen un remoto
+ * HTTP/SSE se devuelven igual, marcados como no instalables.
+ */
+
+const REGISTRY_BASE = process.env.MCP_REGISTRY_URL || 'https://registry.modelcontextprotocol.io';
+const DISCOVER_TTL_MS = 60_000;
+const discoverCache = new Map<string, { at: number; body: unknown }>();
+
+/** El registro a veces tarda: 15 s y un reintento evitan un 502 pasajero. */
+const REGISTRY_TIMEOUT_MS = 15_000;
+
+async function fetchRegistryJson(url: string): Promise<any> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetch(url, {
+        headers: { accept: 'application/json' },
+        signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
+      });
+      if (!response.ok) throw new Error(`El registro respondió ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('red');
+}
+
+type DiscoveredServer = {
+  name: string;
+  title?: string;
+  description?: string;
+  version?: string;
+  installable: boolean;
+  command?: string;
+  args?: string[];
+  remoteUrl?: string;
+  repository?: string;
+};
+
+/** Traduce un paquete del registro a `command` + `args` de la config local. */
+function installFromPackage(pkg: any): { command: string; args: string[] } | null {
+  if (!pkg || typeof pkg !== 'object') return null;
+  const registryType = String(pkg.registryType || '').toLowerCase();
+  const identifier = String(pkg.identifier || '').trim();
+  if (!identifier) return null;
+
+  const positional: string[] = Array.isArray(pkg.packageArguments)
+    ? pkg.packageArguments
+        .filter((a: any) => a && typeof a.value === 'string' && (!a.type || a.type === 'positional'))
+        .map((a: any) => a.value)
+    : [];
+
+  const version = typeof pkg.version === 'string' && pkg.version ? pkg.version : '';
+
+  if (registryType === 'npm') {
+    return { command: 'npx', args: ['-y', version ? `${identifier}@${version}` : identifier, ...positional] };
+  }
+  if (registryType === 'pypi') {
+    return { command: 'uvx', args: [version ? `${identifier}==${version}` : identifier, ...positional] };
+  }
+  return null;
+}
+
+function normalizeRegistryServer(entry: any): DiscoveredServer | null {
+  const server = entry?.server ?? entry;
+  if (!server || typeof server.name !== 'string') return null;
+
+  const packages: any[] = Array.isArray(server.packages) ? server.packages : [];
+  let install: { command: string; args: string[] } | null = null;
+  for (const pkg of packages) {
+    install = installFromPackage(pkg);
+    if (install) break;
+  }
+
+  const remote = Array.isArray(server.remotes) ? server.remotes[0] : undefined;
+
+  return {
+    name: server.name,
+    title: typeof server.title === 'string' ? server.title : undefined,
+    description: typeof server.description === 'string' ? server.description : undefined,
+    version: typeof server.version === 'string' ? server.version : undefined,
+    installable: Boolean(install),
+    ...(install ? { command: install.command, args: install.args } : {}),
+    ...(remote?.url ? { remoteUrl: String(remote.url) } : {}),
+    ...(server.repository?.url ? { repository: String(server.repository.url) } : {}),
+  };
+}
+
+/**
+ * GET /discover?q=github&limit=12
+ * Devuelve servidores del registro público listos para añadir. Sin `q` lista
+ * los últimos publicados, para que la pestaña no arranque vacía.
+ */
+mcpRouter.get('/discover', async (req, res) => {
+  const q = String(req.query.q ?? '').trim();
+  const limit = Math.min(Math.max(Number(req.query.limit) || 12, 1), 50);
+
+  const key = `${q.toLowerCase()}:${limit}`;
+  const hit = discoverCache.get(key);
+  if (hit && Date.now() - hit.at < DISCOVER_TTL_MS) {
+    return res.json({ ...(hit.body as object), cached: true });
+  }
+
+  try {
+    const params = new URLSearchParams({ limit: String(limit), version: 'latest' });
+    if (q) params.set('search', q);
+    const data: any = await fetchRegistryJson(`${REGISTRY_BASE}/v0/servers?${params}`);
+    const results = (Array.isArray(data?.servers) ? data.servers : [])
+      .map(normalizeRegistryServer)
+      .filter((s: DiscoveredServer | null): s is DiscoveredServer => Boolean(s));
+
+    const body = {
+      success: true,
+      source: 'registry.modelcontextprotocol.io',
+      count: results.length,
+      nextCursor: data?.metadata?.nextCursor ?? null,
+      results,
+    };
+    discoverCache.set(key, { at: Date.now(), body });
+
+    // La caché no crece sin freno: sólo interesan las últimas búsquedas.
+    if (discoverCache.size > 50) {
+      const oldest = [...discoverCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+      if (oldest) discoverCache.delete(oldest[0]);
+    }
+
+    res.json(body);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[MCP] discover failed:', msg);
+    res.status(502).json({
+      success: false,
+      results: [],
+      error: `No se pudo consultar el registro (${msg})`,
+    });
+  }
+});
+
 // ==================== OAUTH (por servidor) ====================
 
 /**
