@@ -21,6 +21,8 @@ import { searchFiles } from '../utils/codeSearchApi';
 import { ChatMessage, ParameterConfig, StudioMode, RunMode } from '../types/studio';
 import { Language } from '../i18n/translations';
 import { ComposerToolbar } from './chat/ComposerToolbar';
+import { ContextMeter } from './chat/ContextMeter';
+import { applyEffort, type EffortLevel } from './chat/effortProfiles';
 import { MentionHelpModal } from './chat/MentionHelpModal';
 import { buildModelGroups, findModel } from './chat/modelGroups';
 import { useModelsCatalog } from '../data/modelsLoader';
@@ -29,6 +31,8 @@ export interface ChatPlaygroundProps {
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   parameters: ParameterConfig;
+  /** Cambia los ajustes de la sesión; sin él los perfiles de esfuerzo no aplican. */
+  setParameters?: React.Dispatch<React.SetStateAction<ParameterConfig>>;
   selectedModel: string;
   setSelectedModel: (model: string) => void;
   isGenerating: boolean;
@@ -52,6 +56,8 @@ export interface ChatPlaygroundProps {
 export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
   messages,
   setMessages,
+  parameters,
+  setParameters,
   selectedModel,
   setSelectedModel,
   isGenerating,
@@ -469,6 +475,20 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
             ))}
           </div>
         )}
+
+        {/* Contexto y esfuerzo: a la vista antes de escribir, como la barra de
+            estado del compositor. */}
+        <ContextMeter
+          messages={messages}
+          parameters={parameters}
+          model={currentModel}
+          lang={lang}
+          onChangeEffort={
+            setParameters
+              ? (level: EffortLevel) => setParameters((prev) => applyEffort(prev, level))
+              : undefined
+          }
+        />
 
         <div className="relative">
           <textarea
