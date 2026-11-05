@@ -26,6 +26,8 @@ import { applyEffort, type EffortLevel } from './chat/effortProfiles';
 import { MentionHelpModal } from './chat/MentionHelpModal';
 import { buildModelGroups, findModel } from './chat/modelGroups';
 import { useModelsCatalog } from '../data/modelsLoader';
+import { useDictation } from '../hooks/useDictation';
+import { mergeDictationText } from '../lib/dictation';
 
 export interface ChatPlaygroundProps {
   messages: ChatMessage[];
@@ -89,6 +91,12 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Dictado: escribe la instrucción hablada en el mensaje, no la envía sola.
+  const dictation = useDictation({
+    lang,
+    onText: (text) => setInputText((prev) => mergeDictationText(prev, text)),
+  });
 
   // Live App Viewer State
   const [isLiveViewerOpen, setIsLiveViewerOpen] = useState(false);
@@ -535,6 +543,10 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
           onOpenLocalLlmConfig={onOpenLocalLlmConfig}
           onOpenAdvanced={() => setPermsOpen(true)}
           onOpenMentionHelp={() => setHelpOpen(true)}
+          dictationState={dictation.state}
+          dictationSupported={dictation.supported}
+          dictationError={dictation.error}
+          onToggleDictation={dictation.toggle}
         />
       </div>
 

@@ -126,10 +126,10 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang, inl
     },
     {
       icon: <Radio className="w-4 h-4" />,
-      title: L('Voz en vivo (Gemini Live)', 'Live Voice (Gemini Live)'),
+      title: L('Dictado por voz en el chat', 'Voice dictation in chat'),
       desc: L(
-        'Streaming de audio bidireccional con micrófono y síntesis de voz en tiempo real.',
-        'Bidirectional audio streaming with microphone and real-time speech synthesis.'
+        'Habla al micrófono del compositor y tus instrucciones se transcriben al mensaje para revisarlas antes de enviar.',
+        'Speak into the composer microphone and your instructions are transcribed into the message so you can review them before sending.'
       ),
     },
     {
@@ -255,10 +255,10 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang, inl
     },
     {
       icon: <Radio className="w-4 h-4" />,
-      title: L('Multimodal & Voz en vivo', 'Multimodal & Live Voice'),
+      title: L('Multimodal y dictado por voz', 'Multimodal & voice dictation'),
       desc: L(
-        'Adjunta imágenes y audio, cuenta tokens en vivo y usa síntesis/reconocimiento de voz en tiempo real.',
-        'Attach images and audio, count live tokens, and use real-time speech synthesis/recognition.'
+        'Adjunta imágenes y audio, cuenta tokens en vivo y dicta instrucciones al compositor con el micrófono.',
+        'Attach images and audio, count live tokens, and dictate instructions into the composer with the microphone.'
       ),
     },
     {

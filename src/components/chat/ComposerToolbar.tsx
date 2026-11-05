@@ -16,6 +16,9 @@ import {
   HelpCircle,
   Cpu,
   AlertTriangle,
+  Mic,
+  MicOff,
+  Loader2,
 } from 'lucide-react';
 import { getCachedApiKey } from '../../lib/apiKeys';
 import type { Language } from '../../i18n/translations';
@@ -65,6 +68,11 @@ interface ComposerToolbarProps {
   onOpenLocalLlmConfig?: () => void;
   onOpenAdvanced: () => void;
   onOpenMentionHelp: () => void;
+  /** Dictado por voz: graba y escribe la transcripción en el mensaje. */
+  dictationState?: 'idle' | 'recording' | 'transcribing';
+  dictationSupported?: boolean;
+  dictationError?: string;
+  onToggleDictation?: () => void;
 }
 
 export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
@@ -86,6 +94,10 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   onOpenLocalLlmConfig,
   onOpenAdvanced,
   onOpenMentionHelp,
+  dictationState = 'idle',
+  dictationSupported = false,
+  dictationError = '',
+  onToggleDictation,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -158,6 +170,59 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           className="hidden"
           accept="image/*,.pdf,.txt,.md,.json,.js,.ts,.tsx,.jsx,.html,.css"
         />
+
+      {/* Dictado: la voz sirve para escribir la instrucción, no para responder
+          por audio. La transcripción se inserta en el mensaje y se revisa. */}
+      {dictationSupported && onToggleDictation && (
+        <button
+          type="button"
+          onClick={onToggleDictation}
+          disabled={isGenerating || dictationState === 'transcribing'}
+          aria-label={
+            dictationState === 'recording'
+              ? lang === 'es' ? 'Detener dictado' : lang === 'de' ? 'Diktat stoppen' : 'Stop dictation'
+              : lang === 'es' ? 'Dictar por voz' : lang === 'de' ? 'Per Sprache diktieren' : 'Dictate by voice'
+          }
+          aria-pressed={dictationState === 'recording'}
+          title={
+            dictationState === 'recording'
+              ? lang === 'es'
+                ? 'Grabando… pulsa para transcribir al mensaje'
+                : lang === 'de'
+                  ? 'Aufnahme… klicken, um in die Nachricht zu übertragen'
+                  : 'Recording… click to transcribe into the message'
+              : dictationState === 'transcribing'
+                ? lang === 'es' ? 'Transcribiendo…' : lang === 'de' ? 'Transkribiere…' : 'Transcribing…'
+                : lang === 'es'
+                  ? 'Dictar al mensaje con el micrófono'
+                  : lang === 'de'
+                    ? 'Nachricht per Mikrofon diktieren'
+                    : 'Dictate into the message with the microphone'
+          }
+          className={`shrink-0 p-2 border rounded transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            dictationState === 'recording'
+              ? 'bg-red-600 border-red-400 text-white animate-pulse'
+              : 'bg-[var(--nc-bg-panel)] border-cyan-400/40 text-cyan-400 hover:bg-[var(--nc-bg-hover)]'
+          }`}
+        >
+          {dictationState === 'recording' ? (
+            <MicOff className="w-3.5 h-3.5" />
+          ) : dictationState === 'transcribing' ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Mic className="w-3.5 h-3.5" />
+          )}
+        </button>
+      )}
+      {dictationError && (
+        <span
+          role="status"
+          title={dictationError}
+          className="min-w-0 max-w-[18rem] truncate rounded border border-red-500/50 bg-red-500/10 px-2 py-1 text-[10px] text-red-300"
+        >
+          {dictationError}
+        </span>
+      )}
 
       {/* Selector de modelo con búsqueda por proveedor y modelo */}
       <ModelPicker

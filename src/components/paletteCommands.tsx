@@ -9,7 +9,6 @@ import {
   Code2,
   Columns,
   Bot,
-  Radio,
   Cpu,
   BarChart3,
   Plus,
@@ -93,7 +92,6 @@ export function buildPaletteCommands(opts: PaletteCommandsOptions): CommandItem[
     { id: 'mode-composer', label: L('Composer multi-archivo', 'Multi-file Composer'), group: L('Modos', 'Modes'), hint: activeHint('composer'), keywords: 'composer codigo diffs multiarchivo', icon: <Code2 className={ico} />, run: () => setMode('composer') },
     { id: 'mode-compare', label: L('Comparar modelos', 'Compare models'), group: L('Modos', 'Modes'), hint: activeHint('compare'), keywords: 'comparar modelos paralelo', icon: <Columns className={ico} />, run: () => setMode('compare') },
     { id: 'mode-agent', label: L('Agente autónomo', 'Autonomous agent'), group: L('Modos', 'Modes'), hint: activeHint('agent'), keywords: 'agente agent tools autonomo', icon: <Bot className={ico} />, run: () => setMode('agent') },
-    { id: 'mode-voice', label: L('Voz en vivo', 'Live voice'), group: L('Modos', 'Modes'), hint: activeHint('live_voice'), keywords: 'voz voice audio live gemini', icon: <Radio className={ico} />, run: () => setMode('live_voice') },
     { id: 'mode-hf', label: L('Modelos locales (Hugging Face)', 'Local models (Hugging Face)'), group: L('Modos', 'Modes'), hint: activeHint('huggingface'), keywords: 'huggingface local onnx modelos', icon: <Cpu className={ico} />, run: () => setMode('huggingface') },
     { id: 'mode-telemetry', label: L('Telemetría y rendimiento', 'Telemetry & performance'), group: L('Modos', 'Modes'), hint: activeHint('telemetry'), keywords: 'telemetria metricas rendimiento tokens', icon: <BarChart3 className={ico} />, run: () => setMode('telemetry') },
     // Herramientas
