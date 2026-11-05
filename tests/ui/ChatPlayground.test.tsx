@@ -242,8 +242,9 @@ describe('ChatPlayground', () => {
   describe('selector de modelo', () => {
     test('muestra el modelo actual seleccionado', () => {
       render(<ChatPlayground {...baseProps()} />);
-      const selector = screen.getByLabelText('Modelo que se usará para responder') as HTMLSelectElement;
-      expect(selector.value).toBe('gemini-3.5-flash');
+      const selector = screen.getByLabelText('Modelo que se usará para responder');
+      expect(selector).toHaveTextContent('Gemini 3.5 Flash');
+      expect(selector).toHaveAttribute('aria-expanded', 'false');
     });
 
     test('el icono de ayuda va antes del botón de adjuntar', () => {
@@ -297,31 +298,41 @@ describe('ChatPlayground', () => {
 
     test('agrupa los modelos por proveedor', () => {
       render(<ChatPlayground {...baseProps()} />);
-      const groups = Array.from(document.querySelectorAll('optgroup')).map((g) => g.getAttribute('label'));
+      fireEvent.click(screen.getByLabelText('Modelo que se usará para responder'));
+      const groups = screen.getAllByRole('group').map((g) => g.getAttribute('aria-label'));
       expect(groups).toContain('Google Gemini');
       expect(groups).toContain('OpenRouter');
       expect(groups).toContain('HuggingFace (Local)');
       expect(groups).toContain('Ollama (Local)');
     });
 
-    test('cambiar el modelo llama a setSelectedModel', () => {
+    test('elegir un modelo en el panel llama a setSelectedModel', () => {
       const props = baseProps();
       render(<ChatPlayground {...props} />);
-      const selector = screen.getByLabelText('Modelo que se usará para responder');
-      fireEvent.change(selector, { target: { value: 'ollama/llama3.2' } });
+      fireEvent.click(screen.getByLabelText('Modelo que se usará para responder'));
+      fireEvent.change(screen.getByLabelText('Buscar modelo o proveedor'), { target: { value: 'llama3.2' } });
+      fireEvent.click(screen.getByRole('option', { name: /Llama 3.2/ }));
       expect(props.setSelectedModel).toHaveBeenCalledWith('ollama/llama3.2');
     });
 
     test('un modelo fuera del catálogo se muestra igual', () => {
       render(<ChatPlayground {...baseProps()} selectedModel="mi-modelo-local-descargado" />);
-      const selector = screen.getByLabelText('Modelo que se usará para responder') as HTMLSelectElement;
-      expect(selector.value).toBe('mi-modelo-local-descargado');
-      expect(screen.getByText('mi-modelo-local-descargado')).toBeInTheDocument();
+      const selector = screen.getByLabelText('Modelo que se usará para responder');
+      expect(selector).toHaveTextContent('mi-modelo-local-descargado');
     });
 
     test('cada opción muestra el nombre del modelo (con su badge)', () => {
       render(<ChatPlayground {...baseProps()} />);
-      expect(screen.getByRole('option', { name: 'Gemini 3.5 Flash · Flash 2026' })).toBeInTheDocument();
+      fireEvent.click(screen.getByLabelText('Modelo que se usará para responder'));
+      expect(screen.getByRole('option', { name: /Gemini 3.5 Flash · Flash 2026/ })).toBeInTheDocument();
+    });
+
+    test('el panel busca por proveedor', () => {
+      render(<ChatPlayground {...baseProps()} />);
+      fireEvent.click(screen.getByLabelText('Modelo que se usará para responder'));
+      fireEvent.change(screen.getByLabelText('Buscar modelo o proveedor'), { target: { value: 'ollama' } });
+      expect(screen.getByRole('option', { name: /Llama 3.2/ })).toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: /Gemini 3.5 Flash/ })).toBeNull();
     });
   });
 
