@@ -1,4 +1,5 @@
 import { getCachedApiKey } from './lib/apiKeys';
+import { logoutUser } from './lib/firebase';
 
 import { resolveChatRoute } from './lib/aiRouting';
 import { detectProvider } from './lib/aiProviders';
@@ -1272,6 +1273,10 @@ export default function App() {
             if (!currentUser) identity.reopen();
             else setIsAuthModalOpen(true);
           }}
+        onLogout={async () => {
+          await logoutUser();
+          setIsAuthModalOpen(false);
+        }}
         currentUser={currentUser}
         guestName={identity.guestName}
         promptTitle={promptTitle}

@@ -3,7 +3,7 @@
  * y el color rojo del icono de cerrar.
  */
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { Header } from '../../src/components/Header';
 
 const baseProps = () => ({
@@ -14,6 +14,7 @@ const baseProps = () => ({
   onToggleSidebar: vi.fn(),
   onToggleWorkbench: vi.fn(),
   onOpenAuth: vi.fn(),
+  onLogout: vi.fn(),
   currentUser: null,
   promptTitle: 'Nuevo prompt',
   lang: 'es' as const,
@@ -79,6 +80,65 @@ describe('Header', () => {
     });
   });
 
+  describe('menú de usuario', () => {
+    test('muestra perfil, cuenta y cierre de sesión', () => {
+      const onOpenAuth = vi.fn();
+      const onLogout = vi.fn();
+      render(
+        <Header
+          {...baseProps()}
+          currentUser={{ displayName: 'Edel', email: 'edel@example.com' }}
+          onOpenAuth={onOpenAuth}
+          onLogout={onLogout}
+        />
+      );
+
+      const trigger = screen.getByLabelText('Cuenta de usuario');
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      fireEvent.click(trigger);
+
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      const menu = screen.getByRole('menu', { name: 'Menú de usuario' });
+      expect(within(menu).getByText('Edel')).toBeInTheDocument();
+      expect(within(menu).getByText('edel@example.com')).toBeInTheDocument();
+      expect(within(menu).getByText('Cuenta conectada')).toBeInTheDocument();
+
+      fireEvent.click(within(menu).getByRole('menuitem', { name: 'Cuenta' }));
+      expect(onOpenAuth).toHaveBeenCalledOnce();
+      expect(screen.queryByRole('menu')).toBeNull();
+
+      fireEvent.click(trigger);
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Cerrar sesión' }));
+      expect(onLogout).toHaveBeenCalledOnce();
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    test('como invitado ofrece acceso y no muestra cerrar sesión', () => {
+      const onOpenAuth = vi.fn();
+      render(<Header {...baseProps()} onOpenAuth={onOpenAuth} />);
+
+      fireEvent.click(screen.getByLabelText('Cuenta de usuario'));
+      const menu = screen.getByRole('menu', { name: 'Menú de usuario' });
+      expect(within(menu).getByText('Sesión de invitado')).toBeInTheDocument();
+      expect(within(menu).queryByRole('menuitem', { name: 'Cerrar sesión' })).toBeNull();
+
+      fireEvent.click(within(menu).getByRole('menuitem', { name: 'Iniciar sesión o registrarse' }));
+      expect(onOpenAuth).toHaveBeenCalledOnce();
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    test('se cierra con Escape y devuelve el foco al botón', () => {
+      render(<Header {...baseProps()} />);
+      const trigger = screen.getByLabelText('Cuenta de usuario');
+      fireEvent.click(trigger);
+
+      fireEvent.keyDown(document, { key: 'Escape' });
+
+      expect(screen.queryByRole('menu')).toBeNull();
+      expect(trigger).toHaveFocus();
+    });
+  });
+
   describe('configuración directa', () => {
     test('abre Configuración sin un menú intermedio', () => {
       const onOpenPreferences = vi.fn();
@@ -95,7 +155,7 @@ describe('Header', () => {
       const account = screen.getByLabelText('Cuenta de usuario');
       const settings = screen.getByLabelText('Abrir configuración');
 
-      const spacer = account.nextElementSibling;
+      const spacer = account.parentElement?.nextElementSibling;
       expect(spacer).toHaveAttribute('aria-hidden', 'true');
       expect(spacer?.className).toContain('w-1.5');
       expect(spacer?.nextElementSibling).toBe(settings);
