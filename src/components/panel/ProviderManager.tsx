@@ -131,6 +131,8 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
   const [detectingModels, setDetectingModels] = useState(false);
   /** Aviso de compatibilidad pendiente de confirmar antes de guardar. */
   const [addCheck, setAddCheck] = useState<AddCheck | null>(null);
+  /** Búsqueda dentro de los modelos de cada proveedor. */
+  const [modelQuery, setModelQuery] = useState<Record<string, string>>({});
 
   const t = useCallback(
     (es: string, en: string, de: string) => (lang === 'es' ? es : lang === 'de' ? de : en),
@@ -780,6 +782,14 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
             const open = openId === provider.id;
             const result = testResults[provider.id];
             const isBusy = busy === provider.id;
+            const modelSearch = (modelQuery[provider.id] ?? '').trim().toLowerCase();
+            const visibleModels = modelSearch
+              ? provider.allModels.filter(
+                  (model) =>
+                    model.name.toLowerCase().includes(modelSearch) ||
+                    model.id.toLowerCase().includes(modelSearch)
+                )
+              : provider.allModels;
             return (
               <div key={provider.id} className="border border-[var(--nc-border-dark)] bg-[var(--nc-bg-panel)]">
                 <button
@@ -1015,8 +1025,30 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                           <span>{t('Modelos en el chat: actívalos o apágalos', 'Models in chat: enable or disable them', 'Modelle im Chat: aktivieren oder deaktivieren')}</span>
                           <span className="shrink-0 tabular-nums text-[var(--nc-text-accent)]">{provider.modelCount}/{provider.allModels.length}</span>
                         </div>
+                        <div className="mt-1 flex items-center gap-1 border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] px-1">
+                          <Search className="h-3 w-3 shrink-0 text-[var(--nc-text)]" aria-hidden="true" />
+                          <input
+                            value={modelQuery[provider.id] ?? ''}
+                            onChange={(event) =>
+                              setModelQuery((prev) => ({ ...prev, [provider.id]: event.target.value }))
+                            }
+                            placeholder={t('Buscar modelo…', 'Search model…', 'Modell suchen…')}
+                            aria-label={`${t('Buscar modelos de', 'Search models in', 'Modelle suchen in')} ${provider.name}`}
+                            className="w-full bg-transparent py-0.5 text-[10px] text-[var(--nc-text)] outline-none"
+                          />
+                          {(modelQuery[provider.id] ?? '') && (
+                            <button
+                              type="button"
+                              onClick={() => setModelQuery((prev) => ({ ...prev, [provider.id]: '' }))}
+                              aria-label={t('Limpiar búsqueda', 'Clear search', 'Suche löschen')}
+                              className="shrink-0 p-0.5 text-[var(--nc-text)] hover:text-[var(--nc-text-accent)]"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
                         <div className="mt-1 max-h-48 divide-y divide-[var(--nc-border-dark)] overflow-auto border border-[var(--nc-border-dark)]">
-                          {provider.allModels.map((model) => {
+                          {visibleModels.map((model) => {
                             const enabled = !isModelDisabledByFilter(model.id, {
                               whitelist: provider.whitelist,
                               blacklist: provider.blacklist,
@@ -1060,6 +1092,11 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                               </div>
                             );
                           })}
+                          {visibleModels.length === 0 && (
+                            <div className="px-1.5 py-1 text-[10px] text-[var(--nc-text-dim)]">
+                              {t('Ningún modelo coincide', 'No model matches', 'Kein Modell passt')}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

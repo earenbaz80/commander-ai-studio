@@ -55,6 +55,24 @@ describe('ProviderManager: modelos activables', () => {
     expect(screen.getByText('desactivado')).toBeTruthy();
   });
 
+  test('filtra los modelos del proveedor por nombre o id', async () => {
+    render(<ProviderManager embedded lang="es" />);
+    await screen.findByText('Groq');
+    fireEvent.click(screen.getByText('Groq'));
+
+    const buscador = screen.getByLabelText('Buscar modelos de Groq');
+    fireEvent.change(buscador, { target: { value: 'b' } });
+    expect(screen.queryByText('model-a')).toBeNull();
+    expect(screen.getByText('model-b')).toBeInTheDocument();
+
+    fireEvent.change(buscador, { target: { value: 'zzz' } });
+    expect(screen.getByText('Ningún modelo coincide')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Limpiar búsqueda'));
+    expect(screen.getByText('model-a')).toBeInTheDocument();
+    expect(screen.getByText('model-b')).toBeInTheDocument();
+  });
+
   test('avisa y espera confirmación antes de añadir un endpoint no compatible', async () => {
     const cuerpos: any[] = [];
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
