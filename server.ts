@@ -41,7 +41,7 @@ import skillsRouter from './skills/api';
 import { forkSessionWorkspace, deleteSessionWorkspace, listSessions, createGitWorktree } from './sessionWorkspace';
 import { handleOAuthLogin, handleOAuthCallback, handleLogout, getCurrentUser } from './oauth';
 import { executeWithFallback, getProviderMetrics, checkAllProvidersHealth, resetCircuitBreaker, setProviderEnabled } from './fallbackRouter';
-import { GEMINI_DEFAULT_MODEL } from './src/config/geminiModels';
+import { GEMINI_DEFAULT_MODEL, isDeprecatedGeminiModel } from './src/config/geminiModels';
 import { handleFreebuffGenerate } from './freebuff';
 import { listProjectPrompts } from './promptsApi';
 import { normalizeLmStudioHost, parseLmStudioModels } from './src/lib/lmStudio';
@@ -2853,7 +2853,9 @@ app.get('/api/models/live', async (req, res) => {
         knowledgeCutoff: m.knowledge_cutoff,
         releaseDate: m.release_date,
         tags: m.tags,
-        deprecated: m.deprecated,
+        // models.dev no marca los Gemini retirados: se completa aquí para que
+        // el selector los etiquete en vez de ofrecerlos como actuales.
+        deprecated: m.deprecated === true || (m.provider === 'google' && isDeprecatedGeminiModel(m.id)),
       })),
       ...ollamaList,
       ...lmstudioModels,
