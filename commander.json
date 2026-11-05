@@ -4,6 +4,9 @@
     "google": {
       "defaultModel": "gemini-3.5-flash",
       "toolsMemoryTtlMinutes": 30
+    },
+    "lmstudio": {
+      "host": "http://192.168.178.77:1234/v1"
     }
   },
   "tools": {
