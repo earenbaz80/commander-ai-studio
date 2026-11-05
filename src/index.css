@@ -228,16 +228,19 @@
   }
 }
 
-/* ===== Procesando: Nono acompaña la espera con un gesto propio ===== */
-/* Se superpone a las animaciones de reposo: el personaje deja de flotar y
-   pasa a mecerse con más ritmo mientras el chat o el agente trabajan. */
-@keyframes nono-work {
-  0%, 100% { translate: 0 0; rotate: 0deg; }
-  30%      { translate: 0 -9px; rotate: -2deg; }
-  70%      { translate: 0 -5px; rotate: 2deg; }
+/* ===== Procesando: la pantalla de la cara muestra el trabajo ===== */
+/* El cuerpo mantiene su flotación; la señal de proceso vive dentro de la
+   pantalla, como un indicador que gira sobre el cristal. */
+@keyframes nono-face-spin {
+  to { transform: rotate(360deg); }
 }
-.nono-busy svg {
-  animation: nono-work 1.2s ease-in-out infinite;
+.nono-face-process {
+  animation: nono-face-spin 2.4s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.nono-busy .nono-face-screen {
+  filter: drop-shadow(0 0 4px rgba(0, 255, 255, 0.45));
 }
 
 /* Chip de puntos junto a la cabeza: se lee incluso sin la frase flotante. */
@@ -268,8 +271,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root:not(.nono-force-motion) .nono-busy svg {
-    animation: nono-breathe 3s ease-in-out infinite;
+  :root:not(.nono-force-motion) .nono-face-process {
+    animation: none;
   }
   :root:not(.nono-force-motion) .nono-work-dot {
     animation: none;
