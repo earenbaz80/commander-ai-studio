@@ -67,6 +67,7 @@ interface ComposerToolbarProps {
   dictationState?: 'idle' | 'recording' | 'transcribing';
   dictationSupported?: boolean;
   dictationError?: string;
+  dictationSeconds?: number;
   onToggleDictation?: () => void;
 }
 
@@ -92,6 +93,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   dictationState = 'idle',
   dictationSupported = false,
   dictationError = '',
+  dictationSeconds = 0,
   onToggleDictation,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -207,6 +209,29 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
             <Mic className="w-3.5 h-3.5" />
           )}
         </button>
+      )}
+      {dictationState === 'recording' && (
+        <span
+          role="status"
+          aria-live="polite"
+          className="flex min-w-0 items-center gap-1 rounded border border-red-500/50 bg-red-500/10 px-2 py-1 text-[10px] text-red-200"
+        >
+          <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-red-400" aria-hidden="true" />
+          <span className="truncate">
+            {lang === 'es'
+              ? `Grabando ${dictationSeconds}s…`
+              : lang === 'de'
+                ? `Aufnahme ${dictationSeconds}s…`
+                : `Recording ${dictationSeconds}s…`}
+          </span>
+          <span className="hidden text-red-200/70 sm:inline">
+            {lang === 'es'
+              ? '· pulsa el micro para transcribir'
+              : lang === 'de'
+                ? '· Mikrofon zum Übertragen drücken'
+                : '· tap the mic to transcribe'}
+          </span>
+        </span>
       )}
       {dictationError && (
         <span

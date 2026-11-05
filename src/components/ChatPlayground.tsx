@@ -546,6 +546,7 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
           dictationState={dictation.state}
           dictationSupported={dictation.supported}
           dictationError={dictation.error}
+          dictationSeconds={dictation.seconds}
           onToggleDictation={dictation.toggle}
         />
       </div>
