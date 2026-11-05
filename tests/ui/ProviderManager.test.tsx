@@ -14,7 +14,7 @@ const provider = {
   source: 'file',
   models: [model('model-a'), model('model-b')],
   allModels: [model('model-a'), model('model-b')],
-  modelCount: 2,
+  modelCount: 1,
   totalModels: 2,
   enabled: true,
   whitelist: [],
@@ -139,5 +139,81 @@ describe('ProviderManager: modelos activables', () => {
         })
       );
     });
+  });
+
+  /** Simula un servidor que aplica el PATCH y devuelve el proveedor actualizado. */
+  const useMutableProvider = () => {
+    let currentProvider = {
+      ...provider,
+      models: [...provider.models],
+      allModels: [...provider.allModels],
+      whitelist: [...provider.whitelist] as string[],
+      blacklist: [...provider.blacklist],
+    };
+
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const target = String(url);
+      if (target.endsWith('/api/providers') && (!init || init.method === undefined)) {
+        return json({ success: true, providers: [currentProvider], writePath: '/tmp/config.json' });
+      }
+      if (target.endsWith('/api/providers/groq') && init?.method === 'PATCH') {
+        const patch = JSON.parse(String(init.body || '{}')) as {
+          whitelist: string[];
+          blacklist: string[];
+        };
+        const enabledModels = currentProvider.allModels.filter((item) => {
+          if (patch.blacklist.includes(item.id)) return false;
+          return patch.whitelist.length === 0 || patch.whitelist.includes(item.id);
+        });
+        currentProvider = {
+          ...currentProvider,
+          ...patch,
+          models: enabledModels,
+          modelCount: enabledModels.length,
+        };
+        return json({ success: true });
+      }
+      return json({ success: true });
+    });
+
+    return () => currentProvider;
+  };
+
+  test('activa todos los modelos del proveedor de una vez', async () => {
+    const getProvider = useMutableProvider();
+    render(<ProviderManager embedded lang="es" />);
+    await screen.findByText('Groq');
+    fireEvent.click(screen.getByText('Groq'));
+
+    const activarTodos = screen.getByRole('button', { name: 'Activar todos los modelos de Groq' });
+    expect(activarTodos).toBeEnabled();
+    fireEvent.click(activarTodos);
+
+    await waitFor(() => {
+      expect(screen.getByRole('switch', { name: 'Desactivar: model-b' })).toHaveAttribute('aria-checked', 'true');
+    });
+    expect(getProvider().whitelist).toEqual([]);
+    expect(getProvider().blacklist).toEqual([]);
+    expect(await screen.findByText('Groq: todos los modelos activados')).toBeInTheDocument();
+  });
+
+  test('desactiva todos los modelos del proveedor de una vez', async () => {
+    const getProvider = useMutableProvider();
+    render(<ProviderManager embedded lang="es" />);
+    await screen.findByText('Groq');
+    fireEvent.click(screen.getByText('Groq'));
+
+    const desactivarTodos = screen.getByRole('button', { name: 'Desactivar todos los modelos de Groq' });
+    expect(desactivarTodos).toBeEnabled();
+    fireEvent.click(desactivarTodos);
+
+    await waitFor(() => {
+      expect(screen.getByRole('switch', { name: 'Activar: model-a' })).toHaveAttribute('aria-checked', 'false');
+      expect(screen.getByRole('switch', { name: 'Activar: model-b' })).toHaveAttribute('aria-checked', 'false');
+    });
+    expect(getProvider().whitelist).toEqual([]);
+    expect(getProvider().blacklist).toEqual(['model-a', 'model-b']);
+    expect(await screen.findByText('Groq: todos los modelos desactivados')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Desactivar todos los modelos de Groq' })).toBeDisabled();
   });
 });

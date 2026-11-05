@@ -498,6 +498,54 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
     if (ok) window.dispatchEvent(new Event(PROVIDER_FILTERS_CHANGED));
   };
 
+  /** Activa o apaga de golpe todo el catálogo, no solo lo visible por la búsqueda. */
+  const setAllModelsEnabled = async (provider: ProviderEntry, enabled: boolean) => {
+    if (provider.allModels.length === 0) return;
+    const next = enabled
+      ? { whitelist: [], blacklist: [] }
+      : { whitelist: [], blacklist: provider.allModels.map((model) => model.id) };
+
+    setFilterDraft((prev) => ({
+      ...prev,
+      [provider.id]: { whitelist: next.whitelist.join(', '), blacklist: next.blacklist.join(', ') },
+    }));
+    // Optimista: la lista responde al clic; `patchProvider` recarga al guardar.
+    setProviders((prev) =>
+      prev.map((item) =>
+        item.id === provider.id
+          ? {
+              ...item,
+              whitelist: next.whitelist,
+              blacklist: next.blacklist,
+              models: enabled ? [...item.allModels] : [],
+              modelCount: enabled ? item.allModels.length : 0,
+            }
+          : item
+      )
+    );
+
+    const ok = await patchProvider(provider, next);
+    if (!ok) {
+      // Si el PATCH falla, no dejamos la lista mostrando un estado que no se guardó.
+      setProviders((prev) => prev.map((item) => (item.id === provider.id ? provider : item)));
+      setFilterDraft((prev) => ({
+        ...prev,
+        [provider.id]: {
+          whitelist: provider.whitelist.join(', '),
+          blacklist: provider.blacklist.join(', '),
+        },
+      }));
+      return;
+    }
+
+    window.dispatchEvent(new Event(PROVIDER_FILTERS_CHANGED));
+    setNotice(
+      enabled
+        ? t(`${provider.name}: todos los modelos activados`, `${provider.name}: all models enabled`, `${provider.name}: alle Modelle aktiviert`)
+        : t(`${provider.name}: todos los modelos desactivados`, `${provider.name}: all models disabled`, `${provider.name}: alle Modelle deaktiviert`)
+    );
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return providers;
@@ -1024,6 +1072,38 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                         <div className="flex items-center justify-between gap-2 text-[9px] text-[var(--nc-text)]">
                           <span>{t('Modelos en el chat: actívalos o apágalos', 'Models in chat: enable or disable them', 'Modelle im Chat: aktivieren oder deaktivieren')}</span>
                           <span className="shrink-0 tabular-nums text-[var(--nc-text-accent)]">{provider.modelCount}/{provider.allModels.length}</span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => void setAllModelsEnabled(provider, true)}
+                            disabled={isBusy || provider.modelCount >= provider.allModels.length}
+                            aria-label={`${t('Activar todos los modelos de', 'Enable all models in', 'Alle Modelle aktivieren in')} ${provider.name}`}
+                            title={t(
+                              'Incluye los modelos ocultos por la búsqueda',
+                              'Includes models hidden by the search',
+                              'Schließt durch die Suche ausgeblendete Modelle ein'
+                            )}
+                            className="nc-button !px-1.5 !py-0.5 text-[9px] font-bold bg-[var(--nc-bg-panel)] text-emerald-300 border-emerald-400 flex items-center gap-1 disabled:opacity-40"
+                          >
+                            <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                            {t('Activar todos', 'Enable all', 'Alle aktivieren')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void setAllModelsEnabled(provider, false)}
+                            disabled={isBusy || provider.modelCount === 0}
+                            aria-label={`${t('Desactivar todos los modelos de', 'Disable all models in', 'Alle Modelle deaktivieren in')} ${provider.name}`}
+                            title={t(
+                              'Incluye los modelos ocultos por la búsqueda',
+                              'Includes models hidden by the search',
+                              'Schließt durch die Suche ausgeblendete Modelle ein'
+                            )}
+                            className="nc-button !px-1.5 !py-0.5 text-[9px] font-bold bg-[var(--nc-bg-panel)] text-red-300 border-red-400 flex items-center gap-1 disabled:opacity-40"
+                          >
+                            <X className="h-3 w-3" aria-hidden="true" />
+                            {t('Desactivar todos', 'Disable all', 'Alle deaktivieren')}
+                          </button>
                         </div>
                         <div className="mt-1 flex items-center gap-1 border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] px-1">
                           <Search className="h-3 w-3 shrink-0 text-[var(--nc-text)]" aria-hidden="true" />
