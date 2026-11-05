@@ -164,6 +164,7 @@ export const ShortcutsConfigSchema = z.record(z.string(), z.string()).default({
   sidebar: 'Ctrl+B',
   newPrompt: 'Ctrl+Alt+N',
   workbench: 'Ctrl+Alt+B',
+  contextMeter: 'Ctrl+Alt+M',
   saveVersion: 'Ctrl+S',
   compiler: 'Ctrl+Alt+C',
   newTab: 'Ctrl+T',

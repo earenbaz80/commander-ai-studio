@@ -96,6 +96,18 @@ describe('ContextMeter', () => {
     expect(screen.getByRole('button', { name: 'Potente' })).toBeInTheDocument();
   });
 
+  test('el atajo global pliega y despliega la barra', () => {
+    render(<ContextMeter messages={messages} parameters={params} model={model} lang="es" />);
+
+    fireEvent(window, new Event('commander:toggle-context-meter'));
+    expect(screen.getByLabelText('Mostrar barra de contexto')).toBeInTheDocument();
+    expect(localStorage.getItem('commander_context_meter_collapsed')).toBe('1');
+
+    fireEvent(window, new Event('commander:toggle-context-meter'));
+    expect(screen.getByLabelText('Plegar barra de contexto')).toBeInTheDocument();
+    expect(localStorage.getItem('commander_context_meter_collapsed')).toBe('0');
+  });
+
   test('sin callback los perfiles quedan desactivados', () => {
     render(<ContextMeter messages={[]} parameters={params} model={model} lang="es" />);
     expect((screen.getByRole('button', { name: 'Rápido' }) as HTMLButtonElement).disabled).toBe(true);

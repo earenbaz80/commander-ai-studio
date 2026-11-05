@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Keyboard, Sidebar, Save, Plus, Hammer, HelpCircle, Search, PanelRight, SlidersHorizontal, Layers, Send, ShieldCheck, TerminalSquare } from 'lucide-react';
+import { X, Keyboard, Sidebar, Save, Plus, Hammer, HelpCircle, Search, PanelRight, SlidersHorizontal, Layers, Activity, Send, ShieldCheck, TerminalSquare } from 'lucide-react';
 import { Language } from '../i18n/translations';
 
 interface KeyboardShortcutsModalProps {
@@ -51,6 +51,12 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
       cmdKeys: ['⌘', '⌥', 'B'],
       action: lang === 'es' ? 'Mostrar / ocultar el Workbench' : lang === 'de' ? 'Workbench-Panel umschalten' : 'Toggle the Workbench panel',
       icon: <PanelRight className="w-4 h-4 text-[var(--nc-text)]" />,
+    },
+    {
+      keys: ['Ctrl', 'Alt', 'M'],
+      cmdKeys: ['⌘', '⌥', 'M'],
+      action: lang === 'es' ? 'Mostrar / ocultar la barra de contexto del chat' : lang === 'de' ? 'Kontextleiste des Chats umschalten' : 'Toggle the chat context bar',
+      icon: <Activity className="w-4 h-4 text-[var(--nc-text-accent)]" />,
     },
     {
       keys: ['Ctrl', '`'],

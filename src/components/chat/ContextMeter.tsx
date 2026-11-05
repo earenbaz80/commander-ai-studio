@@ -31,6 +31,7 @@ const effortLabels: Record<EffortLevel, { es: string; en: string; de: string }> 
 };
 
 const CONTEXT_METER_COLLAPSED_KEY = 'commander_context_meter_collapsed';
+const CONTEXT_METER_TOGGLE_EVENT = 'commander:toggle-context-meter';
 
 const readCollapsed = (): boolean => {
   try {
@@ -87,16 +88,24 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
     `Kontext: ${stats.percent === null ? 'Fenster unbekannt' : `${percent}%`} · geschätzt ${formatTokens(stats.totalTokens)} Token aus ${stats.messages} Nachricht(en)`
   );
 
-  const toggleCollapsed = () => {
-    const next = !collapsed;
-    setCollapsed(next);
-    if (next) setOpen(false);
+  const toggleCollapsed = React.useCallback(() => {
+    setCollapsed((value) => !value);
+  }, []);
+
+  // El estado se persiste también cuando el cambio llega por el atajo global.
+  React.useEffect(() => {
+    if (collapsed) setOpen(false);
     try {
-      window.localStorage.setItem(CONTEXT_METER_COLLAPSED_KEY, next ? '1' : '0');
+      window.localStorage.setItem(CONTEXT_METER_COLLAPSED_KEY, collapsed ? '1' : '0');
     } catch {
       /* sin almacenamiento: se pliega igual, sólo no se recuerda */
     }
-  };
+  }, [collapsed]);
+
+  React.useEffect(() => {
+    window.addEventListener(CONTEXT_METER_TOGGLE_EVENT, toggleCollapsed);
+    return () => window.removeEventListener(CONTEXT_METER_TOGGLE_EVENT, toggleCollapsed);
+  }, [toggleCollapsed]);
 
   if (collapsed) {
     return (

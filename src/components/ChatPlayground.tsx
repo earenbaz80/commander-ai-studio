@@ -121,7 +121,8 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
   // Keyboard shortcut to toggle run mode (Alt+M)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.altKey && e.key.toLowerCase() === 'm') {
+      // Alt+M ciclo de modo; Ctrl/Cmd+Alt+M está reservado para la barra de contexto.
+      if (e.altKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'm') {
         e.preventDefault();
         const next: RunMode = runMode === 'build' ? 'plan' : runMode === 'plan' ? 'readonly' : 'build';
         changeRunMode(next);
