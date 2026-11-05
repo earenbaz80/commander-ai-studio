@@ -143,6 +143,8 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
   const [addCheck, setAddCheck] = useState<AddCheck | null>(null);
   /** Sonda automática al pegar o escribir la URL del endpoint. */
   const [liveCheck, setLiveCheck] = useState<'checking' | 'compatible' | null>(null);
+  /** Modelos que devolvió la última sonda compatible; sólo se muestran, no se aplican. */
+  const [liveCheckModelCount, setLiveCheckModelCount] = useState<number | null>(null);
   const liveCheckSeq = React.useRef(0);
   /** Búsqueda dentro de los modelos de cada proveedor. */
   const [modelQuery, setModelQuery] = useState<Record<string, string>>({});
@@ -200,6 +202,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
 
   const setCompatibilityCheck = useCallback((data: any) => {
     setLiveCheck(null);
+    setLiveCheckModelCount(null);
     const status: AddCheckStatus =
       data?.status === 'auth' || data?.status === 'unreachable' ? data.status : 'incompatible';
     setAddCheck({
@@ -220,6 +223,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
     // La comprobación manual manda sobre cualquier sonda automática pendiente.
     liveCheckSeq.current += 1;
     setLiveCheck(null);
+    setLiveCheckModelCount(null);
     try {
       const res = await fetch('/api/providers/detect', {
         method: 'POST',
@@ -236,9 +240,11 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
       const models: string[] = Array.isArray(data.models) ? data.models : [];
       setNewProvider((prev) => ({ ...prev, models: models.join(', ') }));
       setLiveCheck('compatible');
+      setLiveCheckModelCount(models.length);
       if (models.length === 0) setError(t('El endpoint respondió pero no lista modelos', 'The endpoint answered but lists no models', 'Der Endpoint antwortet, listet aber keine Modelle'));
     } catch (e: any) {
       setLiveCheck(null);
+      setLiveCheckModelCount(null);
       setError(e?.message || t('No se pudieron detectar modelos', 'Could not detect models', 'Modelle konnten nicht erkannt werden'));
     } finally {
       setDetectingModels(false);
@@ -255,6 +261,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
     // automática para que una respuesta tardía no pise el resultado del guardado.
     liveCheckSeq.current += 1;
     setLiveCheck(null);
+    setLiveCheckModelCount(null);
     setBusy('new');
     setError('');
     try {
@@ -288,12 +295,14 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
   useEffect(() => {
     if (!showAdd) {
       setLiveCheck(null);
+      setLiveCheckModelCount(null);
       return;
     }
 
     const baseURL = newProvider.baseUrl.trim();
     const apiKey = newProvider.apiKey.trim();
     setLiveCheck(null);
+    setLiveCheckModelCount(null);
     setAddCheck(null);
     if (!isHttpUrl(baseURL)) return;
 
@@ -323,6 +332,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
           if (data.compatible === true) {
             setAddCheck(null);
             setLiveCheck('compatible');
+            setLiveCheckModelCount(Array.isArray(data.models) ? data.models.length : 0);
             return;
           }
           setCompatibilityCheck(data);
@@ -855,7 +865,15 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                   ) : (
                     <>
                       <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
-                      {t('Endpoint compatible', 'Compatible endpoint', 'Kompatibler Endpoint')}
+                      <span>{t('Endpoint compatible', 'Compatible endpoint', 'Kompatibler Endpoint')}</span>
+                      {liveCheckModelCount !== null && (
+                        <span className="font-normal opacity-80">
+                          · {liveCheckModelCount}{' '}
+                          {liveCheckModelCount === 1
+                            ? t('modelo', 'model', 'Modell')
+                            : t('modelos', 'models', 'Modelle')}
+                        </span>
+                      )}
                     </>
                   )}
                 </div>
