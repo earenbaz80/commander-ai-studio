@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { normalizeLmStudioHost, parseLmStudioModels } from '../../src/lib/lmStudio';
+import { lmStudioHostScope, normalizeLmStudioHost, parseLmStudioModels } from '../../src/lib/lmStudio';
 
 describe('normalizeLmStudioHost', () => {
   test('añade /v1 cuando el host remoto se escribe sin la base de la API', () => {
@@ -14,6 +14,16 @@ describe('normalizeLmStudioHost', () => {
 
   test('usa el puerto local por defecto si el host está vacío', () => {
     expect(normalizeLmStudioHost('')).toBe('http://localhost:1234/v1');
+  });
+});
+
+describe('lmStudioHostScope', () => {
+  test('nombra local al host de este equipo y remoto al de la red', () => {
+    expect(lmStudioHostScope('http://localhost:1234/v1')).toBe('local');
+    expect(lmStudioHostScope('127.0.0.1:1234')).toBe('local');
+    expect(lmStudioHostScope('http://[::1]:1234/v1')).toBe('local');
+    expect(lmStudioHostScope('http://192.168.178.77:1234/v1')).toBe('remoto');
+    expect(lmStudioHostScope('')).toBe('local');
   });
 });
 

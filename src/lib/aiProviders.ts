@@ -56,7 +56,7 @@ export const PROVIDER_CONFIGS: Record<ProviderType, ProviderConfig> = {
   },
   lmstudio: {
     id: 'lmstudio',
-    name: 'LM Studio (local)',
+    name: 'LM Studio',
     supportsStreaming: false,
     supportsTools: true,
     supportsThinking: false,

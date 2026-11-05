@@ -93,12 +93,15 @@ export const PROVIDER_SPECS: ProviderSpec[] = [
     defaultModel: 'llama3.2',
   },
   {
-    // LM Studio es un proveedor local propio. Acepta un host de otro equipo
-    // de la red, pero no comparte configuración con el endpoint compatible.
+    // LM Studio puede ser el de este equipo (`localHost`) o el de casa
+    // (`host`, remoto). En el gestor se nombran así para no confundirlos.
     id: 'lmstudio',
-    name: 'LM Studio (local)',
+    name: 'LM Studio',
     env: ['LMSTUDIO_HOST'],
-    fields: [{ name: 'host', required: false, kind: 'url' }],
+    fields: [
+      { name: 'host', required: false, kind: 'url' },
+      { name: 'localHost', required: false, kind: 'url' },
+    ],
   },
   {
     // Endpoint genérico, separado de LM Studio: vLLM, llama.cpp, oMLX, Zen…

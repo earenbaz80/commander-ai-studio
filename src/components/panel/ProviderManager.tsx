@@ -134,7 +134,6 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
     const next: Record<string, string> = {};
     for (const field of provider.fields) next[field.name] = '';
     if (provider.id === 'ollama') next.host = 'http://localhost:11434';
-    if (provider.id === 'lmstudio') next.host = 'http://localhost:1234/v1';
     setDraft(next);
     setFilterDraft((prev) => ({
       ...prev,
@@ -500,9 +499,9 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                     {provider.id === 'lmstudio' && (
                       <p className="pt-1 text-[9px] leading-snug text-[var(--nc-text)] opacity-70">
                         {t(
-                          'Acepta http://IP:1234 o http://IP:1234/v1. En el otro equipo activa «Serve on Local Network» en LM Studio.',
-                          'Accepts http://IP:1234 or http://IP:1234/v1. On the other machine enable “Serve on Local Network” in LM Studio.',
-                          'Akzeptiert http://IP:1234 oder http://IP:1234/v1. Aktiviere „Serve on Local Network“ in LM Studio.'
+                          'Remoto: la IP del equipo de casa, con «Serve on Local Network» activo en su LM Studio. Local: http://localhost:1234/v1. Se usa el que responda.',
+                          'Remote: the home machine IP, with “Serve on Local Network” enabled in its LM Studio. Local: http://localhost:1234/v1. Whichever answers is used.',
+                          'Remote: die IP des Heimrechners, mit aktivem „Serve on Local Network“ in seinem LM Studio. Lokal: http://localhost:1234/v1. Genutzt wird, wer antwortet.'
                         )}
                       </p>
                     )}
@@ -519,7 +518,13 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
 
                     {provider.fields.map((field) => (
                       <label key={field.name} className="flex items-center gap-2">
-                        <span className="text-[10px] text-[var(--nc-text)] w-24 shrink-0 font-bold">{field.name}</span>
+                        <span className="text-[10px] text-[var(--nc-text)] w-24 shrink-0 font-bold">
+                          {provider.id === 'lmstudio'
+                            ? field.name === 'localHost'
+                              ? t('local', 'local', 'lokal')
+                              : t('remoto', 'remote', 'remote')
+                            : field.name}
+                        </span>
                         <input
                           type={field.kind === 'secret' ? 'password' : 'text'}
                           value={draft[field.name] ?? ''}

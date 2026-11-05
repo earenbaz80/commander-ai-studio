@@ -361,7 +361,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
             {!autoDetecting && (
               <>
                 {detected.ollama && <span className="px-2 py-0.5 bg-[#002200] border border-[#00aa00] text-[var(--nc-success)] rounded">✅ Ollama (11434)</span>}
-                {detected.lmstudio && <span className="px-2 py-0.5 bg-[#002200] border border-[#00aa00] text-[var(--nc-success)] rounded">✅ LM Studio (1234)</span>}
+                {detected.lmstudio && <span className="px-2 py-0.5 bg-[#002200] border border-[#00aa00] text-[var(--nc-success)] rounded">✅ LM Studio local (1234)</span>}
                 {detected.vllm && <span className="px-2 py-0.5 bg-[#002200] border border-[#00aa00] text-[var(--nc-success)] rounded">✅ vLLM (8000)</span>}
                 {!detected.ollama && !detected.lmstudio && !detected.vllm && <span className="px-2 py-0.5 bg-[#220000] border border-[#aa0000] text-[#ff0000] rounded">{t('❌ Ningún servidor detectado', '❌ No servers detected')}</span>}
               </>
@@ -493,7 +493,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
           ) : runtime === 'lmstudio' ? (
             <div>
               <label className="text-[10px] text-[var(--nc-text-accent)] font-bold uppercase flex items-center gap-1 mb-1">
-                <Server className="w-3 h-3" /> {t('Servidor LM Studio', 'LM Studio server')}
+                <Server className="w-3 h-3" /> {t('LM Studio (remoto / local)', 'LM Studio (remote / local)')}
               </label>
               <input
                 value={lmstudioHost}
@@ -504,8 +504,8 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
               />
               <p className="text-[9px] text-[var(--nc-text-dim)] mt-1 leading-snug">
                 {t(
-                  'Acepta http://IP:1234 o http://IP:1234/v1. En el otro equipo activa «Serve on Local Network» en LM Studio y carga un modelo.',
-                  'Accepts http://IP:1234 or http://IP:1234/v1. On the other machine enable “Serve on Local Network” in LM Studio and load a model.'
+                  'Remoto: la IP del equipo de casa, con «Serve on Local Network» activo. Local: http://localhost:1234/v1. Si el que escribes no responde, se prueba el otro host configurado.',
+                  'Remote: the home machine IP, with “Serve on Local Network” enabled. Local: http://localhost:1234/v1. If the one you enter does not answer, the other configured host is tried.'
                 )}
               </p>
             </div>
