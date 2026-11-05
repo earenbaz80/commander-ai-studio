@@ -87,6 +87,14 @@ interface ProviderEntry {
   custom?: boolean;
 }
 
+type AddCheckStatus = 'incompatible' | 'auth' | 'unreachable';
+
+interface AddCheck {
+  status: AddCheckStatus;
+  detail: string;
+  httpStatus?: number;
+}
+
 interface ProviderManagerProps {
   isOpen?: boolean;
   onClose?: () => void;
@@ -121,6 +129,8 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
   const [availableLoading, setAvailableLoading] = useState(false);
   const [newProvider, setNewProvider] = useState(EMPTY_NEW_PROVIDER);
   const [detectingModels, setDetectingModels] = useState(false);
+  /** Aviso de compatibilidad pendiente de confirmar antes de guardar. */
+  const [addCheck, setAddCheck] = useState<AddCheck | null>(null);
 
   const t = useCallback(
     (es: string, en: string, de: string) => (lang === 'es' ? es : lang === 'de' ? de : en),
@@ -147,6 +157,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
 
   const openAdd = useCallback(async () => {
     setShowAdd((value) => !value);
+    setAddCheck(null);
     setError('');
     if (available.length > 0) return;
     setAvailableLoading(true);
@@ -162,12 +173,23 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
   }, [available.length]);
 
   const useAvailable = (provider: AvailableProvider) => {
+    setAddCheck(null);
     setNewProvider({
       id: slugifyProviderId(provider.id),
       name: provider.name,
       baseUrl: provider.api || '',
       apiKey: '',
       models: '',
+    });
+  };
+
+  const setCompatibilityCheck = (data: any) => {
+    const status: AddCheckStatus =
+      data?.status === 'auth' || data?.status === 'unreachable' ? data.status : 'incompatible';
+    setAddCheck({
+      status,
+      detail: typeof data?.error === 'string' ? data.error : '',
+      ...(typeof data?.httpStatus === 'number' ? { httpStatus: data.httpStatus } : {}),
     });
   };
 
@@ -178,8 +200,9 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
     }
     setDetectingModels(true);
     setError('');
+    setAddCheck(null);
     try {
-      const res = await fetch('/api/custom/models', {
+      const res = await fetch('/api/providers/detect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -187,6 +210,10 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
       });
       const data = await res.json().catch(() => ({}));
       if (!data.success) throw new Error(data.error || t('No se pudieron detectar modelos', 'Could not detect models', 'Modelle konnten nicht erkannt werden'));
+      if (data.compatible !== true) {
+        setCompatibilityCheck(data);
+        return;
+      }
       const models: string[] = Array.isArray(data.models) ? data.models : [];
       setNewProvider((prev) => ({ ...prev, models: models.join(', ') }));
       if (models.length === 0) setError(t('El endpoint respondió pero no lista modelos', 'The endpoint answered but lists no models', 'Der Endpoint antwortet, listet aber keine Modelle'));
@@ -197,7 +224,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
     }
   };
 
-  const saveNewProvider = async () => {
+  const saveNewProvider = async (force = false) => {
     const id = slugifyProviderId(newProvider.id || newProvider.name);
     if (!id || !newProvider.name.trim() || !newProvider.baseUrl.trim()) {
       setError(t('Nombre, id y URL base son obligatorios', 'Name, id and base URL are required', 'Name, ID und Basis-URL sind erforderlich'));
@@ -210,11 +237,16 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ ...newProvider, id }),
+        body: JSON.stringify({ ...newProvider, id, force }),
       });
       const data = await res.json().catch(() => ({}));
+      if (data.incompatible) {
+        setCompatibilityCheck(data);
+        return;
+      }
       if (!data.success) throw new Error(data.error || t('No se pudo añadir', 'Could not add', 'Konnte nicht hinzugefügt werden'));
       setNotice(t(`Proveedor ${newProvider.name} añadido`, `Provider ${newProvider.name} added`, `Anbieter ${newProvider.name} hinzugefügt`));
+      setAddCheck(null);
       setShowAdd(false);
       setNewProvider(EMPTY_NEW_PROVIDER);
       setAvailable((prev) => prev.filter((provider) => provider.id !== id));
@@ -225,6 +257,11 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
       setBusy(null);
     }
   };
+
+  // Cambiar URL o clave invalida el aviso anterior: la siguiente prueba es otra.
+  useEffect(() => {
+    setAddCheck(null);
+  }, [newProvider.baseUrl, newProvider.apiKey]);
 
   useEffect(() => {
     if (isOpen || embedded) {
@@ -575,7 +612,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                 <span className="text-[11px] font-bold text-[var(--nc-text)]">
                   {t('Añadir proveedor OpenAI-compatible', 'Add OpenAI-compatible provider', 'OpenAI-kompatiblen Anbieter hinzufügen')}
                 </span>
-                <button type="button" onClick={() => setShowAdd(false)} aria-label={t('Cerrar', 'Close', 'Schließen')}>
+                <button type="button" onClick={() => { setShowAdd(false); setAddCheck(null); }} aria-label={t('Cerrar', 'Close', 'Schließen')}>
                   <X className="h-3.5 w-3.5 text-[var(--nc-text)]" />
                 </button>
               </div>
@@ -672,6 +709,50 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                   />
                 </label>
               </div>
+              {addCheck && (
+                <div role="alert" className="border border-red-400/50 bg-red-400/10 p-2 text-[10px] leading-snug text-red-200">
+                  <div className="flex items-start gap-1">
+                    <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                    <div className="min-w-0">
+                      <div className="font-bold">
+                        {addCheck.status === 'incompatible'
+                          ? t('Este endpoint no parece OpenAI-compatible', 'This endpoint does not look OpenAI-compatible', 'Dieser Endpoint scheint nicht OpenAI-kompatibel zu sein')
+                          : addCheck.status === 'auth'
+                            ? t('El endpoint rechaza la clave', 'The endpoint rejects the key', 'Der Endpoint lehnt den Schlüssel ab')
+                            : t('No se pudo comprobar el endpoint', 'The endpoint could not be checked', 'Der Endpoint konnte nicht geprüft werden')}
+                      </div>
+                      <p className="mt-0.5 opacity-90">
+                        {addCheck.status === 'incompatible'
+                          ? t(
+                              'No responde a /models con el formato de OpenAI. Solo funcionará si expone /models y /chat/completions como OpenAI.',
+                              'It does not answer /models in the OpenAI format. It will only work if it exposes /models and /chat/completions like OpenAI.',
+                              'Es antwortet nicht auf /models im OpenAI-Format. Es funktioniert nur, wenn es /models und /chat/completions wie OpenAI bereitstellt.'
+                            )
+                          : addCheck.status === 'auth'
+                            ? t(
+                                'El host responde, pero rechaza la clave. Revísala antes de añadirlo.',
+                                'The host answers, but rejects the key. Check it before adding.',
+                                'Der Host antwortet, lehnt den Schlüssel aber ab. Prüfe ihn vor dem Hinzufügen.'
+                              )
+                            : t(
+                                'No hubo respuesta a tiempo. Comprueba la URL y que el servidor esté encendido.',
+                                'No timely response. Check the URL and that the server is running.',
+                                'Keine rechtzeitige Antwort. Prüfe die URL und ob der Server läuft.'
+                              )}
+                        {addCheck.detail ? ` (${addCheck.detail})` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void saveNewProvider(true)}
+                    disabled={busy === 'new'}
+                    className="mt-1 border border-red-400/60 px-2 py-0.5 font-bold text-red-200 hover:bg-red-400/20 disabled:opacity-50"
+                  >
+                    {t('Añadir de todos modos', 'Add anyway', 'Trotzdem hinzufügen')}
+                  </button>
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"

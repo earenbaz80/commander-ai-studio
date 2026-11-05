@@ -158,6 +158,72 @@ test('/api/custom/models contesta JSON cuando el endpoint no responde', async ()
   assert.ok(res.body.error);
 });
 
+test('/api/providers/detect distingue un endpoint OpenAI de uno que no lo es', async (t) => {
+  const fake = http.createServer((req, res) => {
+    const url = req.url || '';
+    if (url === '/v1/models') {
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ object: 'list', data: [{ id: 'demo-1' }, { id: 'demo-2' }] }));
+      return;
+    }
+    if (url === '/auth/models') {
+      res.statusCode = 401;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: { message: 'invalid key' } }));
+      return;
+    }
+    if (url === '/html/models') {
+      res.setHeader('Content-Type', 'text/html');
+      res.end('<html><body>not an API</body></html>');
+      return;
+    }
+    res.statusCode = 404;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  await new Promise<void>((resolve) => fake.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise<void>((resolve) => fake.close(() => resolve())));
+  const port = (fake.address() as any).port;
+  const base = `http://127.0.0.1:${port}`;
+
+  const compatible = await srv.request('POST', '/api/providers/detect', { baseURL: `${base}/v1` });
+  assert.equal(compatible.status, 200, compatible.raw);
+  assert.equal(compatible.body.compatible, true);
+  assert.equal(compatible.body.status, 'compatible');
+  assert.deepEqual(compatible.body.models, ['demo-1', 'demo-2']);
+
+  const html = await srv.request('POST', '/api/providers/detect', { baseURL: `${base}/html` });
+  assert.equal(html.body.compatible, false);
+  assert.equal(html.body.status, 'incompatible');
+  assert.match(String(html.body.error), /HTML/i);
+
+  const auth = await srv.request('POST', '/api/providers/detect', { baseURL: `${base}/auth` });
+  assert.equal(auth.body.compatible, false);
+  assert.equal(auth.body.status, 'auth');
+  assert.equal(auth.body.httpStatus, 401);
+
+  const missing = await srv.request('POST', '/api/providers/detect', { baseURL: `${base}/missing` });
+  assert.equal(missing.body.compatible, false);
+  assert.equal(missing.body.status, 'incompatible');
+  assert.equal(missing.body.httpStatus, 404);
+
+  const unreachable = await srv.request('POST', '/api/providers/detect', { baseURL: 'http://127.0.0.1:9/v1' });
+  assert.equal(unreachable.body.compatible, false);
+  assert.equal(unreachable.body.status, 'unreachable');
+});
+
+test('/api/providers/custom no guarda un endpoint no compatible sin confirmación', async () => {
+  const res = await srv.request('POST', '/api/providers/custom', {
+    id: 'prueba-no-compatible',
+    name: 'Prueba no compatible',
+    baseUrl: 'http://127.0.0.1:9/v1',
+  });
+  assert.equal(res.status, 409, res.raw);
+  assert.equal(res.body.success, false);
+  assert.equal(res.body.incompatible, true);
+  assert.equal(res.body.status, 'unreachable');
+});
+
 test('/api/xai/generate no cae en el index.html de la SPA', async (t) => {
   if (hayClaveXai()) {
     // Con clave configurada la petición saldría a api.x.ai: no es cosa de la suite.
@@ -179,6 +245,13 @@ test('/api/lmstudio/generate reenvía las tools y traduce las tool_calls', async
     let raw = '';
     req.on('data', (chunk) => { raw += chunk; });
     req.on('end', () => {
+      // El servidor también recibe la sonda GET /models que elige el host: no
+      // es una petición de chat y no debe ocupar el primer hueco de `recibido`.
+      if (req.method !== 'POST') {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ data: [{ id: 'qwen2.5-7b' }] }));
+        return;
+      }
       recibido.push(JSON.parse(raw || '{}'));
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify({
