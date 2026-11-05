@@ -485,20 +485,6 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
           </div>
         )}
 
-        {/* Contexto y esfuerzo: a la vista antes de escribir, como la barra de
-            estado del compositor. */}
-        <ContextMeter
-          messages={messages}
-          parameters={parameters}
-          model={currentModel}
-          lang={lang}
-          onChangeEffort={
-            setParameters
-              ? (level: EffortLevel) => setParameters((prev) => applyEffort(prev, level))
-              : undefined
-          }
-        />
-
         <div className="relative">
           <textarea
             ref={textareaRef}
@@ -548,6 +534,20 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
           dictationError={dictation.error}
           dictationSeconds={dictation.seconds}
           onToggleDictation={dictation.toggle}
+        />
+
+        {/* Contexto y esfuerzo: barra de estado al pie, debajo del campo de
+            escritura y de los botones, para no cargar la zona superior. */}
+        <ContextMeter
+          messages={messages}
+          parameters={parameters}
+          model={currentModel}
+          lang={lang}
+          onChangeEffort={
+            setParameters
+              ? (level: EffortLevel) => setParameters((prev) => applyEffort(prev, level))
+              : undefined
+          }
         />
       </div>
 

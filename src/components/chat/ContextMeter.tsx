@@ -92,7 +92,7 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
     <>
       <div
         data-testid="context-meter"
-        className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-[var(--nc-text)]"
+        className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-[var(--nc-text)]"
       >
         <button
           type="button"
@@ -159,7 +159,7 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
         <div
           id={panelId}
           data-testid="context-details"
-          className="mb-2 grid grid-cols-1 gap-x-4 gap-y-0.5 border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] p-2 font-mono text-[10px] text-[var(--nc-text)] sm:grid-cols-2 lg:grid-cols-3"
+          className="mt-2 grid grid-cols-1 gap-x-4 gap-y-0.5 border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] p-2 font-mono text-[10px] text-[var(--nc-text)] sm:grid-cols-2 lg:grid-cols-3"
         >
           {rows.map((row) => (
             <div key={row.label} className="flex items-baseline justify-between gap-2">
