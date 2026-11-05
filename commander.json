@@ -6,7 +6,8 @@
       "toolsMemoryTtlMinutes": 30
     },
     "lmstudio": {
-      "host": "http://localhost:1234/v1"
+      "host": "http://192.168.178.77:1234/v1",
+      "localHost": "http://localhost:1234/v1"
     }
   },
   "tools": {
