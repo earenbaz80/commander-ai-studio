@@ -50,7 +50,9 @@ export const ProviderConfigSchema = z.object({
   // otro equipo de la red (p. ej. http://192.168.1.20:1234/v1).
   lmstudio: z.object({
     ...providerFilters,
+    // Remoto (casa) y local (este portátil). El servidor usa el que responda.
     host: z.string().url().default('http://localhost:1234/v1'),
+    localHost: z.string().url().optional(),
     defaultModel: z.string().optional(),
   }).optional(),
   openrouter: z.object({

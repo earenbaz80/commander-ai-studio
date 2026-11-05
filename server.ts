@@ -929,7 +929,7 @@ app.get('/api/providers', async (req, res) => {
     // con timeout corto, en paralelo, para no frenar el gestor.
     const localHosts: Record<string, string> = {
       ollama: process.env.OLLAMA_HOST || config?.ollama?.host || 'http://localhost:11434',
-      lmstudio: lmstudioHost(req),
+      lmstudio: await resolveLmstudioHost(req),
       custom: process.env.CUSTOM_BASE_URL || config?.custom?.baseUrl || '',
     };
     providers = await Promise.all(
@@ -2379,17 +2379,42 @@ app.post('/api/local-models/download-runtime', async (req, res) => {
 // orden: lo que mande el formulario, la query, `LMSTUDIO_HOST`, la config
 // guardada en el gestor y, por último, el puerto por defecto de LM Studio.
 
-function lmstudioHost(req: any, bodyHost?: unknown): string {
-  const raw =
-    (typeof bodyHost === 'string' && bodyHost.trim()) ||
-    (typeof req?.query?.host === 'string' && req.query.host.trim()) ||
-    // El modal local guarda el host en cookie httpOnly; sin leerla, el chat
-    // seguía yendo a localhost aunque el usuario hubiera configurado su PC.
-    getRequestApiKey(req, 'LMSTUDIO_HOST') ||
-    process.env.LMSTUDIO_HOST ||
-    getProviderSecret('lmstudio', 'host') ||
-    'http://localhost:1234/v1';
-  return normalizeLmStudioHost(String(raw));
+/**
+ * Hosts de LM Studio en orden de preferencia.
+ *
+ * Hay dos escenarios reales y no excluyentes: el LM Studio de casa (host
+ * remoto) y el de este portátil (`localHost`). Devolver todos permite usar el
+ * que responda sin editar la configuración al mover el equipo. El modal local
+ * sigue mandando por cookie, pero ya no bloquea al otro host si no responde.
+ */
+function lmstudioHosts(req: any, bodyHost?: unknown): string[] {
+  const conf = (getConfig().providers as any)?.lmstudio || {};
+  const raw = [
+    typeof bodyHost === 'string' && bodyHost.trim() ? bodyHost : '',
+    typeof req?.query?.host === 'string' && req.query.host.trim() ? req.query.host : '',
+    getRequestApiKey(req, 'LMSTUDIO_HOST') || '',
+    process.env.LMSTUDIO_HOST || '',
+    conf.localHost || '',
+    conf.host || '',
+    'http://localhost:1234/v1',
+  ];
+  const hosts = raw
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .map((value) => normalizeLmStudioHost(value));
+  return [...new Set(hosts)];
+}
+
+/**
+ * Primer host que responde (sonda cacheada 15 s), o el primero configurado si
+ * ninguno contesta. Así, con el portátil fuera de casa, cae solo en el local.
+ */
+async function resolveLmstudioHost(req: any, bodyHost?: unknown): Promise<string> {
+  const hosts = lmstudioHosts(req, bodyHost);
+  for (const host of hosts) {
+    const probe = await probeLocalProvider('lmstudio', host, { timeoutMs: 1200 });
+    if (probe.reachable) return host;
+  }
+  return hosts[0] || 'http://localhost:1234/v1';
 }
 
 /**
@@ -2435,7 +2460,7 @@ async function fetchLmstudioModels(host: string): Promise<{ models: string[]; ho
 
 app.get('/api/lmstudio/models', async (req, res) => {
   try {
-    const probe = await fetchLmstudioModels(lmstudioHost(req));
+    const probe = await fetchLmstudioModels(await resolveLmstudioHost(req));
     return res.json({
       success: true,
       models: probe.models,
@@ -2450,7 +2475,7 @@ app.get('/api/lmstudio/models', async (req, res) => {
 // POST para poder probar un host que aún no está guardado (botón «Probar»).
 app.post('/api/lmstudio/models', async (req, res) => {
   try {
-    const probe = await fetchLmstudioModels(lmstudioHost(req, req.body?.host));
+    const probe = await fetchLmstudioModels(await resolveLmstudioHost(req, req.body?.host));
     return res.json({
       success: true,
       models: probe.models,
@@ -2465,7 +2490,7 @@ app.post('/api/lmstudio/models', async (req, res) => {
 app.post('/api/lmstudio/generate', async (req, res) => {
   try {
     const { prompt, model, systemInstruction = '', temperature = 0.7, maxTokens = 2048, host: bodyHost, tools, toolChoice } = req.body || {};
-    const host = lmstudioHost(req, bodyHost);
+    const host = await resolveLmstudioHost(req, bodyHost);
     const target = model
       ? String(model).replace(/^lmstudio\//, '')
       : getProviderSecret('lmstudio', 'defaultModel') || '';
@@ -2743,7 +2768,7 @@ app.get('/api/models/live', async (req, res) => {
       })(),
       (async () => {
         try {
-          const probe = await fetchLmstudioModels(lmstudioHost(req));
+          const probe = await fetchLmstudioModels(await resolveLmstudioHost(req));
           return probe.models.map((id) => ({
             id: `lmstudio/${id}`,
             name: id,
