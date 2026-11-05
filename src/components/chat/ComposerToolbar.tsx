@@ -15,7 +15,6 @@ import {
   Settings,
   HelpCircle,
   Cpu,
-  AlertTriangle,
   Mic,
   MicOff,
   Loader2,
@@ -40,10 +39,6 @@ const localServerLabel = (): string => {
   if (lmstudio) return `LM Studio ${lmStudioHostScope(lmstudio)}`;
   return getCachedApiKey('CUSTOM_BASE_URL') || '';
 };
-
-/** «LM Studio remoto» o «LM Studio local» según a dónde apunte el host. */
-const providerLabel = (provider: { id: string; name: string; host?: string }): string =>
-  provider.id === 'lmstudio' ? `LM Studio ${lmStudioHostScope(provider.host || '')}` : provider.name;
 
 interface ComposerToolbarProps {
   lang: Language;
@@ -125,7 +120,6 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
     filters: providerFilters,
     loaded: providersLoaded,
     failed: providersFailed,
-    offline: offlineLocals,
   } = useConfiguredProviderIds();
   // Mientras llega la respuesta se muestra la lista base: el filtro estricto
   // se aplica en cuanto se sabe qué proveedores están configurados. Los
@@ -235,26 +229,6 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
         failed={providersFailed}
       />
 
-      {/* Proveedor local configurado pero sin respuesta. Sin esto, un LM Studio
-          apagado se veía igual que uno sin configurar: cero modelos y nada más. */}
-      {offlineLocals.map((provider) => (
-        <span
-          key={provider.id}
-          role="status"
-          title={`${provider.name} · ${provider.host}`}
-          className="flex min-w-0 items-center gap-1 rounded border border-amber-400/60 bg-amber-400/10 px-2 py-2 text-[10px] text-amber-200 shrink-0"
-        >
-          <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
-          <span className="truncate">
-            {lang === 'es'
-              ? `${providerLabel(provider)}: sin respuesta`
-              : lang === 'de'
-                ? `${providerLabel(provider)}: keine Antwort`
-                : `${providerLabel(provider)}: no response`}
-          </span>
-          <span className="hidden truncate text-amber-200/70 lg:inline">{provider.host}</span>
-        </span>
-      ))}
 
       {/* Quick Local LLM indicator / switcher */}
       {localConfigured && (
