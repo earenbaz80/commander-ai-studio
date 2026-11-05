@@ -7,12 +7,13 @@
  * montar React ni depender del catálogo real.
  */
 import type { AIModel } from '../../types/studio';
-import type { ModelGroup } from './modelGroups';
+import type { ModelGroup, ModelGroupStatus } from './modelGroups';
 
 export interface ModelSearchGroup {
   id: string;
   label: string;
   models: AIModel[];
+  status?: ModelGroupStatus;
 }
 
 /** Minúsculas y sin acentos: «Gemini» y «gemini» buscan igual. */
@@ -34,7 +35,7 @@ export function filterModelGroups(
   const base = providerId ? groups.filter((group) => group.id === providerId) : groups;
   const tokens = normalize(query).trim().split(/\s+/).filter(Boolean);
   if (tokens.length === 0) {
-    return base.map((group) => ({ id: group.id, label: group.label, models: [...group.models] }));
+    return base.map((group) => ({ id: group.id, label: group.label, models: [...group.models], status: group.status }));
   }
 
   const result: ModelSearchGroup[] = [];
@@ -44,7 +45,7 @@ export function filterModelGroups(
       const modelText = normalize(`${model.name} ${model.id} ${model.badge || ''} ${model.description || ''}`);
       return tokens.every((token) => modelText.includes(token) || providerText.includes(token));
     });
-    if (models.length > 0) result.push({ id: group.id, label: group.label, models });
+    if (models.length > 0) result.push({ id: group.id, label: group.label, models, status: group.status });
   }
   return result;
 }

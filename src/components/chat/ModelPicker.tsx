@@ -9,8 +9,41 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, Search } from 'lucide-react';
 import type { Language } from '../../i18n/translations';
-import type { ModelGroup } from './modelGroups';
+import type { ModelGroup, ModelGroupStatus } from './modelGroups';
 import { countModels, filterModelGroups } from './modelSearch';
+
+const STATUS_TEXT: Record<ModelGroupStatus, { es: string; en: string; de: string }> = {
+  connected: { es: 'Conectado', en: 'Connected', de: 'Verbunden' },
+  saved: { es: 'Guardado', en: 'Saved', de: 'Gespeichert' },
+  offline: { es: 'Sin conexión', en: 'Offline', de: 'Nicht erreichbar' },
+  disabled: { es: 'Desactivado', en: 'Disabled', de: 'Deaktiviert' },
+};
+
+const STATUS_TITLE: Record<ModelGroupStatus, { es: string; en: string; de: string }> = {
+  connected: {
+    es: 'El proveedor responde ahora mismo',
+    en: 'The provider is responding right now',
+    de: 'Der Anbieter antwortet gerade',
+  },
+  saved: {
+    es: 'Sin conexión: modelos guardados de la última detección',
+    en: 'Offline: models saved from the last detection',
+    de: 'Offline: zuletzt erkannte Modelle gespeichert',
+  },
+  offline: {
+    es: 'Proveedor configurado pero sin respuesta',
+    en: 'Provider configured but not responding',
+    de: 'Anbieter konfiguriert, antwortet aber nicht',
+  },
+  disabled: { es: 'Proveedor sin configurar', en: 'Provider not configured', de: 'Anbieter nicht konfiguriert' },
+};
+
+const STATUS_STYLE: Record<ModelGroupStatus, { text: string; dot: string }> = {
+  connected: { text: 'text-emerald-300', dot: 'bg-emerald-400' },
+  saved: { text: 'text-amber-300', dot: 'bg-amber-400' },
+  offline: { text: 'text-red-300', dot: 'bg-red-400' },
+  disabled: { text: 'text-[var(--nc-text-dim)]', dot: 'bg-[var(--nc-text-dim)]' },
+};
 
 interface ModelPickerProps {
   lang: Language;
@@ -205,9 +238,18 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
             >
               {visible.map((group) => (
                 <li key={group.id} className="list-none">
-                  <p className="sticky top-0 z-10 bg-[var(--nc-bg-panel)] px-3 pt-1.5 pb-1 text-[10px] font-bold uppercase tracking-wide text-[var(--nc-text-dim)]">
-                    {group.label}
-                  </p>
+                  <div className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-[var(--nc-bg-panel)] px-3 pt-1.5 pb-1 text-[10px] font-bold uppercase tracking-wide text-[var(--nc-text-dim)]">
+                    <span>{group.label}</span>
+                    {group.status && (
+                      <span
+                        className={`flex items-center gap-1 normal-case tracking-normal ${STATUS_STYLE[group.status].text}`}
+                        title={STATUS_TITLE[group.status][lang === 'es' ? 'es' : lang === 'de' ? 'de' : 'en']}
+                      >
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_STYLE[group.status].dot}`} aria-hidden="true" />
+                        {STATUS_TEXT[group.status][lang === 'es' ? 'es' : lang === 'de' ? 'de' : 'en']}
+                      </span>
+                    )}
+                  </div>
                   <ul role="group" aria-label={group.label} className="list-none">
                     {group.models.map((model) => {
                       const index = flat.findIndex((item) => item.id === model.id);
@@ -231,6 +273,21 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                           <span className="min-w-0 flex-1 truncate">
                             {model.name}
                             {model.badge && <span className="text-[var(--nc-text-dim)]"> · {model.badge}</span>}
+                            {model.deprecated && (
+                              <span
+                                className="text-amber-300"
+                                title={
+                                  lang === 'es'
+                                    ? 'Modelo discontinuado por el proveedor'
+                                    : lang === 'de'
+                                      ? 'Vom Anbieter eingestelltes Modell'
+                                      : 'Model discontinued by the provider'
+                                }
+                              >
+                                {' · '}
+                                {lang === 'es' ? 'discontinuado' : lang === 'de' ? 'veraltet' : 'discontinued'}
+                              </span>
+                            )}
                           </span>
                         </li>
                       );

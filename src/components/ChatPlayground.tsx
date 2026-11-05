@@ -145,8 +145,9 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
 
   // Catálogo vivo: incluye proveedores configurados después de arrancar
   // (OpenAI, NVIDIA, LM Studio) y sus modelos reales.
-  const { models: catalog } = useModelsCatalog();
-  const modelGroups = React.useMemo(() => buildModelGroups(catalog), [catalog]);
+  const { models: catalog, providers } = useModelsCatalog();
+  // El estado por proveedor viaja al selector: conectado, guardado o caído.
+  const modelGroups = React.useMemo(() => buildModelGroups(catalog, providers), [catalog, providers]);
 
   // Modelo activo en el catálogo (puede ser undefined si fue descargado de HF).
   const currentModel = React.useMemo(

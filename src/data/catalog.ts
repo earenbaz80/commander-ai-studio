@@ -49,6 +49,8 @@ export interface LiveProviderStatus {
   configured?: boolean;
   /** De dónde salen las credenciales: `env`, `file`, `local` o `none`. */
   source?: string;
+  /** `true` si la lista viene de la caché porque el servidor no respondió. */
+  cached?: boolean;
   error?: string;
 }
 
