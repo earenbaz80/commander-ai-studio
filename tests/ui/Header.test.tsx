@@ -90,6 +90,17 @@ describe('Header', () => {
       expect(screen.queryByText('CONFIGURACIÓN Y SETUP')).toBeNull();
     });
 
+    test('deja separación entre la cuenta y Configuración', () => {
+      render(<Header {...baseProps()} onOpenPreferences={vi.fn()} />);
+      const account = screen.getByLabelText('Cuenta de usuario');
+      const settings = screen.getByLabelText('Abrir configuración');
+
+      const spacer = account.nextElementSibling;
+      expect(spacer).toHaveAttribute('aria-hidden', 'true');
+      expect(spacer?.className).toContain('w-1.5');
+      expect(spacer?.nextElementSibling).toBe(settings);
+    });
+
     test('no duplica acciones de consola, cuenta ni preferencias', () => {
       render(<Header {...baseProps()} onOpenPreferences={vi.fn()} />);
       expect(screen.queryByText('Refrescar consola')).toBeNull();
