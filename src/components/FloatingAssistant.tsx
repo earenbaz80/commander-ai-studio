@@ -45,6 +45,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
   suggestionConfig,
   codeContext,
   hidden,
+  busy = false,
 }, ref) => {
   const headRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -165,6 +166,33 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
       showContextPhrase(lang === 'es' ? `🔄 Modo ${status.detail}` : `🔄 Mode ${status.detail}`, 3000);
     }
   }, [status, lang, setExpression, showContextPhrase]);
+
+  // Procesamiento en curso (respuesta del chat o corrida del agente): Nono
+  // acompaña la espera con cara de pensar, un gesto propio y una frase corta;
+  // al terminar celebra un instante. Sólo reacciona al cambio de estado, no a
+  // cada re-render ni a cada token.
+  const wasBusyRef = useRef(false);
+  useEffect(() => {
+    if (busy === wasBusyRef.current) return;
+    wasBusyRef.current = busy;
+    if (busy) {
+      if (isOpen || asleepRef.current) return;
+      setExpression('thinking');
+      showContextPhrase(
+        lang === 'es'
+          ? 'Estoy en ello, dame un momento…'
+          : lang === 'de'
+            ? 'Ich bin dran, einen Moment…'
+            : 'On it, give me a moment…',
+        6000
+      );
+      return;
+    }
+    // Al acabar: alivio breve, salvo que el panel o el teclado lleven el mando.
+    if (isOpen || isTyping || asleepRef.current) return;
+    setExpression('happy');
+    showContextPhrase(lang === 'es' ? '¡Listo!' : lang === 'de' ? 'Fertig!' : 'Done!', 2500);
+  }, [busy, isOpen, isTyping, lang, setExpression, showContextPhrase]);
 
   // Saludo inicial con typing effect
   const greetingText = (() => {
@@ -424,7 +452,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
         tabIndex={0}
         role="button"
         aria-label="Nono"
-        className={`fixed z-[9998] select-none touch-none focus-visible:outline-2 focus-visible:outline-[var(--nc-text-accent)] cursor-pointer ${expression !== 'sleepy' ? (idle ? 'nono-awake nono-idle' : 'nono-awake') : 'nono-asleep'} ${isChatTyping && !dragPos ? 'nono-lean-chat' : ''}`}
+        className={`fixed z-[9998] select-none touch-none focus-visible:outline-2 focus-visible:outline-[var(--nc-text-accent)] cursor-pointer ${expression !== 'sleepy' ? (idle ? 'nono-awake nono-idle' : 'nono-awake') : 'nono-asleep'} ${busy ? 'nono-busy' : ''} ${isChatTyping && !dragPos ? 'nono-lean-chat' : ''}`}
         style={headStyle}
       >
         {/* Charco de luz bajo Nono: sobre un fondo casi negro una sombra
@@ -445,6 +473,19 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
         />
         {/* `key` remonta el SVG al empezar a escribir, reiniciando el rebote. */}
         <NonoHead key={chatBounceToken} expression={expression as NonoExpression} eyeOffset={eyeOffset} blink={blink} size={memory.ui.compactMode ? 36 : 48} show3D={true} />
+        {/* Mientras el chat procesa, un chip de puntos confirma que Nono lo
+            está siguiendo aunque su frase flotante ya se haya apagado. */}
+        {busy && (
+          <div
+            data-testid="nono-working"
+            aria-hidden="true"
+            className="nono-working-chip pointer-events-none absolute"
+          >
+            <span className="nono-work-dot" />
+            <span className="nono-work-dot" />
+            <span className="nono-work-dot" />
+          </div>
+        )}
         {expression === 'sleepy' && !hoverPhrase && !contextPhrase && (
           <div className="nono-sleep-z absolute pointer-events-none" aria-hidden="true">
             <span>Z</span><span>z</span><span>z</span>
