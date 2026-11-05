@@ -123,6 +123,56 @@ describe('ProviderManager: modelos activables', () => {
     expect(cuerpos[1].force).toBe(true);
   });
 
+  test('comprueba la compatibilidad al pegar la URL sin pulsar Añadir', async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const target = String(url);
+      if (target.endsWith('/api/providers') && (!init || init.method === undefined)) {
+        return json({ success: true, providers: [provider], writePath: '/tmp/config.json' });
+      }
+      if (target.endsWith('/api/providers/available')) {
+        return json({ success: true, providers: [] });
+      }
+      if (target.endsWith('/api/providers/detect')) {
+        return json({ success: true, compatible: true, status: 'compatible', models: ['model-a'] });
+      }
+      return json({ success: true });
+    });
+
+    render(<ProviderManager embedded lang="es" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Añadir proveedor' }));
+    const url = await screen.findByPlaceholderText('https://api.groq.com/openai/v1');
+    fireEvent.change(url, { target: { value: 'https://ejemplo.test/v1' } });
+
+    expect(await screen.findByText('Endpoint compatible', undefined, { timeout: 2500 })).toBeInTheDocument();
+    const detectCall = fetchMock.mock.calls.find(([target]) => String(target).endsWith('/api/providers/detect'));
+    expect(detectCall).toBeTruthy();
+    expect(JSON.parse(String(detectCall?.[1]?.body || '{}')).baseURL).toBe('https://ejemplo.test/v1');
+  });
+
+  test('avisa de un endpoint incompatible al pegar la URL sin pulsar Añadir', async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const target = String(url);
+      if (target.endsWith('/api/providers') && (!init || init.method === undefined)) {
+        return json({ success: true, providers: [provider], writePath: '/tmp/config.json' });
+      }
+      if (target.endsWith('/api/providers/available')) return json({ success: true, providers: [] });
+      if (target.endsWith('/api/providers/detect')) {
+        return json({ success: true, compatible: false, status: 'incompatible', httpStatus: 404, error: 'HTTP 404' });
+      }
+      return json({ success: true });
+    });
+
+    render(<ProviderManager embedded lang="es" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Añadir proveedor' }));
+    const url = await screen.findByPlaceholderText('https://api.groq.com/openai/v1');
+    fireEvent.change(url, { target: { value: 'https://no-compatible.test/v1' } });
+
+    expect(
+      await screen.findByText('Este endpoint no parece OpenAI-compatible', undefined, { timeout: 2500 })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Añadir de todos modos' })).toBeInTheDocument();
+  });
+
   test('el switch guarda el modelo apagado en el PATCH del proveedor', async () => {
     render(<ProviderManager embedded lang="es" />);
     await screen.findByText('Groq');

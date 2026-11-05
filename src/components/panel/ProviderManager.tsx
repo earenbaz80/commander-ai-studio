@@ -47,6 +47,16 @@ interface AvailableProvider {
 
 const EMPTY_NEW_PROVIDER = { id: '', name: '', baseUrl: '', apiKey: '', models: '' };
 
+/** Evita sondear mientras la URL todavía está a medio escribir. */
+const isHttpUrl = (value: string): boolean => {
+  try {
+    const parsed = new URL(value);
+    return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && Boolean(parsed.hostname);
+  } catch {
+    return false;
+  }
+};
+
 interface ProviderField {
   name: string;
   required: boolean;
@@ -131,6 +141,9 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
   const [detectingModels, setDetectingModels] = useState(false);
   /** Aviso de compatibilidad pendiente de confirmar antes de guardar. */
   const [addCheck, setAddCheck] = useState<AddCheck | null>(null);
+  /** Sonda automática al pegar o escribir la URL del endpoint. */
+  const [liveCheck, setLiveCheck] = useState<'checking' | 'compatible' | null>(null);
+  const liveCheckSeq = React.useRef(0);
   /** Búsqueda dentro de los modelos de cada proveedor. */
   const [modelQuery, setModelQuery] = useState<Record<string, string>>({});
 
@@ -185,7 +198,8 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
     });
   };
 
-  const setCompatibilityCheck = (data: any) => {
+  const setCompatibilityCheck = useCallback((data: any) => {
+    setLiveCheck(null);
     const status: AddCheckStatus =
       data?.status === 'auth' || data?.status === 'unreachable' ? data.status : 'incompatible';
     setAddCheck({
@@ -193,7 +207,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
       detail: typeof data?.error === 'string' ? data.error : '',
       ...(typeof data?.httpStatus === 'number' ? { httpStatus: data.httpStatus } : {}),
     });
-  };
+  }, []);
 
   const detectNewModels = async () => {
     if (!newProvider.baseUrl.trim()) {
@@ -203,6 +217,9 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
     setDetectingModels(true);
     setError('');
     setAddCheck(null);
+    // La comprobación manual manda sobre cualquier sonda automática pendiente.
+    liveCheckSeq.current += 1;
+    setLiveCheck(null);
     try {
       const res = await fetch('/api/providers/detect', {
         method: 'POST',
@@ -218,8 +235,10 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
       }
       const models: string[] = Array.isArray(data.models) ? data.models : [];
       setNewProvider((prev) => ({ ...prev, models: models.join(', ') }));
+      setLiveCheck('compatible');
       if (models.length === 0) setError(t('El endpoint respondió pero no lista modelos', 'The endpoint answered but lists no models', 'Der Endpoint antwortet, listet aber keine Modelle'));
     } catch (e: any) {
+      setLiveCheck(null);
       setError(e?.message || t('No se pudieron detectar modelos', 'Could not detect models', 'Modelle konnten nicht erkannt werden'));
     } finally {
       setDetectingModels(false);
@@ -232,6 +251,10 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
       setError(t('Nombre, id y URL base son obligatorios', 'Name, id and base URL are required', 'Name, ID und Basis-URL sind erforderlich'));
       return;
     }
+    // Guardar vuelve a comprobar el endpoint en el servidor; cancelamos la sonda
+    // automática para que una respuesta tardía no pise el resultado del guardado.
+    liveCheckSeq.current += 1;
+    setLiveCheck(null);
     setBusy('new');
     setError('');
     try {
@@ -260,10 +283,65 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
     }
   };
 
-  // Cambiar URL o clave invalida el aviso anterior: la siguiente prueba es otra.
+  // Comprueba el endpoint en cuanto la URL es válida, sin esperar a Añadir.
+  // El retardo evita lanzar una petición por cada tecla de una URL a medias.
   useEffect(() => {
+    if (!showAdd) {
+      setLiveCheck(null);
+      return;
+    }
+
+    const baseURL = newProvider.baseUrl.trim();
+    const apiKey = newProvider.apiKey.trim();
+    setLiveCheck(null);
     setAddCheck(null);
-  }, [newProvider.baseUrl, newProvider.apiKey]);
+    if (!isHttpUrl(baseURL)) return;
+
+    const seq = ++liveCheckSeq.current;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      if (seq !== liveCheckSeq.current) return;
+      setLiveCheck('checking');
+      void (async () => {
+        try {
+          const res = await fetch('/api/providers/detect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ baseURL, apiKey }),
+            signal: controller.signal,
+          });
+          const data = await res.json().catch(() => ({}));
+          if (seq !== liveCheckSeq.current) return;
+          if (!data.success) {
+            setCompatibilityCheck({
+              status: 'unreachable',
+              error: data.error || t('No se pudo comprobar el endpoint', 'Could not check the endpoint', 'Endpoint konnte nicht geprüft werden'),
+            });
+            return;
+          }
+          if (data.compatible === true) {
+            setAddCheck(null);
+            setLiveCheck('compatible');
+            return;
+          }
+          setCompatibilityCheck(data);
+        } catch (e: any) {
+          if (seq !== liveCheckSeq.current || controller.signal.aborted) return;
+          setCompatibilityCheck({
+            status: 'unreachable',
+            error: e?.message || t('No se pudo comprobar el endpoint', 'Could not check the endpoint', 'Endpoint konnte nicht geprüft werden'),
+          });
+        }
+      })();
+    }, 450);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+      if (liveCheckSeq.current === seq) liveCheckSeq.current += 1;
+    };
+  }, [newProvider.baseUrl, newProvider.apiKey, showAdd, setCompatibilityCheck, t]);
 
   useEffect(() => {
     if (isOpen || embedded) {
@@ -759,6 +837,29 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                   />
                 </label>
               </div>
+              {liveCheck && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className={`flex items-center gap-1 border px-2 py-1 text-[9px] font-bold ${
+                    liveCheck === 'checking'
+                      ? 'border-[var(--nc-border-light)] text-[var(--nc-text)]'
+                      : 'border-emerald-400/50 bg-emerald-400/10 text-emerald-300'
+                  }`}
+                >
+                  {liveCheck === 'checking' ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                      {t('Comprobando compatibilidad…', 'Checking compatibility…', 'Kompatibilität wird geprüft…')}
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                      {t('Endpoint compatible', 'Compatible endpoint', 'Kompatibler Endpoint')}
+                    </>
+                  )}
+                </div>
+              )}
               {addCheck && (
                 <div role="alert" className="border border-red-400/50 bg-red-400/10 p-2 text-[10px] leading-snug text-red-200">
                   <div className="flex items-start gap-1">
