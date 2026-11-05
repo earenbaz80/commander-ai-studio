@@ -205,7 +205,9 @@ const RESPONSES_DE: Record<string, string[]> = {
 export function getExpressionForText(text: string): NonoExpression {
   const lower = text.toLowerCase();
   if (lower.includes('hola') || lower.includes('hello') || lower.includes('hey') || lower.includes('hallo')) return 'happy';
-  if (lower.includes('error') || lower.includes('fallo') || lower.includes('failed') || lower.includes('fehler')) return 'error';
+  // El usuario frustrado («no funciona», «falla») enfada a Nono; la cara de
+  // error (ojos en aspa) queda para fallos reales de la app vía `status`.
+  if (lower.includes('error') || lower.includes('fallo') || lower.includes('failed') || lower.includes('fehler')) return 'angry';
   if (lower.includes('gracias') || lower.includes('thanks') || lower.includes('danke')) return 'love';
   if (lower.includes('adios') || lower.includes('bye') || lower.includes('chao') || lower.includes('tschüss')) return 'happy';
   if (lower.includes('ayuda') || lower.includes('help') || lower.includes('hilfe')) return 'thinking';
