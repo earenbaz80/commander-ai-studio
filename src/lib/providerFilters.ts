@@ -40,11 +40,38 @@ export function filterModelIds<T extends { id: string }>(models: T[], filter?: P
   const white = asList(filter?.whitelist);
   const black = asList(filter?.blacklist);
   if (white.length === 0 && black.length === 0) return models;
-  return models.filter((model) => {
-    if (black.some((pattern) => matchesModelPattern(model.id, pattern))) return false;
-    if (white.length === 0) return true;
-    return white.some((pattern) => matchesModelPattern(model.id, pattern));
-  });
+  return models.filter((model) => !isModelDisabledByFilter(model.id, filter));
+}
+
+/** `true` si el modelo queda fuera por la lista negra o por una blanca restrictiva. */
+export function isModelDisabledByFilter(id: string, filter?: Partial<ModelFilter> | null): boolean {
+  const white = asList(filter?.whitelist);
+  const black = asList(filter?.blacklist);
+  if (black.some((pattern) => matchesModelPattern(id, pattern))) return true;
+  if (white.length === 0) return false;
+  return !white.some((pattern) => matchesModelPattern(id, pattern));
+}
+
+/**
+ * Alterna un modelo en las listas del proveedor.
+ *
+ * Desactivar lo añade a la negra. Activarlo lo quita de cualquier patrón que
+ * lo cubriera y, si hay lista blanca restrictiva, lo añade a ella: la blanca
+ * manda, así que sin ese paso el interruptor no tendría efecto.
+ */
+export function toggleModelFilter(
+  filter: Partial<ModelFilter> | null | undefined,
+  id: string,
+  enabled: boolean
+): ModelFilter {
+  const white = asList(filter?.whitelist);
+  const black = asList(filter?.blacklist).filter((pattern) => !matchesModelPattern(id, pattern));
+  if (enabled) {
+    if (white.length > 0 && !white.some((pattern) => matchesModelPattern(id, pattern))) white.push(id);
+  } else if (!black.includes(id)) {
+    black.push(id);
+  }
+  return { whitelist: white, blacklist: black };
 }
 
 /** Lee los filtros guardados de un proveedor en la config. */
