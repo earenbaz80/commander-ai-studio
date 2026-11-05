@@ -405,13 +405,13 @@ export const ComposerPlayground: React.FC<ComposerPlaygroundProps> = ({ paramete
   return (
     <div className="flex-1 flex flex-col h-full bg-[var(--nc-bg-main)] font-mono text-[11px] text-[var(--nc-text)] overflow-hidden">
       {/* Cabecera: una sola fila, lo global en un menú */}
-      <header className="relative flex items-center gap-2 px-3 h-9 shrink-0 bg-[var(--nc-bg-panel)] border-b-2 border-[var(--nc-border-light)]">
-        <Code2 className="w-4 h-4 text-[var(--nc-text-accent)] shrink-0" />
+      <header className="relative flex items-center gap-2 px-3 h-9 shrink-0 bg-[var(--nc-header-bg)] text-[var(--nc-header-text)] border-b-2 border-black">
+        <Code2 className="w-4 h-4 shrink-0" />
         <span className="text-[10px] font-bold tracking-wide">{t('COMPOSER', 'COMPOSER')}</span>
-        <span className="text-[10px] text-[var(--nc-text)]/50 truncate">
+        <span className="text-[10px] opacity-70 truncate">
           {files.length} {t('archivos', 'files')}
         </span>
-        <span className="ml-auto px-1.5 py-0.5 border border-[var(--nc-border-dark)] text-[10px] truncate max-w-[220px]">
+        <span className="ml-auto px-1.5 py-0.5 border border-black/40 text-[10px] truncate max-w-[220px]">
           {model.name}
         </span>
         <button
@@ -475,7 +475,7 @@ export const ComposerPlayground: React.FC<ComposerPlaygroundProps> = ({ paramete
         />
 
         <section className="flex-1 flex flex-col min-h-0 min-w-0">
-          <div className="flex items-center gap-1 px-2 h-8 shrink-0 bg-[var(--nc-bg-panel)] border-b border-[var(--nc-border-dark)]">
+          <div className="flex items-center gap-1 px-2 h-8 shrink-0 bg-[var(--nc-bg-deep)] border-b border-[var(--nc-border-dark)]">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
@@ -532,7 +532,7 @@ export const ComposerPlayground: React.FC<ComposerPlaygroundProps> = ({ paramete
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-auto bg-[var(--nc-bg-panel)]">
+          <div className="flex-1 min-h-0 overflow-auto bg-[var(--nc-bg-main)]">
             {!selectedFile ? null : viewMode === 'preview' ? (
               <ComposerLiveSandbox files={files} lang={lang} />
             ) : viewMode === 'repl' ? (
@@ -565,7 +565,7 @@ export const ComposerPlayground: React.FC<ComposerPlaygroundProps> = ({ paramete
       </div>
 
       {/* Instrucción: el único primario de la pantalla */}
-      <footer className="relative shrink-0 bg-[var(--nc-bg-panel)] border-t-2 border-[var(--nc-border-light)] p-2">
+      <footer className="relative shrink-0 bg-[var(--nc-bg-deep)] border-t-2 border-[var(--nc-border-light)] p-2">
         {showMentions && (
           <MentionAutocomplete
             query={mentionQuery}

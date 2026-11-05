@@ -97,15 +97,27 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
 
 
+  /**
+   * Hugging Face no tiene un pipeline_tag de código: los modelos de
+   * programación son `text-generation` y se reconocen por el nombre, así que
+   * la categoría «code» busca ese término. El resto son pipeline_tag reales.
+   */
+  const resolveCategory = (pipeline: string): { pipeline: string; extraQuery: string } => {
+    if (pipeline === 'code') return { pipeline: 'text-generation', extraQuery: 'code' };
+    return { pipeline: pipeline === 'all' ? '' : pipeline, extraQuery: '' };
+  };
+
   const fetchHfHubModels = async (query = '', pipeline = 'all') => {
 
     setIsSearching(true);
 
     try {
 
-      const pipelineParam = pipeline === 'all' ? '' : pipeline;
+      const category = resolveCategory(pipeline);
 
-      const res = await fetch(`/api/hf/search?q=${encodeURIComponent(query)}&pipeline=${encodeURIComponent(pipelineParam)}&limit=24`);
+      const effectiveQuery = query.trim() || category.extraQuery;
+
+      const res = await fetch(`/api/hf/search?q=${encodeURIComponent(effectiveQuery)}&pipeline=${encodeURIComponent(category.pipeline)}&limit=24`);
 
       const data = await res.json();
 
@@ -440,64 +452,33 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
     <div className="flex-1 min-w-0 min-h-0 h-full flex flex-col bg-[var(--nc-bg-main)] font-mono text-xs text-[var(--nc-text)] p-2 overflow-hidden select-text">
 
-      {/* Top Banner Bar */}
-
-      <div className="bg-[var(--nc-header-bg)] text-black font-bold px-3 py-1 flex items-center justify-between border-2 border-black shrink-0">
-
-        <div className="flex items-center gap-2">
-
-          <span>╔═ HUGGING FACE LOCAL HUB MANAGER ═╗</span>
-
-          <div className="flex gap-1 bg-[var(--nc-bg-main)] p-0.5 border border-white">
-
-            <button
-
-              onClick={() => setActiveTab('search')}
-
-              className={`px-2 py-0.5 text-[10px] font-bold ${activeTab === 'search' ? 'bg-[var(--nc-active-bg)] text-black' : 'text-[var(--nc-text)]'}`}
-
-            >
-
-              [HUB SEARCH]
-
-            </button>
-
-            <button
-
-              onClick={() => setActiveTab('local_models')}
-
-              className={`px-2 py-0.5 text-[10px] font-bold ${activeTab === 'local_models' ? 'bg-[var(--nc-active-bg)] text-black' : 'text-[var(--nc-text)]'}`}
-
-            >
-
-              [LOCALES ({downloadedModels.length})]
-
-            </button>
-
-            <button
-
-              onClick={() => setActiveTab('tester')}
-
-              className={`px-2 py-0.5 text-[10px] font-bold ${activeTab === 'tester' ? 'bg-[var(--nc-active-bg)] text-black' : 'text-[var(--nc-text)]'}`}
-
-            >
-
-              [TESTER]
-
-            </button>
-
-          </div>
-
+      {/* Top Banner Bar */}      <div className="bg-[var(--nc-header-bg)] text-black font-bold border-2 border-black shrink-0">
+        <div className="flex items-center justify-between gap-3 px-3 py-1">
+          <span className="min-w-0 truncate">╔═ HUGGING FACE LOCAL HUB MANAGER ═╗</span>
+          <span className="shrink-0 whitespace-nowrap text-[10px]">
+            STORAGE: {(totalStorageMb / 1024).toFixed(2)} GB | WEBGPU ACTIVE | LLAMA-CPP: {runtimeStatus && runtimeStatus.available ? 'ON' : 'OFF (runtime missing)'}
+          </span>
         </div>
-
-
-
-        <div className="text-[10px] text-black font-bold">
-
-          STORAGE: {(totalStorageMb / 1024).toFixed(2)} GB | WEBGPU ACTIVE | LLAMA-CPP: {runtimeStatus && runtimeStatus.available ? 'ON' : 'OFF (runtime missing)'}
-
+        <div className="flex gap-1 bg-[var(--nc-bg-main)] px-2 py-1 border-t-2 border-black">
+          <button
+            onClick={() => setActiveTab('search')}
+            className={`px-3 py-1 text-[10px] font-bold border-2 ${activeTab === 'search' ? 'bg-[var(--nc-active-bg)] text-black border-black' : 'text-[var(--nc-text)] border-transparent hover:border-[var(--nc-border-light)]'}`}
+          >
+            [HUB SEARCH]
+          </button>
+          <button
+            onClick={() => setActiveTab('local_models')}
+            className={`px-3 py-1 text-[10px] font-bold border-2 ${activeTab === 'local_models' ? 'bg-[var(--nc-active-bg)] text-black border-black' : 'text-[var(--nc-text)] border-transparent hover:border-[var(--nc-border-light)]'}`}
+          >
+            [LOCALES ({downloadedModels.length})]
+          </button>
+          <button
+            onClick={() => setActiveTab('tester')}
+            className={`px-3 py-1 text-[10px] font-bold border-2 ${activeTab === 'tester' ? 'bg-[var(--nc-active-bg)] text-black border-black' : 'text-[var(--nc-text)] border-transparent hover:border-[var(--nc-border-light)]'}`}
+          >
+            [TESTER]
+          </button>
         </div>
-
       </div>
 
 
@@ -620,19 +601,21 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                 >
 
-                  <option value="all">Todas las Categorías (Todos los Modelos)</option>
+                  <option value="all">Todas las categorías</option>
 
-                  <option value="text-generation">LLMs / Text Generation</option>
+                  <option value="code">Código / Programación (Coder, CodeLlama)</option>
 
-                  <option value="automatic-speech-recognition">Reconocimiento de Voz (Whisper / ASR)</option>
+                  <option value="text-generation">Chat e instrucciones (LLM)</option>
 
-                  <option value="feature-extraction">Embeddings / Vectores</option>
+                  <option value="image-text-to-text">Visión y multimodal</option>
 
-                  <option value="text-to-speech">Voz / Text-to-Speech (TTS)</option>
+                  <option value="automatic-speech-recognition">Audio → texto (Whisper / ASR)</option>
 
-                  <option value="translation">Traducción de Idiomas</option>
+                  <option value="text-to-speech">Texto → voz (TTS)</option>
 
-                  <option value="image-text-to-text">Visión y Multimodal</option>
+                  <option value="translation">Traducción</option>
+
+                  <option value="feature-extraction">Embeddings / vectores</option>
 
                 </select>
 
@@ -654,7 +637,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
                   { label: '🦙 Meta Llama', query: 'llama', pipeline: 'text-generation' },
 
-                  { label: '💻 Qwen Coder', query: 'qwen', pipeline: 'text-generation' },
+                  { label: '💻 Código', query: '', pipeline: 'code' },
 
                   { label: '🎙️ Whisper Audio', query: 'whisper', pipeline: 'automatic-speech-recognition' },
 

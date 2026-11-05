@@ -133,10 +133,12 @@ export const UIConfigSchema = z.object({
   showTooltips: z.boolean().default(true),
   lowResourceMode: z.boolean().default(false),
   powerSaverMode: z.boolean().default(false),
-  fontScale: z.enum(['small', 'normal', 'large']).default('normal'),
+  // Mismos valores que aplica la UI (`font-scale-normal|lg|xl`). Antes el
+  // schema pedía small/normal/large, que ningún control produce.
+  fontScale: z.enum(['normal', 'lg', 'xl']).default('normal'),
   compactMode: z.boolean().default(false),
-  sidebarWidth: z.number().int().min(200).max(600).default(280),
-  rightPanelWidth: z.number().int().min(280).max(900).default(380),
+  // Los anchos de panel viven en localStorage (`commander_sidebar_width`,
+  // `commander_workbench_width`): aquí eran una segunda fuente que nadie leía.
 });
 
 export const ShortcutsConfigSchema = z.record(z.string(), z.string()).default({

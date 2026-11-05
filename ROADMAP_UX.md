@@ -49,12 +49,12 @@ Opción de anclar Nono como panel lateral además de flotante. Toggle en memoria
 Archivos: src/features/nono/NonoDock.tsx.
 
 ### Fase 6 — Streaming de shell.run
-Output en vivo en AgentMode (polling shell.job logs cada 500ms).
+Output en vivo en AgentMode (polling shell.job logs cada 1000 ms, `POLL_MS` en ShellJobLog.tsx).
 Archivos: AgentMode.tsx (polling), sin cambios server.
 
 ### Fase 7 — Sidebar de sesiones con scoping por proyecto
 Lista de threads por proyecto, resume con un click. Usa /api/threads.
-Archivos: src/components/SessionSidebar.tsx.
+Archivos: src/components/Sidebar.tsx (lista de threads por proyecto; no existe un SessionSidebar aparte).
 
 ### Fase 8 — Atajos de teclado
 Ctrl+P archivos, Ctrl+Shift+P comandos, Ctrl+` terminal, Ctrl+B sidebar.

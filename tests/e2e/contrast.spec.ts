@@ -190,7 +190,13 @@ async function abrirApp(page: Page, tema: string) {
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.nc-header', { timeout: 45000 });
   await descartarInvitado(page);
-  await expect(page.locator('html')).toHaveClass(new RegExp(`theme-${tema}`));
+  // Norton es el tema por defecto: `applyThemeToDOM` no le pone clase. Se
+  // comprueba que no queda ninguna clase de otro tema, que es lo observable.
+  if (tema === 'norton') {
+    await expect(page.locator('html')).not.toHaveClass(/theme-(matrix|amber|dos|light|solarized)/);
+  } else {
+    await expect(page.locator('html')).toHaveClass(new RegExp(`theme-${tema}`));
+  }
   await page.waitForTimeout(600);
 }
 
@@ -216,7 +222,9 @@ test.describe('Contraste de los temas', () => {
 
   test.setTimeout(150000);
 
-  for (const tema of ['light', 'solarized']) {
+  // Norton es el tema por defecto: si sólo se miden los claros, el que más se
+  // usa queda sin red.
+  for (const tema of ['norton', 'light', 'solarized']) {
     test(`chat, paleta, preferencias y agente legibles en ${tema}`, async ({ page }) => {
       await abrirApp(page, tema);
       await auditar(page, `chat (${tema})`);
@@ -238,7 +246,8 @@ test.describe('Contraste de los temas', () => {
       await page.waitForTimeout(300);
       await auditar(page, `configuración (${tema})`);
 
-      await page.getByRole('button', { name: 'Cerrar' }).first().click();
+      // exact: el Header también tiene «Cerrar aplicación», que cerraría la app.
+      await page.getByRole('button', { name: 'Cerrar', exact: true }).first().click();
       await page.waitForTimeout(200);
 
       await page.keyboard.press('Control+K');
