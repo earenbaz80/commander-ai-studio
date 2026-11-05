@@ -23,9 +23,15 @@ import {
   Server,
   Plus,
   Wand2,
+  Power,
 } from 'lucide-react';
 import { Language } from '../../i18n/translations';
-import { parseFilterList as parseList } from '../../lib/providerFilters';
+import {
+  PROVIDER_FILTERS_CHANGED,
+  isModelDisabledByFilter,
+  parseFilterList as parseList,
+  toggleModelFilter,
+} from '../../lib/providerFilters';
 import { slugifyProviderId } from '../../lib/openaiCompatibleProviders';
 
 interface AvailableProvider {
@@ -63,6 +69,8 @@ interface ProviderEntry {
   missing: string[];
   source: 'env' | 'file' | 'local' | 'none';
   models: ProviderModel[];
+  /** Todos los detectados, incluidos los apagados. */
+  allModels: ProviderModel[];
   modelCount: number;
   totalModels: number;
   enabled: boolean;
@@ -414,6 +422,41 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
     if (ok) {
       setNotice(t(`Filtros de ${provider.name} guardados`, `${provider.name} filters saved`, `Filter für ${provider.name} gespeichert`));
     }
+  };
+
+  /** Enciende o apaga un modelo y lo guarda en las listas del proveedor. */
+  const toggleModelEnabled = async (provider: ProviderEntry, model: ProviderModel) => {
+    const disabled = isModelDisabledByFilter(model.id, {
+      whitelist: provider.whitelist,
+      blacklist: provider.blacklist,
+    });
+    const next = toggleModelFilter(
+      { whitelist: provider.whitelist, blacklist: provider.blacklist },
+      model.id,
+      disabled
+    );
+    // Los campos de texto de filtros quedan sincronizados con los switches:
+    // guardar después no debe deshacer lo que acabas de activar.
+    setFilterDraft((prev) => ({
+      ...prev,
+      [provider.id]: { whitelist: next.whitelist.join(', '), blacklist: next.blacklist.join(', ') },
+    }));
+    // Optimista para que el interruptor responda al clic; `patchProvider` recarga.
+    setProviders((prev) =>
+      prev.map((item) =>
+        item.id === provider.id
+          ? {
+              ...item,
+              whitelist: next.whitelist,
+              blacklist: next.blacklist,
+              modelCount: disabled ? item.modelCount + 1 : Math.max(0, item.modelCount - 1),
+              models: disabled ? [...item.models, model] : item.models.filter((entry) => entry.id !== model.id),
+            }
+          : item
+      )
+    );
+    const ok = await patchProvider(provider, { whitelist: next.whitelist, blacklist: next.blacklist });
+    if (ok) window.dispatchEvent(new Event(PROVIDER_FILTERS_CHANGED));
   };
 
   const filtered = useMemo(() => {
@@ -885,20 +928,57 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                       )}
                     </div>
 
-                    {provider.models.length > 0 && (
+                    {provider.allModels.length > 0 && (
                       <div className="pt-1">
-                        <div className="text-[9px] text-[var(--nc-text)] mb-1">
-                          {t('Modelos disponibles', 'Available models', 'Verfügbare Modelle')}
+                        <div className="flex items-center justify-between gap-2 text-[9px] text-[var(--nc-text)]">
+                          <span>{t('Modelos en el chat: actívalos o apágalos', 'Models in chat: enable or disable them', 'Modelle im Chat: aktivieren oder deaktivieren')}</span>
+                          <span className="shrink-0 tabular-nums text-[var(--nc-text-accent)]">{provider.modelCount}/{provider.allModels.length}</span>
                         </div>
-                        <div className="flex flex-wrap gap-1">
-                          {provider.models.slice(0, 12).map((m) => (
-                            <span key={m.id} className="text-[9px] px-1 border border-[var(--nc-border-dark)] text-[var(--nc-text)]" title={m.contextWindow || m.id}>
-                              {m.name}
-                            </span>
-                          ))}
-                          {provider.modelCount > 12 && (
-                            <span className="text-[9px] px-1 text-[var(--nc-text-accent)]">+{provider.modelCount - 12}</span>
-                          )}
+                        <div className="mt-1 max-h-48 divide-y divide-[var(--nc-border-dark)] overflow-auto border border-[var(--nc-border-dark)]">
+                          {provider.allModels.map((model) => {
+                            const enabled = !isModelDisabledByFilter(model.id, {
+                              whitelist: provider.whitelist,
+                              blacklist: provider.blacklist,
+                            });
+                            return (
+                              <div key={model.id} className="flex items-center gap-2 px-1.5 py-0.5">
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={enabled}
+                                  aria-label={`${enabled ? t('Desactivar', 'Disable', 'Deaktivieren') : t('Activar', 'Enable', 'Aktivieren')}: ${model.name}`}
+                                  title={
+                                    enabled
+                                      ? t('Ocultar del selector de modelos', 'Hide from the model picker', 'Aus dem Modell-Selector ausblenden')
+                                      : t('Mostrar en el selector de modelos', 'Show in the model picker', 'Im Modell-Selector anzeigen')
+                                  }
+                                  onClick={() => void toggleModelEnabled(provider, model)}
+                                  disabled={isBusy}
+                                  style={{ minHeight: 0, minWidth: 0 }}
+                                  className={`shrink-0 rounded border p-0.5 transition-colors ${
+                                    enabled
+                                      ? 'border-emerald-500/50 text-emerald-300 hover:bg-[var(--nc-bg-hover)]'
+                                      : 'border-[var(--nc-border-mid)] text-[var(--nc-text-dim)] hover:border-emerald-400/60'
+                                  }`}
+                                >
+                                  <Power className="h-3 w-3" aria-hidden="true" />
+                                </button>
+                                <span
+                                  className={`min-w-0 flex-1 truncate text-[10px] ${
+                                    enabled ? 'text-[var(--nc-text)]' : 'text-[var(--nc-text-dim)]'
+                                  }`}
+                                  title={model.id}
+                                >
+                                  {model.name}
+                                </span>
+                                {!enabled && (
+                                  <span className="shrink-0 text-[8px] text-amber-300">
+                                    {t('desactivado', 'disabled', 'deaktiviert')}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
