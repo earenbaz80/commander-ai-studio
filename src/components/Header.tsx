@@ -162,16 +162,20 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         {onOpenPreferences && (
-          <button
-            type="button"
-            onClick={onOpenPreferences}
+          <>
+            {/* Aire entre la cuenta y Configuración: iban prácticamente juntos. */}
+            <span aria-hidden className="w-1.5 shrink-0" />
+            <button
+              type="button"
+              onClick={onOpenPreferences}
             className="nc-button !px-1 !py-0.5 !mx-0 flex items-center gap-1"
             data-tooltip="Configuración"
             data-tooltip-sub="Modelo, proveedores, apariencia, agente, extensiones, ayuda y rutas (Ctrl+,)"
             aria-label={lang === 'es' ? 'Abrir configuración' : lang === 'de' ? 'Konfiguration öffnen' : 'Open settings'}
           >
-            <Settings className="w-4 h-4 text-[var(--nc-text-accent)]" />
-          </button>
+              <Settings className="w-4 h-4 text-[var(--nc-text-accent)]" />
+            </button>
+          </>
         )}
 
         {/* Botones de ventana nativa Electron (Minimizar, Maximizar, Cerrar) */}
