@@ -53,6 +53,26 @@ describe('ChatPlayground', () => {
         JSON.stringify({
           success: true,
           permissions: { mode: 'build', allowedTools: null, deniedTools: [], files: { read: [], write: [] } },
+          // El catálogo base ya no inventa modelos de Ollama: llegan del
+          // catálogo vivo, como los de un servidor real con modelos descargados.
+          models: [
+            {
+              id: 'ollama/llama3.2',
+              name: 'Llama 3.2 (Ollama local, gratis)',
+              provider: 'ollama',
+              contextWindow: '128K tokens',
+              supportsTools: true,
+            },
+          ],
+          // `/api/providers` devuelve la lista de proveedores configurados; sin
+          // esto el compositor filtra todos los grupos al saber qué hay activo.
+          providers: [
+            { id: 'google', name: 'Google Gemini', configured: true, enabled: true, whitelist: [], blacklist: [] },
+            { id: 'huggingface', name: 'HuggingFace (Local)', configured: true, enabled: true, whitelist: [], blacklist: [] },
+            { id: 'ollama', name: 'Ollama (Local)', configured: true, enabled: true, whitelist: [], blacklist: [] },
+            { id: 'openrouter', name: 'OpenRouter', configured: true, enabled: true, whitelist: [], blacklist: [] },
+            { id: 'custom', name: 'OpenAI-compatible', configured: true, enabled: true, whitelist: [], blacklist: [] },
+          ],
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       )
@@ -296,22 +316,25 @@ describe('ChatPlayground', () => {
       expect(screen.queryByText(/Shift\+Enter/)).toBeNull();
     });
 
-    test('agrupa los modelos por proveedor', () => {
+    test('agrupa los modelos por proveedor', async () => {
       render(<ChatPlayground {...baseProps()} />);
       fireEvent.click(screen.getByLabelText('Modelo que se usará para responder'));
-      const groups = screen.getAllByRole('group').map((g) => g.getAttribute('aria-label'));
-      expect(groups).toContain('Google Gemini');
-      expect(groups).toContain('OpenRouter');
-      expect(groups).toContain('HuggingFace (Local)');
-      expect(groups).toContain('Ollama (Local)');
+      // Los modelos de Ollama llegan del catálogo vivo, no de una lista fija.
+      await waitFor(() => {
+        const groups = screen.getAllByRole('group').map((g) => g.getAttribute('aria-label'));
+        expect(groups).toContain('Google Gemini');
+        expect(groups).toContain('OpenRouter');
+        expect(groups).toContain('HuggingFace (Local)');
+        expect(groups).toContain('Ollama (Local)');
+      });
     });
 
-    test('elegir un modelo en el panel llama a setSelectedModel', () => {
+    test('elegir un modelo en el panel llama a setSelectedModel', async () => {
       const props = baseProps();
       render(<ChatPlayground {...props} />);
       fireEvent.click(screen.getByLabelText('Modelo que se usará para responder'));
       fireEvent.change(screen.getByLabelText('Buscar modelo o proveedor'), { target: { value: 'llama3.2' } });
-      fireEvent.click(screen.getByRole('option', { name: /Llama 3.2/ }));
+      fireEvent.click(await screen.findByRole('option', { name: /Llama 3.2/ }));
       expect(props.setSelectedModel).toHaveBeenCalledWith('ollama/llama3.2');
     });
 
@@ -327,11 +350,11 @@ describe('ChatPlayground', () => {
       expect(screen.getByRole('option', { name: /Gemini 3.5 Flash · Flash 2026/ })).toBeInTheDocument();
     });
 
-    test('el panel busca por proveedor', () => {
+    test('el panel busca por proveedor', async () => {
       render(<ChatPlayground {...baseProps()} />);
       fireEvent.click(screen.getByLabelText('Modelo que se usará para responder'));
       fireEvent.change(screen.getByLabelText('Buscar modelo o proveedor'), { target: { value: 'ollama' } });
-      expect(screen.getByRole('option', { name: /Llama 3.2/ })).toBeInTheDocument();
+      expect(await screen.findByRole('option', { name: /Llama 3.2/ })).toBeInTheDocument();
       expect(screen.queryByRole('option', { name: /Gemini 3.5 Flash/ })).toBeNull();
     });
   });

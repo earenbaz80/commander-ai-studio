@@ -45,6 +45,7 @@ import { GEMINI_DEFAULT_MODEL } from './src/config/geminiModels';
 import { handleFreebuffGenerate } from './freebuff';
 import { listProjectPrompts } from './promptsApi';
 import { normalizeLmStudioHost, parseLmStudioModels } from './src/lib/lmStudio';
+import { cachedLocalModels, rememberLocalModels } from './src/lib/localModelCache';
 
 dotenv.config();
 
@@ -2455,7 +2456,11 @@ async function fetchLmstudioModels(host: string): Promise<{ models: string[]; ho
       `No se pudo conectar a LM Studio en ${base}. Comprueba el puerto 1234, que «Serve on Local Network» esté activo y el firewall. ${errors[0] || ''}`.trim()
     );
   }
-  return { models: [...models], host: base };
+  const ids = [...models];
+  // Igual que OpenCode: la lista queda guardada por host aunque el servidor se
+  // apague después. El LM Studio remoto y el local son claves distintas.
+  if (ids.length > 0) rememberLocalModels('lmstudio', base, ids);
+  return { models: ids, host: base };
 }
 
 app.get('/api/lmstudio/models', async (req, res) => {
@@ -2468,7 +2473,16 @@ app.get('/api/lmstudio/models', async (req, res) => {
       warning: probe.models.length === 0 ? 'LM Studio responde, pero no tiene modelos cargados.' : undefined,
     });
   } catch (e: any) {
-    return res.json({ success: false, models: [], error: e?.message || 'LM Studio no responde' });
+    // Sin conexión se devuelve lo último detectado, marcado como caché: el
+    // servidor puede estar apagado y los modelos siguen siendo los suyos.
+    const saved = cachedLocalModels('lmstudio');
+    return res.json({
+      success: false,
+      models: saved.models,
+      cached: saved.models.length > 0,
+      updatedAt: saved.updatedAt,
+      error: e?.message || 'LM Studio no responde',
+    });
   }
 });
 
@@ -2483,7 +2497,16 @@ app.post('/api/lmstudio/models', async (req, res) => {
       warning: probe.models.length === 0 ? 'LM Studio responde, pero no tiene modelos cargados.' : undefined,
     });
   } catch (e: any) {
-    return res.json({ success: false, models: [], error: e?.message || 'LM Studio no responde' });
+    // Sin conexión se devuelve lo último detectado, marcado como caché: el
+    // servidor puede estar apagado y los modelos siguen siendo los suyos.
+    const saved = cachedLocalModels('lmstudio');
+    return res.json({
+      success: false,
+      models: saved.models,
+      cached: saved.models.length > 0,
+      updatedAt: saved.updatedAt,
+      error: e?.message || 'LM Studio no responde',
+    });
   }
 });
 
@@ -2755,12 +2778,17 @@ app.get('/api/models/live', async (req, res) => {
           });
           if (!response.ok) return [];
           const data = await response.json();
-          return (data.models || []).map((m: any) => ({
-            id: `ollama/${typeof m === 'string' ? m : m.name}`,
-            name: typeof m === 'string' ? m : m.name,
+          const names: string[] = (data.models || [])
+            .map((m: any) => (typeof m === 'string' ? m : m?.name))
+            .filter(Boolean);
+          // Se guarda por host: si Ollama se apaga, sus modelos siguen listados.
+          rememberLocalModels('ollama', String(host), names);
+          return names.map((name) => ({
+            id: `ollama/${name}`,
+            name,
             provider: 'ollama',
             context_window: 128_000,
-            tags: ['local'],
+            tags: ['local', 'detectado'],
           }));
         } catch {
           return [];
@@ -2769,7 +2797,10 @@ app.get('/api/models/live', async (req, res) => {
       (async () => {
         try {
           const probe = await fetchLmstudioModels(await resolveLmstudioHost(req));
-          return probe.models.map((id) => ({
+          // Puede responder uno de los dos hosts y el otro estar apagado: se
+          // suman los modelos guardados de ambos (remoto/local) sin duplicar.
+          const ids = [...new Set([...probe.models, ...cachedLocalModels('lmstudio').models])];
+          return ids.map((id) => ({
             id: `lmstudio/${id}`,
             name: id,
             provider: 'lmstudio',
@@ -2782,6 +2813,21 @@ app.get('/api/models/live', async (req, res) => {
       })(),
       fetchNvidiaLiveModels(),
     ]);
+
+    // Un servidor local apagado no vacía el selector: se listan los modelos de
+    // la última detección guardada. Ollama tiene un solo host; LM Studio une
+    // arriba los modelos del remoto y del local.
+    const ollamaList = ollamaModels.length > 0
+      ? ollamaModels
+      : cachedLocalModels('ollama').models.map((name) => ({
+          id: `ollama/${name}`,
+          name,
+          provider: 'ollama' as const,
+          context_window: 128_000,
+          tags: ['local', 'guardado'],
+        }));
+    const ollamaLive = ollamaModels.length > 0;
+    const lmstudioLive = lmstudioModels.length > 0;
 
     // Merge and normalize to CatalogEntry format
     const allEntries = [
@@ -2809,7 +2855,7 @@ app.get('/api/models/live', async (req, res) => {
         tags: m.tags,
         deprecated: m.deprecated,
       })),
-      ...ollamaModels,
+      ...ollamaList,
       ...lmstudioModels,
       ...nvidiaModels,
     ];
@@ -2817,7 +2863,7 @@ app.get('/api/models/live', async (req, res) => {
     // Estado por proveedor: `available` dice si tiene modelos listados y
     // `configured` si hay credenciales. Antes ambos eran lo mismo (count > 0),
     // así que todo aparecía «disponible» aunque no hubiera ni una clave.
-    const providerStatus: Record<string, { available: boolean; count: number; configured: boolean; source: string; error?: string }> = {};
+    const providerStatus: Record<string, { available: boolean; count: number; configured: boolean; source: string; error?: string; cached?: boolean }> = {};
     const envIds = new Set(getEnvProviderIds());
     const specs = new Map(PROVIDER_SPECS.map((s) => [s.id, s]));
     for (const p of new Set(allEntries.map((m) => m.provider))) {
@@ -2833,8 +2879,8 @@ app.get('/api/models/live', async (req, res) => {
       const st = describeProvider(spec, getConfig().providers as any, envIds);
       providerStatus[spec.id] = { available: st.configured, count: 0, configured: st.configured, source: st.source };
     }
-    providerStatus.ollama = { available: ollamaModels.length > 0, count: ollamaModels.length, configured: true, source: 'local' };
-    providerStatus.lmstudio = { available: lmstudioModels.length > 0, count: lmstudioModels.length, configured: true, source: 'local' };
+    providerStatus.ollama = { available: ollamaList.length > 0, count: ollamaList.length, configured: true, source: 'local', ...(ollamaLive ? {} : { cached: true }) };
+    providerStatus.lmstudio = { available: lmstudioModels.length > 0, count: lmstudioModels.length, configured: true, source: 'local', ...(lmstudioLive ? {} : { cached: true }) };
 
     return res.json({
       success: true,
