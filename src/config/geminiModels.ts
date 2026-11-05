@@ -67,6 +67,33 @@ export const GEMINI_MODEL_CHAIN = Array.from(
   new Set([GEMINI_DEFAULT_MODEL, GEMINI_PRO_MODEL, ...GEMINI_FALLBACK_MODELS])
 );
 
+/**
+ * Gemini que Google ya retiró o dejó de ofrecer como seleccionables.
+ *
+ * models.dev sigue publicándolos y el selector los mostraba como si fueran
+ * actuales. No se ocultan: se marcan como «discontinuado» para que nadie los
+ * elija creyendo que funcionan.
+ *
+ * - 2.5 (pro/flash/lite): retirados el 2026-10-20; el endpoint devuelve 404
+ *   «no longer available» (ver la cadena de respaldo de arriba).
+ * - 2.5 previews: misma generación, ya sin servicio.
+ * - 3.7-flash: Google lo quitó de AI Studio y enruta las peticiones a 3.8.
+ */
+const DEPRECATED_GEMINI_MODELS = new Set([
+  'gemini-2.5-pro',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-computer-use-preview-10-2025',
+  'gemini-2.5-flash-preview-tts',
+  'gemini-2.5-pro-preview-tts',
+  'gemini-3.7-flash',
+]);
+
+/** `true` si el id es un Gemini que Google ya no sirve como modelo actual. */
+export function isDeprecatedGeminiModel(id: string): boolean {
+  return DEPRECATED_GEMINI_MODELS.has(String(id || '').trim().replace(/^google\//, ''));
+}
+
 /** Tope de modelos en una cadena explícita: más que esto es una lista de deseos. */
 export const MAX_FALLBACK_MODELS = 5;
 
