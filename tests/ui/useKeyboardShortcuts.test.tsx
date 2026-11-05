@@ -54,6 +54,17 @@ describe('useKeyboardShortcuts', () => {
     expect(onPalette).not.toHaveBeenCalled();
   });
 
+  test('Ctrl+Alt+M pide alternar la barra de contexto', () => {
+    const listener = vi.fn();
+    window.addEventListener('commander:toggle-context-meter', listener);
+    render(<Probe />);
+
+    fireEvent.keyDown(window, { key: 'm', ctrlKey: true, altKey: true });
+
+    window.removeEventListener('commander:toggle-context-meter', listener);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   test('Ctrl+` abre el Workbench y le pide la terminal', () => {
     const onWorkbench = vi.fn();
     const details: any[] = [];

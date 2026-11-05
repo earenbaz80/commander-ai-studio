@@ -165,6 +165,14 @@ export function useKeyboardShortcuts(opts: KeyboardShortcutsOptions): void {
           new CustomEvent('commander:open-workbench-tab', { detail: { tab: 'terminal' } })
         );
       }
+
+      // 12. Ctrl+Alt+M or Cmd+Alt+M → plegar/desplegar la barra de contexto.
+      // La barra escucha el evento: así el atajo funciona aunque el chat no
+      // tenga el foco y el estado sigue viviendo en su componente.
+      if (isMetaOrCtrl && e.altKey && !e.shiftKey && e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        window.dispatchEvent(new Event('commander:toggle-context-meter'));
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);

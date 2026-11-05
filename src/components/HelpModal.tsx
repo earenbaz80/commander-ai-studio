@@ -332,6 +332,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang, inl
     { keys: 'Ctrl + /', mac: '⌘ + /', action: L('Mostrar / ocultar los atajos', 'Show / hide shortcuts') },
     { keys: 'Ctrl + B', mac: '⌘ + B', action: L('Mostrar / ocultar la barra lateral', 'Toggle the sidebar') },
     { keys: 'Ctrl + Alt + B', mac: '⌘ + ⌥ + B', action: L('Mostrar / ocultar el Workbench', 'Toggle the Workbench') },
+    { keys: 'Ctrl + Alt + M', mac: '⌘ + ⌥ + M', action: L('Mostrar / ocultar la barra de contexto del chat', 'Toggle the chat context bar') },
     { keys: 'Ctrl + `', mac: '⌘ + `', action: L('Abrir el Workbench en la terminal', 'Open the Workbench on the terminal') },
     { keys: 'Ctrl + ,', mac: '⌘ + ,', action: L('Abrir / cerrar Parámetros (inspector)', 'Toggle Settings (inspector)') },
     { keys: 'Ctrl + Alt + N', mac: '⌘ + ⌥ + N', action: L('Nuevo chat (nueva sesión)', 'New chat (new session)') },
