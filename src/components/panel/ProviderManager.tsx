@@ -21,9 +21,25 @@ import {
   ChevronRight,
   KeyRound,
   Server,
+  Plus,
+  Wand2,
 } from 'lucide-react';
 import { Language } from '../../i18n/translations';
 import { parseFilterList as parseList } from '../../lib/providerFilters';
+import { slugifyProviderId } from '../../lib/openaiCompatibleProviders';
+
+interface AvailableProvider {
+  id: string;
+  name: string;
+  env: string[];
+  doc?: string;
+  api?: string;
+  modelCount: number;
+  supported: boolean;
+  configured: boolean;
+}
+
+const EMPTY_NEW_PROVIDER = { id: '', name: '', baseUrl: '', apiKey: '', models: '' };
 
 interface ProviderField {
   name: string;
@@ -59,6 +75,8 @@ interface ProviderEntry {
   reachable?: boolean;
   /** Motivo del fallo de la sonda (HTTP 503, timeout…). */
   probeError?: string;
+  /** Añadido por el usuario como endpoint OpenAI-compatible. */
+  custom?: boolean;
 }
 
 interface ProviderManagerProps {
@@ -89,6 +107,12 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
   const [notice, setNotice] = useState('');
   /** Texto de las listas del proveedor abierto, tal cual lo escribe el usuario. */
   const [filterDraft, setFilterDraft] = useState<Record<string, { whitelist: string; blacklist: string }>>({});
+  const [showAdd, setShowAdd] = useState(false);
+  const [available, setAvailable] = useState<AvailableProvider[]>([]);
+  const [availableQuery, setAvailableQuery] = useState('');
+  const [availableLoading, setAvailableLoading] = useState(false);
+  const [newProvider, setNewProvider] = useState(EMPTY_NEW_PROVIDER);
+  const [detectingModels, setDetectingModels] = useState(false);
 
   const t = useCallback(
     (es: string, en: string, de: string) => (lang === 'es' ? es : lang === 'de' ? de : en),
@@ -112,6 +136,87 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
       setError(e?.message || t('Error de red', 'Network error', 'Netzwerkfehler'));
     }
   }, [t]);
+
+  const openAdd = useCallback(async () => {
+    setShowAdd((value) => !value);
+    setError('');
+    if (available.length > 0) return;
+    setAvailableLoading(true);
+    try {
+      const res = await fetch('/api/providers/available', { credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (data.success && Array.isArray(data.providers)) setAvailable(data.providers);
+    } catch {
+      /* el formulario manual sigue disponible */
+    } finally {
+      setAvailableLoading(false);
+    }
+  }, [available.length]);
+
+  const useAvailable = (provider: AvailableProvider) => {
+    setNewProvider({
+      id: slugifyProviderId(provider.id),
+      name: provider.name,
+      baseUrl: provider.api || '',
+      apiKey: '',
+      models: '',
+    });
+  };
+
+  const detectNewModels = async () => {
+    if (!newProvider.baseUrl.trim()) {
+      setError(t('Escribe primero la URL base', 'Enter the base URL first', 'Gib zuerst die Basis-URL ein'));
+      return;
+    }
+    setDetectingModels(true);
+    setError('');
+    try {
+      const res = await fetch('/api/custom/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ baseURL: newProvider.baseUrl, apiKey: newProvider.apiKey }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!data.success) throw new Error(data.error || t('No se pudieron detectar modelos', 'Could not detect models', 'Modelle konnten nicht erkannt werden'));
+      const models: string[] = Array.isArray(data.models) ? data.models : [];
+      setNewProvider((prev) => ({ ...prev, models: models.join(', ') }));
+      if (models.length === 0) setError(t('El endpoint respondió pero no lista modelos', 'The endpoint answered but lists no models', 'Der Endpoint antwortet, listet aber keine Modelle'));
+    } catch (e: any) {
+      setError(e?.message || t('No se pudieron detectar modelos', 'Could not detect models', 'Modelle konnten nicht erkannt werden'));
+    } finally {
+      setDetectingModels(false);
+    }
+  };
+
+  const saveNewProvider = async () => {
+    const id = slugifyProviderId(newProvider.id || newProvider.name);
+    if (!id || !newProvider.name.trim() || !newProvider.baseUrl.trim()) {
+      setError(t('Nombre, id y URL base son obligatorios', 'Name, id and base URL are required', 'Name, ID und Basis-URL sind erforderlich'));
+      return;
+    }
+    setBusy('new');
+    setError('');
+    try {
+      const res = await fetch('/api/providers/custom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ...newProvider, id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!data.success) throw new Error(data.error || t('No se pudo añadir', 'Could not add', 'Konnte nicht hinzugefügt werden'));
+      setNotice(t(`Proveedor ${newProvider.name} añadido`, `Provider ${newProvider.name} added`, `Anbieter ${newProvider.name} hinzugefügt`));
+      setShowAdd(false);
+      setNewProvider(EMPTY_NEW_PROVIDER);
+      setAvailable((prev) => prev.filter((provider) => provider.id !== id));
+      await load();
+    } catch (e: any) {
+      setError(e?.message || t('No se pudo añadir', 'Could not add', 'Konnte nicht hinzugefügt werden'));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   useEffect(() => {
     if (isOpen || embedded) {
@@ -323,6 +428,19 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
   }, [providers, query]);
 
   const configuredCount = providers.filter((p) => p.configured).length;
+  const availableOptions = useMemo(() => {
+    const q = availableQuery.trim().toLowerCase();
+    return available
+      .filter((provider) => !provider.configured)
+      .filter(
+        (provider) =>
+          !q ||
+          provider.name.toLowerCase().includes(q) ||
+          provider.id.includes(q) ||
+          provider.env.some((env) => env.toLowerCase().includes(q))
+      )
+      .slice(0, 50);
+  }, [available, availableQuery]);
 
   React.useEffect(() => {
     if (!isOpen || embedded || !onClose) return;
@@ -393,11 +511,146 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
               {configPath}
             </div>
           )}
+          <button
+            type="button"
+            onClick={() => void openAdd()}
+            aria-expanded={showAdd}
+            className="mt-1 flex items-center gap-1 border border-[var(--nc-text-accent)] px-2 py-1 text-[10px] font-bold text-[var(--nc-text-accent)] hover:bg-[var(--nc-bg-hover)]"
+          >
+            <Plus className="h-3 w-3" aria-hidden="true" />
+            {t('Añadir proveedor', 'Add provider', 'Anbieter hinzufügen')}
+          </button>
         </div>
 
         <div className={embedded ? 'space-y-2' : 'flex-1 overflow-auto p-3 min-h-0 space-y-2'}>
           {error && <div className="p-2 text-red-300 text-[10px] border border-red-400/40 bg-red-400/10">{error}</div>}
           {notice && <div className="p-2 text-emerald-300 text-[10px] border border-emerald-400/40 bg-emerald-400/10">{notice}</div>}
+
+          {showAdd && (
+            <div className="space-y-2 border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] p-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-[var(--nc-text)]">
+                  {t('Añadir proveedor OpenAI-compatible', 'Add OpenAI-compatible provider', 'OpenAI-kompatiblen Anbieter hinzufügen')}
+                </span>
+                <button type="button" onClick={() => setShowAdd(false)} aria-label={t('Cerrar', 'Close', 'Schließen')}>
+                  <X className="h-3.5 w-3.5 text-[var(--nc-text)]" />
+                </button>
+              </div>
+              <p className="text-[9px] leading-snug text-[var(--nc-text)] opacity-80">
+                {t(
+                  'Elige uno del catálogo de models.dev o escribe la URL de cualquier endpoint compatible (Groq, DeepSeek, vLLM, llama.cpp…).',
+                  'Pick one from the models.dev catalog or enter any compatible endpoint URL (Groq, DeepSeek, vLLM, llama.cpp…).',
+                  'Wähle einen aus dem models.dev-Katalog oder gib die URL eines kompatiblen Endpoints ein (Groq, DeepSeek, vLLM, llama.cpp…).'
+                )}
+              </p>
+              <input
+                value={availableQuery}
+                onChange={(event) => setAvailableQuery(event.target.value)}
+                placeholder={t('Buscar proveedor (200+ en models.dev)…', 'Search provider (200+ on models.dev)…', 'Anbieter suchen (200+ auf models.dev)…')}
+                className="w-full border border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] px-2 py-1 text-[11px] text-[var(--nc-text)] outline-none"
+              />
+              <div className="max-h-28 overflow-auto border border-[var(--nc-border-dark)]">
+                {availableLoading ? (
+                  <div className="flex items-center gap-1 p-2 text-[10px] text-[var(--nc-text)]">
+                    <Loader2 className="h-3 w-3 animate-spin" /> {t('Cargando catálogo…', 'Loading catalog…', 'Katalog wird geladen…')}
+                  </div>
+                ) : availableOptions.length === 0 ? (
+                  <div className="p-2 text-[10px] text-[var(--nc-text)] opacity-70">
+                    {t('Sin resultados: usa el formulario de abajo', 'No results: use the form below', 'Keine Treffer: nutze das Formular unten')}
+                  </div>
+                ) : (
+                  availableOptions.map((provider) => (
+                    <button
+                      key={provider.id}
+                      type="button"
+                      onClick={() => useAvailable(provider)}
+                      className="flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)]"
+                    >
+                      <span className="truncate font-bold">{provider.name}</span>
+                      {provider.supported && (
+                        <span className="shrink-0 border border-emerald-400/50 px-1 text-[8px] text-emerald-300">
+                          {t('integrado', 'built-in', 'integriert')}
+                        </span>
+                      )}
+                      {!provider.api && (
+                        <span className="shrink-0 text-[8px] text-amber-300">{t('sin URL', 'no URL', 'keine URL')}</span>
+                      )}
+                      <span className="ml-auto shrink-0 text-[9px] opacity-70">{provider.modelCount} {t('modelos', 'models', 'Modelle')}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+              <div className="grid gap-1 sm:grid-cols-2">
+                <label className="flex items-center gap-1 text-[9px]">
+                  <span className="w-16 shrink-0 font-bold text-[var(--nc-text)]">id</span>
+                  <input
+                    value={newProvider.id}
+                    onChange={(event) => setNewProvider((prev) => ({ ...prev, id: event.target.value }))}
+                    placeholder="groq"
+                    className="w-full border border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] px-1 py-0.5 font-mono text-[10px] text-[var(--nc-text)] outline-none"
+                  />
+                </label>
+                <label className="flex items-center gap-1 text-[9px]">
+                  <span className="w-16 shrink-0 font-bold text-[var(--nc-text)]">{t('nombre', 'name', 'Name')}</span>
+                  <input
+                    value={newProvider.name}
+                    onChange={(event) => setNewProvider((prev) => ({ ...prev, name: event.target.value }))}
+                    placeholder={t('Groq', 'Groq', 'Groq')}
+                    className="w-full border border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] px-1 py-0.5 text-[10px] text-[var(--nc-text)] outline-none"
+                  />
+                </label>
+                <label className="flex items-center gap-1 text-[9px] sm:col-span-2">
+                  <span className="w-16 shrink-0 font-bold text-[var(--nc-text)]">URL</span>
+                  <input
+                    value={newProvider.baseUrl}
+                    onChange={(event) => setNewProvider((prev) => ({ ...prev, baseUrl: event.target.value }))}
+                    placeholder="https://api.groq.com/openai/v1"
+                    className="w-full border border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] px-1 py-0.5 font-mono text-[10px] text-[var(--nc-text)] outline-none"
+                  />
+                </label>
+                <label className="flex items-center gap-1 text-[9px] sm:col-span-2">
+                  <span className="w-16 shrink-0 font-bold text-[var(--nc-text)]">API key</span>
+                  <input
+                    type="password"
+                    value={newProvider.apiKey}
+                    onChange={(event) => setNewProvider((prev) => ({ ...prev, apiKey: event.target.value }))}
+                    placeholder={t('(opcional en endpoints locales)', '(optional on local endpoints)', '(optional bei lokalen Endpoints)')}
+                    className="w-full border border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] px-1 py-0.5 font-mono text-[10px] text-[var(--nc-text)] outline-none"
+                  />
+                </label>
+                <label className="flex items-start gap-1 text-[9px] sm:col-span-2">
+                  <span className="w-16 shrink-0 pt-1 font-bold text-[var(--nc-text)]">{t('modelos', 'models', 'Modelle')}</span>
+                  <textarea
+                    value={newProvider.models}
+                    onChange={(event) => setNewProvider((prev) => ({ ...prev, models: event.target.value }))}
+                    rows={2}
+                    placeholder={t('se detectan al pulsar el botón, o sepáralos por comas', 'detected with the button, or comma separated', 'werden per Button erkannt oder kommagetrennt')}
+                    className="w-full resize-y border border-[var(--nc-border-light)] bg-[var(--nc-bg-panel)] px-1 py-0.5 font-mono text-[10px] text-[var(--nc-text)] outline-none"
+                  />
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void detectNewModels()}
+                  disabled={detectingModels}
+                  className="flex items-center gap-1 border border-[var(--nc-text-accent)] px-2 py-1 text-[10px] font-bold text-[var(--nc-text-accent)]"
+                >
+                  {detectingModels ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+                  {t('Detectar modelos', 'Detect models', 'Modelle erkennen')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveNewProvider()}
+                  disabled={busy === 'new'}
+                  className="flex items-center gap-1 bg-[var(--nc-active-bg)] px-2 py-1 text-[10px] font-bold text-[var(--nc-active-text)]"
+                >
+                  {busy === 'new' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                  {t('Añadir', 'Add', 'Hinzufügen')}
+                </button>
+              </div>
+            </div>
+          )}
 
           {filtered.map((provider) => {
             const open = openId === provider.id;

@@ -34,8 +34,9 @@ import { handleAnthropicGenerate, handleAnthropicStream } from './anthropic';
 import { executeLocalHfModel } from './localModels';
 import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList, apiKeyMiddleware, getApiKey as getRequestApiKey } from './apiKeys';
 import { isAllowedHost, allowedHostsFromEnv } from './hostGuard';
-import { getConfig, getConfigPath, getEnvProviderIds, getGlobalConfigPath, getProviderSecret, loadConfig, removeProviderConfig } from './src/config/index';
-import { PROVIDER_SPECS, buildProviderList, describeProvider, getProviderCatalog } from './src/providers/registry';
+import { getConfig, getConfigPath, getEnvProviderIds, getGlobalConfigPath, getProviderSecret, loadConfig, removeOpenAiCompatibleProvider, removeProviderConfig } from './src/config/index';
+import { PROVIDER_SPECS, buildProviderList, customProviderSpecs, describeProvider, getAllProviderCatalog, getProviderCatalog } from './src/providers/registry';
+import { parseCompatibleModelId, slugifyProviderId } from './src/lib/openaiCompatibleProviders';
 import { probeLocalProvider } from './src/providers/localProbe';
 import skillsRouter from './skills/api';
 import { forkSessionWorkspace, deleteSessionWorkspace, listSessions, createGitWorktree } from './sessionWorkspace';
@@ -979,10 +980,78 @@ app.get('/api/providers', async (req, res) => {
 // Filtros del gestor: apagar un proveedor o recortar su catálogo sin borrar las
 // credenciales. Se escribe en la config global, igual que las claves, y no toca
 // el resto del fichero.
+// Catálogo completo de models.dev para el buscador de «Añadir proveedor».
+app.get('/api/providers/available', async (_req, res) => {
+  try {
+    const catalog = await getAllProviderCatalog();
+    const config = getConfig().providers as any;
+    const envIds = new Set(getEnvProviderIds());
+    const specs = new Map(PROVIDER_SPECS.map((spec) => [spec.id, spec]));
+    const added = new Set(Object.keys(config?.openaiCompatible || {}));
+    const providers = catalog
+      .filter((provider) => !added.has(provider.id))
+      .map((provider) => {
+        const spec = specs.get(provider.id);
+        return {
+          id: provider.id,
+          name: provider.name,
+          env: provider.env,
+          doc: provider.doc,
+          api: provider.api,
+          modelCount: provider.models.length,
+          supported: Boolean(spec),
+          configured: spec ? describeProvider(spec, config, envIds).configured : false,
+        };
+      })
+      .sort((a, b) => Number(b.supported) - Number(a.supported) || a.name.localeCompare(b.name));
+    return res.json({ success: true, providers });
+  } catch (e: any) {
+    return res.status(500).json({ success: false, error: e?.message || 'Error listando proveedores disponibles' });
+  }
+});
+
+// Añade un proveedor OpenAI-compatible con nombre propio (Groq, DeepSeek, vLLM…).
+app.post('/api/providers/custom', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const id = slugifyProviderId(String(body.id || body.name || ''));
+    if (!id) return res.status(400).json({ success: false, error: 'Nombre o id inválido' });
+    if (PROVIDER_SPECS.some((spec) => spec.id === id)) {
+      return res.status(400).json({ success: false, error: 'Ese id ya pertenece a un proveedor integrado' });
+    }
+    const baseUrl = String(body.baseUrl || '').trim().replace(/\/+$/, '');
+    try {
+      const parsed = new URL(baseUrl);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('protocolo');
+    } catch {
+      return res.status(400).json({ success: false, error: 'URL base inválida (http o https)' });
+    }
+    const name = String(body.name || id).trim().slice(0, 80) || id;
+    const models = (Array.isArray(body.models) ? body.models : String(body.models || '').split(/[,\n]/))
+      .filter((value: unknown): value is string => typeof value === 'string')
+      .map((value: string) => value.trim())
+      .filter(Boolean)
+      .slice(0, 500);
+    const entry = {
+      name,
+      baseUrl,
+      ...(typeof body.apiKey === 'string' && body.apiKey.trim() ? { apiKey: body.apiKey.trim() } : {}),
+      ...(models.length > 0 ? { models } : {}),
+    };
+    const { writeConfig } = await import('./src/config/index');
+    const configPath = writeConfig({ providers: { openaiCompatible: { [id]: entry } } } as any, 'global');
+    return res.json({ success: true, id, configPath, target: 'global' });
+  } catch (e: any) {
+    return res.status(400).json({ success: false, error: e?.message || 'Error añadiendo proveedor' });
+  }
+});
+
 app.patch('/api/providers/:id', async (req, res) => {
   try {
     const id = String(req.params.id || '');
-    if (!PROVIDER_SPECS.some((spec) => spec.id === id)) {
+    const isBuiltin = PROVIDER_SPECS.some((spec) => spec.id === id);
+    const isAdded = Boolean((getConfig().providers as any)?.openaiCompatible?.[id]);
+    if (!isBuiltin && !isAdded) {
       return res.status(404).json({ success: false, error: 'proveedor desconocido' });
     }
     const b = req.body || {};
@@ -1000,7 +1069,12 @@ app.patch('/api/providers/:id', async (req, res) => {
       return res.status(400).json({ success: false, error: 'nada que actualizar' });
     }
     const { writeConfig } = await import('./src/config/index');
-    const configPath = writeConfig({ providers: { [id]: patch } } as any, 'global');
+    const configPath = writeConfig(
+      isBuiltin
+        ? ({ providers: { [id]: patch } } as any)
+        : ({ providers: { openaiCompatible: { [id]: patch } } } as any),
+      'global'
+    );
     return res.json({ success: true, configPath, target: 'global' });
   } catch (e: any) {
     return res.status(400).json({ success: false, error: e?.message || 'Error guardando filtros' });
@@ -1013,7 +1087,11 @@ app.delete('/api/providers/:id', (req, res) => {
   try {
     const id = String(req.params.id || '');
     if (!PROVIDER_SPECS.some((s) => s.id === id)) {
-      return res.status(400).json({ success: false, error: 'Proveedor desconocido' });
+      if (!(getConfig().providers as any)?.openaiCompatible?.[id]) {
+        return res.status(400).json({ success: false, error: 'Proveedor desconocido' });
+      }
+      const configPath = removeOpenAiCompatibleProvider(id);
+      return res.json({ success: true, configPath, stillFromEnv: false });
     }
     const configPath = removeProviderConfig(id);
     return res.json({ success: true, configPath, stillFromEnv: getEnvProviderIds().includes(id) });
@@ -2843,6 +2921,44 @@ app.get('/api/models/live', async (req, res) => {
       fetchNvidiaLiveModels(),
     ]);
 
+    // Proveedores añadidos por el usuario: sus modelos no están en models.dev,
+    // así que se listan desde su endpoint (o desde los guardados al añadirlo).
+    const addedProviders = customProviderSpecs(getConfig().providers as any);
+    const addedConfig = (((getConfig().providers as any)?.openaiCompatible) || {}) as Record<string, any>;
+    const compatibleEntries = (
+      await Promise.all(
+        addedProviders.map(async (spec) => {
+          const entry = addedConfig[spec.id] || {};
+          const base = String(entry.baseUrl || '').replace(/\/+$/, '');
+          let ids: string[] = Array.isArray(entry.models)
+            ? entry.models.filter((value: unknown): value is string => typeof value === 'string')
+            : [];
+          if (ids.length === 0 && base) {
+            try {
+              const response = await fetch(`${base}/models`, {
+                headers: { ...(entry.apiKey ? { Authorization: `Bearer ${entry.apiKey}` } : {}) },
+                signal: AbortSignal.timeout(8_000),
+              });
+              if (response.ok) {
+                const data = await response.json().catch(() => ({}));
+                const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.models) ? data.models : [];
+                ids = list.map((model: any) => (typeof model === 'string' ? model : model?.id || model?.name)).filter(Boolean);
+              }
+            } catch {
+              /* se queda con los modelos guardados */
+            }
+          }
+          return ids.map((id) => ({
+            id: `openai-compatible/${spec.id}/${id}`,
+            name: id,
+            provider: spec.id as any,
+            context_window: 32_768,
+            tags: ['openai-compatible'],
+          }));
+        })
+      )
+    ).flat();
+
     // Un servidor local apagado no vacía el selector: se listan los modelos de
     // la última detección guardada. Ollama tiene un solo host; LM Studio une
     // arriba los modelos del remoto y del local.
@@ -2889,19 +3005,20 @@ app.get('/api/models/live', async (req, res) => {
       ...ollamaList,
       ...lmstudioResult.entries,
       ...nvidiaModels,
+      ...compatibleEntries,
     ];
 
     // Estado por proveedor: `available` dice si tiene modelos listados y
     // `configured` si hay credenciales. Antes ambos eran lo mismo (count > 0),
     // así que todo aparecía «disponible» aunque no hubiera ni una clave.
-    const providerStatus: Record<string, { available: boolean; count: number; configured: boolean; source: string; error?: string; cached?: boolean }> = {};
+    const providerStatus: Record<string, { available: boolean; count: number; configured: boolean; source: string; error?: string; cached?: boolean; name?: string }> = {};
     const envIds = new Set(getEnvProviderIds());
-    const specs = new Map(PROVIDER_SPECS.map((s) => [s.id, s]));
+    const specs = new Map([...PROVIDER_SPECS, ...addedProviders].map((s) => [s.id, s]));
     for (const p of new Set(allEntries.map((m) => m.provider))) {
       const count = allEntries.filter((m) => m.provider === p).length;
       const spec = specs.get(p);
       const st = spec ? describeProvider(spec, getConfig().providers as any, envIds) : { configured: true, source: 'none' };
-      providerStatus[p] = { available: count > 0, count, configured: st.configured, source: st.source };
+      providerStatus[p] = { available: count > 0, count, configured: st.configured, source: st.source, name: spec?.name || p };
     }
     // Los proveedores sin entradas en el catálogo (HF, custom, freebuff) deben
     // salir igualmente: su disponibilidad es tener credenciales, no modelos.
@@ -2911,7 +3028,13 @@ app.get('/api/models/live', async (req, res) => {
       providerStatus[spec.id] = { available: st.configured, count: 0, configured: st.configured, source: st.source };
     }
     providerStatus.ollama = { available: ollamaList.length > 0, count: ollamaList.length, configured: true, source: 'local', ...(ollamaLive ? {} : { cached: true }) };
-    providerStatus.lmstudio = { available: lmstudioResult.entries.length > 0, count: lmstudioResult.entries.length, configured: true, source: 'local', ...(lmstudioLive ? {} : { cached: true }) };
+    providerStatus.lmstudio = { available: lmstudioResult.entries.length > 0, count: lmstudioResult.entries.length, configured: true, source: 'local', name: 'LM Studio', ...(lmstudioLive ? {} : { cached: true }) };
+    // Los añadidos están configurados por definición: existen porque se guardó
+    // su URL base, aunque ahora no respondan.
+    for (const spec of addedProviders) {
+      const count = compatibleEntries.filter((entry) => entry.provider === spec.id).length;
+      providerStatus[spec.id] = { available: count > 0, count, configured: true, source: 'file', name: spec.name };
+    }
 
     return res.json({
       success: true,
@@ -3130,20 +3253,34 @@ app.post('/api/custom/models', async (req, res) => {
 app.post('/api/custom/generate', async (req, res) => {
   try {
     const { prompt, model, systemInstruction = '', temperature = 0.7, maxTokens = 2048, baseURL, apiKey } = req.body;
-    const key = apiKey || process.env.CUSTOM_API_KEY || process.env.OPENCODE_API_KEY || getProviderSecret('custom', 'apiKey');
-    const url = baseURL || process.env.CUSTOM_BASE_URL || getProviderSecret('custom', 'baseUrl');
+
+    // Los proveedores añadidos comparten esta ruta: el prefijo del id dice
+    // cuál es y aquí se resuelven URL y clave guardadas en el servidor.
+    const added = parseCompatibleModelId(String(model || ''));
+    const addedEntry = added ? (getConfig().providers as any)?.openaiCompatible?.[added.providerId] : undefined;
+    if (added && !addedEntry?.baseUrl) {
+      return res.json({ ok: false, error: `Proveedor ${added?.providerId} sin configurar` });
+    }
+
+    const key = added
+      ? addedEntry?.apiKey
+      : apiKey || process.env.CUSTOM_API_KEY || process.env.OPENCODE_API_KEY || getProviderSecret('custom', 'apiKey');
+    const url = added
+      ? String(addedEntry.baseUrl).replace(/\/+$/, '')
+      : baseURL || process.env.CUSTOM_BASE_URL || getProviderSecret('custom', 'baseUrl');
+    const targetModel = added ? added.modelId : model;
 
     if (!url) return res.json({ ok: false, error: 'CUSTOM_BASE_URL requerido' });
-    if (!key) return res.json({ ok: false, error: 'CUSTOM_API_KEY requerida' });
+    if (!key && !added) return res.json({ ok: false, error: 'CUSTOM_API_KEY requerida' });
 
     const response = await fetch(`${url}/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${key}`,
+        ...(key ? { 'Authorization': `Bearer ${key}` } : {}),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: model || 'gpt-4o-mini',
+        model: targetModel || 'gpt-4o-mini',
         messages: [
           ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
           { role: 'user', content: prompt },

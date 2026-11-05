@@ -148,6 +148,10 @@ export function detectProvider(
   // Google models
   if (modelId.startsWith('gemini') || modelId.startsWith('antigravity')) return 'google';
 
+  // Proveedores añadidos: comparten la ruta OpenAI-compatible y el servidor
+  // resuelve URL y clave a partir del id que va detrás del prefijo.
+  if (modelId.startsWith('openai-compatible/')) return 'custom';
+
   // Prefijos explícitos PRIMERO. Cualquier id con '/' cae en HuggingFace, así que
   // los prefijos con barra (ollama/, openrouter/, custom/, local/…) tienen que
   // resolverse antes o nunca se alcanzan.

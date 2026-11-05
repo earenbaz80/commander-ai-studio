@@ -81,6 +81,20 @@ export const ProviderConfigSchema = z.object({
     apiKey: z.string().optional(),
     defaultModel: z.string().optional(),
   }).optional(),
+  // Proveedores añadidos por el usuario: cualquier endpoint OpenAI-compatible
+  // con nombre propio. Se guardan por id y sus modelos llevan el prefijo
+  // `openai-compatible/<id>/<modelo>`.
+  openaiCompatible: z.record(
+    z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/),
+    z.object({
+      ...providerFilters,
+      name: z.string().trim().min(1).max(80),
+      baseUrl: z.string().url(),
+      apiKey: z.string().optional(),
+      models: z.array(z.string().trim().min(1).max(200)).max(500).optional(),
+      defaultModel: z.string().optional(),
+    })
+  ).optional(),
   xai: z.object({
     ...providerFilters,
     apiKey: z.string().optional(),

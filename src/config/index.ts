@@ -206,6 +206,29 @@ export function resetConfig(): void {
 }
 
 /**
+ * Borra un proveedor OpenAI-compatible añadido por el usuario.
+ *
+ * `writeConfig` sólo fusiona: para eliminar una clave hay que leer el fichero,
+ * quitarla y volver a validar, sin arrastrar claves que sólo viven en el entorno.
+ */
+export function removeOpenAiCompatibleProvider(id: string): string {
+  const filePath = fs.existsSync(GLOBAL_CONFIG_FILE)
+    ? GLOBAL_CONFIG_FILE
+    : findConfigFile() || path.join(process.cwd(), 'commander.json');
+  const raw = loadConfigFile(filePath);
+  const providers = { ...(raw.providers || {}) } as Record<string, any>;
+  const entries = { ...(providers.openaiCompatible || {}) } as Record<string, unknown>;
+  delete entries[id];
+  providers.openaiCompatible = entries;
+
+  const validated = CommanderConfigSchema.parse({ ...raw, providers });
+  fs.writeFileSync(filePath, JSON.stringify(validated, null, 2), 'utf-8');
+  configCache = null;
+  configPathCache = filePath;
+  return filePath;
+}
+
+/**
  * Cambia sólo la duración de la marca «esta key no admite herramientas integradas»
  * (`providers.google.toolsMemoryTtlMinutes`).
  *

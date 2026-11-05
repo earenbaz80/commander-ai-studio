@@ -13,6 +13,7 @@
 import { CUSTOM_MODELS, GEMINI_MODELS, HUGGINGFACE_MODELS, OLLAMA_MODELS } from '../data/models';
 import { filterModelIds, isProviderEnabled, modelFilterOf } from '../lib/providerFilters';
 import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
+import { compatibleModelId } from '../lib/openaiCompatibleProviders';
 
 export type ProviderFieldKind = 'secret' | 'url' | 'text';
 
@@ -29,6 +30,8 @@ export interface ProviderSpec {
   env: string[];
   fields: ProviderField[];
   defaultModel?: string;
+  /** Añadido por el usuario como endpoint OpenAI-compatible. */
+  custom?: boolean;
 }
 
 /**
@@ -139,6 +142,28 @@ export interface CatalogProvider {
   name: string;
   env: string[];
   models: CatalogModel[];
+  /** Base OpenAI-compatible que publica models.dev, cuando la trae. */
+  api?: string;
+  doc?: string;
+}
+
+/** Specs de los proveedores añadidos por el usuario (endpoint compatible). */
+export function customProviderSpecs(config: Record<string, any> | undefined): ProviderSpec[] {
+  const entries = config?.openaiCompatible;
+  if (!entries || typeof entries !== 'object') return [];
+  return Object.entries(entries as Record<string, any>).flatMap(([id, raw]) => {
+    if (!raw || typeof raw !== 'object') return [];
+    const baseUrl = typeof raw.baseUrl === 'string' ? raw.baseUrl.trim() : '';
+    if (!baseUrl) return [];
+    return [{
+      id,
+      name: typeof raw.name === 'string' && raw.name.trim() ? raw.name : id,
+      env: [],
+      fields: [{ name: 'baseUrl', required: true, kind: 'url' as const }],
+      defaultModel: typeof raw.defaultModel === 'string' ? raw.defaultModel : undefined,
+      custom: true,
+    }];
+  });
 }
 
 export interface ProviderStatus {
@@ -198,6 +223,8 @@ export function parseModelsDev(payload: unknown): CatalogProvider[] {
       name: typeof raw.name === 'string' && raw.name.trim() ? raw.name : providerId,
       env: Array.isArray(raw.env) ? raw.env.filter((e: unknown): e is string => typeof e === 'string') : [],
       models: models.sort((a, b) => a.name.localeCompare(b.name)),
+      ...(typeof raw.api === 'string' && raw.api.trim() ? { api: raw.api.trim() } : {}),
+      ...(typeof raw.doc === 'string' && raw.doc.trim() ? { doc: raw.doc.trim() } : {}),
     });
   }
 
@@ -291,23 +318,39 @@ export function buildProviderList(
   catalog: CatalogProvider[]
 ): ProviderEntry[] {
   const byId = new Map(catalog.map((p) => [p.id, p]));
+  const added = customProviderSpecs(config);
+  const addedEntries = (config?.openaiCompatible || {}) as Record<string, any>;
 
-  return PROVIDER_SPECS.map((spec) => {
+  return [...PROVIDER_SPECS, ...added].map((spec) => {
     const cat = byId.get(spec.id);
-    const allModels = cat && cat.models.length > 0 ? cat.models : fallbackModels(spec.id);
-    const filter = modelFilterOf(config, spec.id);
+    const entry = spec.custom ? addedEntries[spec.id] : undefined;
+    // Los proveedores añadidos declaran sus modelos al configurarse: no hay
+    // catálogo de models.dev que consultar para ellos.
+    const allModels: CatalogModel[] = entry
+      ? (Array.isArray(entry.models) ? entry.models : []).map((id: string) => ({
+          // El id lleva el prefijo para que las listas del proveedor y el
+          // selector apaguen/reactiven exactamente el mismo modelo.
+          id: compatibleModelId(spec.id, id),
+          name: id,
+          provider: spec.id,
+        }))
+      : cat && cat.models.length > 0
+        ? cat.models
+        : fallbackModels(spec.id);
+    const scopedConfig = entry ? { [spec.id]: entry } : config;
+    const filter = modelFilterOf(scopedConfig, spec.id);
     // Las listas se aplican aquí y no en la UI: el conteo del gestor, el orden
     // y los selectores tienen que ver exactamente lo mismo.
-    const models = filterModelIds(allModels, filter);
+    const models: CatalogModel[] = filterModelIds(allModels, filter);
     const env = [...new Set([...(cat?.env ?? []), ...spec.env])];
     return {
       ...spec,
       env,
-      ...describeProvider(spec, config, envIds),
+      ...describeProvider(spec, scopedConfig, envIds),
       models,
       modelCount: models.length,
       totalModels: allModels.length,
-      enabled: isProviderEnabled(config, spec.id),
+      enabled: isProviderEnabled(scopedConfig, spec.id),
       whitelist: filter.whitelist,
       blacklist: filter.blacklist,
     };
@@ -332,7 +375,8 @@ let inFlight: Promise<CatalogProvider[]> | null = null;
  * Si models.dev no responde se devuelve lo último cacheado (o vacío): el
  * registro base sigue sirviendo modelos vía `fallbackModels`.
  */
-export async function getProviderCatalog(): Promise<CatalogProvider[]> {
+/** Catálogo completo de models.dev (200+ proveedores), sin filtrar. */
+export async function getAllProviderCatalog(): Promise<CatalogProvider[]> {
   if (catalogCache && Date.now() - catalogCache.at < CACHE_TTL_MS) return catalogCache.data;
   if (inFlight) return inFlight;
 
@@ -340,13 +384,13 @@ export async function getProviderCatalog(): Promise<CatalogProvider[]> {
     try {
       const res = await fetch('https://models.dev/api.json', {
         headers: { 'User-Agent': 'CommanderAIStudio/2.5' },
-        // models.dev pesa varios MB: 15 s se queda corto en conexiones lentas
-        // y el catálogo llegaba vacío sin más pista que un timeout.
-        signal: AbortSignal.timeout(30_000),
+        // models.dev pesa varios MB y en conexiones lentas tarda más de un
+        // minuto: un timeout corto deja el buscador de proveedores vacío.
+        signal: AbortSignal.timeout(90_000),
       });
       if (!res.ok) throw new Error(`models.dev HTTP ${res.status}`);
       const data = await res.json();
-      const catalog = parseModelsDev(data).filter((p) => SUPPORTED.has(p.id));
+      const catalog = parseModelsDev(data);
       catalogCache = { at: Date.now(), data: catalog };
       return catalog;
     } catch (e) {
@@ -358,4 +402,8 @@ export async function getProviderCatalog(): Promise<CatalogProvider[]> {
   })();
 
   return inFlight;
+}
+
+export async function getProviderCatalog(): Promise<CatalogProvider[]> {
+  return (await getAllProviderCatalog()).filter((p) => SUPPORTED.has(p.id));
 }
