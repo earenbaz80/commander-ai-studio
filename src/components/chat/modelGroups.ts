@@ -5,6 +5,7 @@
  * cada render. Al ser datos constantes, va a nivel de módulo.
  */
 import type { AIModel } from '../../types/studio';
+import type { LiveProviderStatus, ProviderStatus } from '../../data/catalog';
 import { PROVIDER_CONFIGS } from '../../lib/aiProviders';
 import {
   GEMINI_MODELS,
@@ -15,11 +16,30 @@ import {
   ALL_MODELS,
 } from '../../data/models';
 
+/**
+ * Estado visible de un proveedor en el selector.
+ *
+ * `saved` es el caso de LM Studio/Ollama apagados: los modelos siguen listados
+ * porque se guardaron en la última detección, pero no hay conexión ahora.
+ */
+export type ModelGroupStatus = 'connected' | 'saved' | 'offline' | 'disabled';
+
 export interface ModelGroup {
   /** Id de proveedor: el selector sólo pinta los que están configurados. */
   id: string;
   label: string;
   models: AIModel[];
+  /** Se pinta junto al nombre del grupo; ausente mientras no hay datos. */
+  status?: ModelGroupStatus;
+}
+
+/** Traduce el estado que manda `/api/models/live` a lo que ve el usuario. */
+export function modelGroupStatus(status?: LiveProviderStatus): ModelGroupStatus | undefined {
+  if (!status) return undefined;
+  if (status.cached === true) return 'saved';
+  if (status.configured === false) return 'disabled';
+  if (status.available) return 'connected';
+  return 'offline';
 }
 
 export const MODEL_GROUPS: ModelGroup[] = [
@@ -40,7 +60,7 @@ const GROUP_ORDER = ['google', 'openai', 'anthropic', 'nvidia', 'xai', 'openrout
  * configurado después de arrancar —OpenAI, NVIDIA o LM Studio— no aparecía
  * aunque sus modelos ya estuvieran en `/api/models/live`.
  */
-export function buildModelGroups(models: AIModel[]): ModelGroup[] {
+export function buildModelGroups(models: AIModel[], statuses?: ProviderStatus): ModelGroup[] {
   const byProvider = new Map<string, ModelGroup>();
   for (const model of models) {
     const provider = model.provider;
@@ -54,6 +74,7 @@ export function buildModelGroups(models: AIModel[]): ModelGroup[] {
         id: provider,
         label: known?.label || PROVIDER_CONFIGS[provider]?.name || provider,
         models: [],
+        status: modelGroupStatus(statuses?.[provider]),
       };
       byProvider.set(provider, group);
     }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { buildModelGroups } from '../../src/components/chat/modelGroups';
+import { buildModelGroups, modelGroupStatus } from '../../src/components/chat/modelGroups';
 import type { AIModel } from '../../src/types/studio';
 
 const model = (id: string, provider: AIModel['provider']): AIModel => ({
@@ -20,6 +20,31 @@ describe('buildModelGroups', () => {
     ]);
     expect(groups.map((g) => g.id)).toEqual(['google', 'openai', 'nvidia', 'lmstudio']);
     expect(groups.find((g) => g.id === 'nvidia')!.label).toBe('NVIDIA NIM');
+  });
+
+  test('marca cada grupo como conectado, guardado, caído o desactivado', () => {
+    const groups = buildModelGroups(
+      [model('ollama/llama3.2', 'ollama'), model('lmstudio/qwen', 'lmstudio'), model('gpt-4.1', 'openai')],
+      {
+        ollama: { available: true, configured: true },
+        lmstudio: { available: true, configured: true, cached: true },
+        openai: { available: false, configured: true },
+      }
+    );
+
+    expect(groups.find((g) => g.id === 'ollama')!.status).toBe('connected');
+    // Guardado: LM Studio apagado con la última lista detectada.
+    expect(groups.find((g) => g.id === 'lmstudio')!.status).toBe('saved');
+    expect(groups.find((g) => g.id === 'openai')!.status).toBe('offline');
+    // Sin datos del proveedor no se inventa un estado.
+    expect(buildModelGroups([model('x', 'custom')])[0].status).toBeUndefined();
+  });
+
+  test('modelGroupStatus prioriza la caché y distingue sin configurar', () => {
+    expect(modelGroupStatus(undefined)).toBeUndefined();
+    expect(modelGroupStatus({ available: true, configured: false })).toBe('disabled');
+    expect(modelGroupStatus({ available: true, configured: true, cached: true })).toBe('saved');
+    expect(modelGroupStatus({ available: false, configured: false })).toBe('disabled');
   });
 
   test('conserva la etiqueta histórica de HuggingFace y no duplica grupos', () => {
