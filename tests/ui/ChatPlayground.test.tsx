@@ -267,6 +267,16 @@ describe('ChatPlayground', () => {
       expect(selector).toHaveAttribute('aria-expanded', 'false');
     });
 
+    test('la barra de contexto queda debajo del campo y de los botones', () => {
+      render(<ChatPlayground {...baseProps()} />);
+      const textarea = getTextarea();
+      const meter = screen.getByTestId('context-meter');
+      const enviar = screen.getByLabelText('Enviar mensaje');
+
+      expect(textarea.compareDocumentPosition(meter) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(enviar.compareDocumentPosition(meter) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
     test('el icono de ayuda va antes del botón de adjuntar', () => {
       render(<ChatPlayground {...baseProps()} />);
       const bar = screen.getByLabelText('Modelo que se usará para responder').parentElement as HTMLElement;
