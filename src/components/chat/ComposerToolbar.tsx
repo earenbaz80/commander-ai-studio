@@ -22,6 +22,7 @@ import type { RunMode } from '../../types/studio';
 import { MODEL_GROUPS, isLocalModelId, type ModelGroup } from './modelGroups';
 import { useConfiguredProviderIds } from '../../hooks/useConfiguredProviderIds';
 import { filterModelIds } from '../../lib/providerFilters';
+import { ModelPicker } from './ModelPicker';
 
 /** `true` si hay un servidor local configurado (Ollama, LM Studio u otro). */
 const hasLocalServer = (): boolean =>
@@ -107,7 +108,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
     .filter((group) => group.models.length > 0);
 
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-mono [&_button]:min-h-9 [&_button]:min-w-9 [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-[var(--nc-text-accent)]">
+    <div className="relative mt-2 flex flex-wrap items-center gap-2 text-xs font-mono [&_button]:min-h-9 [&_button]:min-w-9 [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-[var(--nc-text-accent)]">
       {/* Icono de ayuda para menciones @ */}
       <button
         type="button"
@@ -141,38 +142,16 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           accept="image/*,.pdf,.txt,.md,.json,.js,.ts,.tsx,.jsx,.html,.css"
         />
 
-      {/* Selector de modelo: el que se usará para responder */}
-      <select
-        value={selectedModel}
-        onChange={(e) => onSelectModel(e.target.value)}
-        aria-label={lang === 'es' ? 'Modelo que se usará para responder' : lang === 'de' ? 'Modell für die Antwort' : 'Model used to answer'}
-        title={
-          lang === 'es'
-            ? `Modelo en uso${currentModel?.description ? `: ${currentModel.description}` : ''}`
-            : lang === 'de'
-              ? `Verwendetes Modell${currentModel?.description ? `: ${currentModel.description}` : ''}`
-              : `Model in use${currentModel?.description ? `: ${currentModel.description}` : ''}`
-        }
-        className="order-first w-full min-w-0 min-h-10 sm:order-none sm:w-auto sm:min-w-[240px] sm:flex-1 bg-[var(--nc-bg-panel)] border border-cyan-400/60 text-[var(--nc-text)] text-sm font-mono px-2 py-2 rounded focus-visible:outline-2 focus-visible:outline-[var(--nc-text-accent)] cursor-pointer"
-      >
-        {/* Modelo no listado (p. ej. descargado de HuggingFace) */}
-        {!currentModel && <option value={selectedModel}>{selectedModel}</option>}
-        {providersLoaded && !providersFailed && visibleGroups.length === 0 && (
-          <option value={selectedModel}>
-            {lang === 'es' ? 'Configura un proveedor…' : lang === 'de' ? 'Anbieter konfigurieren…' : 'Configure a provider…'}
-          </option>
-        )}
-        {visibleGroups.map((group) => (
-          <optgroup key={group.label} label={group.label}>
-            {group.models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-                {m.badge ? ` · ${m.badge}` : ''}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
+      {/* Selector de modelo con búsqueda por proveedor y modelo */}
+      <ModelPicker
+        lang={lang}
+        selectedModel={selectedModel}
+        currentModel={currentModel}
+        groups={visibleGroups}
+        onSelectModel={onSelectModel}
+        loading={providersLoaded}
+        failed={providersFailed}
+      />
 
       {/* Quick Local LLM indicator / switcher */}
       {localConfigured && (
