@@ -46,8 +46,12 @@ describe('ProviderManager: modelos activables', () => {
     await screen.findByText('Groq');
     fireEvent.click(screen.getByText('Groq'));
 
-    expect(screen.getByRole('switch', { name: 'Desactivar: model-a' })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByRole('switch', { name: 'Activar: model-b' })).toHaveAttribute('aria-checked', 'false');
+    const encendido = screen.getByRole('switch', { name: 'Desactivar: model-a' });
+    const apagado = screen.getByRole('switch', { name: 'Activar: model-b' });
+    expect(encendido).toHaveAttribute('aria-checked', 'true');
+    expect(encendido.className).toContain('text-emerald-300');
+    expect(apagado).toHaveAttribute('aria-checked', 'false');
+    expect(apagado.className).toContain('text-red-400');
     expect(screen.getByText('desactivado')).toBeTruthy();
   });
 

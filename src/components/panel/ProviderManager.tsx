@@ -957,8 +957,8 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                                   style={{ minHeight: 0, minWidth: 0 }}
                                   className={`shrink-0 rounded border p-0.5 transition-colors ${
                                     enabled
-                                      ? 'border-emerald-500/50 text-emerald-300 hover:bg-[var(--nc-bg-hover)]'
-                                      : 'border-[var(--nc-border-mid)] text-[var(--nc-text-dim)] hover:border-emerald-400/60'
+                                      ? 'border-emerald-500/60 text-emerald-300 hover:bg-emerald-500/10'
+                                      : 'border-red-500/60 text-red-400 hover:bg-red-500/10'
                                   }`}
                                 >
                                   <Power className="h-3 w-3" aria-hidden="true" />
