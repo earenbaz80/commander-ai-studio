@@ -229,21 +229,18 @@
 }
 
 /* ===== Procesando: la pantalla de la cara muestra el trabajo ===== */
-/* El cuerpo mantiene su flotación; dentro de la pantalla sólo se ve binario.
-   Cada columna sube a distinta velocidad y los dígitos parpadean por separado. */
+/* El cuerpo mantiene su flotación; dentro de la pantalla sólo se ve una
+   matriz de binario. Los dígitos van grandes y a opacidad alta: a 48 px una
+   lluvia demasiado fina se pierde y la cara parece vacía. */
 @keyframes nono-binary-stream {
   from { transform: translateY(0); }
-  to   { transform: translateY(-6px); }
-}
-@keyframes nono-binary-flicker {
-  0%, 100% { opacity: 0.35; }
-  50%      { opacity: 1; }
+  to   { transform: translateY(-9px); }
 }
 .nono-binary-column {
   animation: nono-binary-stream 1.4s linear infinite;
 }
 .nono-binary-digit {
-  animation: nono-binary-flicker 1.1s steps(2, end) infinite;
+  opacity: 1;
 }
 .nono-busy .nono-face-screen {
   filter: drop-shadow(0 0 4px rgba(0, 255, 255, 0.45));
@@ -277,8 +274,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root:not(.nono-force-motion) .nono-binary-column,
-  :root:not(.nono-force-motion) .nono-binary-digit {
+  :root:not(.nono-force-motion) .nono-binary-column {
     animation: none;
   }
   :root:not(.nono-force-motion) .nono-work-dot {
