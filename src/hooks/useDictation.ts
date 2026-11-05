@@ -36,6 +36,8 @@ export interface DictationController {
   state: DictationState;
   supported: boolean;
   error: string;
+  /** Segundos grabados: la UI los muestra para que se note que escucha. */
+  seconds: number;
   toggle: () => void;
 }
 
@@ -57,6 +59,7 @@ export function useDictation({ lang, onText }: UseDictationOptions): DictationCo
   const langKey: LangKey = lang === 'es' ? 'es' : lang === 'de' ? 'de' : 'en';
   const [state, setState] = useState<DictationState>('idle');
   const [error, setError] = useState('');
+  const [seconds, setSeconds] = useState(0);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -72,6 +75,18 @@ export function useDictation({ lang, onText }: UseDictationOptions): DictationCo
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
   }, []);
+
+  // Contador visible mientras graba; sin él, el botón rojo parece no hacer nada.
+  useEffect(() => {
+    if (state !== 'recording') {
+      setSeconds(0);
+      return;
+    }
+    const started = Date.now();
+    setSeconds(0);
+    const timer = setInterval(() => setSeconds(Math.floor((Date.now() - started) / 1000)), 500);
+    return () => clearInterval(timer);
+  }, [state]);
 
   useEffect(
     () => () => {
@@ -187,5 +202,5 @@ export function useDictation({ lang, onText }: UseDictationOptions): DictationCo
     // Mientras transcribe no se puede empezar otra grabación.
   }, [state, start, stop]);
 
-  return { state, supported, error, toggle };
+  return { state, supported, error, seconds, toggle };
 }

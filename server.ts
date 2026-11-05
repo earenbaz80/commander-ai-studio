@@ -41,7 +41,8 @@ import skillsRouter from './skills/api';
 import { forkSessionWorkspace, deleteSessionWorkspace, listSessions, createGitWorktree } from './sessionWorkspace';
 import { handleOAuthLogin, handleOAuthCallback, handleLogout, getCurrentUser } from './oauth';
 import { executeWithFallback, getProviderMetrics, checkAllProvidersHealth, resetCircuitBreaker, setProviderEnabled } from './fallbackRouter';
-import { GEMINI_DEFAULT_MODEL, isDeprecatedGeminiModel } from './src/config/geminiModels';
+import { isDeprecatedGeminiModel } from './src/config/geminiModels';
+import { TRANSCRIPTION_MODELS, isRetryableTranscriptionError } from './src/lib/transcription';
 import { handleFreebuffGenerate } from './freebuff';
 import { listProjectPrompts } from './promptsApi';
 import { normalizeLmStudioHost, parseLmStudioModels } from './src/lib/lmStudio';
@@ -344,28 +345,50 @@ app.post('/api/transcribe', async (req, res) => {
       ? 'Transcribe exactly what is spoken in this audio. Return ONLY the transcribed text. Do not add quotes, introductory commentary, or extra explanations.'
       : 'Transcribe exactamente lo que se dice en este audio. Devuelve ÚNICAMENTE el texto dictado en español. No agregues comillas, explicaciones ni notas.';
 
-    const response = await ai.models.generateContent({
-      model: GEMINI_DEFAULT_MODEL,
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              inlineData: {
-                mimeType,
-                data: audioData,
-              },
+    const contents = [
+      {
+        role: 'user' as const,
+        parts: [
+          {
+            inlineData: {
+              mimeType,
+              data: audioData,
             },
-            {
-              text: promptText,
-            },
-          ],
-        },
-      ],
-    });
+          },
+          {
+            text: promptText,
+          },
+        ],
+      },
+    ];
 
-    const transcribed = response.text || '';
-    return res.json({ success: true, text: transcribed.trim() });
+    // Un 503 del flash grande no debe dejar el dictado sin texto: se prueba la
+    // cadena de respaldo y sólo se falla cuando ninguno contesta.
+    let transcribed = '';
+    let usedModel = '';
+    let lastError: any = null;
+    for (const model of TRANSCRIPTION_MODELS) {
+      try {
+        const response = await ai.models.generateContent({ model, contents });
+        transcribed = response.text || '';
+        usedModel = model;
+        lastError = null;
+        break;
+      } catch (modelError: any) {
+        lastError = modelError;
+        console.warn(`[transcribe] ${model} falló:`, modelError?.message || modelError);
+        if (!isRetryableTranscriptionError(modelError)) throw modelError;
+      }
+    }
+
+    if (lastError) {
+      return res.status(503).json({
+        success: false,
+        error: `Ningún modelo de Gemini pudo transcribir el audio ahora mismo (${lastError?.message || '503'}). Prueba de nuevo en unos segundos.`,
+      });
+    }
+
+    return res.json({ success: true, text: transcribed.trim(), model: usedModel });
   } catch (error: any) {
     console.error('Error en /api/transcribe:', error);
     return res.status(500).json({
