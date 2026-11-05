@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, Columns, Radio, Code2, Bot, ChevronDown, ChevronRight, Hammer, Play, RefreshCw, Pin, Pencil } from 'lucide-react';
+import { MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, Columns, Code2, Bot, ChevronDown, ChevronRight, Hammer, Play, RefreshCw, Pin, Pencil } from 'lucide-react';
 import { StudioMode, HistorySession } from '../types/studio';
 import { Language, TRANSLATIONS } from '../i18n/translations';
 import type { ConversationHit } from '../agent/persistence';
@@ -250,14 +250,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           data-tooltip-sub={lang === 'es' ? 'Ejecuta el mismo prompt en Claude, Gemini y HuggingFace a la vez' : lang === 'de' ? 'Prompt gleichzeitig mit mehreren Modellen ausführen' : 'Run prompt across multiple models simultaneously'}
         >
           <Columns className="w-6 h-6 text-[var(--nc-text-accent)]" /> {t.modeCompare}
-        </button>
-        <button 
-          onClick={() => setMode('live_voice')} 
-          className={`nc-button flex items-center gap-2.5 text-xs py-1.5 ${mode === 'live_voice' ? 'nc-active' : ''}`}
-          data-tooltip={lang === 'es' ? 'Voz en Vivo Bidireccional (Gemini Live)' : lang === 'de' ? 'Echtzeit-Sprache (Gemini Live)' : 'Realtime Voice (Gemini Live)'}
-          data-tooltip-sub={lang === 'es' ? 'Streaming de audio con micrófono y síntesis de voz en tiempo real' : lang === 'de' ? 'Sprachinteraktion in Echtzeit mit geringer Latenz' : 'Low latency real-time voice interaction'}
-        >
-          <Radio className="w-6 h-6 text-[var(--nc-text)]" /> {t.modeVoice}
         </button>
         <button
           onClick={onOpenGallery}

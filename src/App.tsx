@@ -44,9 +44,6 @@ const TelemetryDashboard = React.lazy(() =>
 const VersionHistoryModal = React.lazy(() =>
   import('./components/VersionHistoryModal').then((m) => ({ default: m.VersionHistoryModal }))
 );
-const LiveVoiceModal = React.lazy(() =>
-  import('./components/LiveVoiceModal').then((m) => ({ default: m.LiveVoiceModal }))
-);
 const HelpModal = React.lazy(() =>
   import('./components/HelpModal').then((m) => ({ default: m.HelpModal }))
 );
@@ -1652,19 +1649,6 @@ export default function App() {
             projectId={promptTitle.toLowerCase().replace(/[^a-z0-9]/g, '-')}
             currentInstruction={parameters.systemInstruction}
             onLoadVersion={handleLoadVersion}
-          />
-        </React.Suspense>
-      )}
-
-      {/* Live Voice Realtime Modal */}
-      {mode === 'live_voice' && (
-        <React.Suspense fallback={<LazyFallback lang={lang} />}>
-          <LiveVoiceModal
-            isOpen={mode === 'live_voice'}
-            onClose={() => setMode('chat')}
-            selectedModel={selectedModel}
-            parameters={parameters}
-            lang={lang as any}
           />
         </React.Suspense>
       )}

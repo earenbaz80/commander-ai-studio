@@ -106,7 +106,7 @@ describe('Sidebar (panel lateral agrupado)', () => {
     expect(props.onOpenCompile).toHaveBeenCalledTimes(1);
   });
 
-  test('compilar vive en Herramientas; voz y galería en Crear', () => {
+  test('compilar vive en Herramientas; galería en Crear', () => {
     const props = { ...baseProps(), onOpenCompile: vi.fn(), onOpenLibrary: vi.fn() };
     const { container } = render(<Sidebar {...props} />);
     fireEvent.click(screen.getByRole('button', { name: 'Herramientas' }));
@@ -115,8 +115,6 @@ describe('Sidebar (panel lateral agrupado)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
     fireEvent.click(container.querySelector('[data-tooltip="Galería Pública de Proyectos"]')!);
     expect(props.onOpenGallery).toHaveBeenCalledTimes(1);
-    fireEvent.click(container.querySelector('[data-tooltip*="Voz en Vivo"]')!);
-    expect(props.setMode).toHaveBeenCalledWith('live_voice');
   });
 
   test('cerrar oculta el panel completo sin ancho o padding de escritorio', () => {
