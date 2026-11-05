@@ -2791,7 +2791,7 @@ async function fetchModelsDevCatalog(): Promise<ModelsDevModel[]> {
 
 app.get('/api/models/live', async (req, res) => {
   try {
-    const [modelsDevModels, ollamaModels, lmstudioModels, nvidiaModels] = await Promise.all([
+    const [modelsDevModels, ollamaModels, lmstudioResult, nvidiaModels] = await Promise.all([
       fetchModelsDevCatalog(),
       (async () => {
         try {
@@ -2818,21 +2818,27 @@ app.get('/api/models/live', async (req, res) => {
         }
       })(),
       (async () => {
+        let liveIds: string[] = [];
         try {
           const probe = await fetchLmstudioModels(await resolveLmstudioHost(req));
-          // Puede responder uno de los dos hosts y el otro estar apagado: se
-          // suman los modelos guardados de ambos (remoto/local) sin duplicar.
-          const ids = [...new Set([...probe.models, ...cachedLocalModels('lmstudio').models])];
-          return ids.map((id) => ({
+          liveIds = probe.models;
+        } catch {
+          // LM Studio puede estar apagado: el catálogo guardado en la última
+          // detección sigue siendo suyo y no debe desaparecer del selector.
+        }
+        // Puede responder uno de los dos hosts y el otro estar apagado: se
+        // suman los modelos guardados de ambos (remoto/local) sin duplicar.
+        const ids = [...new Set([...liveIds, ...cachedLocalModels('lmstudio').models])];
+        return {
+          live: liveIds.length > 0,
+          entries: ids.map((id) => ({
             id: `lmstudio/${id}`,
             name: id,
-            provider: 'lmstudio',
+            provider: 'lmstudio' as const,
             context_window: 32_768,
-            tags: ['local'],
-          }));
-        } catch {
-          return [];
-        }
+            tags: liveIds.length > 0 ? ['local'] : ['local', 'guardado'],
+          })),
+        };
       })(),
       fetchNvidiaLiveModels(),
     ]);
@@ -2850,7 +2856,7 @@ app.get('/api/models/live', async (req, res) => {
           tags: ['local', 'guardado'],
         }));
     const ollamaLive = ollamaModels.length > 0;
-    const lmstudioLive = lmstudioModels.length > 0;
+    const lmstudioLive = lmstudioResult.live;
 
     // Merge and normalize to CatalogEntry format
     const allEntries = [
@@ -2881,7 +2887,7 @@ app.get('/api/models/live', async (req, res) => {
         deprecated: m.deprecated === true || (m.provider === 'google' && isDeprecatedGeminiModel(m.id)),
       })),
       ...ollamaList,
-      ...lmstudioModels,
+      ...lmstudioResult.entries,
       ...nvidiaModels,
     ];
 
@@ -2905,7 +2911,7 @@ app.get('/api/models/live', async (req, res) => {
       providerStatus[spec.id] = { available: st.configured, count: 0, configured: st.configured, source: st.source };
     }
     providerStatus.ollama = { available: ollamaList.length > 0, count: ollamaList.length, configured: true, source: 'local', ...(ollamaLive ? {} : { cached: true }) };
-    providerStatus.lmstudio = { available: lmstudioModels.length > 0, count: lmstudioModels.length, configured: true, source: 'local', ...(lmstudioLive ? {} : { cached: true }) };
+    providerStatus.lmstudio = { available: lmstudioResult.entries.length > 0, count: lmstudioResult.entries.length, configured: true, source: 'local', ...(lmstudioLive ? {} : { cached: true }) };
 
     return res.json({
       success: true,
