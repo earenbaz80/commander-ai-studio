@@ -3,10 +3,10 @@ import type { NonoExpression } from './content';
 
 /** Matriz de binario que recorre la pantalla mientras Nono procesa. */
 const BINARY_COLUMNS = [
-  { x: 14, digits: '1011010110', color: '#eaffff', delay: '0s', duration: '1.2s' },
-  { x: 25, digits: '0101101001', color: '#00ffff', delay: '-0.35s', duration: '1.6s' },
-  { x: 36, digits: '1100101110', color: '#ffff55', delay: '-0.7s', duration: '1.35s' },
-  { x: 47, digits: '0011010010', color: '#eaffff', delay: '-0.15s', duration: '1.5s' },
+  { x: 14, digits: '1011010110', color: '#ffffff', delay: '0s', duration: '1.2s' },
+  { x: 25, digits: '0101101001', color: '#ffffff', delay: '-0.35s', duration: '1.6s' },
+  { x: 36, digits: '1100101110', color: '#ffffff', delay: '-0.7s', duration: '1.35s' },
+  { x: 47, digits: '0011010010', color: '#ffffff', delay: '-0.15s', duration: '1.5s' },
 ];
 
 /** Cabeza de Nono: ojos que miran al puntero, parpadeo, expresiones dinámicas - Estilo 3D mejorado */
@@ -279,7 +279,7 @@ export const NonoHead: React.FC<{
                   dominantBaseline="middle"
                   className="nono-binary-digit"
                   fill={column.color}
-                  fontSize="9"
+                  fontSize="10.5"
                   fontFamily="'Courier New', monospace"
                   fontWeight="700"
                   opacity="1"
