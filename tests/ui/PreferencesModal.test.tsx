@@ -2,6 +2,7 @@ import { describe, test, expect, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { PreferencesModal } from '../../src/components/PreferencesModal';
 import { ATASCO_KEY, PREFERENCIAS_EVENT } from '../../src/components/ServerSubAgents';
+import { NONO_MEMORY_KEY } from '../../src/features/nono/nonoMemoryStore';
 
 /**
  * El umbral de atasco se configura en Configuración y lo consume el panel de
@@ -26,6 +27,69 @@ const abrir = (seccion = 'Agente') => {
 
 afterEach(() => {
   localStorage.removeItem(ATASCO_KEY);
+  localStorage.removeItem(NONO_MEMORY_KEY);
+});
+
+describe('PreferencesModal · sección Nono', () => {
+  const preview = () => screen.getByTestId('nono-preview');
+
+  test('cambia entre clásico y orbe, y lo guarda al momento', () => {
+    render(<PreferencesModal isOpen onClose={() => {}} />);
+    irASeccion('Nono');
+
+    expect(preview().querySelector('svg[data-variant="classic"]')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Orbe' }));
+
+    expect(preview().querySelector('svg[data-variant="orb"]')).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem(NONO_MEMORY_KEY) || '{}').ui.orbSkin).toBe(true);
+  });
+
+  test('edita colores, aplica presets y guarda el acento clásico', () => {
+    render(<PreferencesModal isOpen onClose={() => {}} />);
+    irASeccion('Nono');
+
+    fireEvent.change(screen.getByLabelText('Color superior del orbe'), {
+      target: { value: '#123456' },
+    });
+    expect(JSON.parse(localStorage.getItem(NONO_MEMORY_KEY) || '{}').ui.orbColors.top).toBe('#123456');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Océano' }));
+    expect(JSON.parse(localStorage.getItem(NONO_MEMORY_KEY) || '{}').ui.orbColors).toMatchObject({
+      top: '#3d8bff',
+      mid: '#00c2ff',
+      bottom: '#00f0d0',
+    });
+
+    fireEvent.change(screen.getByLabelText('Color del contorno clásico'), {
+      target: { value: '#ffcc00' },
+    });
+    expect(JSON.parse(localStorage.getItem(NONO_MEMORY_KEY) || '{}').ui.classicAccent).toBe('#ffcc00');
+  });
+
+  test('la vista previa muestra la expresión elegida', () => {
+    render(<PreferencesModal isOpen onClose={() => {}} />);
+    irASeccion('Nono');
+
+    const svg = () => preview().querySelector('svg[data-expression]');
+    expect(svg()?.getAttribute('data-expression')).toBe('neutral');
+
+    // Las 13 expresiones tienen cara propia.
+    const expresiones = screen.getByTestId('nono-expressions');
+    expect(within(expresiones).getAllByRole('button')).toHaveLength(13);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Feliz' }));
+    expect(svg()?.getAttribute('data-expression')).toBe('happy');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enamorado' }));
+    expect(svg()?.getAttribute('data-expression')).toBe('love');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Observando' }));
+    expect(svg()?.getAttribute('data-expression')).toBe('watch');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Curioso' }));
+    expect(svg()?.getAttribute('data-expression')).toBe('curious');
+  });
 });
 
 describe('PreferencesModal · umbral de atasco', () => {
@@ -108,7 +172,8 @@ describe('PreferencesModal · umbral de atasco', () => {
     render(<PreferencesModal isOpen onClose={() => {}} />);
 
     const nav = screen.getByRole('navigation', { name: 'Secciones de configuración' });
-    expect(within(nav).getAllByRole('button')).toHaveLength(7);
+    expect(within(nav).getAllByRole('button')).toHaveLength(8);
+    expect(within(nav).getByRole('button', { name: 'Nono' })).toBeInTheDocument();
     expect(within(nav).getByRole('button', { name: 'Extensiones' })).toBeInTheDocument();
     expect(within(nav).getByRole('button', { name: 'Ayuda' })).toBeInTheDocument();
     expect(within(nav).getByRole('button', { name: 'Acerca de' })).toBeInTheDocument();

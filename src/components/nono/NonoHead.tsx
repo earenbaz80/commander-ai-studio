@@ -1,5 +1,6 @@
 import React from 'react';
 import type { NonoExpression } from './content';
+import { DEFAULT_ORB_COLORS, type NonoOrbColors } from '../../features/nono/orbPalette';
 
 /** Matriz de binario que recorre la pantalla mientras Nono procesa. */
 const BINARY_COLUMNS = [
@@ -8,6 +9,10 @@ const BINARY_COLUMNS = [
   { x: 36, digits: '1100101110', color: '#ffffff', delay: '-0.7s', duration: '1.35s' },
   { x: 47, digits: '0011010010', color: '#ffffff', delay: '-0.15s', duration: '1.5s' },
 ];
+
+/** Corazón 24×24 para los ojos de `love`. */
+const HEART_PATH =
+  'M12 21s-7-4.35-9.33-8.28C.6 9.36 2.6 5 6.5 5c2.2 0 3.6 1.2 4.5 2.5C11.9 6.2 13.3 5 15.5 5c3.9 0 5.9 4.36 3.83 7.72C19 16.65 12 21 12 21z';
 
 /** Cabeza de Nono: ojos que miran al puntero, parpadeo, expresiones dinámicas - Estilo 3D mejorado */
 export const NonoHead: React.FC<{
@@ -18,10 +23,36 @@ export const NonoHead: React.FC<{
   show3D?: boolean;
   /** El chat o el agente están procesando: la pantalla muestra actividad. */
   busy?: boolean;
-}> = ({ expression, eyeOffset, blink, size = 64, show3D = true, busy = false }) => {
-  // Cabeza, ojos, boca y antena van con contorno blanco; el estado (error,
+  /** El orbe mira a los lados por su cuenta cuando el puntero está quieto. */
+  idleGaze?: boolean;
+  /**
+   * Estilo visual. `classic` es la cabeza retro-Norton de siempre; `orb` es la
+   * variante extra: esfera con degradado turquesa→verde y ojos de barra.
+   */
+  variant?: 'classic' | 'orb';
+  /** Colores del cuerpo y los ojos del orbe (por defecto, los del GIF). */
+  orbColors?: Partial<NonoOrbColors>;
+  /** Color de contorno, ojos y boca de la variante clásica. */
+  classicAccent?: string;
+}> = ({
+  expression,
+  eyeOffset,
+  blink,
+  size = 64,
+  show3D = true,
+  busy = false,
+  idleGaze = false,
+  variant = 'classic',
+  orbColors,
+  classicAccent = '#ffffff',
+}) => {
+  // IDs únicos por instancia: la vista previa de Configuración y la cabeza
+  // flotante pueden convivir con paletas distintas sin pisarse los gradientes.
+  const uid = React.useId().replace(/[^a-zA-Z0-9_-]/g, '');
+  const orbPalette = { ...DEFAULT_ORB_COLORS, ...orbColors };
+  // Cabeza, ojos, boca y antena van con el acento elegido; el estado (error,
   // reposo, actividad) lo sigue avisando sólo el LED de la antena.
-  const headStroke = '#ffffff';
+  const headStroke = classicAccent;
 
   const pupilOffsetX = Math.max(-3, Math.min(3, eyeOffset.x * 0.5));
   const pupilOffsetY = Math.max(-2, Math.min(2, eyeOffset.y * 0.5));
@@ -40,7 +71,7 @@ export const NonoHead: React.FC<{
     // Ojos con contorno blanco: resaltan sobre el azul del cuerpo. El trazo
     // heredado (cian/rojo) queda sólo para la antena, que sigue avisando del
     // estado con su LED.
-    const strokeColor = '#ffffff';
+    const strokeColor = classicAccent;
     // 3D eye whites with gradient
     const eyeHighlight = show3D ? (
       <>
@@ -62,12 +93,22 @@ export const NonoHead: React.FC<{
 
     switch (expression) {
       case 'happy':
-      case 'love':
         return (
           <>
             {eyeHighlight}
             <path d="M14 38 Q20 32 26 38" fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
             <path d="M38 38 Q44 32 50 38" fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
+          </>
+        );
+      case 'love':
+        return (
+          <>
+            <g transform="translate(14 31) scale(0.5)">
+              <path className="nono-heart" d={HEART_PATH} fill={strokeColor} filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
+            </g>
+            <g transform="translate(38 31) scale(0.5)">
+              <path className="nono-heart nono-heart-right" d={HEART_PATH} fill={strokeColor} filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
+            </g>
           </>
         );
       case 'sad':
@@ -113,7 +154,6 @@ export const NonoHead: React.FC<{
           </>
         );
       case 'thinking':
-      case 'watch':
         return (
           <>
             {eyeHighlight}
@@ -123,6 +163,21 @@ export const NonoHead: React.FC<{
             <circle cx={44 + pupilOffsetX} cy={38 + pupilOffsetY} r="3" fill="#000000" filter="drop-shadow(0 1px 1px rgba(0,0,0,0.5))" />
             <circle cx={18 + pupilOffsetX} cy={36 + pupilOffsetY} r="0.8" fill="#ffffff" opacity="0.6" />
             <circle cx={42 + pupilOffsetX} cy={36 + pupilOffsetY} r="0.8" fill="#ffffff" opacity="0.6" />
+          </>
+        );
+      case 'watch':
+        // Ojos muy abiertos y cejas altas: está pendiente de lo que escribes.
+        return (
+          <>
+            <g className="nono-watch-eyes">
+              {eyeHighlight}
+              <circle cx="20" cy="38" r="6.5" fill={show3D ? 'url(#nonoEyeWhite)' : 'none'} stroke={strokeColor} strokeWidth="2" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
+              <circle cx="44" cy="38" r="6.5" fill={show3D ? 'url(#nonoEyeWhite)' : 'none'} stroke={strokeColor} strokeWidth="2" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
+              <circle cx={18.5 + pupilOffsetX} cy={38 + pupilOffsetY} r="3" fill="#000000" filter="drop-shadow(0 1px 1px rgba(0,0,0,0.5))" />
+              <circle cx={42.5 + pupilOffsetX} cy={38 + pupilOffsetY} r="3" fill="#000000" filter="drop-shadow(0 1px 1px rgba(0,0,0,0.5))" />
+            </g>
+            <path d="M14 29 Q20 26.5 26 29" fill="none" stroke={strokeColor} strokeWidth="1.5" strokeLinecap="round" opacity="0.85" />
+            <path d="M38 29 Q44 26.5 50 29" fill="none" stroke={strokeColor} strokeWidth="1.5" strokeLinecap="round" opacity="0.85" />
           </>
         );
       case 'curious':
@@ -171,7 +226,7 @@ export const NonoHead: React.FC<{
 
   const renderMouth = () => {
     // La boca acompaña a los ojos: mismo contorno blanco en todas las expresiones.
-    const strokeColor = '#ffffff';
+    const strokeColor = classicAccent;
     switch (expression) {
       case 'happy':
       case 'love':
@@ -187,8 +242,9 @@ export const NonoHead: React.FC<{
       case 'sleepy':
         return <line x1="24" y1="52" x2="40" y2="52" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" />;
       case 'thinking':
-      case 'watch':
         return <path d="M26 54 Q32 52 38 54" fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" />;
+      case 'watch':
+        return <line x1="27" y1="54" x2="37" y2="54" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" />;
       case 'curious':
         return <ellipse cx="32" cy="52" rx="3" ry="4" fill="none" stroke={strokeColor} strokeWidth="2" />;
       case 'error':
@@ -200,8 +256,179 @@ export const NonoHead: React.FC<{
     }
   };
 
+  if (variant === 'orb') {
+    // Ojos de barra blanca como el GIF: se desplazan con el puntero, parpadean
+    // y conservan las expresiones que ya usa el resto de la app.
+    const dx = Math.max(-2, Math.min(2, eyeOffset.x * 2));
+    const dy = Math.max(-1.5, Math.min(1.5, eyeOffset.y * 1.5));
+    const eye = orbPalette.eyes;
+    const bar = (x: number) => (
+      <rect x={x + dx} y={27.5 + dy} width="5" height="9" rx="2.5" fill={eye} />
+    );
+    const renderOrbEyes = () => {
+      if (blink) {
+        return (
+          <>
+            <rect x={22.5 + dx} y={31 + dy} width="5" height="2.5" rx="1.25" fill={eye} />
+            <rect x={36.5 + dx} y={31 + dy} width="5" height="2.5" rx="1.25" fill={eye} />
+          </>
+        );
+      }
+      switch (expression) {
+        case 'happy':
+          return (
+            <>
+              <path d="M21.5 30 Q26 25.5 30.5 30" fill="none" stroke={eye} strokeWidth="2.6" strokeLinecap="round" />
+              <path d="M33.5 30 Q38 25.5 42.5 30" fill="none" stroke={eye} strokeWidth="2.6" strokeLinecap="round" />
+            </>
+          );
+        case 'love':
+          return (
+            <>
+              <g transform="translate(19 25) scale(0.5)">
+                <path className="nono-heart" d={HEART_PATH} fill={eye} />
+              </g>
+              <g transform="translate(33 25) scale(0.5)">
+                <path className="nono-heart nono-heart-right" d={HEART_PATH} fill={eye} />
+              </g>
+            </>
+          );
+        case 'sad':
+          return (
+            <>
+              <path d="M21.5 33 Q26 37.5 30.5 33" fill="none" stroke={eye} strokeWidth="2.6" strokeLinecap="round" />
+              <path d="M33.5 33 Q38 37.5 42.5 33" fill="none" stroke={eye} strokeWidth="2.6" strokeLinecap="round" />
+            </>
+          );
+        case 'angry':
+          return (
+            <>
+              <line x1="21" y1="27" x2="30" y2="31.5" stroke={eye} strokeWidth="2.6" strokeLinecap="round" />
+              <line x1="43" y1="27" x2="34" y2="31.5" stroke={eye} strokeWidth="2.6" strokeLinecap="round" />
+            </>
+          );
+        case 'wink':
+          return (
+            <>
+              {bar(22.5)}
+              <path d="M33.5 30 Q38 26 42.5 30" fill="none" stroke={eye} strokeWidth="2.6" strokeLinecap="round" />
+            </>
+          );
+        case 'sleepy':
+          return (
+            <>
+              <line x1="21.5" y1="32" x2="30.5" y2="32" stroke={eye} strokeWidth="2.4" strokeLinecap="round" />
+              <line x1="33.5" y1="32" x2="42.5" y2="32" stroke={eye} strokeWidth="2.4" strokeLinecap="round" />
+            </>
+          );
+        case 'surprised':
+          return (
+            <>
+              <circle cx={25 + dx} cy={32 + dy} r="3.4" fill={eye} />
+              <circle cx={39 + dx} cy={32 + dy} r="3.4" fill={eye} />
+            </>
+          );
+        case 'error':
+          return (
+            <>
+              <line x1="21.5" y1="28" x2="29.5" y2="36" stroke={eye} strokeWidth="2.2" strokeLinecap="round" />
+              <line x1="29.5" y1="28" x2="21.5" y2="36" stroke={eye} strokeWidth="2.2" strokeLinecap="round" />
+              <line x1="34.5" y1="28" x2="42.5" y2="36" stroke={eye} strokeWidth="2.2" strokeLinecap="round" />
+              <line x1="42.5" y1="28" x2="34.5" y2="36" stroke={eye} strokeWidth="2.2" strokeLinecap="round" />
+            </>
+          );
+        case 'cool':
+          return (
+            <>
+              <rect x={20.5 + dx} y={29.5 + dy} width="9" height="5" rx="2.5" fill={eye} />
+              <rect x={34.5 + dx} y={29.5 + dy} width="9" height="5" rx="2.5" fill={eye} />
+            </>
+          );
+        case 'watch':
+          // Círculos con cejas altas: sigue lo que escribes, no sólo piensa.
+          return (
+            <>
+              <g className="nono-watch-eyes">
+                <circle cx={24 + dx} cy={32 + dy} r="3.1" fill={eye} />
+                <circle cx={38 + dx} cy={32 + dy} r="3.1" fill={eye} />
+              </g>
+              <path d="M20.5 26.5 Q24 24.5 27.5 26.5" fill="none" stroke={eye} strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
+              <path d="M34.5 26.5 Q38 24.5 41.5 26.5" fill="none" stroke={eye} strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
+            </>
+          );
+        case 'thinking':
+          // Concentrado: barras más cortas, como entrecerrando los ojos.
+          return (
+            <>
+              <rect x={22.5 + dx} y={29 + dy} width="5" height="6" rx="2.5" fill={eye} />
+              <rect x={36.5 + dx} y={29 + dy} width="5" height="6" rx="2.5" fill={eye} />
+            </>
+          );
+        case 'curious':
+          // Un ojo más abierto que el otro y una ceja: se nota que pregunta.
+          return (
+            <>
+              <rect x={21.5 + dx} y={25.5 + dy} width="6" height="12" rx="3" fill={eye} />
+              <rect x={37 + dx} y={28.5 + dy} width="5" height="8" rx="2.5" fill={eye} />
+              <path
+                d="M34.5 22.5 Q38 20.5 42 21.5"
+                fill="none"
+                stroke={eye}
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                opacity="0.9"
+              />
+            </>
+          );
+        default:
+          return (
+            <>
+              {bar(22.5)}
+              {bar(36.5)}
+            </>
+          );
+      }
+    };
+
+    return (
+      <svg
+        viewBox="0 0 64 64"
+        width={size}
+        height={size}
+        data-variant="orb"
+        data-expression={expression}
+        data-blink={blink ? 'true' : 'false'}
+      >
+        <defs>
+          <linearGradient id={`nonoOrbBody-${uid}`} x1="18%" y1="8%" x2="82%" y2="95%">
+            <stop offset="0%" stopColor={orbPalette.top} />
+            <stop offset="55%" stopColor={orbPalette.mid} />
+            <stop offset="100%" stopColor={orbPalette.bottom} />
+          </linearGradient>
+          <radialGradient id={`nonoOrbGloss-${uid}`} cx="34%" cy="20%" r="48%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.55" />
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+          </radialGradient>
+          <filter id={`nonoOrbHalo-${uid}`} x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="3" />
+          </filter>
+        </defs>
+        <circle cx="32" cy="32" r="23" fill={orbPalette.mid} opacity="0.3" filter={`url(#nonoOrbHalo-${uid})`} />
+        <circle cx="32" cy="32" r="21" fill={`url(#nonoOrbBody-${uid})`} />
+        <ellipse cx="25.5" cy="20.5" rx="10.5" ry="6" fill={`url(#nonoOrbGloss-${uid})`} />
+        <circle cx="32" cy="32" r="21" fill="none" stroke={orbPalette.eyes} strokeOpacity="0.22" strokeWidth="0.8" />
+        <g
+          data-testid="nono-orb-eyes"
+          className={idleGaze ? 'nono-orb-gaze' : undefined}
+        >
+          {renderOrbEyes()}
+        </g>
+      </svg>
+    );
+  }
+
   return (
-    <svg viewBox="0 0 64 64" width={size} height={size} data-expression={expression} data-blink={blink ? 'true' : 'false'}>
+    <svg viewBox="0 0 64 64" width={size} height={size} data-variant="classic" data-expression={expression} data-blink={blink ? 'true' : 'false'}>
       <defs>
         {/* 3D radial gradient for body */}
         <radialGradient id="nonoBody" cx="50%" cy="30%" r="70%">

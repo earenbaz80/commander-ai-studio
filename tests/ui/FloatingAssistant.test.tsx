@@ -265,6 +265,25 @@ describe('FloatingAssistant (Nono)', () => {
       expect(saved.y).toBeGreaterThan(0);
     });
 
+    test('se inclina hacia el chat al escribir aunque tenga posición arrastrada', () => {
+      // Antes la clase vivía en el div arrastrado, cuyo translate3d en línea
+      // pisaba el rotate: al mover a Nono dejaba de inclinarse.
+      localStorage.setItem('nono-position-v1', JSON.stringify({ x: 250, y: 175 }));
+      render(
+        <>
+          <FloatingAssistant lang="es" />
+          <textarea data-chat-input aria-label="chat de prueba" />
+        </>,
+      );
+      const head = getHead();
+      expect(head.style.transform).toContain('translate3d(250px, 175px');
+
+      fireEvent.input(screen.getByLabelText('chat de prueba'));
+
+      const inner = head.querySelector('.nono-head-inner');
+      expect(inner?.className).toContain('nono-lean-chat');
+    });
+
     test('doble clic vuelve al anclaje y olvida la posición', () => {
       localStorage.setItem('nono-position-v1', JSON.stringify({ x: 250, y: 175 }));
       render(<FloatingAssistant lang="es" />);
@@ -383,6 +402,36 @@ describe('FloatingAssistant (Nono)', () => {
     });
   });
 
+  describe('mirada en reposo del orbe', () => {
+    const orbEyes = () =>
+      document.querySelector('svg[data-variant="orb"] [data-testid="nono-orb-eyes"]');
+
+    const withOrb = () => {
+      localStorage.setItem('nono-memory-v1', JSON.stringify({ ui: { orbSkin: true } }));
+      render(<FloatingAssistant lang="es" />);
+    };
+
+    test('el orbe mira a los lados cuando el puntero lleva un rato quieto', () => {
+      withOrb();
+      expect(orbEyes()).not.toBeNull();
+      expect(orbEyes()?.getAttribute('class') ?? '').not.toContain('nono-orb-gaze');
+
+      act(() => { vi.advanceTimersByTime(8000); });
+
+      expect(orbEyes()?.getAttribute('class') ?? '').toContain('nono-orb-gaze');
+    });
+
+    test('mover el puntero devuelve la mirada al cursor', () => {
+      withOrb();
+      act(() => { vi.advanceTimersByTime(8000); });
+      expect(orbEyes()?.getAttribute('class') ?? '').toContain('nono-orb-gaze');
+
+      fireEvent.mouseMove(window, { clientX: 400, clientY: 300 });
+
+      expect(orbEyes()?.getAttribute('class') ?? '').not.toContain('nono-orb-gaze');
+    });
+  });
+
   describe('internacionalización', () => {
     test('usa textos en inglés con lang="en"', () => {
       render(<FloatingAssistant lang="en" />);
@@ -434,6 +483,32 @@ describe('FloatingAssistant (Nono)', () => {
       expect(getGreeting()?.className).toContain('opacity-100');
       fireEvent.click(getHead());
       expect(getGreeting()?.className).toContain('opacity-0');
+    });
+  });
+
+  describe('saludo del orbe', () => {
+    const inner = () => document.querySelector('.nono-head-inner');
+
+    test('hace un pop con balanceo al aparecer y no se repite', () => {
+      localStorage.setItem('nono-memory-v1', JSON.stringify({ ui: { orbSkin: true } }));
+      render(<FloatingAssistant lang="es" />);
+      expect(inner()?.className ?? '').not.toContain('nono-orb-greet');
+
+      act(() => { vi.advanceTimersByTime(1200); });
+      expect(inner()?.className ?? '').toContain('nono-orb-greet');
+
+      act(() => { vi.advanceTimersByTime(1600); });
+      expect(inner()?.className ?? '').not.toContain('nono-orb-greet');
+
+      // El resto del saludo (y un saludo posterior) no lo vuelve a disparar.
+      act(() => { vi.advanceTimersByTime(9000); });
+      expect(inner()?.className ?? '').not.toContain('nono-orb-greet');
+    });
+
+    test('el clásico no recibe el saludo del orbe', () => {
+      render(<FloatingAssistant lang="es" />);
+      act(() => { vi.advanceTimersByTime(1200); });
+      expect(inner()?.className ?? '').not.toContain('nono-orb-greet');
     });
   });
 

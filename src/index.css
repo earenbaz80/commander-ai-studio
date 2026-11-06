@@ -20,11 +20,11 @@
 }
 
 /* ===== Nono despierto: flote 3D, hover y rebote mejorado ===== */
-/* Amplitud y ritmo del flote: es el efecto que define a Nono, así que tiene
-   que leerse de un vistazo. A -6px/4s se perdía entre el rebote y el giro. */
+/* Amplitud y ritmo del flote: -16px/2s mareaba, así que se queda en un
+   recorrido medio, más lento y sin perder el gesto de estar suspendido. */
 @keyframes nono-float {
   0%, 100% { translate: 0 0; }
-  50% { translate: 0 -16px; }
+  50% { translate: 0 -8px; }
 }
 
 /* Dormido no se queda congelado: respira con un flote corto y lento. */
@@ -37,17 +37,17 @@
    recorrido y sin rebote ni giro, pero sin dejar a Nono clavado en el sitio. */
 @keyframes nono-float-soft {
   0%, 100% { translate: 0 0; }
-  50% { translate: 0 -8px; }
+  50% { translate: 0 -4px; }
 }
 
 /* Deriva en reposo: sin interacción, Nono se desplaza alrededor de su ancla en
-   vez de subir y bajar en el sitio. El recorrido es un óvalo amplio y lento. */
+   vez de subir y bajar en el sitio. Óvalo corto para que no maree. */
 @keyframes nono-drift {
   0%   { translate: 0 0; }
-  20%  { translate: 10px -12px; }
-  40%  { translate: 0 -18px; }
-  60%  { translate: -10px -12px; }
-  80%  { translate: -5px -5px; }
+  20%  { translate: 6px -7px; }
+  40%  { translate: 0 -10px; }
+  60%  { translate: -6px -7px; }
+  80%  { translate: -3px -3px; }
   100% { translate: 0 0; }
 }
 
@@ -77,7 +77,7 @@
 
 .nono-awake svg {
   animation: 
-    nono-float 2s ease-in-out infinite, 
+    nono-float 3.4s ease-in-out infinite, 
     nono-bounce 8s ease-out infinite,
     nono-3d-rotate 12s ease-in-out infinite;
   transition: 
@@ -104,7 +104,7 @@
 }
 
 .nono-shadow {
-  animation: nono-shadow-breathe 2s ease-in-out infinite;
+  animation: nono-shadow-breathe 3.4s ease-in-out infinite;
   will-change: scale, opacity;
 }
 
@@ -157,6 +157,12 @@
   :root:not(.nono-force-motion) .nono-idle .nono-shadow {
     animation-duration: 4.5s;
   }
+  :root:not(.nono-force-motion) .nono-heart,
+  :root:not(.nono-force-motion) .nono-watch-eyes,
+  :root:not(.nono-force-motion) .nono-orb-gaze,
+  :root:not(.nono-force-motion) .nono-orb-greet {
+    animation: none;
+  }
 }
 
 /* 3D effect for sleep state */
@@ -188,10 +194,75 @@
 .nono-chat-typing {
   animation: nono-chat-bounce 0.5s ease-out;
 }
+/* Contenedor interno: la inclinación se compone con el arrastre. */
+.nono-head-inner {
+  transition: transform 0.25s ease-out;
+  line-height: 0;
+}
 /* Inclinarse hacia la izquierda, mirando el chat */
 .nono-lean-chat {
   transition: transform 0.25s ease-out;
   transform: rotate(-7deg);
+}
+/* El orbe es simétrico: rotarlo no se nota, así que se asoma hacia el chat. */
+.nono-orb-lean {
+  transition: transform 0.25s ease-out;
+  transform: translateX(-7px);
+}
+
+/* Saludo del orbe al aparecer: pop con un balanceo breve. */
+@keyframes nono-orb-greet {
+  0%   { scale: 0.7; translate: 0 5px; rotate: -10deg; }
+  40%  { scale: 1.12; translate: 0 -4px; rotate: 7deg; }
+  60%  { scale: 0.97; translate: 0 0; rotate: -5deg; }
+  78%  { scale: 1.04; rotate: 3deg; }
+  100% { scale: 1; translate: 0 0; rotate: 0deg; }
+}
+.nono-orb-greet {
+  transform-origin: center;
+  animation: nono-orb-greet 1.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ===== Expresiones vivas: latido de love y parpadeo de watch ===== */
+@keyframes nono-heartbeat {
+  0%, 60%, 100% { transform: scale(1); }
+  12%           { transform: scale(1.16); }
+  24%           { transform: scale(0.96); }
+  36%           { transform: scale(1.08); }
+  48%           { transform: scale(1); }
+}
+.nono-heart {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: nono-heartbeat 1.2s ease-in-out infinite;
+}
+.nono-heart-right {
+  animation-delay: 0.12s;
+}
+
+/* Parpadeo propio de watch; el blink de JS sigue mandando cuando cierra los ojos. */
+@keyframes nono-watch-blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  93%           { transform: scaleY(0.12); }
+  96%           { transform: scaleY(1); }
+}
+.nono-watch-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: nono-watch-blink 4.6s ease-in-out infinite;
+}
+
+/* Mirada en reposo del orbe: barrido corto de lado a lado. */
+@keyframes nono-orb-gaze {
+  0%, 10%, 100% { transform: translateX(0); }
+  28%, 42%      { transform: translateX(-3px); }
+  60%, 74%      { transform: translateX(2.5px); }
+  90%           { transform: translateX(0); }
+}
+.nono-orb-gaze {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: nono-orb-gaze 7s ease-in-out infinite;
 }
 .nono-sleep-z {
   right: -4px;
