@@ -1,114 +1,89 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  DEFAULT_MEMORY,
+  MAX_HISTORY,
+  persistNonoMemory,
+  readNonoMemory,
+  subscribeNonoMemory,
+  type NonoMemory,
+} from '../nonoMemoryStore';
+import type { NonoOrbColors } from '../orbPalette';
 
-interface NonoMemory {
-  /** Stack tecnológico detectado/preferido del usuario */
-  preferredStack: string[];
-  /** Patrones de uso del usuario */
-  patterns: {
-    usesTests: boolean;
-    usesDocker: boolean;
-    usesTypeScript: boolean;
-    usesGit: boolean;
-    preferredProvider?: string;
-    preferredModel?: string;
-  };
-  /** Preferencias de UI */
-  ui: {
-    showNono: boolean;
-    reducedMotion: boolean;
-    compactMode: boolean;
-    /** Anima a Nono aunque el sistema pida menos movimiento. */
-    forceMotion: boolean;
-  };
-  /** Historial de interacciones para aprendizaje */
-  interactionHistory: {
-    timestamp: number;
-    type: 'command' | 'suggestion' | 'error_fix' | 'git_commit' | 'code_review';
-    context: string;
-  }[];
-}
-
-const DEFAULT_MEMORY: NonoMemory = {
-  preferredStack: [],
-  patterns: {
-    usesTests: false,
-    usesDocker: false,
-    usesTypeScript: false,
-    usesGit: false,
-  },
-  ui: {
-    showNono: true,
-    reducedMotion: false,
-    compactMode: false,
-    forceMotion: false,
-  },
-  interactionHistory: [],
-};
-
-const STORAGE_KEY = 'nono-memory-v1';
-const MAX_HISTORY = 100;
+export type { NonoMemory };
 
 /**
  * Hook para memoria persistente de Nono.
  * - Guarda en localStorage
  * - Aprende del comportamiento del usuario
  * - Expone preferencias para personalización
+ * - Se sincroniza con otras instancias montadas (Configuración ↔ cabeza flotante)
  */
 export function useNonoMemory() {
-  const [memory, setMemory] = useState<NonoMemory>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        return { ...DEFAULT_MEMORY, ...JSON.parse(stored) };
-      }
-    } catch {
-      // Ignore parse errors
-    }
-    return DEFAULT_MEMORY;
-  });
+  const [memory, setMemory] = useState<NonoMemory>(readNonoMemory);
+  const memoryRef = useRef<NonoMemory>(memory);
 
-  // Persistir cambios
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(memory));
-    } catch {
-      // Ignore quota errors
-    }
-  }, [memory]);
+    return subscribeNonoMemory(() => {
+      const next = readNonoMemory();
+      // Evita re-render (y bucles) cuando el aviso viene de esta misma instancia.
+      if (JSON.stringify(next) === JSON.stringify(memoryRef.current)) return;
+      memoryRef.current = next;
+      setMemory(next);
+    });
+  }, []);
+
+  /** Aplica un cambio, lo persiste y avisa a las demás instancias montadas. */
+  const commit = useCallback((updater: (prev: NonoMemory) => NonoMemory) => {
+    const next = updater(memoryRef.current);
+    memoryRef.current = next;
+    setMemory(next);
+    persistNonoMemory(next);
+  }, []);
 
   const updateStack = useCallback((stack: string[]) => {
-    setMemory(prev => ({
+    commit(prev => ({
       ...prev,
       preferredStack: Array.from(new Set([...prev.preferredStack, ...stack])).slice(0, 10),
     }));
-  }, []);
+  }, [commit]);
 
   const updatePattern = useCallback((key: keyof NonoMemory['patterns'], value: boolean | string) => {
-    setMemory(prev => ({
+    commit(prev => ({
       ...prev,
       patterns: { ...prev.patterns, [key]: value },
     }));
-  }, []);
+  }, [commit]);
 
-  const updateUI = useCallback((key: keyof NonoMemory['ui'], value: boolean) => {
-    setMemory(prev => ({
+  const updateUI = useCallback(<K extends keyof NonoMemory['ui']>(
+    key: K,
+    value: NonoMemory['ui'][K],
+  ) => {
+    commit(prev => ({
       ...prev,
       ui: { ...prev.ui, [key]: value },
     }));
-  }, []);
+  }, [commit]);
+
+  /** Cambia sólo las claves de color indicadas, conservando el resto. */
+  const updateOrbColors = useCallback((patch: Partial<NonoOrbColors>) => {
+    commit(prev => ({
+      ...prev,
+      ui: { ...prev.ui, orbColors: { ...prev.ui.orbColors, ...patch } },
+    }));
+  }, [commit]);
 
   const recordInteraction = useCallback((
     type: NonoMemory['interactionHistory'][0]['type'],
     context: string
   ) => {
-    setMemory(prev => ({
+    commit(prev => ({
       ...prev,
       interactionHistory: [
         { timestamp: Date.now(), type, context },
         ...prev.interactionHistory.slice(0, MAX_HISTORY - 1),
       ],
     }));
-  }, []);
+  }, [commit]);
 
   const getSuggestions = useCallback(() => {
     const { preferredStack, patterns } = memory;
@@ -131,15 +106,20 @@ export function useNonoMemory() {
   }, [memory]);
 
   const reset = useCallback(() => {
-    setMemory(DEFAULT_MEMORY);
-    localStorage.removeItem(STORAGE_KEY);
-  }, []);
+    commit(() => ({
+      ...DEFAULT_MEMORY,
+      patterns: { ...DEFAULT_MEMORY.patterns },
+      ui: { ...DEFAULT_MEMORY.ui, orbColors: { ...DEFAULT_MEMORY.ui.orbColors } },
+      interactionHistory: [],
+    }));
+  }, [commit]);
 
   return {
     memory,
     updateStack,
     updatePattern,
     updateUI,
+    updateOrbColors,
     recordInteraction,
     getSuggestions,
     reset,

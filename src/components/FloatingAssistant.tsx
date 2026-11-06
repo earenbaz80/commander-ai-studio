@@ -1,5 +1,5 @@
 import React, { forwardRef, useRef, useEffect, useState } from 'react';
-import { Clipboard, PanelRight, Hammer, Library, Search, Trash2, Plus, Send, X, Activity, Maximize2, Minimize2 } from 'lucide-react';
+import { Clipboard, PanelRight, Hammer, Library, Search, Trash2, Plus, Send, X, Activity, Maximize2, Minimize2, Circle } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FloatingAssistantProps, FloatingAssistantHandle, NonoExpression } from './nono/content';
 import { NonoHead } from './nono/NonoHead';
@@ -17,6 +17,8 @@ import {
 const IDLE_SLEEP_MS = 5 * 60 * 1000;
 /** Sin interacción, Nono tarda esto en empezar a derivar alrededor de su ancla. */
 const IDLE_DRIFT_MS = 15 * 1000;
+/** Con el puntero quieto, el orbe empieza a mirar a los lados por su cuenta. */
+const IDLE_GAZE_MS = 2200;
 
 /**
  * Nono - Asistente flotante (versión slim ~400 líneas).
@@ -58,6 +60,8 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
   // Deriva en reposo: se enciende cuando nadie interactúa con Nono.
   const [hovered, setHovered] = useState(false);
   const [idle, setIdle] = useState(false);
+  // Mirada autónoma del orbe: se enciende cuando el puntero lleva un rato quieto.
+  const [gazeIdle, setGazeIdle] = useState(false);
 
   /** Bandera síncrona de sueño: se enciende en el instante de dormirse, sin
    * esperar a un render, para que los ciclos propios de Nono no lo despierten. */
@@ -248,6 +252,22 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
     return () => { clearTimeout(startDelay); };
   }, [greetingText, setGreetingVisible, setExpression, memory.ui.forceMotion]);
 
+  // Saludo del orbe: un pop con balanceo la primera vez que aparece el saludo
+  // flotante. El ref evita que se repita si el efecto de saludo se reejecuta
+  // (cambio de idioma o del ajuste de animación).
+  const [orbGreeting, setOrbGreeting] = useState(false);
+  const orbGreetedRef = useRef(false);
+  useEffect(() => {
+    if (!greetingVisible || !memory.ui.orbSkin || orbGreetedRef.current) return;
+    orbGreetedRef.current = true;
+    setOrbGreeting(true);
+  }, [greetingVisible, memory.ui.orbSkin]);
+  useEffect(() => {
+    if (!orbGreeting) return;
+    const timer = setTimeout(() => setOrbGreeting(false), 1400);
+    return () => clearTimeout(timer);
+  }, [orbGreeting]);
+
   // Ojos: dirección desde el centro de la cabeza hasta el puntero.
   // NonoHead la recibe como vector unitario y desplaza las pupilas.
   const [eyeOffset, setEyeOffset] = useState({ x: 0, y: 0 });
@@ -331,6 +351,16 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, []);
 
+  // Mirada en reposo: si el puntero deja de moverse, el orbe barre la mirada a
+  // los lados por su cuenta. Cualquier movimiento del ratón devuelve el control
+  // al cursor. El parpadeo ya es autónomo y sigue funcionando en este estado.
+  useEffect(() => {
+    setGazeIdle(false);
+    if (hovered || isOpen || busy || isTyping || isChatTyping || expression === 'sleepy') return;
+    const timer = setTimeout(() => setGazeIdle(true), IDLE_GAZE_MS);
+    return () => clearTimeout(timer);
+  }, [hovered, isOpen, busy, isTyping, isChatTyping, expression, eyeOffset.x, eyeOffset.y]);
+
   // Anclaje a divider del chat
   const [anchor, setAnchor] = useState({ bottom: 8, right: 8 });
   useEffect(() => {
@@ -403,7 +433,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
             <button onClick={() => { if (docked && onToggleDock) onToggleDock(); else setIsOpen(false); }} aria-label="Cerrar" className="text-black hover:text-red-500 font-bold leading-none px-1"><X className="w-4 h-4" /></button>
           </div>
 
-          <div className="flex items-center gap-1 px-2 py-1 bg-[var(--nc-bg-deep)] border-b border-[var(--nc-border-dark)] shrink-0">
+          <div className="flex flex-wrap items-center gap-1 px-2 py-1 bg-[var(--nc-bg-deep)] border-b border-[var(--nc-border-dark)] shrink-0">
             <button onClick={handleClearChat} aria-label="Limpiar chat" className="text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] border border-[var(--nc-border-dark)] rounded px-1.5 py-0.5 text-[10px] font-bold"><Trash2 className="w-3.5 h-3.5" /></button>
             <button onClick={handleCopyLast} aria-label="Copiar último" className="text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] border border-[var(--nc-border-dark)] rounded px-1.5 py-0.5 text-[10px] font-bold"><Clipboard className="w-3.5 h-3.5" /></button>
             {onNewPrompt && <button onClick={handleNewPromptClick} aria-label="Nuevo chat" className="text-[var(--nc-text-accent)] hover:bg-[var(--nc-bg-hover)] border border-[var(--nc-border-dark)] rounded px-1.5 py-0.5 text-[10px] font-bold"><Plus className="w-3.5 h-3.5" /></button>}
@@ -424,6 +454,20 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
             >
               {memory.ui.compactMode ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
               {lang === 'es' ? 'tamaño' : lang === 'de' ? 'Größe' : 'size'}
+            </button>
+            <button
+              onClick={() => updateUI('orbSkin', !memory.ui.orbSkin)}
+              aria-label={memory.ui.orbSkin ? tr('Volver al Nono clásico', 'Back to classic Nono', 'Zurück zum klassischen Nono') : tr('Probar el Nono orbe', 'Try orb Nono', 'Kugel-Nono testen')}
+              aria-pressed={memory.ui.orbSkin}
+              title={
+                memory.ui.orbSkin
+                  ? tr('Variante orbe activa: esfera turquesa con ojos de barra', 'Orb variant on: turquoise sphere with bar eyes', 'Kugelvariante aktiv: türkisfarbene Kugel mit Balkenaugen')
+                  : tr('Variante extra: esfera turquesa→verde con ojos de barra', 'Extra variant: turquoise→green sphere with bar eyes', 'Extra-Variante: türkis-grüne Kugel mit Balkenaugen')
+              }
+              className={`flex items-center gap-1 border rounded px-1.5 py-0.5 text-[10px] font-bold ${memory.ui.orbSkin ? 'bg-[var(--nc-active-bg)] text-black border-[var(--nc-text-accent)]' : 'text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] border-[var(--nc-border-dark)]'}`}
+            >
+              <Circle className="w-3.5 h-3.5" />
+              {lang === 'es' ? 'orbe' : lang === 'de' ? 'Kugel' : 'orb'}
             </button>
             <button
               onClick={() => updateUI('forceMotion', !memory.ui.forceMotion)}
@@ -510,9 +554,16 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
             handleToggle();
           }
         }}
-        className={`fixed z-[9998] select-none touch-none focus-visible:outline-2 focus-visible:outline-[var(--nc-text-accent)] cursor-pointer ${expression !== 'sleepy' ? (idle ? 'nono-awake nono-idle' : 'nono-awake') : 'nono-asleep'} ${busy ? 'nono-busy' : ''} ${isChatTyping && !dragPos ? 'nono-lean-chat' : ''}`}
+        className={`fixed z-[9998] select-none touch-none focus-visible:outline-2 focus-visible:outline-[var(--nc-text-accent)] cursor-pointer ${expression !== 'sleepy' ? (idle ? 'nono-awake nono-idle' : 'nono-awake') : 'nono-asleep'} ${busy ? 'nono-busy' : ''}`}
         style={headStyle}
       >
+        {/* La inclinación va en un contenedor interno: así se suma al
+            translate3d del arrastre en vez de competir con él. */}
+        <div
+          className={`nono-head-inner ${
+            isChatTyping ? (memory.ui.orbSkin ? 'nono-orb-lean' : 'nono-lean-chat') : ''
+          } ${orbGreeting ? 'nono-orb-greet' : ''}`}
+        >
         {/* Charco de luz bajo Nono: sobre un fondo casi negro una sombra
             oscura no se ve, así que la altura se lee por el brillo que se
             apaga al subir. */}
@@ -530,12 +581,25 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
           }}
         />
         {/* `key` remonta el SVG al empezar a escribir, reiniciando el rebote. */}
-        <NonoHead key={chatBounceToken} expression={expression as NonoExpression} eyeOffset={eyeOffset} blink={blink} size={memory.ui.compactMode ? 36 : 48} show3D={true} busy={busy} />
+        <NonoHead
+          key={chatBounceToken}
+          expression={expression as NonoExpression}
+          eyeOffset={eyeOffset}
+          blink={blink}
+          size={memory.ui.compactMode ? 36 : 48}
+          show3D={true}
+          busy={busy}
+          idleGaze={gazeIdle}
+          variant={memory.ui.orbSkin ? 'orb' : 'classic'}
+          orbColors={memory.ui.orbColors}
+          classicAccent={memory.ui.classicAccent}
+        />
         {expression === 'sleepy' && !hoverPhrase && !contextPhrase && (
           <div className="nono-sleep-z absolute pointer-events-none" aria-hidden="true">
             <span>Z</span><span>z</span><span>z</span>
           </div>
         )}
+        </div>
       </div>
       )}
       <NonoToaster />

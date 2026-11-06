@@ -8,6 +8,7 @@ import {
   Zap,
   Battery,
   BatteryCharging,
+  Bot,
   Timer,
   Settings2,
   SlidersHorizontal,
@@ -32,6 +33,10 @@ import { ParameterConfig, StructuredExample } from '../types/studio';
 import { SYSTEM_PRESETS } from '../data/systemPresets';
 import { GEMINI_FALLBACK_MODELS, MAX_FALLBACK_MODELS } from '../config/geminiModels';
 import { probeFirstResponder, probeModel, type ChainProbeResult } from '../lib/modelProbe';
+import { useNonoMemory } from '../features/nono/hooks/useNonoMemory';
+import { ORB_COLOR_PRESETS } from '../features/nono/orbPalette';
+import { NonoHead } from './nono/NonoHead';
+import type { NonoExpression } from './nono/content';
 
 // El manual y la ficha se cargan sólo al abrir su sección: el panel de
 // configuración no arrastra su contenido en el trozo de código inicial.
@@ -45,6 +50,7 @@ const AboutModalInline = React.lazy(() =>
 /** Secciones del único panel de configuración. */
 export type SettingsSection =
   | 'general'
+  | 'nono'
   | 'modelo'
   | 'proveedores'
   | 'agente'
@@ -85,6 +91,34 @@ export interface PreferencesModalProps {
 // Norton que había aquí hacían que el modal se quedara azul con otro tema.
 const selectClass =
   'bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)] text-[var(--nc-text)] text-[11px] px-1 py-0.5 rounded-sm focus:outline-none focus:border-[var(--nc-text-accent)]';
+
+/** Botón compacto de opción (variante, expresión). */
+const chipClass = (active: boolean) =>
+  `px-1.5 py-0.5 text-[9px] font-bold border ${
+    active
+      ? 'bg-[var(--nc-highlight-bg)] text-black border-white'
+      : 'bg-[var(--nc-bg-main)] text-[var(--nc-text)] border-[var(--nc-border-mid)]'
+  }`;
+
+const colorInputClass =
+  'h-6 w-10 cursor-pointer rounded-sm border border-[var(--nc-border-light)] bg-transparent p-0';
+
+/** Las 13 expresiones de Nono, cada una con su propia cara. */
+const NONO_PREVIEW_EXPRESSIONS: NonoExpression[] = [
+  'neutral',
+  'happy',
+  'love',
+  'sad',
+  'surprised',
+  'angry',
+  'wink',
+  'sleepy',
+  'thinking',
+  'watch',
+  'curious',
+  'error',
+  'cool',
+];
 
 /**
  * Fila de ajuste: etiqueta a la izquierda, control a la derecha y una pista
@@ -166,6 +200,33 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
     [lang]
   );
 
+  const nonoExpressionLabel = (expression: NonoExpression) =>
+    expression === 'neutral'
+      ? t('Neutral', 'Neutral', 'Neutral')
+      : expression === 'happy'
+      ? t('Feliz', 'Happy', 'Fröhlich')
+      : expression === 'love'
+      ? t('Enamorado', 'Love', 'Verliebt')
+      : expression === 'sad'
+      ? t('Triste', 'Sad', 'Traurig')
+      : expression === 'surprised'
+      ? t('Sorpresa', 'Surprised', 'Überrascht')
+      : expression === 'angry'
+      ? t('Enfadado', 'Angry', 'Wütend')
+      : expression === 'wink'
+      ? t('Guiño', 'Wink', 'Zwinkern')
+      : expression === 'sleepy'
+      ? t('Dormido', 'Sleepy', 'Schläfrig')
+      : expression === 'thinking'
+      ? t('Pensando', 'Thinking', 'Denkend')
+      : expression === 'watch'
+      ? t('Observando', 'Watching', 'Beobachtet')
+      : expression === 'curious'
+      ? t('Curioso', 'Curious', 'Neugierig')
+      : expression === 'error'
+      ? t('Error', 'Error', 'Fehler')
+      : t('Guay', 'Cool', 'Cool');
+
   const contentRef = React.useRef<HTMLDivElement>(null);
   /** Contenedor del diálogo: recibe el foco al abrir y encierra el tabulador. */
   const panelRef = React.useRef<HTMLDivElement>(null);
@@ -184,6 +245,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
 
   const secciones: { id: SettingsSection; label: string; icon: React.ReactNode }[] = [
     { id: 'general', label: t('General', 'General', 'Allgemein'), icon: <Settings2 className="w-3.5 h-3.5" /> },
+    { id: 'nono', label: t('Nono', 'Nono', 'Nono'), icon: <Bot className="w-3.5 h-3.5" /> },
     { id: 'modelo', label: t('Modelo', 'Model', 'Modell'), icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
     { id: 'proveedores', label: t('Proveedores', 'Providers', 'Anbieter'), icon: <Globe className="w-3.5 h-3.5" /> },
     { id: 'agente', label: t('Agente', 'Agent', 'Agent'), icon: <Timer className="w-3.5 h-3.5" /> },
@@ -237,6 +299,10 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
     running: boolean;
     result?: ChainProbeResult;
   } | null>(null);
+
+  // Nono: preferencias compartidas con la cabeza flotante.
+  const { memory: nonoMemory, updateUI: updateNonoUI, updateOrbColors } = useNonoMemory();
+  const [nonoPreview, setNonoPreview] = React.useState<NonoExpression>('neutral');
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -734,6 +800,225 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                       />
                     </MenuRow>
                   )}
+              </section>
+              )}
+
+              {active === 'nono' && (
+              <section data-settings-section="nono" className="space-y-3 scroll-mt-2">
+                {groupTitle(t('Nono', 'Nono', 'Nono'))}
+                {sectionBlock(
+                  t('Variante y vista previa', 'Variant & preview', 'Variante & Vorschau'),
+                  <>
+                    <MenuRow
+                      icon={<Bot className="w-4 h-4 text-[var(--nc-text)]" />}
+                      label={t('Variante', 'Variant', 'Variante')}
+                      hint={t(
+                        'El clásico es la cabeza retro; el orbe es la esfera del GIF.',
+                        'Classic is the retro head; orb is the sphere from the GIF.',
+                        'Klassisch ist der Retro-Kopf; Kugel ist die Sphäre aus dem GIF.'
+                      )}
+                    >
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          aria-pressed={!nonoMemory.ui.orbSkin}
+                          data-testid="nono-variant-classic"
+                          onClick={() => updateNonoUI('orbSkin', false)}
+                          className={chipClass(!nonoMemory.ui.orbSkin)}
+                        >
+                          {t('Clásico', 'Classic', 'Klassisch')}
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={nonoMemory.ui.orbSkin}
+                          data-testid="nono-variant-orb"
+                          onClick={() => updateNonoUI('orbSkin', true)}
+                          className={chipClass(nonoMemory.ui.orbSkin)}
+                        >
+                          {t('Orbe', 'Orb', 'Kugel')}
+                        </button>
+                      </div>
+                    </MenuRow>
+                    <div className="flex items-start gap-3 border-t border-[var(--nc-border-dark)] px-2 pb-2 pt-2">
+                      <div
+                        data-testid="nono-preview"
+                        className="shrink-0 rounded border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] p-2"
+                      >
+                        <NonoHead
+                          expression={nonoPreview}
+                          eyeOffset={{ x: 0, y: 0 }}
+                          blink={false}
+                          size={96}
+                          variant={nonoMemory.ui.orbSkin ? 'orb' : 'classic'}
+                          orbColors={nonoMemory.ui.orbColors}
+                          classicAccent={nonoMemory.ui.classicAccent}
+                        />
+                      </div>
+                      <div className="min-w-0 space-y-1">
+                        <div className="text-[9px] font-bold uppercase text-[var(--nc-text-accent)]">
+                          {t('Probar expresión', 'Try expression', 'Ausdruck testen')}
+                        </div>
+                        <div className="flex flex-wrap gap-1" data-testid="nono-expressions">
+                          {NONO_PREVIEW_EXPRESSIONS.map((expression) => (
+                            <button
+                              key={expression}
+                              type="button"
+                              aria-pressed={nonoPreview === expression}
+                              onClick={() => setNonoPreview(expression)}
+                              className={chipClass(nonoPreview === expression)}
+                            >
+                              {nonoExpressionLabel(expression)}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[9px] leading-snug text-[var(--nc-text)] opacity-70">
+                          {t(
+                            'La vista previa usa la configuración real; los cambios se guardan al momento.',
+                            'The preview uses the real settings; changes save immediately.',
+                            'Die Vorschau nutzt die echten Einstellungen; Änderungen werden sofort gespeichert.'
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {sectionBlock(
+                  t('Colores del orbe', 'Orb colors', 'Kugelfarben'),
+                  <>
+                    <MenuRow
+                      icon={<Palette className="w-4 h-4 text-[var(--nc-text)]" />}
+                      label={t('Arriba', 'Top', 'Oben')}
+                      hint={t('Primer color del degradado', 'First gradient color', 'Erste Farbverlaufsfarbe')}
+                    >
+                      <input
+                        type="color"
+                        value={nonoMemory.ui.orbColors.top}
+                        onChange={(e) => updateOrbColors({ top: e.target.value })}
+                        aria-label={t('Color superior del orbe', 'Orb top color', 'Obere Kugelfarbe')}
+                        className={colorInputClass}
+                      />
+                    </MenuRow>
+                    <MenuRow
+                      icon={<Palette className="w-4 h-4 text-[var(--nc-text)]" />}
+                      label={t('Medio', 'Middle', 'Mitte')}
+                      hint={t('Color central del degradado', 'Middle gradient color', 'Mittlere Farbverlaufsfarbe')}
+                    >
+                      <input
+                        type="color"
+                        value={nonoMemory.ui.orbColors.mid}
+                        onChange={(e) => updateOrbColors({ mid: e.target.value })}
+                        aria-label={t('Color medio del orbe', 'Orb middle color', 'Mittlere Kugelfarbe')}
+                        className={colorInputClass}
+                      />
+                    </MenuRow>
+                    <MenuRow
+                      icon={<Palette className="w-4 h-4 text-[var(--nc-text)]" />}
+                      label={t('Abajo', 'Bottom', 'Unten')}
+                      hint={t('Último color del degradado', 'Last gradient color', 'Letzte Farbverlaufsfarbe')}
+                    >
+                      <input
+                        type="color"
+                        value={nonoMemory.ui.orbColors.bottom}
+                        onChange={(e) => updateOrbColors({ bottom: e.target.value })}
+                        aria-label={t('Color inferior del orbe', 'Orb bottom color', 'Untere Kugelfarbe')}
+                        className={colorInputClass}
+                      />
+                    </MenuRow>
+                    <MenuRow
+                      icon={<Palette className="w-4 h-4 text-[var(--nc-text)]" />}
+                      label={t('Ojos', 'Eyes', 'Augen')}
+                      hint={t('Barras y borde del orbe', 'Orb bars and rim', 'Balken und Rand der Kugel')}
+                    >
+                      <input
+                        type="color"
+                        value={nonoMemory.ui.orbColors.eyes}
+                        onChange={(e) => updateOrbColors({ eyes: e.target.value })}
+                        aria-label={t('Color de los ojos del orbe', 'Orb eye color', 'Kugelaugenfarbe')}
+                        className={colorInputClass}
+                      />
+                    </MenuRow>
+                    <div className="flex flex-wrap gap-1 border-t border-[var(--nc-border-dark)] px-2 py-1.5">
+                      {ORB_COLOR_PRESETS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => updateNonoUI('orbColors', preset.colors)}
+                          className={chipClass(false)}
+                          title={preset.label.es}
+                        >
+                          {preset.label[lang === 'es' ? 'es' : lang === 'de' ? 'de' : 'en']}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {sectionBlock(
+                  t('Comportamiento', 'Behavior', 'Verhalten'),
+                  <>
+                    <MenuRow
+                      icon={<Bot className="w-4 h-4 text-[var(--nc-text)]" />}
+                      label={t('Mostrar Nono', 'Show Nono', 'Nono anzeigen')}
+                      hint={t('Oculta la cabeza flotante', 'Hides the floating head', 'Blendet den schwebenden Kopf aus')}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={nonoMemory.ui.showNono}
+                        onChange={(e) => updateNonoUI('showNono', e.target.checked)}
+                        className="accent-[var(--nc-text)]"
+                        aria-label={t('Mostrar Nono', 'Show Nono', 'Nono anzeigen')}
+                      />
+                    </MenuRow>
+                    <MenuRow
+                      icon={<Bot className="w-4 h-4 text-[var(--nc-text)]" />}
+                      label={t('Tamaño compacto', 'Compact size', 'Kompakte Größe')}
+                      hint={t('La cabeza pasa de 48 a 36 px', 'The head goes from 48 to 36 px', 'Der Kopf schrumpft von 48 auf 36 px')}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={nonoMemory.ui.compactMode}
+                        onChange={(e) => updateNonoUI('compactMode', e.target.checked)}
+                        className="accent-[var(--nc-text)]"
+                        aria-label={t('Tamaño compacto', 'Compact size', 'Kompakte Größe')}
+                      />
+                    </MenuRow>
+                    <MenuRow
+                      icon={<Bot className="w-4 h-4 text-[var(--nc-text)]" />}
+                      label={t('Animar siempre', 'Always animate', 'Immer animieren')}
+                      hint={t(
+                        'Ignora la preferencia del sistema: latidos, parpadeos y flote',
+                        'Ignores the system preference: heartbeats, blinks and floating',
+                        'Ignoriert die Systemeinstellung: Herzschläge, Blinzeln und Schweben'
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={nonoMemory.ui.forceMotion}
+                        onChange={(e) => updateNonoUI('forceMotion', e.target.checked)}
+                        className="accent-[var(--nc-text)]"
+                        aria-label={t('Animar siempre', 'Always animate', 'Immer animieren')}
+                      />
+                    </MenuRow>
+                    <MenuRow
+                      icon={<Palette className="w-4 h-4 text-[var(--nc-text)]" />}
+                      label={t('Contorno del clásico', 'Classic outline', 'Klassische Kontur')}
+                      hint={t(
+                        'Color de ojos, boca y antena en la variante clásica',
+                        'Eye, mouth and antenna color in the classic variant',
+                        'Farbe von Augen, Mund und Antenne in der klassischen Variante'
+                      )}
+                    >
+                      <input
+                        type="color"
+                        value={nonoMemory.ui.classicAccent}
+                        onChange={(e) => updateNonoUI('classicAccent', e.target.value)}
+                        aria-label={t('Color del contorno clásico', 'Classic outline color', 'Farbe der klassischen Kontur')}
+                        className={colorInputClass}
+                      />
+                    </MenuRow>
+                  </>
+                )}
               </section>
               )}
 
