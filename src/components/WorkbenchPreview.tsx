@@ -1,16 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { ParameterConfig } from '../types/studio';
+import { useBrowserSessionFeed } from '../hooks/useBrowserSessionFeed';
+import type { BrowserConsoleEntry, BrowserNetworkEntry } from '../utils/browserSessionApi';
+import type { Language } from '../i18n/translations';
+import { deText } from '../i18n/de';
 
 /**
  * Vistas del banco de trabajo: preview, consola y monitor de red.
  *
- * Vivían en `RightPanel.tsx` junto al panel de ajustes. Ese panel ya no se
- * monta (toda la configuración está en `PreferencesModal`), así que aquí sólo
- * quedan las tres vistas que consume `WorkbenchPanel`.
+ * El preview sigue siendo la vista rápida de un HTML/URL. La consola y la red
+ * ya no simulan nada: leen los eventos de la sesión real de Playwright que
+ * comparten el agente y el panel Navegador.
  */
 
 const PREVIEW_EMPTY_HINT = 'Enter a URL or load local HTML';
-const COMMAND_PLACEHOLDER = 'Enter command...';
+
+function timeOf(ts: number): string {
+  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function consoleLevel(type: string): 'log' | 'error' | 'warn' | 'info' {
+  if (type === 'error' || type === 'pageerror') return 'error';
+  if (type === 'warning' || type === 'warn') return 'warn';
+  if (type === 'info') return 'info';
+  return 'log';
+}
 
 export const LivePreview: React.FC<{
   projectPath: string;
@@ -78,183 +92,139 @@ export const LivePreview: React.FC<{
 export const LiveConsole: React.FC<{
   projectPath: string;
   selectedModel: string;
-}> = ({ selectedModel }) => {
-  const [logs, setLogs] = useState<Array<{type: 'log' | 'error' | 'warn' | 'info', message: string, time: string}>>([]);
-  const [command, setCommand] = useState('');
-  const [isConnected, setIsConnected] = useState(false);
+  lang?: Language;
+}> = ({ projectPath, lang = 'es' }) => {
+  const L = (es: string, en: string) => (lang === 'es' ? es : lang === 'de' ? deText(en) : en);
+  const { session, consoleEntries, connected, loading, error, clearLogs } = useBrowserSessionFeed(projectPath);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
-
-  const addLog = (type: 'log' | 'error' | 'warn' | 'info', message: string) => {
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    setLogs(prev => [...prev.slice(-99), { type, message, time }]);
-  };
-
-  const handleCommand = (cmd: string) => {
-    addLog('log', `> ${cmd}`);
-    setCommand('');
-    // Simulate command execution
-    setTimeout(() => {
-      addLog('info', `Executing: ${cmd}`);
-      setTimeout(() => {
-        addLog('log', `Command completed: ${cmd}`);
-      }, 500);
-    }, 100);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && command.trim()) {
-      handleCommand(command.trim());
+    if (typeof logsEndRef.current?.scrollIntoView === 'function') {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  };
-
-  // Demo logs
-  useEffect(() => {
-    if (!isConnected) {
-      setIsConnected(true);
-      addLog('info', 'Console connected to project');
-      addLog('log', 'Type commands to execute in the project context');
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [consoleEntries]);
 
   const typeClasses: Record<'log' | 'error' | 'warn' | 'info', string> = {
     log: 'text-[var(--nc-text)]',
-    error: 'text-red-300',
+    error: 'text-[var(--nc-danger)]',
     warn: 'text-[var(--nc-text-accent)]',
     info: 'text-emerald-300',
   };
 
+  const connectionLabel = loading ? 'Conectando…' : error ? error : connected ? 'En vivo' : session ? 'Reconectando…' : 'Sin sesión';
+
   return (
     <div className="flex flex-col h-full bg-[var(--nc-bg-panel)]">
       <div className="flex items-center gap-2 p-2 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-main)]">
-        <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-400' : 'bg-red-400'}`} />
-        <span className="text-[10px] font-mono text-[var(--nc-text)]">{`Live Console - ${selectedModel}`}</span>
+        <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400' : session ? 'bg-[var(--nc-text-accent)]' : 'bg-[var(--nc-danger)]'}`} />
+        <span className="text-[10px] font-mono text-[var(--nc-text)]">
+          {session ? `Live Console · ${session.id}` : 'Live Console'}
+        </span>
+        <span className="text-[9px] font-mono text-[var(--nc-text)]/50">{connectionLabel}</span>
         <div className="flex-1" />
         <button
-          onClick={() => setLogs([])}
+          onClick={clearLogs}
           className="p-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-panel)] rounded text-[10px]"
-          title="Clear"
+          title={L('Limpiar consola', 'Clear console')}
         >
           🗑
         </button>
       </div>
+
       <div className="flex-1 overflow-y-auto p-2 space-y-1 font-mono text-[10px]">
-        {logs.map((log, i) => (
-          <div key={i} className="flex gap-2 text-[var(--nc-text)]">
-            <span className="shrink-0">{log.time}</span>
-            <span className={`shrink-0 ${typeClasses[log.type]}`}>
-              {log.type === 'error' ? '✗' : log.type === 'warn' ? '⚠' : log.type === 'info' ? 'ℹ' : '▶'}
-            </span>
-            <span className={typeClasses[log.type]}>{log.message}</span>
+        {consoleEntries.length === 0 ? (
+          <div className="text-center text-[var(--nc-text)]/40 py-8">
+            {session ? 'No hay mensajes de consola todavía.' : 'Abre el panel Navegador para iniciar una sesión.'}
           </div>
-        ))}
+        ) : (
+          consoleEntries.map((entry: BrowserConsoleEntry) => {
+            const level = consoleLevel(entry.type);
+            return (
+              <div key={entry.seq} className="flex gap-2 text-[var(--nc-text)]">
+                <span className="shrink-0 text-[var(--nc-text)]/50">{timeOf(entry.ts)}</span>
+                <span className={`shrink-0 ${typeClasses[level]}`}>
+                  {level === 'error' ? '✗' : level === 'warn' ? '⚠' : level === 'info' ? 'ℹ' : '▶'}
+                </span>
+                <span className={`whitespace-pre-wrap break-words ${typeClasses[level]}`}>
+                  {entry.text}
+                  {entry.url ? <span className="ml-1 text-[var(--nc-text)]/40">{entry.url}{entry.line ? `:${entry.line}` : ''}</span> : null}
+                </span>
+              </div>
+            );
+          })
+        )}
         <div ref={logsEndRef} />
       </div>
-      <div className="flex gap-1 p-2 border-t border-[var(--nc-border-dark)] bg-[var(--nc-bg-main)]">
-        <input
-          type="text"
-          value={command}
-          onChange={(e) => setCommand(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={COMMAND_PLACEHOLDER}
-          className="flex-1 bg-[var(--nc-bg-panel)] text-[var(--nc-text)] text-[10px] px-2 py-1 rounded border border-[var(--nc-border-dark)] outline-none"
-        />
-        <button
-          onClick={() => command.trim() && handleCommand(command.trim())}
-          className="p-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-panel)] rounded"
-        >
-          ▶
-        </button>
+
+      <div className="px-2 py-1 border-t border-[var(--nc-border-dark)] bg-[var(--nc-bg-main)] text-[9px] font-mono text-[var(--nc-text)]/40">
+        {L('Eventos reales de Playwright · sólo lectura', 'Real Playwright events · read only')}
       </div>
     </div>
   );
 };
 
-export const NetworkMonitor: React.FC<{ projectPath: string }> = () => {
-  const [requests, setRequests] = useState<Array<{
-    id: string;
-    method: string;
-    url: string;
-    status: number | 'pending';
-    time: string;
-    duration: number;
-  }>>([]);
-  const [filter, setFilter] = useState<'all' | 'xhr' | 'fetch' | 'ws'>('all');
+export const NetworkMonitor: React.FC<{ projectPath: string; lang?: Language }> = ({
+  projectPath,
+  lang = 'es',
+}) => {
+  const L = (es: string, en: string) => (lang === 'es' ? es : lang === 'de' ? deText(en) : en);
+  const { session, networkEntries, connected, loading, error, clearLogs } = useBrowserSessionFeed(projectPath);
+  const [filter, setFilter] = useState<'all' | 'xhr' | 'fetch'>('all');
 
-  const addRequest = (req: { method: string; url: string }) => {
-    const id = `req-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const newReq = { ...req, id, status: 'pending' as const, time, duration: 0 };
-    setRequests(prev => [...prev.slice(-49), newReq]);
-    
-    // Simulate response
-    setTimeout(() => {
-      setRequests(prev => prev.map(r => 
-        r.id === id ? { 
-          ...r, 
-          status: Math.random() > 0.1 ? 200 : 500, 
-          duration: Math.floor(Math.random() * 500) + 50 
-        } : r
-      ));
-    }, Math.random() * 1000 + 200);
-  };
-
-  // Demo requests
-  useEffect(() => {
-    const demoRequests = [
-      { method: 'POST', url: '/api/models/live' },
-      { method: 'GET', url: '/api/agent/session/123/stream' },
-      { method: 'POST', url: '/api/tools/execute' },
-      { method: 'GET', url: '/api/files?path=src' },
-    ];
-    demoRequests.forEach((req, i) => setTimeout(() => addRequest(req), i * 300));
-  }, []);
+  const requests = filter === 'all'
+    ? networkEntries
+    : networkEntries.filter((entry) => entry.resourceType === filter);
+  const connectionLabel = loading ? 'Conectando…' : error ? error : connected ? 'En vivo' : session ? 'Reconectando…' : 'Sin sesión';
 
   return (
     <div className="flex flex-col h-full bg-[var(--nc-bg-panel)]">
       <div className="flex items-center gap-2 p-2 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-main)]">
-        <span className="text-[10px] font-mono text-[var(--nc-text-accent)]">{'Network Monitor'}</span>
+        <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400' : session ? 'bg-[var(--nc-text-accent)]' : 'bg-[var(--nc-danger)]'}`} />
+        <span className="text-[10px] font-mono text-[var(--nc-text-accent)]">{L('Network Monitor', 'Network Monitor')}</span>
+        <span className="text-[9px] font-mono text-[var(--nc-text)]/50">{connectionLabel}</span>
         <div className="flex-1" />
         <select
           value={filter}
-          onChange={(e) => setFilter(e.target.value as any)}
+          onChange={(e) => setFilter(e.target.value as 'all' | 'xhr' | 'fetch')}
           className="bg-[var(--nc-bg-panel)] text-[var(--nc-text)] text-[9px] px-1 py-0.5 rounded border border-[var(--nc-border-dark)] outline-none"
         >
           <option value="all">All</option>
           <option value="xhr">XHR</option>
           <option value="fetch">Fetch</option>
-          <option value="ws">WebSocket</option>
         </select>
         <button
-          onClick={() => setRequests([])}
+          onClick={clearLogs}
           className="p-1 text-[var(--nc-text)] hover:bg-[var(--nc-bg-panel)] rounded text-[10px]"
-          title="Clear"
+          title={L('Limpiar red', 'Clear network')}
         >
           🗑
         </button>
       </div>
+
       <div className="flex-1 overflow-y-auto p-2 space-y-1 font-mono text-[9px]">
         {requests.length === 0 ? (
-          <div className="text-center text-[var(--nc-text)] py-8">{'No requests captured'}</div>
+          <div className="text-center text-[var(--nc-text)]/40 py-8">
+            {session ? 'No hay peticiones de red todavía.' : 'Abre el panel Navegador para iniciar una sesión.'}
+          </div>
         ) : (
-          requests.slice().reverse().map((req) => (
-            <div key={req.id} className="flex gap-2 px-1 py-0.5 bg-[var(--nc-bg-panel)] rounded border border-[var(--nc-border-dark)] hover:border-[var(--nc-border-light)] transition-colors">
-              <span className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold ${req.method === 'GET' ? 'bg-emerald-400/20 text-emerald-300' : req.method === 'POST' ? 'bg-cyan-400/20 text-cyan-300' : req.method === 'DELETE' ? 'bg-red-400/20 text-red-300' : 'bg-yellow-400/20 text-yellow-300'}`}>
-                {req.method}
+          requests.slice().reverse().map((entry: BrowserNetworkEntry) => (
+            <div key={entry.seq} className="flex gap-2 px-1 py-0.5 bg-[var(--nc-bg-panel)] rounded border border-[var(--nc-border-dark)] hover:border-[var(--nc-border-light)] transition-colors">
+              <span className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold ${entry.method === 'GET' ? 'bg-emerald-400/20 text-emerald-300' : entry.method === 'POST' ? 'bg-cyan-400/20 text-cyan-300' : entry.method === 'DELETE' ? 'bg-red-400/20 text-red-300' : 'bg-yellow-400/20 text-yellow-300'}`}>
+                {entry.method}
               </span>
-              <span className="flex-1 truncate text-[var(--nc-text)]">{req.url}</span>
-              <span className={`shrink-0 font-bold ${req.status === 'pending' ? 'text-[var(--nc-text-accent)]' : req.status === 200 ? 'text-emerald-300' : 'text-red-300'}`}>
-                {req.status === 'pending' ? '⏳' : req.status}
+              <span className="flex-1 truncate text-[var(--nc-text)]" title={entry.url}>{entry.url}</span>
+              <span className={`shrink-0 font-bold ${entry.kind === 'failed' ? 'text-[var(--nc-danger)]' : entry.status && entry.status >= 400 ? 'text-[var(--nc-danger)]' : 'text-emerald-300'}`}>
+                {entry.kind === 'failed' ? 'ERR' : entry.status ?? '—'}
               </span>
-              <span className="shrink-0 text-[var(--nc-text)]">{req.duration}ms</span>
-              <span className="shrink-0 text-[var(--nc-text)]">{req.time}</span>
+              <span className="shrink-0 text-[var(--nc-text)]/60">{entry.durationMs}ms</span>
+              <span className="shrink-0 text-[var(--nc-text)]/50">{timeOf(entry.ts)}</span>
             </div>
           ))
         )}
+      </div>
+
+      <div className="px-2 py-1 border-t border-[var(--nc-border-dark)] bg-[var(--nc-bg-main)] text-[9px] font-mono text-[var(--nc-text)]/40">
+        {L('Eventos reales de Playwright · sin bodies ni cabeceras', 'Real Playwright events · no bodies or headers')}
       </div>
     </div>
   );

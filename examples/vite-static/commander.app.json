@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "kind": "spa",
+  "build": {
+    "command": "vite build",
+    "outputDir": "dist"
+  },
+  "bindings": {}
+}

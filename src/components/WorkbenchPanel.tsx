@@ -22,6 +22,7 @@ import {
   Search,
   AlertCircle,
   Activity,
+  UploadCloud,
 } from 'lucide-react';
 import { FileTreeView } from './panel/FileTreeView';
 import { LivePreview, LiveConsole, NetworkMonitor } from './WorkbenchPreview';
@@ -33,6 +34,7 @@ import { BrowserView } from './panel/BrowserView';
 import { CheckpointsView } from './panel/CheckpointsView';
 import { CodeSearchView } from './panel/CodeSearchView';
 import { ProblemsView } from './panel/ProblemsView';
+import { PublishView } from './panel/PublishView';
 import { useLspProblemCounts } from '../utils/lspProblems';
 import type { WorkspaceTab } from '../hooks/useTabs';
 import { ParameterConfig } from '../types/studio';
@@ -52,6 +54,7 @@ export type WorkbenchTab =
   | 'search'
   | 'problems'
   | 'preview'
+  | 'publish'
   | 'providers';
 
 interface WorkbenchPanelProps {
@@ -123,6 +126,11 @@ const TABS: Array<{
     id: 'preview', icon: <Code2 className="w-4 h-4" />,
     label: 'Visor', labelEn: 'Live Viewer', labelDe: 'Live-Ansicht',
     tip: 'Visor en vivo (preview/consola/red)', tipEn: 'Live viewer (preview/console/network)', tipDe: 'Live-Ansicht (Vorschau/Konsole/Netzwerk)',
+  },
+  {
+    id: 'publish', icon: <UploadCloud className="w-4 h-4" />,
+    label: 'Publicar', labelEn: 'Publish', labelDe: 'Veröffentlichen',
+    tip: 'Publicar en preview/producción', tipEn: 'Publish to preview/production', tipDe: 'In Preview/Produktion veröffentlichen',
   },
   {
     id: 'providers', icon: <Activity className="w-4 h-4" />,
@@ -273,7 +281,7 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
             </div>
           </div>
         )}
-        {active === 'browser' && <BrowserView projectPath={projectPath} />}
+        {active === 'browser' && <BrowserView projectPath={projectPath} lang={lang} />}
         {active === 'checkpoints' && <CheckpointsView projectPath={projectPath} />}
         {active === 'search' && <CodeSearchView projectPath={projectPath} />}
         {active === 'problems' && <ProblemsView projectPath={projectPath} lang={lang} />}
@@ -292,11 +300,12 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
             </div>
             <div className="flex-1 min-h-0 p-2 overflow-auto">
               {previewTab === 'preview' && <LivePreview projectPath={projectPath} selectedModel={selectedModel || ''} parameters={parameters as any} />}
-              {previewTab === 'console' && <LiveConsole projectPath={projectPath} selectedModel={selectedModel || ''} />}
-              {previewTab === 'network' && <NetworkMonitor projectPath={projectPath} />}
+              {previewTab === 'console' && <LiveConsole projectPath={projectPath} selectedModel={selectedModel || ''} lang={lang} />}
+              {previewTab === 'network' && <NetworkMonitor projectPath={projectPath} lang={lang} />}
             </div>
           </div>
         )}
+        {active === 'publish' && <PublishView projectPath={projectPath} lang={lang} />}
         {active === 'providers' && <ProviderHealthView lang={lang} />}
       </div>
     </aside>

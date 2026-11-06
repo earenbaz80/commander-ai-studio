@@ -38,7 +38,7 @@ const SKIP_DIRS = ['node_modules', 'dist', '.git', 'release', 'release-packager'
 const NOT_CALLS_DIRS = ['src/data'];
 
 /** Archivos donde el servidor declara sus rutas. */
-const SERVER_FILES = ['server.ts', 'src/mcp/index.ts', 'skills/api.ts', 'previewServer.ts'];
+const SERVER_FILES = ['server.ts', 'src/mcp/index.ts', 'skills/api.ts', 'previewServer.ts', 'deploy/routes.ts', 'browserRoutes.ts'];
 
 /**
  * Rutas que el cliente llama y el servidor no monta **hoy**.
@@ -122,13 +122,20 @@ export function serverApiRoutes(): string[] {
   const serverText = read('server.ts') ?? '';
   const routerDecl = /const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:express\.)?Router\(\)/g;
 
-  /** Variable del router -> archivo donde vive su declaración. */
-  const routerFile = new Map<string, string>();
+  /** Routers declarados por archivo. Varios archivos pueden usar `router`. */
+  const routersByFile = new Map<string, Set<string>>();
   for (const file of SERVER_FILES) {
     const text = read(file);
     if (!text) continue;
-    for (const match of text.matchAll(routerDecl)) routerFile.set(match[1], file);
+    const vars = new Set<string>();
+    for (const match of text.matchAll(routerDecl)) vars.add(match[1]);
+    if (vars.size) routersByFile.set(file, vars);
   }
+
+  const routerFileOf = (name: string): string | null => {
+    for (const [file, vars] of routersByFile) if (vars.has(name)) return file;
+    return null;
+  };
 
   /** `app.use('/api/x', <var>)`: qué router, de qué archivo, con qué nombre. */
   const mounts: { prefix: string; file: string | null; routerVar: string | undefined }[] = [];
@@ -138,13 +145,17 @@ export function serverApiRoutes(): string[] {
     const imported =
       new RegExp(`import\\s+${local}\\s+from\\s+'([^']+)'`).exec(serverText) ??
       new RegExp(`import\\s*\\{[^}]*\\b${local}\\b[^}]*\\}\\s*from\\s+'([^']+)'`).exec(serverText);
-    let file = routerFile.get(local) ?? null;
+    let file = routerFileOf(local);
     if (imported) {
       const target = imported[1].replace(/^\.\//, '').replace(/\.js$/, '');
       file = SERVER_FILES.find((candidate) => candidate.replace(/\.ts$/, '') === target) ?? file;
     }
-    const declared = file ? [...(read(file) ?? '').matchAll(routerDecl)].map((m) => m[1]) : [];
-    mounts.push({ prefix: match[1], file, routerVar: routerFile.get(local) === file ? local : declared[0] });
+    const declared = file ? [...(routersByFile.get(file) ?? [])] : [];
+    mounts.push({
+      prefix: match[1],
+      file,
+      routerVar: file && routersByFile.get(file)?.has(local) ? local : declared[0],
+    });
   }
 
   const routes = new Set<string>();
@@ -157,7 +168,7 @@ export function serverApiRoutes(): string[] {
         routes.add(path);
         continue;
       }
-      if (routerFile.get(owner) !== file) continue;
+      if (!routersByFile.get(file)?.has(owner)) continue;
       for (const mount of mounts) {
         if (mount.file !== file || mount.routerVar !== owner) continue;
         routes.add(mount.prefix + (path === '/' ? '' : path));

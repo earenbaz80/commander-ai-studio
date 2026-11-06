@@ -322,6 +322,7 @@ export async function createServerBroker(onBoot?: (srv: ServerHarness) => void):
 export async function spawnServer(): Promise<ServerHarness> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-http-'));
   const dbPath = path.join(dir, 'studio.db');
+  const publishDir = path.join(dir, 'publish');
 
   // `NODE_ENV=production` aquí no significa «desplegar»: es la única forma de
   // que el server NO monte Vite como middleware (`server.ts`, bootstrap). Con
@@ -330,7 +331,14 @@ export async function spawnServer(): Promise<ServerHarness> {
   // la suite; la superficie `/api/*` es la misma en los dos modos.
   const child = spawn(process.execPath, ['--import', 'tsx', 'server.ts'], {
     cwd: repoRoot,
-    env: { ...process.env, PORT: '0', NODE_ENV: 'production', COMMANDER_DB_PATH: dbPath },
+    env: {
+      ...process.env,
+      PORT: '0',
+      NODE_ENV: 'production',
+      COMMANDER_DB_PATH: dbPath,
+      // Las releases de los tests no pueden caer en el .commander real.
+      COMMANDER_PUBLISH_DIR: publishDir,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 

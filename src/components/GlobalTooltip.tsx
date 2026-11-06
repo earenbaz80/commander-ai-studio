@@ -1,4 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
+import {
+  computeTooltipAnchorPosition,
+  computeTooltipEdgeShift,
+} from '../utils/tooltipGeometry';
 
 /**
  * Tooltip global para cualquier elemento con `data-tooltip` o `title`.
@@ -36,15 +40,10 @@ export const GlobalTooltip: React.FC = () => {
     if (!el) return;
 
     const rect = el.getBoundingClientRect();
-    const margin = 8;
-    let dx = 0;
-    let dy = 0;
-
-    if (rect.left < margin) dx = margin - rect.left;
-    else if (rect.right > window.innerWidth - margin) dx = window.innerWidth - margin - rect.right;
-
-    if (rect.top < margin) dy = margin - rect.top;
-    else if (rect.bottom > window.innerHeight - margin) dy = window.innerHeight - margin - rect.bottom;
+    const { x: dx, y: dy } = computeTooltipEdgeShift(rect, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
 
     if (dx !== 0 || dy !== 0) {
       // Se suma a lo ya corregido: así converge en una pasada y no oscila.
@@ -117,11 +116,10 @@ export const GlobalTooltip: React.FC = () => {
 
       // Calculate position
       const rect = target.getBoundingClientRect();
-      const x = Math.min(Math.max(16, rect.left + rect.width / 2), window.innerWidth - 16);
-      let y = rect.bottom + 8;
-      if (y + 60 > window.innerHeight) {
-        y = Math.max(10, rect.top - 48);
-      }
+      const { x, y } = computeTooltipAnchorPosition(rect, {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
 
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
@@ -182,13 +180,13 @@ export const GlobalTooltip: React.FC = () => {
       }}
       className="fixed z-[10001] pointer-events-none transition-opacity duration-100 ease-out font-mono select-none"
     >
-      <div className="bg-[var(--nc-bg-panel)] border-2 border-[var(--nc-border-light)] px-2.5 py-1 text-white text-xs shadow-[4px_4px_0px_#000000] flex flex-col items-center max-w-xs text-center animate-in fade-in zoom-in-95">
-        <div className="flex items-center gap-1.5 text-[var(--nc-text-accent)] font-bold text-[11px] leading-tight">
+      <div className="bg-[var(--nc-bg-panel)] border border-[var(--nc-border-light)] px-1.5 py-0.5 text-white text-xs shadow-[3px_3px_0px_#000000] flex flex-col items-center max-w-xs text-center animate-in fade-in zoom-in-95">
+        <div className="flex items-center gap-1 text-[var(--nc-text-accent)] font-bold text-[10px] leading-tight">
           <span className="text-[var(--nc-text)]">►</span>
           <span>{tooltip.text}</span>
         </div>
         {tooltip.subtext && (
-          <div className="text-[var(--nc-text)] text-[9px] mt-0.5 leading-snug">
+          <div className="text-[var(--nc-text)] text-[9px] mt-px leading-snug">
             {tooltip.subtext}
           </div>
         )}

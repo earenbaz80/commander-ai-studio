@@ -33,6 +33,9 @@ const MAX_LOG_ENTRIES = 200;
 const ACTION_TIMEOUT_MS = 25_000;
 const NAV_TIMEOUT_MS = 20_000;
 const CLICK_TIMEOUT_MS = 8_000;
+/** El panel no necesita 60 fps: un frame JPEG cada 700 ms ya se siente vivo. */
+const FRAME_INTERVAL_MS = 700;
+const FRAME_QUALITY = 62;
 
 const INSTALL_HINT =
   'Playwright no está disponible. Instálalo con `npm i -D playwright` y descarga el navegador con `npx playwright install chromium`.';
@@ -152,29 +155,102 @@ const COLLECT_SCRIPT = `(() => {
   }).slice(0, ${MAX_SNAPSHOT_NODES + 50});
 })()`;
 
-interface ConsoleEntry {
+export type BrowserActor = 'user' | 'agent';
+export type BrowserSessionStatus = 'ready' | 'closed';
+
+export interface BrowserConsoleEntry {
+  seq: number;
+  /** log | debug | info | warning | error | pageerror */
   type: string;
   text: string;
   ts: number;
+  url?: string;
+  line?: number;
+  column?: number;
 }
 
-interface NetEntry {
+export interface BrowserNetworkEntry {
+  seq: number;
+  requestId: string;
   kind: 'http' | 'failed';
+  method: string;
   url: string;
   status?: number;
   error?: string;
   ts: number;
+  durationMs: number;
+  resourceType?: string;
 }
+
+export interface BrowserFrame {
+  seq: number;
+  ts: number;
+  mimeType: 'image/jpeg';
+  data: string;
+  width: number;
+  height: number;
+  url: string;
+  title: string;
+}
+
+export interface BrowserScreenshot {
+  mimeType: 'image/png';
+  data: string;
+  url: string;
+  title: string;
+  width: number;
+  height: number;
+  fullPage: boolean;
+}
+
+export interface BrowserNavigationState {
+  url: string;
+  title: string;
+  canGoBack: boolean;
+  canGoForward: boolean;
+}
+
+export interface BrowserSessionInfo {
+  id: string;
+  root: string;
+  status: BrowserSessionStatus;
+  createdAt: number;
+  page: BrowserNavigationState;
+  viewport: { width: number; height: number };
+  lastSeq: number;
+  oldestSeq: number;
+  lastActor: BrowserActor | null;
+}
+
+export type BrowserSessionEvent =
+  | { type: 'frame'; seq: number; frame: BrowserFrame }
+  | { type: 'console'; seq: number; entry: BrowserConsoleEntry }
+  | { type: 'network'; seq: number; entry: BrowserNetworkEntry }
+  | { type: 'navigation'; seq: number; state: BrowserNavigationState }
+  | { type: 'status'; seq: number; status: BrowserSessionStatus; lastActor: BrowserActor | null };
+
+type BrowserListener = (event: BrowserSessionEvent) => void;
 
 interface Session {
   id: string;
   root: string;
   context: any;
   page: any;
+  /** Sesión CDP para leer el historial real de Chromium. */
+  cdp: any | null;
   nodes: SnapshotNode[];
-  console: ConsoleEntry[];
-  net: NetEntry[];
+  console: BrowserConsoleEntry[];
+  net: BrowserNetworkEntry[];
   createdAt: number;
+  lastTitle: string;
+  lastActor: BrowserActor | null;
+  seq: number;
+  requestSeq: number;
+  pending: Map<any, { id: string; start: number }>;
+  listeners: Set<BrowserListener>;
+  lastFrame: BrowserFrame | null;
+  frameTimer: ReturnType<typeof setInterval> | null;
+  frameBusy: boolean;
 }
 
 export interface BrowserResult<T = any> {
@@ -193,6 +269,130 @@ function trim<T>(list: T[], extra: T): T[] {
   list.push(extra);
   if (list.length > MAX_LOG_ENTRIES) list.splice(0, list.length - MAX_LOG_ENTRIES);
   return list;
+}
+
+function nextSeq(session: Session): number {
+  session.seq += 1;
+  return session.seq;
+}
+
+function emit(session: Session, event: BrowserSessionEvent): void {
+  for (const listener of [...session.listeners]) {
+    try {
+      listener(event);
+    } catch {
+      // Un cliente SSE lento o desconectado no puede romper la página.
+    }
+  }
+}
+
+/** Una entrada de historial sólo cuenta si tiene un destino real. */
+function historyEntryNavigable(entry: any): boolean {
+  const url = String(entry?.url || '').trim();
+  return Boolean(url) && url !== 'about:blank';
+}
+
+/**
+ * Chromium mantiene el historial por página. Leerlo por CDP evita inventar una
+ * pila paralela que se desincroniza con back/forward, redirecciones y SPAs.
+ */
+async function readHistoryFlags(
+  session: Session,
+): Promise<{ canGoBack: boolean; canGoForward: boolean }> {
+  try {
+    if (!session.cdp) {
+      session.cdp = await withTimeout(
+        session.context.newCDPSession(session.page),
+        2_000,
+        'conectar con el historial',
+      );
+    }
+    const history: any = await withTimeout(
+      session.cdp.send('Page.getNavigationHistory'),
+      2_000,
+      'leer el historial',
+    );
+    const entries = Array.isArray(history?.entries) ? history.entries : [];
+    const index = Number(history?.currentIndex);
+    if (!Number.isInteger(index) || index < 0 || index >= entries.length) {
+      return { canGoBack: false, canGoForward: false };
+    }
+    return {
+      canGoBack: index > 0 && historyEntryNavigable(entries[index - 1]),
+      canGoForward: index < entries.length - 1 && historyEntryNavigable(entries[index + 1]),
+    };
+  } catch {
+    return { canGoBack: false, canGoForward: false };
+  }
+}
+
+async function readNavigationState(session: Session): Promise<BrowserNavigationState> {
+  const [title, flags] = await Promise.all([
+    session.page.title().catch(() => session.lastTitle || ''),
+    readHistoryFlags(session),
+  ]);
+  const safeTitle = String(title || '').slice(0, 200);
+  session.lastTitle = safeTitle;
+  return {
+    url: session.page.url(),
+    title: safeTitle,
+    ...flags,
+  };
+}
+
+function emitNavigation(session: Session): void {
+  if (!sessions.has(session.id)) return;
+  void readNavigationState(session)
+    .then((state) => {
+      if (!sessions.has(session.id)) return;
+      emit(session, {
+        type: 'navigation',
+        seq: nextSeq(session),
+        state,
+      });
+    })
+    .catch(() => {});
+}
+
+async function captureFrame(session: Session): Promise<void> {
+  if (session.frameBusy || session.listeners.size === 0 || session.page?.isClosed?.()) return;
+  session.frameBusy = true;
+  try {
+    const buffer: Buffer = await withTimeout(
+      session.page.screenshot({ type: 'jpeg', quality: FRAME_QUALITY }),
+      5_000,
+      'capturar el frame',
+    );
+    if (!sessions.has(session.id)) return;
+    const frame: BrowserFrame = {
+      seq: nextSeq(session),
+      ts: Date.now(),
+      mimeType: 'image/jpeg',
+      data: buffer.toString('base64'),
+      width: 1280,
+      height: 800,
+      url: session.page.url(),
+      title: session.lastTitle,
+    };
+    session.lastFrame = frame;
+    emit(session, { type: 'frame', seq: frame.seq, frame });
+  } catch {
+    // La página puede estar navegando o cerrada: el siguiente tick lo reintenta.
+  } finally {
+    session.frameBusy = false;
+  }
+}
+
+function startFramePump(session: Session): void {
+  if (session.frameTimer) return;
+  void captureFrame(session);
+  session.frameTimer = setInterval(() => void captureFrame(session), FRAME_INTERVAL_MS);
+  session.frameTimer.unref?.();
+}
+
+function stopFramePump(session: Session): void {
+  if (session.frameTimer) clearInterval(session.frameTimer);
+  session.frameTimer = null;
 }
 
 async function loadChromium(): Promise<any> {
@@ -249,6 +449,14 @@ function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<
 function forget(id: string): void {
   const session = sessions.get(id);
   if (!session) return;
+  stopFramePump(session);
+  emit(session, {
+    type: 'status',
+    seq: nextSeq(session),
+    status: 'closed',
+    lastActor: session.lastActor,
+  });
+  session.listeners.clear();
   sessions.delete(id);
   void session.context?.close?.().catch?.(() => {});
 }
@@ -270,36 +478,90 @@ async function newSession(root: string): Promise<Session> {
     root,
     context,
     page,
+    cdp: null,
     nodes: [],
     console: [],
     net: [],
     createdAt: Date.now(),
+    lastTitle: '',
+    lastActor: null,
+    seq: 0,
+    requestSeq: 0,
+    pending: new Map(),
+    listeners: new Set(),
+    lastFrame: null,
+    frameTimer: null,
+    frameBusy: false,
   };
 
   page.on('console', (msg: any) => {
-    trim(session.console, {
+    const location = msg?.location?.() || {};
+    const entry: BrowserConsoleEntry = {
+      seq: nextSeq(session),
       type: String(msg?.type?.() || 'log'),
-      text: String(msg?.text?.() || '').slice(0, 500),
+      text: String(msg?.text?.() || '').slice(0, 4000),
       ts: Date.now(),
-    });
+      ...(location.url ? { url: String(location.url).slice(0, 500) } : {}),
+      ...(Number.isFinite(Number(location.lineNumber)) ? { line: Number(location.lineNumber) } : {}),
+      ...(Number.isFinite(Number(location.columnNumber)) ? { column: Number(location.columnNumber) } : {}),
+    };
+    trim(session.console, entry);
+    emit(session, { type: 'console', seq: entry.seq, entry });
   });
   page.on('pageerror', (err: any) => {
-    trim(session.console, { type: 'pageerror', text: String(err?.message || err).slice(0, 500), ts: Date.now() });
+    const entry: BrowserConsoleEntry = {
+      seq: nextSeq(session),
+      type: 'pageerror',
+      text: String(err?.message || err).slice(0, 4000),
+      ts: Date.now(),
+    };
+    trim(session.console, entry);
+    emit(session, { type: 'console', seq: entry.seq, entry });
+  });
+  page.on('request', (req: any) => {
+    session.requestSeq += 1;
+    session.pending.set(req, { id: `r${session.requestSeq}`, start: Date.now() });
   });
   page.on('requestfailed', (req: any) => {
-    trim(session.net, {
+    const pending = session.pending.get(req) || { id: `r${++session.requestSeq}`, start: Date.now() };
+    session.pending.delete(req);
+    const entry: BrowserNetworkEntry = {
+      seq: nextSeq(session),
+      requestId: pending.id,
       kind: 'failed',
-      url: String(req?.url?.() || '').slice(0, 300),
-      error: String(req?.failure?.()?.errorText || 'request failed').slice(0, 200),
+      method: String(req?.method?.() || 'GET'),
+      url: String(req?.url?.() || '').slice(0, 1000),
+      error: String(req?.failure?.()?.errorText || 'request failed').slice(0, 300),
       ts: Date.now(),
-    });
+      durationMs: Date.now() - pending.start,
+      resourceType: String(req?.resourceType?.() || 'other'),
+    };
+    trim(session.net, entry);
+    emit(session, { type: 'network', seq: entry.seq, entry });
   });
   page.on('response', (res: any) => {
+    const req = res?.request?.();
+    const pending = (req && session.pending.get(req)) || { id: `r${++session.requestSeq}`, start: Date.now() };
+    if (req) session.pending.delete(req);
     const status = Number(res?.status?.() || 0);
-    if (status >= 400) {
-      trim(session.net, { kind: 'http', url: String(res?.url?.() || '').slice(0, 300), status, ts: Date.now() });
-    }
+    const entry: BrowserNetworkEntry = {
+      seq: nextSeq(session),
+      requestId: pending.id,
+      kind: 'http',
+      method: String(req?.method?.() || 'GET'),
+      url: String(req?.url?.() || res?.url?.() || '').slice(0, 1000),
+      status,
+      ts: Date.now(),
+      durationMs: Date.now() - pending.start,
+      resourceType: String(req?.resourceType?.() || 'other'),
+    };
+    trim(session.net, entry);
+    emit(session, { type: 'network', seq: entry.seq, entry });
   });
+  page.on('framenavigated', (frame: any) => {
+    if (frame === page.mainFrame()) emitNavigation(session);
+  });
+  page.on('load', () => emitNavigation(session));
 
   sessions.set(session.id, session);
   return session;
@@ -391,6 +653,7 @@ export async function runBrowserAction(input: any): Promise<BrowserResult> {
     return { ok: false, error: `action debe ser una de: ${BROWSER_ACTIONS.join(', ')}`, status: 400 };
   }
   const root = String(input?.root || '').slice(0, 1024);
+  const actor: BrowserActor = input?.actor === 'user' ? 'user' : 'agent';
 
   try {
     if (action === 'list') {
@@ -415,19 +678,26 @@ export async function runBrowserAction(input: any): Promise<BrowserResult> {
       const check = rawUrl ? await safeTarget(rawUrl) : null;
       if (check && !check.ok) return { ok: false, error: check.error, status: 403 };
 
-      const session = await withTimeout(newSession(root), ACTION_TIMEOUT_MS, 'abrir el navegador');
+      const candidate = pickSession(undefined, root);
+      const existing = candidate && !candidate.page?.isClosed?.() ? candidate : null;
+      if (candidate && !existing) forget(candidate.id);
+      const session = existing || await withTimeout(newSession(root), ACTION_TIMEOUT_MS, 'abrir el navegador');
+      session.lastActor = actor;
       if (check && check.ok) {
         const res: any = await withTimeout(
           session.page.goto(check.url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }),
           ACTION_TIMEOUT_MS,
           'navegar',
         );
+        session.nodes = [];
         target = { url: session.page.url(), title: await session.page.title().catch(() => ''), status: res?.status?.() ?? null };
+        session.lastTitle = String(target.title || '').slice(0, 200);
       }
       return {
         ok: true,
         data: {
           sessionId: session.id,
+          reused: Boolean(existing),
           ...(target ? { page: target } : {}),
           hint: 'Navega con action "navigate" y lee la página con action "snapshot".',
         },
@@ -438,6 +708,7 @@ export async function runBrowserAction(input: any): Promise<BrowserResult> {
     if (!session) {
       return { ok: false, error: 'No hay ninguna sesión de navegador abierta. Usa action "open" primero.', status: 409 };
     }
+    session.lastActor = actor;
 
     if (action === 'navigate') {
       const check = await safeTarget(input?.url);
@@ -568,6 +839,226 @@ export async function runBrowserAction(input: any): Promise<BrowserResult> {
     }
 
     return { ok: false, error: `action no implementada: ${action}`, status: 400 };
+  } catch (e: any) {
+    const msg = String(e?.message || e).slice(0, 500);
+    return { ok: false, error: msg, status: /Tiempo agotado/.test(msg) ? 504 : 500 };
+  }
+}
+
+/** Snapshot público de la sesión, apto para el renderer. */
+export async function getBrowserSessionInfo(input: {
+  id?: unknown;
+  root?: unknown;
+} = {}): Promise<BrowserSessionInfo | null> {
+  const session = pickSession(input.id, String(input.root || '').slice(0, 1024));
+  if (!session) return null;
+  const navigation = await readNavigationState(session);
+  const seqs = [session.console[0]?.seq, session.net[0]?.seq].filter(
+    (value): value is number => Number.isFinite(value),
+  );
+  return {
+    id: session.id,
+    root: session.root,
+    status: 'ready',
+    createdAt: session.createdAt,
+    page: navigation,
+    viewport: { width: 1280, height: 800 },
+    lastSeq: session.seq,
+    oldestSeq: seqs.length ? Math.min(...seqs) : session.seq,
+    lastActor: session.lastActor,
+  };
+}
+
+/** Logs retenidos para backfill o para el primer frame del SSE. */
+export function getBrowserSessionLogs(
+  id: string,
+  after = 0,
+  limit = MAX_LOG_ENTRIES,
+): { console: BrowserConsoleEntry[]; network: BrowserNetworkEntry[]; lastSeq: number; oldestSeq: number } | null {
+  const session = sessions.get(id);
+  if (!session) return null;
+  const cursor = Number.isFinite(after) ? Math.max(0, Math.trunc(after)) : 0;
+  const max = Math.max(1, Math.min(MAX_LOG_ENTRIES, Math.trunc(limit) || MAX_LOG_ENTRIES));
+  const consoleEntries = session.console.filter((entry) => entry.seq > cursor).slice(-max);
+  const networkEntries = session.net.filter((entry) => entry.seq > cursor).slice(-max);
+  const seqs = [session.console[0]?.seq, session.net[0]?.seq].filter(
+    (value): value is number => Number.isFinite(value),
+  );
+  return {
+    console: consoleEntries,
+    network: networkEntries,
+    lastSeq: session.seq,
+    oldestSeq: seqs.length ? Math.min(...seqs) : session.seq,
+  };
+}
+
+export function getBrowserSessionFrame(id: string): BrowserFrame | null {
+  return sessions.get(id)?.lastFrame || null;
+}
+
+/** Todas las sesiones vivas, de la más reciente a la más antigua. */
+export async function listBrowserSessions(): Promise<BrowserSessionInfo[]> {
+  const infos = await Promise.all(
+    [...sessions.values()].map((session) => getBrowserSessionInfo({ id: session.id })),
+  );
+  return infos
+    .filter((info): info is BrowserSessionInfo => Boolean(info))
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/** Captura PNG bajo demanda para el botón del panel, sin escribir en disco. */
+export async function captureBrowserScreenshot(
+  id: string,
+  fullPage = false,
+): Promise<BrowserScreenshot | null> {
+  const session = sessions.get(id);
+  if (!session) return null;
+  const viewport = session.page.viewportSize?.() ?? { width: 1280, height: 800 };
+  const buffer: Buffer = await withTimeout(
+    session.page.screenshot({ type: 'png', fullPage }),
+    ACTION_TIMEOUT_MS,
+    'capturar la pantalla',
+  );
+  return {
+    mimeType: 'image/png',
+    data: buffer.toString('base64'),
+    url: session.page.url(),
+    title: await session.page.title().catch(() => session.lastTitle || ''),
+    width: viewport.width,
+    height: viewport.height,
+    fullPage,
+  };
+}
+
+/**
+ * Suscribe al renderer al mismo bus que ya usan las tools del agente. El primer
+ * suscriptor enciende el capturador de frames; el último lo apaga.
+ */
+export function subscribeBrowserSession(
+  id: string,
+  listener: BrowserListener,
+): (() => void) | null {
+  const session = sessions.get(id);
+  if (!session) return null;
+  session.listeners.add(listener);
+  startFramePump(session);
+  return () => {
+    const current = sessions.get(id);
+    if (!current || current !== session) return;
+    current.listeners.delete(listener);
+    if (current.listeners.size === 0) stopFramePump(current);
+  };
+}
+
+export function closeBrowserSession(id: string): boolean {
+  if (!sessions.has(id)) return false;
+  forget(id);
+  return true;
+}
+
+/**
+ * Entrada del panel: coordenadas reales del viewport, teclado y navegación.
+ * Es deliberadamente distinta de los uid de la tool del agente: el usuario ve
+ * una imagen y hace clic donde quiere, mientras el agente sigue usando uid.
+ */
+export async function runBrowserInput(input: any): Promise<BrowserResult> {
+  if (exiting) return { ok: false, error: 'El navegador se está cerrando', status: 503 };
+  const action = String(input?.action || '').trim().toLowerCase();
+  const root = String(input?.root || '').slice(0, 1024);
+  const session = pickSession(input?.sessionId, root);
+  if (!session) {
+    return { ok: false, error: 'No hay ninguna sesión de navegador abierta.', status: 409 };
+  }
+  session.lastActor = 'user';
+
+  const done = async (): Promise<BrowserResult> => {
+    const info = await getBrowserSessionInfo({ id: session.id });
+    return info
+      ? { ok: true, data: { session: info } }
+      : { ok: false, error: 'La sesión se cerró durante la acción', status: 409 };
+  };
+
+  try {
+    if (action === 'navigate') {
+      const check = await safeTarget(input?.url);
+      if (!check.ok) return { ok: false, error: check.error, status: 403 };
+      await withTimeout(
+        session.page.goto(check.url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }),
+        ACTION_TIMEOUT_MS,
+        'navegar',
+      );
+      session.nodes = [];
+      session.lastTitle = await session.page.title().catch(() => '');
+      return done();
+    }
+
+    if (action === 'click') {
+      const x = Math.trunc(Number(input?.x));
+      const y = Math.trunc(Number(input?.y));
+      const viewport = session.page.viewportSize() || { width: 1280, height: 800 };
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= viewport.width || y >= viewport.height) {
+        return { ok: false, error: 'Coordenadas fuera del viewport', status: 400 };
+      }
+      const button = input?.button === 'right' ? 'right' : input?.button === 'middle' ? 'middle' : 'left';
+      const clickCount = Math.max(1, Math.min(3, Math.trunc(Number(input?.clickCount)) || 1));
+      await withTimeout(
+        session.page.mouse.click(x, y, { button, clickCount }),
+        ACTION_TIMEOUT_MS,
+        'click',
+      );
+      await settleNavigation(session);
+      session.nodes = [];
+      return done();
+    }
+
+    if (action === 'type') {
+      const text = String(input?.text ?? '');
+      if (!text || text.length > 5000) return { ok: false, error: 'Texto vacío o demasiado largo', status: 400 };
+      await withTimeout(session.page.keyboard.type(text), ACTION_TIMEOUT_MS, 'escribir');
+      await settleNavigation(session);
+      session.nodes = [];
+      return done();
+    }
+
+    if (action === 'key') {
+      const key = String(input?.key ?? '').trim().slice(0, 40);
+      if (!key) return { ok: false, error: 'key requerido', status: 400 };
+      await withTimeout(session.page.keyboard.press(key), ACTION_TIMEOUT_MS, 'pulsar tecla');
+      await settleNavigation(session);
+      session.nodes = [];
+      return done();
+    }
+
+    if (action === 'scroll') {
+      const dx = Math.max(-5000, Math.min(5000, Math.trunc(Number(input?.deltaX)) || 0));
+      const dy = Math.max(-5000, Math.min(5000, Math.trunc(Number(input?.deltaY)) || 0));
+      if (!dx && !dy) return { ok: false, error: 'deltaX o deltaY requerido', status: 400 };
+      await withTimeout(session.page.mouse.wheel(dx, dy), ACTION_TIMEOUT_MS, 'desplazar');
+      session.nodes = [];
+      return done();
+    }
+
+    if (action === 'back' || action === 'forward') {
+      const history = await readHistoryFlags(session);
+      if (action === 'back' && !history.canGoBack) {
+        return { ok: false, error: 'No hay historial hacia atrás', status: 409 };
+      }
+      if (action === 'forward' && !history.canGoForward) {
+        return { ok: false, error: 'No hay historial hacia adelante', status: 409 };
+      }
+    }
+
+    if (action === 'back' || action === 'forward' || action === 'reload') {
+      const options = { waitUntil: 'domcontentloaded' as const, timeout: NAV_TIMEOUT_MS };
+      if (action === 'back') await withTimeout(session.page.goBack(options), ACTION_TIMEOUT_MS, 'volver atrás');
+      else if (action === 'forward') await withTimeout(session.page.goForward(options), ACTION_TIMEOUT_MS, 'avanzar');
+      else await withTimeout(session.page.reload(options), ACTION_TIMEOUT_MS, 'recargar');
+      session.nodes = [];
+      session.lastTitle = await session.page.title().catch(() => '');
+      return done();
+    }
+
+    return { ok: false, error: 'action debe ser navigate, click, type, key, scroll, back, forward o reload', status: 400 };
   } catch (e: any) {
     const msg = String(e?.message || e).slice(0, 500);
     return { ok: false, error: msg, status: /Tiempo agotado/.test(msg) ? 504 : 500 };

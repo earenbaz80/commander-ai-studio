@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#000080" />
+    <title>Commander · Vite estático</title>
+  </head>
+  <body>
+    <main class="shell">
+      <p class="eyebrow">COMMANDER / STATIC DEMO</p>
+      <h1>Una release.<br /><span>Un destino.</span></h1>
+      <p class="lede">
+        Esta app Vite se construye una vez, se publica como archivos inmutables y se
+        promueve sin volver a compilar.
+      </p>
+      <button id="counter" class="action" type="button">
+        Interacción verificada: <strong id="count">0</strong>
+      </button>
+      <div class="status" role="status" aria-live="polite">
+        <span class="dot"></span>
+        <span id="status">HTML, CSS y JavaScript cargados desde la release.</span>
+      </div>
+      <footer>
+        <span>build <code id="build">cargando…</code></span>
+        <span>dominio <code id="host">—</code></span>
+      </footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

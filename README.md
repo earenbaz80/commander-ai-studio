@@ -9,6 +9,28 @@ Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos
 3. `npm run dev` → http://localhost:3000
 4. Checks: `npm run lint`, `npm test` ([suite Vitest](#suite-de-tests-vitest)), `npm run test:node` ([suite node y server compartido](#suite-de-tests-node))
 
+## Hosting estático (Vercel)
+
+El panel **Publicar** crea releases locales inmutables y las publica en un host
+real sin volver a compilar. Sin `VERCEL_TOKEN` y `VERCEL_PROJECT_ID` conserva el
+adaptador fake para trabajar sin red; con ambas variables activa Vercel. El token
+vive sólo en el servidor: nunca se envía al renderer ni se imprime en errores.
+
+- **Preflight:** `GET /api/deploy/preflight?root=…&releaseId=…` revisa la
+  release sin subir nada. Si hay problemas, el preview responde `400` antes de
+  llamar al proveedor.
+- **Preview:** `POST /api/deploy/preview` sube la release ya construida.
+- **Producción:** `POST /api/deploy/production` promueve el deployment elegido.
+- **Rollback:** `POST /api/deploy/rollback` vuelve a la producción anterior.
+- **Preflight:** antes de subir se rechazan `.env*`, `.npmrc`, `.netrc`, claves
+  privadas, credenciales, source maps, symlinks y tokens conocidos (GitHub,
+  OpenAI, Stripe, AWS, Slack, Google). El error nombra el archivo, nunca el valor.
+- **Demo:** `examples/vite-static` y `npm run deploy:example` (o
+  `npm run deploy:example -- --production`).
+
+Configura las variables en `.env` (ver `.env.example`) y reinicia el servidor.
+Vercel Hobby sólo permite volver a la producción inmediatamente anterior.
+
 ## Modo Agente
 
 - Sidebar → **Modo Agente**. Describe tarea → INICIAR TAREA.
