@@ -6,7 +6,6 @@ import { describe, test, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { WorkbenchPanel } from '../../src/components/WorkbenchPanel';
 import { TerminalView } from '../../src/components/panel/TerminalView';
-import { BrowserView } from '../../src/components/panel/BrowserView';
 import { TabsView } from '../../src/components/panel/TabsView';
 import { EditorView } from '../../src/components/panel/EditorView';
 import { EditorView as CMView } from '@codemirror/view';
@@ -88,13 +87,14 @@ describe('WorkbenchPanel', () => {
     expect(screen.queryByTitle('Terminal integrada (comandos reales)')).toBeNull();
   });
 
-  test('muestra el menú con las 5 vistas', () => {
+  test('muestra el menú con las vistas principales', () => {
     render(<WorkbenchPanel {...baseProps()} />);
     expect(screen.getByTitle('Árbol de archivos del proyecto')).toBeInTheDocument();
     expect(screen.getByTitle('Editor de texto integrado (leer y guardar)')).toBeInTheDocument();
     expect(screen.getByTitle('Sesiones del workspace')).toBeInTheDocument();
     expect(screen.getByTitle('Terminal integrada (comandos reales)')).toBeInTheDocument();
     expect(screen.getByTitle('Navegador integrado')).toBeInTheDocument();
+    expect(screen.getByTitle('Publicar en preview/producción')).toBeInTheDocument();
   });
 
   test('el botón cerrar llama onClose', () => {
@@ -122,6 +122,7 @@ describe('WorkbenchPanel', () => {
     expect(screen.getByTitle('Workspace sessions')).toBeInTheDocument();
     expect(screen.getByTitle('Integrated terminal (real commands)')).toBeInTheDocument();
     expect(screen.getByTitle('Integrated browser')).toBeInTheDocument();
+    expect(screen.getByTitle('Publish to preview/production')).toBeInTheDocument();
   });
 });
 
@@ -231,74 +232,6 @@ describe('TerminalView', () => {
   test('sin proyecto avisa que usará el directorio del servidor', () => {
     render(<TerminalView projectPath="" />);
     expect(screen.getByText(/sin proyecto activo/)).toBeInTheDocument();
-  });
-});
-
-describe('BrowserView', () => {
-  test('carga la URL del dev server por defecto', () => {
-    render(<BrowserView projectPath="C:/tmp/x" />);
-    expect(screen.getByPlaceholderText('https://…')).toHaveValue('http://localhost:3001');
-    // Sin navegación aún no hay iframe
-    expect(screen.queryByTitle('Navegador integrado')).toBeNull();
-  });
-
-  test('el botón Dev Server navega con iframe', () => {
-    render(<BrowserView projectPath="C:/tmp/x" />);
-    fireEvent.click(screen.getByText('Dev Server'));
-    const frame = screen.getByTitle('Navegador integrado') as HTMLIFrameElement;
-    expect(frame.getAttribute('src')).toBe('http://localhost:3001');
-  });
-
-  test('Enter en la barra navega a la URL', () => {
-    render(<BrowserView projectPath="C:/tmp/x" />);
-    const bar = screen.getByPlaceholderText('https://…');
-    fireEvent.change(bar, { target: { value: 'ejemplo.com' } });
-    fireEvent.keyDown(bar, { key: 'Enter' });
-    const frame = screen.getByTitle('Navegador integrado') as HTMLIFrameElement;
-    // Se normaliza añadiendo https://
-    expect(frame.getAttribute('src')).toBe('https://ejemplo.com');
-  });
-
-  test('añade https:// a URLs sin esquema', () => {
-    render(<BrowserView projectPath="C:/tmp/x" />);
-    const bar = screen.getByPlaceholderText('https://…');
-    fireEvent.change(bar, { target: { value: 'https://google.com' } });
-    fireEvent.keyDown(bar, { key: 'Enter' });
-    const frame = screen.getByTitle('Navegador integrado') as HTMLIFrameElement;
-    expect(frame.getAttribute('src')).toBe('https://google.com');
-  });
-
-  test('previsualiza un HTML local con fs.read', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ ok: true, data: { content: '<h1>Hola</h1>', exists: true } }),
-    });
-    global.fetch = fetchMock as any;
-
-    render(<BrowserView projectPath="C:/tmp/x" />);
-
-    await waitFor(() => {
-      expect(screen.getByTitle('Vista previa local')).toBeInTheDocument();
-    });
-
-    const frame = screen.getByTitle('Vista previa local') as HTMLIFrameElement;
-    expect(frame.getAttribute('srcdoc')).toBe('<h1>Hola</h1>');
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body.toolId).toBe('fs.read');
-    expect(body.input.path).toBe('index.html');
-    expect(body.input.root).toBe('C:/tmp/x');
-  });
-
-  test('un error de lectura se muestra como estado', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ ok: false, error: 'El archivo no existe' }),
-    }) as any;
-
-    render(<BrowserView projectPath="C:/tmp/x" />);
-    await waitFor(() => {
-      expect(screen.getByText('⚠️ El archivo no existe')).toBeInTheDocument();
-    });
   });
 });
 

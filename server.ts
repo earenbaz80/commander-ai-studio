@@ -48,6 +48,18 @@ import { handleFreebuffGenerate } from './freebuff';
 import { listProjectPrompts } from './promptsApi';
 import { normalizeLmStudioHost, parseLmStudioModels } from './src/lib/lmStudio';
 import { cachedLocalModels, rememberLocalModels } from './src/lib/localModelCache';
+import {
+  createRelease,
+  getPublishedRelease,
+  getPublishStatus,
+  isValidPublishSlug,
+  promoteRelease,
+  resolvePublishedFile,
+  rollbackProduction,
+} from './publisher';
+import { createConfiguredDeploymentAdapter } from './deploy/configuredAdapter';
+import { createDeployRouter } from './deploy/routes';
+import { createBrowserRouter } from './browserRoutes';
 
 dotenv.config();
 
@@ -1603,6 +1615,109 @@ app.post('/api/agent/projects', (req, res) => {
   } catch (e: any) {
     return res.status(400).json({ success: false, error: e.message || 'No se pudo crear el proyecto' });
   }
+});
+
+// ==================== PUBLICACIÓN (preview / producción) ====================
+
+function publishProjectRoot(value: unknown): string {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) throw new Error('Proyecto requerido');
+  if (raw.length > 2000) throw new Error('Ruta de proyecto demasiado larga');
+  return resolveProjectPath('.', raw).abs;
+}
+
+function publishError(res: any, error: any) {
+  return res.status(400).json({ success: false, error: error?.message || 'Publicación falló' });
+}
+
+/** Estado de los punteros, releases y URLs locales del proyecto. */
+app.get('/api/publish/status', async (req, res) => {
+  try {
+    const root = publishProjectRoot(req.query.root);
+    const status = await getPublishStatus(root);
+    return res.json({ success: true, status });
+  } catch (error: any) {
+    return publishError(res, error);
+  }
+});
+
+/** Crea una release inmutable y la apunta a preview. */
+app.post('/api/publish/preview', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const root = publishProjectRoot(body.root);
+    const outputDir = typeof body.outputDir === 'string' ? body.outputDir.trim().slice(0, 500) : undefined;
+    const result = await createRelease(root, {
+      outputDir: outputDir || undefined,
+      build: body.build === true,
+    });
+    return res.json({ success: true, ...result });
+  } catch (error: any) {
+    return publishError(res, error);
+  }
+});
+
+/** Promueve una release concreta a producción (por defecto la preview actual). */
+app.post('/api/publish/production', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const root = publishProjectRoot(body.root);
+    const current = await getPublishStatus(root);
+    const releaseId = typeof body.releaseId === 'string' && body.releaseId.trim()
+      ? body.releaseId.trim()
+      : current.preview?.id;
+    if (!releaseId) throw new Error('No hay una release en preview para promover');
+    const status = await promoteRelease(root, releaseId, 'production');
+    return res.json({ success: true, status });
+  } catch (error: any) {
+    return publishError(res, error);
+  }
+});
+
+/** Vuelve a la producción inmediatamente anterior. */
+app.post('/api/publish/rollback', async (req, res) => {
+  try {
+    const root = publishProjectRoot(req.body?.root);
+    const status = await rollbackProduction(root);
+    return res.json({ success: true, status });
+  } catch (error: any) {
+    return publishError(res, error);
+  }
+});
+
+// El adaptador remoto trabaja con releases locales ya creadas: no vuelve a
+// compilar ni copia archivos. Sin credenciales se usa el fake como fallback.
+app.use(
+  '/api/deploy',
+  createDeployRouter(publishProjectRoot, createConfiguredDeploymentAdapter())
+);
+
+// La misma sesión de Playwright que usan las tools del agente, expuesta al panel.
+app.use('/api/browser', createBrowserRouter());
+
+// Sirve una release bajo `/published/<slug>/<entorno>/`. Va antes de Vite y del
+// estático de Commander: si no, el fallback SPA de la app se comería la URL.
+app.use('/published/:slug/:env', (req, res) => {
+  const slug = String(req.params.slug || '');
+  const environment = String(req.params.env || '');
+  if (!isValidPublishSlug(slug) || (environment !== 'preview' && environment !== 'production')) {
+    return res.status(404).type('text/plain').send('Publicación no encontrada');
+  }
+  const published = getPublishedRelease(slug, environment);
+  if (!published) {
+    return res
+      .status(404)
+      .type('html')
+      .send('<!doctype html><meta charset="utf-8"><title>Sin publicación</title><body style="font:14px monospace;background:#000080;color:#00ffff;padding:24px">Este entorno todavía no tiene una release publicada.</body>');
+  }
+  // El HTML de producción también debe reflejar un rollback de inmediato.
+  res.setHeader('Cache-Control', environment === 'preview' ? 'no-store' : 'no-cache');
+  const file = resolvePublishedFile(published.dir, req.path);
+  // `.commander` es un directorio oculto: sin esta opción `send` devuelve 404
+  // aunque el archivo exista. La ruta ya fue resuelta dentro de la release.
+  if (file) return res.sendFile(file, { dotfiles: 'allow' });
+  if (path.extname(req.path)) return res.status(404).type('text/plain').send('Archivo no encontrado');
+  return res.sendFile(path.join(published.dir, 'index.html'), { dotfiles: 'allow' });
 });
 
 // ==================== RESTO DE RUTAS ====================
