@@ -1,7 +1,7 @@
 # Backlog ejecutable — Fase 1 (CLI/TUI de primera clase y sesión única)
 
 > **Base:** Fase 1 de [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md).
-> **Estado:** los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #11 (F1-10) y #12 (F1-11) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). La tabla de §2 enlaza cada ID con su issue; los cuerpos versionados están en [docs/parity/issues/](issues/README.md).
+> **Estado:** los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #11 (F1-10) y #12 (F1-11) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). La tabla de §2 enlaza cada ID con su issue; los cuerpos versionados están en [docs/parity/issues/](issues/README.md).
 > **Estimaciones:** días-persona, ±30 %. Suman **21,0 d-persona**, que con 2 personas en paralelo son ≈ 11–12 días de calendario; el gate G1 añade 5 días de dogfooding.
 > **Regla de cierre de cada issue:** `tsc --noEmit` + pruebas focalizadas en verde. Si toca UI, además `vite build`. Ningún issue se cierra con mocks que sustituyan una aserción real.
 
@@ -26,7 +26,7 @@
 | F1-01 | [#2](https://github.com/earenbaz80/commander-ai-studio/issues/2) | Cerrado | Contrato de eventos y estado de sesión (v2, compatible) | 1,0 | — | PR1 |
 | F1-02 | [#3](https://github.com/earenbaz80/commander-ai-studio/issues/3) | Cerrado | Sesión autoritativa en el servidor con persistencia durable | 2,5 | F1-01 | PR1 |
 | F1-03 | [#4](https://github.com/earenbaz80/commander-ai-studio/issues/4) | Cerrado | Stream de eventos reanudable (`Last-Event-ID`) | 1,5 | F1-02 | PR1 |
-| F1-04 | [#5](https://github.com/earenbaz80/commander-ai-studio/issues/5) | Abierto | Canal de aprobaciones servidor ↔ CLI (allow/deny/allow-session) | 2,5 | F1-02 | PR2 |
+| F1-04 | [#5](https://github.com/earenbaz80/commander-ai-studio/issues/5) | Cerrado | Canal de aprobaciones servidor ↔ CLI (allow/deny/allow-session) | 2,5 | F1-02 | PR2 |
 | F1-05 | [#6](https://github.com/earenbaz80/commander-ai-studio/issues/6) | Abierto | Diff por hunk en terminal | 1,0 | F1-04 | PR2 |
 | F1-06 | [#7](https://github.com/earenbaz80/commander-ai-studio/issues/7) | Abierto | `ask_user` en el CLI | 1,5 | F1-04 | PR2 |
 | F1-07 | [#8](https://github.com/earenbaz80/commander-ai-studio/issues/8) | Abierto | Reglas de permisos del escritorio aplicadas en el CLI | 1,5 | F1-04 | PR2 |
@@ -484,7 +484,7 @@ F1-02 + F1-04 + F1-08 ───────────────────�
 
 ## 8. Issues en GitHub
 
-Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #11 (F1-10) y #12 (F1-11) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). No vuelvas a ejecutar `gh issue create`, porque duplicaría el backlog. El mapeo está en la tabla de §2 y el cuerpo versionado de cada issue, en [`docs/parity/issues/`](issues/README.md).
+Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #11 (F1-10) y #12 (F1-11) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). No vuelvas a ejecutar `gh issue create`, porque duplicaría el backlog. El mapeo está en la tabla de §2 y el cuerpo versionado de cada issue, en [`docs/parity/issues/`](issues/README.md).
 
 Para actualizar el cuerpo de un issue ya creado:
 
