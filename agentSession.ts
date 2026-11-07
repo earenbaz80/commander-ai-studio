@@ -135,6 +135,15 @@ interface PendingApproval {
   input: unknown;
   resolve: (outcome: ApprovalOutcome) => void;
   timer: ReturnType<typeof setTimeout> | null;
+  /** Cargada de disco: no hay promesa esperando ni timer en este proceso. */
+  detached?: boolean;
+}
+
+interface ResumedApproval {
+  id: string;
+  decision: ApprovalDecision;
+  reason?: string;
+  expiresAt: number;
 }
 
 interface ResolvedApproval {
@@ -248,6 +257,27 @@ function approvalTarget(tool: string, input: any, cwd: string): string {
     return JSON.stringify({ repo: input?.repo, url: input?.url, number: input?.number }).slice(0, 2_000);
   }
   return '*';
+}
+
+/** Serialización estable: el orden de las claves no cambia la identidad. */
+function stableApprovalValue(value: unknown, depth = 0): string {
+  if (depth > 12) return '"[recortado]"';
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableApprovalValue(entry, depth + 1)).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record).sort();
+    return `{${keys
+      .map((key) => `${JSON.stringify(key)}:${stableApprovalValue(record[key], depth + 1)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+/** Una aprobación sólo vale para la llamada exacta: misma tool y mismos args. */
+function approvalCallKey(tool: string, input: unknown): string {
+  return `${tool}\u0000${stableApprovalValue(input)}`;
 }
 
 /** Estado v2 → estado interno legado (la UI y el SSE siguen esperando éste). */
@@ -506,6 +536,11 @@ export class AgentSession {
   private readonly resolvedApprovals = new Map<string, ResolvedApproval>();
   /** Reglas `allow-session` de esta instancia; nunca se escriben en disco. */
   private readonly sessionApprovalRules = new Set<string>();
+  /**
+   * Decisiones tomadas tras un reinicio para aprobaciones que ya no tienen
+   * bucle esperando. Son de un solo uso y sólo valen para la llamada idéntica.
+   */
+  private readonly resumedApprovals = new Map<string, ResumedApproval>();
   private readonly approvalTimeoutMs: number;
 
   constructor(cfg: SessionConfig, restored?: SessionStateV2) {
@@ -531,7 +566,42 @@ export class AgentSession {
       this.createdAt = Date.now();
       this.updatedAt = this.createdAt;
     }
+
+    // Aprobaciones que quedaron pendientes cuando el proceso anterior murió:
+    // se restauran sin promesa ni timer (nadie las espera en este proceso).
+    let expiredOnLoad = 0;
+    if (restored) {
+      const restoredPending = restored.pendingApprovals && restored.pendingApprovals.length > 0
+        ? restored.pendingApprovals
+        : restored.pendingApproval
+          ? [restored.pendingApproval]
+          : [];
+      const now = Date.now();
+      for (const request of restoredPending.slice(0, 10)) {
+        if (!request?.id || this.pendingApprovals.has(request.id)) continue;
+        if (!(request.expiresAt > now)) {
+          // La ventana venció mientras el servidor estaba caído: se cierra como
+          // timeout y no se rearma nunca con una fecha nueva.
+          this.resolvedApprovals.set(request.id, {
+            decision: 'deny',
+            body: { success: true, approvalId: request.id, decision: 'deny', reason: 'timeout' },
+          });
+          expiredOnLoad += 1;
+          continue;
+        }
+        this.pendingApprovals.set(request.id, {
+          request,
+          input: request.input,
+          resolve: () => {},
+          timer: null,
+          detached: true,
+        });
+      }
+    }
+
     this.eventStream = new SessionEventBuffer(this.id);
+    // Quita del disco las vencidas que se acaban de resolver.
+    if (expiredOnLoad > 0) this.touch();
   }
 
   getStatus(): SessionStatus { return this.status; }
@@ -571,6 +641,7 @@ export class AgentSession {
 
   /** Proyección v2 del estado; es lo que devuelve `GET /sessions/:id`. */
   toState(): SessionStateV2 {
+    const pending = this.pendingApprovalViews();
     return {
       schemaVersion: SESSION_SCHEMA_VERSION,
       id: this.id,
@@ -582,7 +653,8 @@ export class AgentSession {
       turns: this.turns.map((turn) => ({ ...turn })),
       steps: this.steps.map((step) => ({ ...step })),
       plan: this.plan.map((item) => ({ ...item })),
-      pendingApproval: this.pendingApprovalView(),
+      pendingApproval: pending[0] ?? null,
+      ...(pending.length > 1 ? { pendingApprovals: pending } : {}),
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
       ...(this.answer ? { answer: this.answer } : {}),
@@ -745,9 +817,8 @@ export class AgentSession {
     return Math.floor((this.maxSteps - this.steps.length) / 2);
   }
 
-  private pendingApprovalView(): ApprovalRequestV2 | null {
-    const first = this.pendingApprovals.values().next().value as PendingApproval | undefined;
-    return first ? { ...first.request } : null;
+  private pendingApprovalViews(): ApprovalRequestV2[] {
+    return [...this.pendingApprovals.values()].map((pending) => ({ ...pending.request }));
   }
 
   /** ¿Esta llamada necesita una decisión humana? */
@@ -773,6 +844,10 @@ export class AgentSession {
 
   /** Crea la petición, la publica y espera hasta que el cliente responda. */
   private requestApproval(tool: string, input: any): Promise<ApprovalOutcome> {
+    // Si el modelo repite la llamada que quedó pendiente antes del reinicio, se
+    // reengancha esa misma aprobación en vez de crear una segunda.
+    const reusable = this.findDetachedApproval(tool, input);
+    if (reusable) return this.awaitDetachedApproval(reusable);
     const now = Date.now();
     const request: ApprovalRequestV2 = {
       id: uid('apr'),
@@ -796,6 +871,57 @@ export class AgentSession {
     });
   }
 
+  /** ¿Hay una aprobación restaurada que corresponda a esta llamada exacta? */
+  private findDetachedApproval(tool: string, input: any): PendingApproval | null {
+    const key = approvalCallKey(tool, input);
+    for (const pending of [...this.pendingApprovals.values()]) {
+      if (!pending.detached) continue;
+      if (approvalCallKey(pending.request.tool, pending.input) !== key) continue;
+      if (!(pending.request.expiresAt > Date.now())) {
+        this.finishApproval(pending, 'deny', 'timeout');
+        continue;
+      }
+      pending.detached = false;
+      return pending;
+    }
+    return null;
+  }
+
+  /**
+   * Reengancha el bucle a una aprobación cargada de disco: vuelve a haber una
+   * promesa esperando y corre el resto del timeout original.
+   */
+  private awaitDetachedApproval(pending: PendingApproval): Promise<ApprovalOutcome> {
+    return new Promise<ApprovalOutcome>((resolve) => {
+      pending.resolve = resolve;
+      pending.timer = setTimeout(() => {
+        this.finishApproval(pending, 'deny', 'timeout');
+      }, Math.max(1, pending.request.expiresAt - Date.now()));
+      (pending.timer as any)?.unref?.();
+      this.emit({ type: 'approval_request', approval: pending.request });
+    });
+  }
+
+  /** Consume la decisión de un solo uso para la llamada exacta, si existe. */
+  private takeResumedApproval(
+    tool: string,
+    input: unknown
+  ): { id: string; decision: ApprovalDecision; reason?: string } | null {
+    const key = approvalCallKey(tool, input);
+    const entry = this.resumedApprovals.get(key);
+    if (!entry) return null;
+    this.resumedApprovals.delete(key);
+    if (!(entry.expiresAt > Date.now())) {
+      // La ventana venció mientras la sesión estaba parada: fail closed.
+      return { id: entry.id, decision: 'deny', reason: 'timeout' };
+    }
+    return {
+      id: entry.id,
+      decision: entry.decision,
+      ...(entry.reason ? { reason: entry.reason } : {}),
+    };
+  }
+
   private finishApproval(
     pending: PendingApproval,
     decision: ApprovalDecision,
@@ -817,6 +943,17 @@ export class AgentSession {
     const cleanReason = typeof reason === 'string' && reason.trim()
       ? reason.trim().slice(0, 500)
       : undefined;
+    // Una aprobación restaurada no tiene bucle esperando: la decisión se guarda
+    // como permiso (o denegación) de un solo uso para la llamada exacta.
+    const expiredOnResolve = pending.detached === true && !(pending.request.expiresAt > Date.now());
+    if (pending.detached && !expiredOnResolve && (decision === 'allow' || decision === 'deny')) {
+      this.resumedApprovals.set(approvalCallKey(pending.request.tool, pending.input), {
+        id,
+        decision,
+        ...(cleanReason ? { reason: cleanReason } : {}),
+        expiresAt: pending.request.expiresAt,
+      });
+    }
     const body: Record<string, unknown> = {
       success: true,
       approvalId: id,
@@ -866,6 +1003,12 @@ export class AgentSession {
     }
     const pending = this.pendingApprovals.get(approvalId);
     if (pending) {
+      if (pending.detached && !(pending.request.expiresAt > Date.now())) {
+        const body = this.finishApproval(pending, 'deny', 'timeout');
+        return decision === 'deny'
+          ? { status: 200, body }
+          : { status: 409, body: { success: false, error: 'la aprobación expiró' } };
+      }
       const body = this.finishApproval(pending, decision, reason);
       return { status: 200, body };
     }
@@ -884,23 +1027,44 @@ export class AgentSession {
 
   private async runOne(call: { tool: string; input: any }): Promise<ToolCallResult> {
     let approval: ToolCallResult['approval'];
-    if (this.requiresApproval(call.tool, call.input) && !this.isAllowedForSession(call.tool, call.input)) {
+    const needsApproval =
+      this.requiresApproval(call.tool, call.input) && !this.isAllowedForSession(call.tool, call.input);
+    if (needsApproval) {
       if (this.stopReason) {
         return { tool: call.tool, ok: false, error: 'Aprobación denegada: cancelled' };
       }
-      const outcome = await this.requestApproval(call.tool, call.input);
-      approval = {
-        id: outcome.id,
-        decision: outcome.decision,
-        ...(outcome.reason ? { reason: outcome.reason } : {}),
-      };
-      if (!outcome.approved) {
-        return {
-          tool: call.tool,
-          ok: false,
-          error: `Aprobación denegada: ${outcome.reason || 'sin motivo'}`,
-          approval,
+      // Una aprobación que quedó pendiente al reiniciar el servidor se aplica
+      // sólo a la llamada idéntica (tool + input) y una sola vez.
+      const resumed = this.takeResumedApproval(call.tool, call.input);
+      if (resumed) {
+        approval = {
+          id: resumed.id,
+          decision: resumed.decision,
+          ...(resumed.reason ? { reason: resumed.reason } : {}),
         };
+        if (resumed.decision === 'deny') {
+          return {
+            tool: call.tool,
+            ok: false,
+            error: `Aprobación denegada: ${resumed.reason || 'sin motivo'}`,
+            approval,
+          };
+        }
+      } else {
+        const outcome = await this.requestApproval(call.tool, call.input);
+        approval = {
+          id: outcome.id,
+          decision: outcome.decision,
+          ...(outcome.reason ? { reason: outcome.reason } : {}),
+        };
+        if (!outcome.approved) {
+          return {
+            tool: call.tool,
+            ok: false,
+            error: `Aprobación denegada: ${outcome.reason || 'sin motivo'}`,
+            approval,
+          };
+        }
       }
     }
 

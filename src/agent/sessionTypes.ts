@@ -90,6 +90,12 @@ export interface SessionStateV2 {
   steps: SessionStepV2[];
   plan: SessionPlanItemV2[];
   pendingApproval: ApprovalRequestV2 | null;
+  /**
+   * Todas las pendientes cuando hay más de una. `pendingApproval` sigue siendo
+   * la primera para quien sólo conoce ese campo; esto permite reanudarlas tras
+   * un reinicio del servidor.
+   */
+  pendingApprovals?: ApprovalRequestV2[];
   createdAt: number;
   updatedAt: number;
   /** Última respuesta final, si la hubo. */
@@ -426,6 +432,8 @@ export function decodeSessionState(input: string | unknown): SessionStateV2 | nu
     createdAt,
     updatedAt,
   };
+  const pendingApprovals = listOf(obj.pendingApprovals, approvalFrom, 10);
+  if (pendingApprovals.length > 0) state.pendingApprovals = pendingApprovals;
   if (typeof obj.answer === 'string') state.answer = obj.answer;
   if (typeof obj.error === 'string') state.error = obj.error;
   return state;
