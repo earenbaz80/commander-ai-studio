@@ -22,7 +22,11 @@ import {
   type FakeRequest,
   type FakeScenario,
 } from '../helpers/fakeAgentServer.js';
-import { createSessionState } from '../../src/agent/sessionTypes.js';
+import {
+  createSessionState,
+  makeEventV2,
+  type CliEventV2,
+} from '../../src/agent/sessionTypes.js';
 import { GEMINI_DEFAULT_MODEL } from '../../src/config/geminiModels.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -52,6 +56,22 @@ interface NdjsonEvent {
   answer?: string;
   steps?: number;
   session?: { id?: string; goal?: string; status?: string };
+  approval?: {
+    id?: string;
+    tool?: string;
+    input?: unknown;
+    diff?: string;
+  };
+  approvalId?: string;
+  decision?: string;
+  reason?: string;
+  question?: {
+    id?: string;
+    header?: string;
+    text?: string;
+    options?: string[];
+    allowFreeText?: boolean;
+  };
 }
 
 interface ReceiptServer {
@@ -59,11 +79,11 @@ interface ReceiptServer {
   requests: FakeRequest[];
 }
 
-function runCli(args: string[]): Promise<CliResult> {
+function runCliCommand(command: 'agent' | 'attach', args: string[]): Promise<CliResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ['--import', 'tsx', CLI_PATH, 'agent', ...args],
+      ['--import', 'tsx', CLI_PATH, command, ...args],
       {
         cwd: REPO_ROOT,
         env: {
@@ -114,6 +134,16 @@ function runCli(args: string[]): Promise<CliResult> {
       resolve({ code, signal, stdout, stderr, timedOut });
     });
   });
+}
+
+/** Invoca `commander agent`; es el arnés histórico de F1-14. */
+function runCli(args: string[]): Promise<CliResult> {
+  return runCliCommand('agent', args);
+}
+
+/** Invoca `commander attach` para ejercitar el stream real de una sesión. */
+function runAttach(sessionId: string, args: string[]): Promise<CliResult> {
+  return runCliCommand('attach', [sessionId, ...args]);
 }
 
 function runScenario(
@@ -245,6 +275,200 @@ async function closedPortUrl(): Promise<string> {
   const address = server.address() as AddressInfo;
   await new Promise<void>((resolve) => server.close(() => resolve()));
   return `http://127.0.0.1:${address.port}`;
+}
+
+type SessionStreamMode = 'approval-allow' | 'approval-deny' | 'question' | 'reconnect';
+
+interface SessionStreamFixture extends ReceiptServer {
+  sessionId: string;
+  connections: Array<{ after: string | null; lastEventId: string | null }>;
+  close: () => Promise<void>;
+}
+
+function sseFrame(event: CliEventV2): string {
+  return `id: ${event.seq}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+}
+
+function sseGone(seq: number, reason = 'completed'): string {
+  return `id: ${seq}\nevent: gone\ndata: ${JSON.stringify({ reason })}\n\n`;
+}
+
+/**
+ * Servidor de sesión mínimo para los casos de attach: approval, question y
+ * reconexión. La primera conexión del modo `reconnect` se corta a propósito; la
+ * segunda repite el `seq` 2 para comprobar la deduplicación del cliente.
+ */
+async function startSessionStreamFixture(mode: SessionStreamMode): Promise<SessionStreamFixture> {
+  const sessionId = `sess_e2e_${mode}`;
+  const requests: FakeRequest[] = [];
+  const connections: SessionStreamFixture['connections'] = [];
+  const state = createSessionState({
+    id: sessionId,
+    goal: `E2E ${mode}`,
+    cwd: REPO_ROOT,
+    model: 'gemini/fake',
+  });
+  state.status = 'running';
+
+  const events: CliEventV2[] = [];
+  let answer = '';
+  if (mode === 'approval-allow' || mode === 'approval-deny') {
+    const decision: 'allow' | 'deny' = mode === 'approval-allow' ? 'allow' : 'deny';
+    const approval = {
+      id: `apr_${mode}`,
+      sessionId,
+      tool: 'fs.write',
+      input: { path: 'salida.txt', content: 'x' },
+      diff: '--- a/salida.txt\n+++ b/salida.txt\n@@ -0,0 +1 @@\n+x',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+    };
+    answer = decision === 'allow' ? 'Listo: escritura aprobada.' : 'Listo: escritura denegada.';
+    events.push(
+      makeEventV2(sessionId, 1, {
+        type: 'tool_call',
+        tool: 'fs.write',
+        input: approval.input,
+      }),
+      makeEventV2(sessionId, 2, { type: 'approval_request', approval }),
+      makeEventV2(sessionId, 3, {
+        type: 'approval_result',
+        approvalId: approval.id,
+        decision,
+      }),
+      makeEventV2(sessionId, 4, {
+        type: 'tool_result',
+        tool: 'fs.write',
+        ok: decision === 'allow',
+        summary: decision === 'allow' ? 'escritura aplicada' : 'ERROR: aprobación denegada',
+      }),
+      makeEventV2(sessionId, 5, { type: 'answer', text: answer })
+    );
+  } else if (mode === 'question') {
+    const question = {
+      id: 'q_e2e',
+      header: 'Sigo',
+      text: '¿Escribo el archivo?',
+      options: ['sí', 'no'],
+      allowFreeText: true,
+    };
+    answer = 'Listo: pregunta respondida.';
+    events.push(
+      makeEventV2(sessionId, 1, {
+        type: 'tool_call',
+        tool: 'ask_user',
+        input: { question: question.text },
+      }),
+      makeEventV2(sessionId, 2, { type: 'question', question }),
+      makeEventV2(sessionId, 3, {
+        type: 'tool_result',
+        tool: 'ask_user',
+        ok: true,
+        summary: 'respuesta: sí',
+      }),
+      makeEventV2(sessionId, 4, { type: 'answer', text: answer })
+    );
+  } else {
+    answer = 'Listo tras reconectar.';
+    events.push(
+      makeEventV2(sessionId, 1, { type: 'tool_call', tool: 'fs.read', input: { path: 'README.md' } }),
+      makeEventV2(sessionId, 2, {
+        type: 'tool_result',
+        tool: 'fs.read',
+        ok: true,
+        summary: 'README leído',
+      }),
+      makeEventV2(sessionId, 3, { type: 'answer', text: answer })
+    );
+  }
+
+  const finalSeq = events[events.length - 1]?.seq ?? 1;
+  const sendJson = (res: http.ServerResponse, status: number, body: unknown): void => {
+    const text = JSON.stringify(body);
+    res.writeHead(status, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Length': String(Buffer.byteLength(text)),
+    });
+    res.end(text);
+  };
+
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    requests.push({ method: req.method ?? '', path: url.pathname, body: null });
+
+    if (req.method === 'GET' && url.pathname === '/api/health') {
+      sendJson(res, 200, { status: 'ok' });
+      return;
+    }
+
+    const streamMatch = url.pathname.match(/^\/api\/agent\/sessions\/([^/]+)\/stream$/);
+    if (req.method === 'GET' && streamMatch) {
+      if (decodeURIComponent(streamMatch[1]) !== sessionId) {
+        sendJson(res, 404, { success: false, error: 'sesión no encontrada' });
+        return;
+      }
+      const after = url.searchParams.get('after');
+      const lastEventId =
+        typeof req.headers['last-event-id'] === 'string' ? req.headers['last-event-id'] : null;
+      connections.push({ after, lastEventId });
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      });
+
+      if (mode === 'reconnect' && connections.length === 1) {
+        for (const event of events.filter((item) => item.seq <= 2)) {
+          res.write(sseFrame(event));
+        }
+        setTimeout(() => res.destroy(), 50);
+        return;
+      }
+
+      const from = mode === 'reconnect' ? 2 : 0;
+      for (const event of events.filter((item) => item.seq >= from)) {
+        res.write(sseFrame(event));
+      }
+      state.status = 'completed';
+      state.answer = answer;
+      res.end(sseGone(finalSeq));
+      return;
+    }
+
+    const sessionMatch = url.pathname.match(/^\/api\/agent\/sessions\/([^/]+)$/);
+    if (req.method === 'GET' && sessionMatch) {
+      if (decodeURIComponent(sessionMatch[1]) !== sessionId) {
+        sendJson(res, 404, { success: false, error: 'sesión no encontrada' });
+        return;
+      }
+      sendJson(res, 200, {
+        success: true,
+        running: state.status === 'running',
+        state,
+      });
+      return;
+    }
+
+    sendJson(res, 404, { success: false, error: 'ruta no simulada' });
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve());
+  });
+  const address = server.address() as AddressInfo;
+
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    sessionId,
+    requests,
+    connections,
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.close(() => resolve());
+        server.closeAllConnections();
+      }),
+  };
 }
 
 after(() => {
@@ -744,9 +968,101 @@ describe('CLI E2E con proveedor falso (F1-14)', () => {
     assert.match(String(error?.text), /no encontrada/, message);
   });
 
-  // Casos del issue F1-14 que todavía no tienen superficie en el CLI: se dejan
-  // como TODO visible para no dar por cubierto lo que depende de otros issues.
-  test.todo('approval de escritura: aprobada y denegada (F1-04)');
-  test.todo('ask_user en modo --json (F1-04/F1-06)');
-  test.todo('reconexión SSE tras un corte (F1-03)');
+  test('approval de escritura: aprobada y denegada', async () => {
+    for (const mode of ['approval-allow', 'approval-deny'] as const) {
+      const fake = await startSessionStreamFixture(mode);
+      try {
+        const result = await runAttach(fake.sessionId, ['--server', fake.baseUrl, '--json']);
+        const receipt = writeReceipt(`attach-${mode}`, mode, result, fake);
+        const events = parseEvents(result.stdout);
+        const message = diag(result, receipt);
+        assertEventEnvelope(events, fake.sessionId, message);
+
+        assert.equal(result.code, 0, message);
+        assert.equal(result.timedOut, false, message);
+        assert.equal(events.find((event) => event.type === 'approval_request')?.approval?.tool, 'fs.write', message);
+        const decision = mode === 'approval-allow' ? 'allow' : 'deny';
+        assert.equal(
+          events.find((event) => event.type === 'approval_result')?.decision,
+          decision,
+          message
+        );
+        assert.equal(
+          events.find((event) => event.type === 'tool_result')?.ok,
+          decision === 'allow',
+          message
+        );
+        assert.equal(
+          events.at(-1)?.answer,
+          decision === 'allow' ? 'Listo: escritura aprobada.' : 'Listo: escritura denegada.',
+          message
+        );
+        assert.equal(events.at(-1)?.type, 'done', message);
+      } finally {
+        await fake.close();
+      }
+    }
+  });
+
+  test('ask_user en modo --json: pregunta y respuesta sin prompt interactivo', async () => {
+    const fake = await startSessionStreamFixture('question');
+    try {
+      const result = await runAttach(fake.sessionId, ['--server', fake.baseUrl, '--json']);
+      const receipt = writeReceipt('attach-question', 'question', result, fake);
+      const events = parseEvents(result.stdout);
+      const message = diag(result, receipt);
+      assertEventEnvelope(events, fake.sessionId, message);
+
+      assert.equal(result.code, 0, message);
+      const question = events.find((event) => event.type === 'question')?.question;
+      assert.equal(question?.text, '¿Escribo el archivo?', message);
+      assert.deepEqual(question?.options, ['sí', 'no'], message);
+      assert.equal(question?.allowFreeText, true, message);
+      assert.equal(
+        events.some((event) => event.type === 'tool_call' && event.tool === 'ask_user'),
+        true,
+        message
+      );
+      assert.equal(
+        events.some(
+          (event) => event.type === 'tool_result' && event.tool === 'ask_user' && event.ok
+        ),
+        true,
+        message
+      );
+      assert.equal(result.stdout.includes('Permitir una vez'), false, message);
+      assert.equal(events.at(-1)?.type, 'done', message);
+    } finally {
+      await fake.close();
+    }
+  });
+
+  test('reconexión SSE tras un corte: deduplica y cierra con done', async () => {
+    const fake = await startSessionStreamFixture('reconnect');
+    try {
+      const result = await runAttach(fake.sessionId, ['--server', fake.baseUrl, '--json']);
+      const receipt = writeReceipt('attach-reconnect', 'reconnect', result, fake);
+      const events = parseEvents(result.stdout);
+      const message = diag(result, receipt);
+      assertEventEnvelope(events, fake.sessionId, message);
+
+      assert.equal(result.code, 0, message);
+      assert.equal(result.timedOut, false, message);
+      assert.deepEqual(
+        events.map((event) => event.seq),
+        [1, 2, 3, 4],
+        `el corte no duplica el seq 2: ${message}`
+      );
+      assert.deepEqual(
+        events.map((event) => event.type),
+        ['tool_call', 'tool_result', 'answer', 'done'],
+        message
+      );
+      assert.equal(fake.connections.length, 2, message);
+      assert.equal(fake.connections[1]?.after, '2', message);
+      assert.equal(fake.connections[1]?.lastEventId, '2', message);
+    } finally {
+      await fake.close();
+    }
+  });
 });
