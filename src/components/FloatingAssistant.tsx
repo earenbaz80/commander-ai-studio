@@ -19,6 +19,12 @@ const IDLE_SLEEP_MS = 5 * 60 * 1000;
 const IDLE_DRIFT_MS = 15 * 1000;
 /** Con el puntero quieto, el orbe empieza a mirar a los lados por su cuenta. */
 const IDLE_GAZE_MS = 2200;
+/** Cadencia de la interpolación de la mirada (~60 fps). */
+const EYE_FOLLOW_FRAME_MS = 16;
+/** Constante de tiempo del seguimiento ocular: llega al puntero en una fracción de segundo. */
+const EYE_FOLLOW_MS = 70;
+/** Distancia al objetivo por debajo de la cual la mirada se da por asentada. */
+const EYE_FOLLOW_EPSILON = 0.01;
 
 /**
  * Nono - Asistente flotante (versión slim ~400 líneas).
@@ -269,9 +275,48 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
   }, [orbGreeting]);
 
   // Ojos: dirección desde el centro de la cabeza hasta el puntero.
-  // NonoHead la recibe como vector unitario y desplaza las pupilas.
+  // NonoHead la recibe como vector unitario y desplaza las pupilas. El objetivo
+  // se interpola en pasos cortos para que la mirada acompañe al puntero en vez
+  // de saltar de una posición a otra con cada evento. La opción de accesibilidad
+  // `instantGaze` desactiva esa interpolación y aplica el vector de inmediato.
   const [eyeOffset, setEyeOffset] = useState({ x: 0, y: 0 });
+  const eyeOffsetRef = useRef(eyeOffset);
+  const eyeTargetRef = useRef(eyeOffset);
+  const eyeFollowTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const instantGaze = memory.ui.instantGaze;
+
   useEffect(() => {
+    const stopEyeFollow = () => {
+      if (eyeFollowTimerRef.current !== null) {
+        clearInterval(eyeFollowTimerRef.current);
+        eyeFollowTimerRef.current = null;
+      }
+    };
+
+    const stepEyeFollow = () => {
+      const target = eyeTargetRef.current;
+      const current = eyeOffsetRef.current;
+      const alpha = 1 - Math.exp(-EYE_FOLLOW_FRAME_MS / EYE_FOLLOW_MS);
+      const next = {
+        x: current.x + (target.x - current.x) * alpha,
+        y: current.y + (target.y - current.y) * alpha,
+      };
+      const settled = Math.hypot(target.x - next.x, target.y - next.y) < EYE_FOLLOW_EPSILON;
+      const value = settled ? target : next;
+      eyeOffsetRef.current = value;
+      setEyeOffset(value);
+      if (settled) stopEyeFollow();
+    };
+
+    // Al activar la mirada instantánea se corta la transición en curso y se
+    // salta al último objetivo, sin esperar al siguiente movimiento.
+    if (instantGaze) {
+      stopEyeFollow();
+      const target = eyeTargetRef.current;
+      eyeOffsetRef.current = target;
+      setEyeOffset(target);
+    }
+
     const handleMouseMove = (e: MouseEvent) => {
       const head = headRef.current;
       if (!head) return;
@@ -279,11 +324,27 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
       const dx = e.clientX - (rect.left + rect.width / 2);
       const dy = e.clientY - (rect.top + rect.height / 2);
       const angle = Math.atan2(dy, dx);
-      setEyeOffset({ x: Math.cos(angle), y: Math.sin(angle) });
+      // Mover el puntero devuelve el control al cursor de inmediato, sin
+      // esperar al primer frame de la interpolación.
+      setGazeIdle(false);
+      const target = { x: Math.cos(angle), y: Math.sin(angle) };
+      eyeTargetRef.current = target;
+      if (instantGaze) {
+        stopEyeFollow();
+        eyeOffsetRef.current = target;
+        setEyeOffset(target);
+        return;
+      }
+      if (eyeFollowTimerRef.current === null) {
+        eyeFollowTimerRef.current = setInterval(stepEyeFollow, EYE_FOLLOW_FRAME_MS);
+      }
     };
     window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      stopEyeFollow();
+    };
+  }, [instantGaze]);
 
   // Auto-sueño: en reposo Nono baja los párpados (LED verde + Zzz). La cuenta se
   // reinicia sólo con actividad del usuario. Las expresiones que Nono se provoca

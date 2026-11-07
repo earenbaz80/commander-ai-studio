@@ -3643,7 +3643,7 @@ app.post('/api/custom/models', async (req, res) => {
 
 app.post('/api/custom/generate', async (req, res) => {
   try {
-    const { prompt, model, systemInstruction = '', temperature = 0.7, maxTokens = 2048, baseURL, apiKey } = req.body;
+    const { prompt, model, systemInstruction = '', temperature = 0.7, maxTokens = 2048, baseURL, apiKey, tools, toolChoice } = req.body;
 
     // Los proveedores añadidos comparten esta ruta: el prefijo del id dice
     // cuál es y aquí se resuelven URL y clave guardadas en el servidor.

@@ -19,6 +19,8 @@ export interface NonoMemory {
     compactMode: boolean;
     /** Anima a Nono aunque el sistema pida menos movimiento. */
     forceMotion: boolean;
+    /** Accesibilidad: desactiva la interpolación y la mirada salta al puntero. */
+    instantGaze: boolean;
     /** Variante extra de Nono: esfera turquesa→verde en vez de la cabeza clásica. */
     orbSkin: boolean;
     /** Colores del cuerpo del orbe. */
@@ -52,6 +54,7 @@ export const DEFAULT_MEMORY: NonoMemory = {
     reducedMotion: false,
     compactMode: false,
     forceMotion: false,
+    instantGaze: false,
     orbSkin: false,
     orbColors: DEFAULT_ORB_COLORS,
     classicAccent: '#ffffff',
