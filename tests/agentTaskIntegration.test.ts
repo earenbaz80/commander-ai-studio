@@ -23,6 +23,21 @@ import { clearSubAgents, listSubAgents } from '../subAgents.js';
 
 const originalFetch = globalThis.fetch;
 
+/** Simula al cliente que aprueba la escritura del subagente. */
+function autoApprove(goal: string): () => void {
+  const timer = setInterval(() => {
+    for (const summary of listSessions()) {
+      if (summary.goal !== goal) continue;
+      const child = getSession(summary.id);
+      if (!child) continue;
+      for (const approval of child.getPendingApprovals()) {
+        child.resolveApproval(approval.id, 'allow');
+      }
+    }
+  }, 10);
+  return () => clearInterval(timer);
+}
+
 after(() => {
   globalThis.fetch = originalFetch;
 });
@@ -97,6 +112,7 @@ test('task ejecuta un subagente real, lo registra mientras corre y lo limpia al 
 test('un nombre con guion bajo del proveedor se ejecuta como la tool real', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
   const padre = createSession({ goal: 'padre de la prueba de mapeo', cwd: dir });
+  const stopApprovals = autoApprove('escribir salida.txt');
   let llamadas = 0;
 
   globalThis.fetch = (async () => {
@@ -115,13 +131,19 @@ test('un nombre con guion bajo del proveedor se ejecuta como la tool real', asyn
   }) as any;
 
   try {
-    const res: any = await executeAgentTool('task', { root: dir, parentSessionId: padre.id, goal: 'escribir salida.txt' });
+    const res: any = await executeAgentTool('task', {
+      root: dir,
+      parentSessionId: padre.id,
+      goal: 'escribir salida.txt',
+      mode: 'build',
+    });
 
     assert.equal(res.ok, true, JSON.stringify(res).slice(0, 400));
     assert.equal(res.answer, 'listo', 'el segundo turno cierra la tarea');
     assert.equal(llamadas, 2, 'un turno para la tool y otro para cerrar');
     assert.equal(fs.readFileSync(path.join(dir, 'salida.txt'), 'utf8'), 'hola', 'la tool se ejecutó de verdad');
   } finally {
+    stopApprovals();
     removeSession(padre.id);
     clearSubAgents(padre.id);
     fs.rmSync(dir, { recursive: true, force: true });
@@ -132,6 +154,7 @@ test('un nombre con guion bajo del proveedor se ejecuta como la tool real', asyn
 test('un turno que sólo actualiza el plan no se toma por respuesta final', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
   const padre = createSession({ goal: 'padre de la prueba de plan', cwd: dir });
+  const stopApprovals = autoApprove('planificar y escribir');
   let llamadas = 0;
 
   globalThis.fetch = (async () => {
@@ -156,13 +179,19 @@ test('un turno que sólo actualiza el plan no se toma por respuesta final', asyn
   }) as any;
 
   try {
-    const res: any = await executeAgentTool('task', { root: dir, parentSessionId: padre.id, goal: 'planificar y escribir' });
+    const res: any = await executeAgentTool('task', {
+      root: dir,
+      parentSessionId: padre.id,
+      goal: 'planificar y escribir',
+      mode: 'build',
+    });
 
     assert.equal(res.ok, true, JSON.stringify(res).slice(0, 400));
     assert.equal(res.answer, 'hecho');
     assert.equal(llamadas, 3, 'planificar no cierra la sesión: siguen el trabajo y el cierre');
     assert.equal(fs.readFileSync(path.join(dir, 'plan.txt'), 'utf8'), 'ok', 'el trabajo se hizo después del plan');
   } finally {
+    stopApprovals();
     removeSession(padre.id);
     clearSubAgents(padre.id);
     fs.rmSync(dir, { recursive: true, force: true });
