@@ -730,6 +730,16 @@ sólo se calculan para escrituras dentro del proyecto. **Body:**
   responde `404` y una decisión inválida `400`. Los errores no incluyen tokens
   ni rutas fuera del proyecto.
 
+Si el servidor se reinicia con aprobaciones pendientes, el `GET` las sigue
+mostrando mientras no venza su `expiresAt` (también en `pendingApprovals`
+cuando hay más de una). Decidir después del reinicio no ejecuta la llamada
+vieja: la decisión queda como permiso o denegación de un solo uso, atado a la
+misma `tool` + `input` exactos. Si la sesión se reanuda y el modelo repite esa
+llamada, se aplica una vez; si no la repite, no se ejecuta nada. Las que
+vencieron durante la caída se cierran como `deny` con `reason: "timeout"` y se
+borran del estado. `allow-session` sigue siendo una regla en memoria del
+proceso: no se persiste.
+
 El bucle pide aprobación para toda escritura (`fs.write`, `fs.edit`,
 `git.commit`), `github.comment`, las tools con `danger` y `shell.run` cuando el
 comando no está en la allowlist. Las lecturas no preguntan.

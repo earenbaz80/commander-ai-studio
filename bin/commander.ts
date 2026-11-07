@@ -5,9 +5,10 @@ import path from 'path';
 import fs from 'fs';
 import { loadConfig, writeConfig, getConfigPath, getProviderConfig } from '../src/config/index.js';
 import { CommanderConfigSchema } from '../src/config/schema.js';
-import { checkHealth, forkServerSession, loadServerSession, runAgent } from '../src/cli/agentClient.js';
+import { checkHealth, consumeSessionStream, forkServerSession, loadServerSession, respondApproval, runAgent } from '../src/cli/agentClient.js';
 import { encodeEvent, makeEventV2, type SessionStateV2 } from '../src/agent/sessionTypes.js';
-import { AgentRenderer, Tui } from '../src/cli/tui.js';
+import { canPromptApprovals, AgentRenderer, promptApprovalDecision, Tui } from '../src/cli/tui.js';
+import { ApprovalQueue } from '../src/cli/approvals.js';
 import { GEMINI_DEFAULT_MODEL } from '../src/config/geminiModels.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -395,6 +396,183 @@ program
 
     renderer.finish(result.answer, result.steps);
     if (!result.answer) process.exit(1);
+  });
+
+program
+  .command('attach')
+  .description('Adjuntarse al stream de una sesión lanzada desde el escritorio')
+  .argument('<sessionId>', 'Id de la sesión (visible en el escritorio)')
+  .option('-s, --server <url>', 'Commander server URL', process.env.COMMANDER_SERVER || 'http://127.0.0.1:3280')
+  .option('--json', 'Emitir los eventos del stream como NDJSON')
+  .option('--after <seq>', 'Cursor inicial (seq)', '0')
+  .action(async (sessionId, opts) => {
+    const serverUrl = String(opts.server);
+    const id = String(sessionId || '').trim();
+    const json = Boolean(opts.json);
+    const after = Number(opts.after);
+    const fail = (text: string): void => {
+      process.exitCode = 1;
+      if (json) {
+        process.stdout.write(
+          `${encodeEvent(makeEventV2(id || 'cli', 1, { type: 'error', text }))}\n`
+        );
+      } else {
+        process.stderr.write(`[commander] ${text}\n`);
+      }
+    };
+
+    if (!id) return fail('sessionId requerido');
+    if (!Number.isSafeInteger(after) || after < 0) {
+      return fail('--after debe ser un entero >= 0');
+    }
+
+    const health = await checkHealth(serverUrl);
+    if (!health.ok) {
+      return fail(
+        `Servidor no disponible en ${serverUrl} (${health.detail || 'sin detalle'}).\n` +
+          '[commander] Arráncalo con: npm run dev   (o: commander serve)'
+      );
+    }
+
+    let initial: SessionStateV2;
+    try {
+      // A diferencia de `--resume`, adjuntarse a una corrida del escritorio
+      // requiere leer una sesión que está en ejecución.
+      initial = await loadServerSession(serverUrl, id, { allowRunning: true });
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
+
+    const controller = new AbortController();
+    let interrupted = false;
+    const onInterrupt = () => {
+      interrupted = true;
+      controller.abort();
+    };
+    process.once('SIGINT', onInterrupt);
+    process.once('SIGTERM', onInterrupt);
+
+    const tui = new Tui({ interactive: Boolean(process.stdout.isTTY) });
+    const renderer = json
+      ? null
+      : new AgentRenderer({
+          task: initial.goal,
+          model: initial.model || GEMINI_DEFAULT_MODEL,
+          maxSteps: 0,
+          serverUrl,
+          attach: true,
+          sessionId: id,
+          tui,
+        });
+    let answer = initial.answer || '';
+    let steps = initial.steps.length;
+
+    // Aprobaciones interactivas (F1-04): sólo con terminal real y sin --json.
+    // Con pipes decide el escritorio, que era el comportamiento anterior.
+    const promptCtrl = new AbortController();
+    const offered = new Set<string>();
+    const approvals = !json && canPromptApprovals()
+      ? new ApprovalQueue(
+          async (approval) => {
+            const decision = await promptApprovalDecision(approval, {
+              tui,
+              signal: promptCtrl.signal,
+              onInterrupt: () => {
+                interrupted = true;
+                controller.abort();
+              },
+            });
+            if (!decision) {
+              // Esc: la decisión sigue pendiente en el servidor.
+              if (!promptCtrl.signal.aborted) {
+                tui.line(tui.gray(`  aprobación ${approval.id} pendiente; decídela desde el escritorio`));
+              }
+              return null;
+            }
+            const sent = await respondApproval(serverUrl, id, approval.id, decision);
+            if (!sent.ok) {
+              tui.line(
+                `${tui.red('✗')} ${tui.gray(`aprobación ${approval.id}: ${sent.error || `HTTP ${sent.status}`}`)}`
+              );
+            }
+            return decision;
+          },
+          (error) => {
+            const text = error instanceof Error ? error.message : String(error);
+            tui.line(`${tui.red('✗')} ${tui.gray(text)}`);
+          }
+        )
+      : null;
+
+    const offerApproval = (approval: SessionStateV2['pendingApproval']): void => {
+      if (!approvals || !approval || offered.has(approval.id)) return;
+      offered.add(approval.id);
+      approvals.push(approval);
+    };
+    // Al adjuntarse puede haber una esperando desde antes del stream.
+    offerApproval(initial.pendingApproval);
+
+    try {
+      const stream = await consumeSessionStream({
+        serverUrl,
+        sessionId: id,
+        after,
+        signal: controller.signal,
+        onEvent: (event) => {
+          if (event.type === 'answer') answer = event.text;
+          if (event.type === 'done') {
+            answer = event.answer;
+            steps = event.steps;
+          }
+          if (event.type === 'approval_request') offerApproval(event.approval);
+          if (json) {
+            process.stdout.write(`${encodeEvent(event)}\n`);
+            return;
+          }
+          // El menú interactivo ya muestra la petición; evita el renglón duplicado.
+          if (event.type === 'approval_request' && approvals) return;
+          renderer?.handle(event);
+        },
+        onResync: (state) => {
+          answer = state.answer || answer;
+          steps = state.steps.length;
+          offerApproval(state.pendingApproval);
+          if (!json) renderer?.renderState(state);
+        },
+      });
+
+      // El `gone` no trae el estado: se relee para cerrar con la respuesta y el
+      // número de pasos autoritativos, no con lo que alcanzó a ver el cliente.
+      try {
+        const finalState = await loadServerSession(serverUrl, id, { allowRunning: true });
+        answer = finalState.answer || answer;
+        steps = finalState.steps.length;
+      } catch { /* la corrida ya terminó; queda lo que vimos */ }
+
+      if (json) {
+        const done = makeEventV2(id, stream.lastSeq + 1, {
+          type: 'done',
+          answer,
+          steps,
+        });
+        process.stdout.write(`${encodeEvent(done)}\n`);
+      } else {
+        renderer?.finish(answer, steps);
+      }
+      process.exitCode = stream.gone === 'completed' ? 0 : 1;
+    } catch (e) {
+      if (interrupted) {
+        process.exitCode = 130;
+        return;
+      }
+      fail(e instanceof Error ? e.message : String(e));
+    } finally {
+      // Si el stream termina, ninguna pregunta pendiente debe colgar el proceso.
+      approvals?.close();
+      promptCtrl.abort();
+      process.removeListener('SIGINT', onInterrupt);
+      process.removeListener('SIGTERM', onInterrupt);
+    }
   });
 
 program

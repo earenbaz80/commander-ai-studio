@@ -316,12 +316,21 @@ async function readSessionState(res: Response, rejectRunning = false): Promise<S
   return body.state;
 }
 
-/** Carga una sesión persistida para `--resume`. */
-export async function loadServerSession(serverUrl: string, id: string): Promise<SessionStateV2> {
+export interface LoadServerSessionOptions {
+  /** `attach` necesita leer una sesión que está corriendo; `--resume` no. */
+  allowRunning?: boolean;
+}
+
+/** Carga una sesión persistida para `--resume` o para adjuntarse a su stream. */
+export async function loadServerSession(
+  serverUrl: string,
+  id: string,
+  options: LoadServerSessionOptions = {}
+): Promise<SessionStateV2> {
   const res = await fetch(sessionEndpoint(serverUrl, `/${encodeURIComponent(id)}`), {
     signal: AbortSignal.timeout(10_000),
   });
-  return readSessionState(res, true);
+  return readSessionState(res, options.allowRunning !== true);
 }
 
 /** Bifurca una sesión en el servidor para `--fork`; la fuente no se muta. */

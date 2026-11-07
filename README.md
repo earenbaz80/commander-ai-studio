@@ -56,6 +56,32 @@ Vercel Hobby sólo permite volver a la producción inmediatamente anterior.
 - `POST /api/agent/run-tool {toolId, input}` — sandbox a `process.cwd()`, validación y allowlist shell.
 - `GET /api/health` — smoke.
 
+### Adjuntarse a una corrida del escritorio
+
+Cuando el escritorio lanza una sesión, la terminal puede seguirla sin arrancar
+un segundo bucle ni cancelarla:
+
+```bash
+commander attach <sessionId> --server http://127.0.0.1:3280
+commander attach <sessionId> --json --after 42
+```
+
+El comando abre `GET /api/agent/sessions/:id/stream`, reanuda desde el cursor
+indicado y reconecta con `Last-Event-ID`. En modo humano pinta el estado y los
+eventos; con `--json` emite NDJSON y termina con un evento `done`. La corrida
+sigue siendo del servidor: cerrar la terminal no la detiene.
+
+Si el stream pide una aprobación, la terminal muestra la tool (con el diff de
+las escrituras) y permite decidir sin volver al escritorio:
+
+- `↑/↓` (o `j`/`k`) y `Enter`, o directamente `1`, `2`, `3`.
+- `1` permite una vez, `2` deniega y `3` permite esa tool+objetivo durante la
+  sesión (`allow-session`).
+- `Esc` deja la decisión al escritorio; `Ctrl+C` corta el adjunto. La respuesta
+  se envía a `POST /api/agent/sessions/:id/approvals/:approvalId`, así que la
+  semántica (timeout, idempotencia, 409) es la misma que en la UI. Con `--json`
+  o sin TTY no se pregunta: la decisión sigue siendo del escritorio.
+
 ## Sesiones PTY
 
 `shell.run` ejecuta y devuelve salida; `shell.pty` abre un proceso y lo mantiene vivo entre llamadas:
