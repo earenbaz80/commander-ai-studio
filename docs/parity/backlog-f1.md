@@ -399,7 +399,7 @@
 **Labels:** `f1`, `p0`, `area:cli`, `tests`
 **Estimación:** 1,5 d-persona · **Depende de:** F1-02, F1-04, F1-08
 
-**Estado:** Abierto — arnés base verde; faltan los 3 E2E de approvals, `ask_user` y reconexión SSE.
+**Estado:** Abierto — arnés E2E completo (16/16); el cierre del issue queda pendiente de sincronización.
 
 **Por qué.** Sin clave de modelo no se puede verificar el flujo completo, y F1 necesita pruebas que no dependan de un proveedor real. Un servidor falso que responde guiones fijos permite probar approvals, preguntas, resume y reconexión de forma determinista.
 
@@ -414,18 +414,19 @@
 - [x] Un fallo de aserción muestra la última línea NDJSON, no sólo el código de salida.
 
 **Estado de la suite (2026-11-07)**
-- Suite completa aislada (`HOME`/`USERPROFILE` temporal, Node en `PATH`): **729 tests, 726 pass, 0 fail, 3 todo** (33,1 s).
+- Suite completa aislada (`HOME`/`USERPROFILE` temporal, Node en `PATH`): **729 tests, 729 pass, 0 fail, 0 todo** (38,6 s).
 - El fallo de `shell.run en segundo plano devuelve id y log consultable con shell.job` por `npm` ya no existe: el test usa `echo hola` y valida el log del job. La suite completa queda sin fallos.
-- E2E focalizados: **13/13**, con 3 `test.todo`. No usan `GEMINI_API_KEY` ni red externa.
+- E2E focalizados: **16/16**, sin `test.todo`. No usan `GEMINI_API_KEY` ni red externa.
 - Fallos encontrados y corregidos: las credenciales `custom/` no viajaban en `callAgentLLMTools` y `apiRoutes` no extraía los routers de integraciones/backend. Ambos quedaron verificados.
 - Aislamiento: el runner crea un `HOME` temporal; sin él, 3 tests de fallback de Gemini leían/escribían la config global y contaminaban la corrida. No es una regresión de producto.
 
 **Pendiente de alcance**
-- `approval de escritura: aprobada`, `ask_user en modo --json` y `reconexión SSE tras un corte` siguen como `test.todo` porque el CLI todavía no integra esos canales y F1-06 sigue abierto.
-- La reconexión SSE ya tiene cobertura directa en `tests/cli/reconnect.test.ts` y en el endpoint de F1-03; el caso E2E completo queda para F1-14 cuando se integren approvals y preguntas. Por eso F1-14 sigue abierto, aunque el arnés base y la suite completa estén verdes.
+- Los 3 casos que quedaban —approval de escritura, `ask_user` en `--json` y reconexión SSE— ya están cubiertos en `tests/cli/e2e.test.ts` sobre `attach --json` y el fixture SSE; no quedan `test.todo` en F1-14.
+- `ask_user` en el bucle de `agent` sigue siendo alcance de F1-06; este arnés cubre el evento `question` y el canal de sesión, no el prompt interactivo.
+- F1-14 queda abierto hasta sincronizar el cierre con el issue #15.
 
 **Pruebas**
-- `tests/cli/e2e.test.ts`: 13 casos implementados y 3 `test.todo`, con `spawn` del CLI contra el falso. Escenarios: `final`, `tool`, `tool-three`, `tool-denied`, `max-steps`, `unknown-tool`, `stream` y `llm-error`.
+- `tests/cli/e2e.test.ts`: 16 casos implementados, sin `test.todo`, con `spawn` del CLI contra el falso. Escenarios: `final`, `tool`, `tool-three`, `tool-denied`, `max-steps`, `unknown-tool`, `stream`, `llm-error`, approvals, `question` y reconexión SSE.
 
 **Archivos:** `tests/helpers/fakeAgentServer.ts` (nuevo), `tests/cli/e2e.test.ts`.
 
