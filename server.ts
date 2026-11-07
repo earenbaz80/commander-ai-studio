@@ -19,6 +19,7 @@ import { enforceTool, getPermissions, setPermissions } from './permissions';
 import { createSession, forkSession, getOrLoadSession, listSessions as listAgentSessions, removeSession, stopSession } from './agentSession';
 import { isValidSessionId } from './src/agent/sessionStore';
 import { decodeSessionState } from './src/agent/sessionTypes';
+import { attachSessionStream, parseStreamCursor } from './src/agent/sessionStream';
 import { cancelSubAgents, clearSubAgents, listSubAgents, subscribeSubAgents } from './subAgents';
 import { stopJobsForSession } from './shellJobs';
 import { closePtysForSession } from './ptySessions';
@@ -507,6 +508,35 @@ app.get('/api/agent/sessions/:id', (req, res) => {
     // que dejó un CLI interrumpido: el segundo sí se puede reanudar.
     res.json({ success: true, running: session.isRunning(), state: session.toState() });
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
+});
+
+// Stream reanudable (F1-03). El cursor sale de `?after=` o de `Last-Event-ID`.
+// Los eventos se guardan en el buffer de la sesión, así que una desconexión no
+// pierde pasos y el cliente puede reconstruir el estado con `resync`.
+app.get('/api/agent/sessions/:id/stream', (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!isValidSessionId(id)) return res.status(400).json({ success: false, error: 'id inválido' });
+    const session = getOrLoadSession(id);
+    if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    const after = parseStreamCursor(req.query?.after, req.headers['last-event-id']);
+    if (after === null) {
+      return res.status(400).json({ success: false, error: 'cursor inválido' });
+    }
+
+    res.status(200);
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    const cleanup = attachSessionStream(session, after, res);
+    res.on('close', cleanup);
+  } catch (e: any) {
+    if (!res.headersSent) res.status(500).json({ success: false, error: e?.message });
+    else res.end();
+  }
 });
 
 // Añadir un turno y arrancar. Si el bucle sigue vivo se responde 409: dos

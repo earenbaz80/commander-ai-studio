@@ -668,6 +668,22 @@ del servidor está en vuelo (un `status: "running"` de un CLI interrumpido no
 cuenta). `400` con un id inválido (por ejemplo `..` o `a/b`) y `404` si no
 existe. Nunca arranca la sesión sola.
 
+### `GET /api/agent/sessions/:id/stream`
+
+SSE reanudable de la sesión. El cursor se pasa con `Last-Event-ID` (cabecera)
+o `?after=<seq>`; si vienen ambos, manda el query. Cada evento normal lleva
+`id: <seq>` y `data` con el `CliEventV2` completo.
+
+- Buffer en memoria de los últimos 1.000 eventos por sesión.
+- Si el cursor fue desalojado, o la sesión se cargó de disco sin buffer, se
+  emite `event: resync` con el `SessionStateV2` completo y el `id` del último
+  `seq`.
+- Keep-alive cada 15 s mediante un comentario SSE (`: keep-alive`).
+- Al cancelar, borrar o terminar la corrida se emite `event: gone`
+  (`{sessionId, reason}`) y se cierra limpiamente.
+- `404` antes de abrir el stream si la sesión no existe; `400` con un id o un
+  cursor inválido. Desconectar al cliente no detiene la corrida del servidor.
+
 ### `POST /api/agent/sessions/:id/message`
 
 **Body:** `{"text": "…"}`. Añade un turno de usuario y arranca el bucle.

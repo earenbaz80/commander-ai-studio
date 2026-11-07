@@ -1,12 +1,12 @@
 # Issues de F1
 
-Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #11 (F1-10) y #12 (F1-11) están cerrados como completados**; el resto sigue abierto (**#4–#10 y #13–#15**; el #1 es un PR ajeno a este backlog). Este directorio conserva el cuerpo versionado de cada uno, listo para `gh issue edit --body-file`.
+Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #11 (F1-10) y #12 (F1-11) están cerrados como completados**; el resto sigue abierto (**#5–#10 y #13–#15**; el #1 es un PR ajeno a este backlog). Este directorio conserva el cuerpo versionado de cada uno, listo para `gh issue edit --body-file`.
 
 | Archivo | Issue | Estado | Título | Labels | Est. | Depende de |
 | --- | --- | --- | --- | --- | --- | --- |
 | [F1-01](F1-01.md) | [#2](https://github.com/earenbaz80/commander-ai-studio/issues/2) | Cerrado | Contrato de eventos y estado de sesión (v2, compatible) | `f1`, `p0`, `area:cli`, `area:agent` | 1,0 | — |
 | [F1-02](F1-02.md) | [#3](https://github.com/earenbaz80/commander-ai-studio/issues/3) | Cerrado | Sesión autoritativa en el servidor con persistencia durable | `f1`, `p0`, `area:agent`, `area:server` | 2,5 | F1-01 |
-| [F1-03](F1-03.md) | [#4](https://github.com/earenbaz80/commander-ai-studio/issues/4) | Abierto | Stream de eventos reanudable | `f1`, `p0`, `area:server`, `area:cli` | 1,5 | F1-02 |
+| [F1-03](F1-03.md) | [#4](https://github.com/earenbaz80/commander-ai-studio/issues/4) | Cerrado | Stream de eventos reanudable | `f1`, `p0`, `area:server`, `area:cli` | 1,5 | F1-02 |
 | [F1-04](F1-04.md) | [#5](https://github.com/earenbaz80/commander-ai-studio/issues/5) | Abierto | Canal de aprobaciones servidor ↔ CLI | `f1`, `p0`, `area:agent`, `area:cli`, `security` | 2,5 | F1-02 |
 | [F1-05](F1-05.md) | [#6](https://github.com/earenbaz80/commander-ai-studio/issues/6) | Abierto | Diff por hunk en terminal | `f1`, `p0`, `area:cli` | 1,0 | F1-04 |
 | [F1-06](F1-06.md) | [#7](https://github.com/earenbaz80/commander-ai-studio/issues/7) | Abierto | `ask_user` en el CLI | `f1`, `p0`, `area:cli`, `area:agent` | 1,5 | F1-04 |
