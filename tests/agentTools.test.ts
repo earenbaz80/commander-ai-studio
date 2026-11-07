@@ -497,7 +497,7 @@ test('shell.run valida cada etapa del pipeline, no solo la primera', async () =>
 });
 
 test('shell.run en segundo plano devuelve id y log consultable con shell.job', async () => {
-  const started = await executeAgentTool('shell.run', { command: 'npm --version', background: true, root: gitRoot });
+  const started = await executeAgentTool('shell.run', { command: 'echo hola', background: true, root: gitRoot });
 
   assert.equal(started.ok, true, String(started.error));
   const job = started.data as any;
@@ -514,8 +514,8 @@ test('shell.run en segundo plano devuelve id y log consultable con shell.job', a
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
-  assert.notEqual(logs?.status, 'running', 'npm --version debe terminar solo');
-  assert.match(String(logs?.content), /\d+\.\d+/, 'el log debe tener la versión');
+  assert.notEqual(logs?.status, 'running', 'echo debe terminar solo');
+  assert.match(String(logs?.content), /hola/, 'el log debe tener la salida');
 
   const list = await executeAgentTool('shell.job', { action: 'list', root: gitRoot });
   assert.ok((list.data as any).jobs.some((j: any) => j.id === job.id));
