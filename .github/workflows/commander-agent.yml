@@ -1,0 +1,92 @@
+name: Commander agent
+
+# El workflow es el mismo en local y en CI: levanta el servidor embebido, espera
+# /api/health y ejecuta `commander agent --json`. El script sólo traduce el
+# evento de GitHub y publica el resultado; no reimplementa el bucle del agente.
+#
+# Un comentario `/commander <tarea>` trabaja en modo plan (sólo lectura).
+# `/commander --write <tarea>` en un issue permite cambios y abre un PR.
+# En pull requests sólo se acepta el modo lectura.
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'Tarea para Commander'
+        required: true
+        type: string
+      issue_number:
+        description: 'Issue/PR donde publicar el resultado (opcional)'
+        required: false
+        type: string
+      write:
+        description: 'Permitir cambios y abrir un PR (sólo issues)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: commander-agent-${{ github.event.issue.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  commander:
+    name: Run Commander
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.comment.user.type != 'Bot' &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
+        startsWith(github.event.comment.body, '/commander')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # El token no queda en .git/config: sólo el script autentica el push
+          # final, y el servidor del agente no hereda GH_TOKEN.
+          persist-credentials: false
+          # En un comentario de PR hay que analizar el código del PR, no main.
+          ref: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && format('refs/pull/{0}/head', github.event.issue.number) || '' }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Sin scripts para no ejecutar el postinstall de Electron.
+      - run: npm ci --ignore-scripts
+
+      # El servidor importa node-pty, y el paquete no trae prebuild Linux:
+      # sin esto el proceso muere al arrancar en ubuntu-latest.
+      - name: Build node-pty
+        run: npm rebuild node-pty --build-from-source
+
+      # NODE_ENV=production sirve `dist`; el API es el mismo que en dev.
+      - name: Build
+        run: npm run build
+
+      - name: Run headless agent
+        env:
+          # gh (comentarios y PR) usa este token. El script no se lo pasa al
+          # servidor: el modelo no debe poder publicar por su cuenta.
+          GH_TOKEN: ${{ github.token }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          CUSTOM_API_KEY: ${{ secrets.CUSTOM_API_KEY }}
+          CUSTOM_BASE_URL: ${{ secrets.CUSTOM_BASE_URL }}
+          COMMANDER_MODEL: ${{ vars.COMMANDER_MODEL }}
+          COMMANDER_MAX_STEPS: ${{ vars.COMMANDER_MAX_STEPS }}
+          COMMANDER_AGENT_TIMEOUT_MS: ${{ vars.COMMANDER_AGENT_TIMEOUT_MS }}
+        run: npx tsx scripts/github-agent.ts
