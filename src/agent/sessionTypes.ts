@@ -32,6 +32,8 @@ export interface SessionStepV2 {
   status: SessionStepStatus;
   durationMs?: number;
   ts: number;
+  /** Decisión de aprobación que permitió/denegó la tool (F1-04). */
+  approval?: { id: string; decision: ApprovalDecision; reason?: string };
 }
 
 export interface SessionPlanItemV2 {
@@ -57,7 +59,7 @@ export interface QuestionV2 {
 
 export type ApprovalDecision = 'allow' | 'deny' | 'allow-session';
 
-/** Aprobación pendiente (F1-04); el bucle todavía no la emite. */
+/** Aprobación pendiente (F1-04). */
 export interface ApprovalRequestV2 {
   id: string;
   sessionId: string;
@@ -72,8 +74,9 @@ export interface ApprovalRequestV2 {
 /**
  * Estado completo de una sesión ejecutable.
  *
- * `pendingApproval` existe desde ya para que F1-04 no tenga que cambiar la
- * forma persistida; hoy siempre es `null`.
+ * `pendingApproval` es la primera aprobación pendiente de la sesión (puede
+ * haber varias tools esperando a la vez); se expone en el estado y en el stream
+ * mientras la corrida sigue en este proceso.
  */
 export interface SessionStateV2 {
   schemaVersion: 2;
@@ -314,6 +317,18 @@ function stepFrom(raw: unknown): SessionStepV2 | null {
   if (obj.input !== undefined) step.input = obj.input;
   if (obj.output !== undefined) step.output = obj.output;
   if (typeof obj.durationMs === 'number') step.durationMs = obj.durationMs;
+  const approval = asRecord(obj.approval);
+  if (
+    approval &&
+    typeof approval.id === 'string' &&
+    (approval.decision === 'allow' || approval.decision === 'deny' || approval.decision === 'allow-session')
+  ) {
+    step.approval = {
+      id: approval.id,
+      decision: approval.decision,
+      ...(typeof approval.reason === 'string' ? { reason: approval.reason } : {}),
+    };
+  }
   return step;
 }
 

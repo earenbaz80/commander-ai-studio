@@ -648,6 +648,7 @@ padre para subagentes y no arranca (`status: "idle"`).
   "maxSteps": 20,
   "run": true,
   "persist": true,
+  "approvalTimeoutMs": 300000,
   "keys": {
     "CUSTOM_BASE_URL": "http://127.0.0.1:1234/v1",
     "CUSTOM_API_KEY": "…",
@@ -657,8 +658,11 @@ padre para subagentes y no arranca (`status: "idle"`).
 ```
 
 `run: true` la arranca y la persiste. `persist: true` sólo la persiste.
-**Response 200:** `{success, session: {id, goal, cwd, model, status}, state}`.
-`400` si falta `goal`, supera 2000 caracteres o el `cwd` no está permitido.
+`approvalTimeoutMs` es opcional (50–300000 ms; por defecto 300000) y acorta la
+espera de una aprobación, útil para pruebas y clientes que quieren un timeout
+propio. **Response 200:** `{success, session: {id, goal, cwd, model, status},
+state}`. `400` si falta `goal`, supera 2000 caracteres o el `cwd` no está
+permitido.
 
 ### `GET /api/agent/sessions/:id`
 
@@ -690,6 +694,45 @@ o `?after=<seq>`; si vienen ambos, manda el query. Cada evento normal lleva
 **Response 202:** `{success, state}`. `409` si la sesión ya está en ejecución
 (dos peticiones concurrentes no pueden duplicar pasos); `400`/`404` como en
 `GET`.
+
+### `POST /api/agent/sessions/:id/approvals/:approvalId`
+
+Resuelve una aprobación pendiente. El bucle del servidor se detiene antes de
+ejecutar una tool peligrosa y publica el `ApprovalRequestV2` en
+`state.pendingApproval` y en el evento SSE `approval_request`:
+
+```json
+{
+  "id": "apr_ab12cd34",
+  "sessionId": "sess_ab12cd34",
+  "tool": "fs.write",
+  "input": {"path": "nota.txt", "content": "…"},
+  "diff": "--- a/nota.txt\n+++ b/nota.txt\n@@ …",
+  "createdAt": 1700000000000,
+  "expiresAt": 1700000300000
+}
+```
+
+`input` se redacta (claves y valores con tokens habituales) y `diff`/`hunks`
+sólo se calculan para escrituras dentro del proyecto. **Body:**
+`{"decision":"allow"|"deny"|"allow-session","reason":"…"}`.
+
+- `allow` ejecuta la tool; `deny` la omite y la corrida continúa. La decisión
+  queda en el paso `tool_result` como `approval: {id, decision, reason?}`.
+- `allow-session` añade una regla en memoria para ese `tool` + patrón (el
+  comando de `shell.run`, la ruta relativa de `fs.write`/`fs.edit` o el PR de
+  `github.comment`). No se escribe en disco y no afecta a otra sesión.
+- El timeout (5 min por defecto) resuelve `deny` con `reason: "timeout"`.
+  Cancelar, borrar o fallar la sesión deniega todas las pendientes con
+  `reason: "cancelled"`, `"failed"` o `"timeout"`.
+- Repetir la misma decisión responde `200` con el mismo cuerpo; una decisión
+  distinta sobre una ya resuelta responde `409`. Una aprobación desconocida
+  responde `404` y una decisión inválida `400`. Los errores no incluyen tokens
+  ni rutas fuera del proyecto.
+
+El bucle pide aprobación para toda escritura (`fs.write`, `fs.edit`,
+`git.commit`), `github.comment`, las tools con `danger` y `shell.run` cuando el
+comando no está en la allowlist. Las lecturas no preguntan.
 
 ### `POST /api/agent/sessions/:id/fork`
 

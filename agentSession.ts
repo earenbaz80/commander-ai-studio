@@ -16,6 +16,8 @@
  * que hoy las envía en cada petición) y viven solo en memoria durante la sesión.
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
 import { uid } from './src/agent/id';
 import { toolDialectForModel, toOpenAITools } from './src/agent/providers';
 import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from './src/agent/fnTools';
@@ -29,6 +31,8 @@ import { GEMINI_DEFAULT_MODEL } from './src/config/geminiModels';
 import {
   SESSION_SCHEMA_VERSION,
   normalizeSessionStatus,
+  type ApprovalDecision,
+  type ApprovalRequestV2,
   type CliEventPayload,
   type SessionPlanItemV2,
   type SessionStateV2,
@@ -46,6 +50,8 @@ export type AgentEvent =
   | { type: 'plan'; plan: { id: string; text: string; done: boolean }[] }
   | { type: 'tool_call'; toolId: string; input: unknown }
   | { type: 'tool_result'; toolId: string; ok: boolean; data?: unknown; error?: string }
+  | { type: 'approval_request'; approval: ApprovalRequestV2 }
+  | { type: 'approval_result'; approvalId: string; decision: ApprovalDecision; reason?: string }
   | { type: 'finish'; answer: string }
   | { type: 'error'; error: string };
 
@@ -75,6 +81,15 @@ function toCliPayload(evt: AgentEvent): CliEventPayload | null {
         ok: evt.ok,
         summary: evt.ok ? streamSummary(evt.data) : (evt.error || 'error'),
       };
+    case 'approval_request':
+      return { type: 'approval_request', approval: evt.approval };
+    case 'approval_result':
+      return {
+        type: 'approval_result',
+        approvalId: evt.approvalId,
+        decision: evt.decision,
+        ...(evt.reason ? { reason: evt.reason } : {}),
+      };
     case 'finish':
       return { type: 'answer', text: evt.answer };
     case 'error':
@@ -98,6 +113,142 @@ export type AgentPlanItem = SessionPlanItemV2;
 
 /** Tope de pasos que se conservan; el store trunca al mismo número. */
 const MAX_STEPS_IN_MEMORY = 200;
+
+/** Tiempo máximo que una tool peligrosa espera una decisión (F1-04). */
+export const DEFAULT_APPROVAL_TIMEOUT_MS = 5 * 60_000;
+
+/** Tope de decisiones recordadas para idempotencia; una sesión no crece sin fin. */
+const MAX_RESOLVED_APPROVALS = 200;
+
+const WRITE_TOOLS = new Set(['fs.write', 'fs.edit', 'git.commit']);
+
+interface ApprovalOutcome {
+  approved: boolean;
+  decision: ApprovalDecision;
+  id: string;
+  reason?: string;
+}
+
+interface PendingApproval {
+  request: ApprovalRequestV2;
+  /** Entrada original: la regla de `allow-session` necesita el patrón real. */
+  input: unknown;
+  resolve: (outcome: ApprovalOutcome) => void;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+interface ResolvedApproval {
+  decision: ApprovalDecision;
+  body: Record<string, unknown>;
+}
+
+interface ToolCallResult {
+  tool: string;
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+  approval?: { id: string; decision: ApprovalDecision; reason?: string };
+}
+
+function isApprovalDecision(value: unknown): value is ApprovalDecision {
+  return value === 'allow' || value === 'deny' || value === 'allow-session';
+}
+
+/** Oculta credenciales antes de mostrar/persistir una aprobación. */
+function redactApprovalValue(value: unknown, depth = 0): unknown {
+  if (depth > 8) return '[recortado]';
+  if (typeof value === 'string') {
+    return value
+      .replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1[redacted]')
+      .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|authorization)\s*[:=]\s*)[^\s,;"']+/gi, '$1[redacted]')
+      .slice(0, 20_000);
+  }
+  if (Array.isArray(value)) return value.slice(0, 50).map((entry) => redactApprovalValue(entry, depth + 1));
+  if (!value || typeof value !== 'object') return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>).slice(0, 100)) {
+    if (/^(api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|authorization)$/i.test(key)) {
+      out[key] = '[redacted]';
+    } else {
+      out[key] = redactApprovalValue(entry, depth + 1);
+    }
+  }
+  return out;
+}
+
+/** Diff mínimo para que el usuario vea qué va a cambiar una escritura. */
+function approvalDiff(rel: string, before: string, after: string): string {
+  const a = before.split(/\r?\n/);
+  const b = after.split(/\r?\n/);
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start += 1;
+  let endA = a.length;
+  let endB = b.length;
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
+    endA -= 1;
+    endB -= 1;
+  }
+  const removed = a.slice(start, endA).slice(0, 400);
+  const added = b.slice(start, endB).slice(0, 400);
+  return [
+    `--- a/${rel}`,
+    `+++ b/${rel}`,
+    `@@ -${start + 1},${removed.length} +${start + 1},${added.length} @@`,
+    ...removed.map((line) => `-${line}`),
+    ...added.map((line) => `+${line}`),
+  ].join('\n').slice(0, 20_000);
+}
+
+function approvalPreview(tool: string, input: any, cwd: string): { diff?: string; hunks?: unknown[] } {
+  if (tool !== 'fs.write' && tool !== 'fs.edit') return {};
+  try {
+    const raw = String(input?.path || '').slice(0, 500);
+    if (!raw) return {};
+    const abs = path.resolve(cwd, raw);
+    const rel = path.relative(cwd, abs).replace(/\\/g, '/');
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return {};
+    const before = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8').slice(0, 40_000) : '';
+    let after = '';
+    const hunks: unknown[] = [];
+    if (tool === 'fs.write') {
+      after = String(input?.content || '').slice(0, 40_000);
+    } else {
+      after = before;
+      const edits = Array.isArray(input?.replacements) && input.replacements.length > 0
+        ? input.replacements.slice(0, 50)
+        : [{ oldString: input?.oldString, newString: input?.newString, replaceAll: input?.replaceAll }];
+      for (const edit of edits) {
+        const oldString = String(edit?.oldString || '');
+        const newString = String(edit?.newString || '');
+        if (!oldString) continue;
+        hunks.push({ oldString: oldString.slice(0, 4_000), newString: newString.slice(0, 4_000) });
+        after = edit?.replaceAll === true
+          ? after.split(oldString).join(newString)
+          : after.replace(oldString, () => newString);
+      }
+    }
+    if (before === after) return hunks.length > 0 ? { hunks } : {};
+    return { diff: approvalDiff(rel, before, after), ...(hunks.length > 0 ? { hunks } : {}) };
+  } catch {
+    return {};
+  }
+}
+
+/** Texto estable que representa el alcance de una regla `allow-session`. */
+function approvalTarget(tool: string, input: any, cwd: string): string {
+  if (tool === 'shell.run') return String(input?.command || '').trim().slice(0, 2_000);
+  if (tool === 'fs.write' || tool === 'fs.edit') {
+    const raw = String(input?.path || '').trim().replace(/\\/g, '/');
+    if (!raw) return '';
+    const abs = path.resolve(cwd, raw);
+    const rel = path.relative(cwd, abs).replace(/\\/g, '/');
+    return rel && !rel.startsWith('..') ? rel : raw;
+  }
+  if (tool === 'github.comment') {
+    return JSON.stringify({ repo: input?.repo, url: input?.url, number: input?.number }).slice(0, 2_000);
+  }
+  return '*';
+}
 
 /** Estado v2 → estado interno legado (la UI y el SSE siguen esperando éste). */
 function legacyStatus(status: SessionStateV2['status']): SessionStatus {
@@ -151,12 +302,14 @@ export interface SessionConfig {
    * los subagentes y las pruebas directas no deben llenar el disco.
    */
   persist?: boolean;
+  /** Timeout de aprobaciones; 5 min por defecto (F1-04). */
+  approvalTimeoutMs?: number;
 }
 
 /** `idle`: sesión creada como contexto padre y nunca arrancada (no gasta tokens). */
 export type SessionStatus = 'idle' | 'running' | 'done' | 'error' | 'stopped';
 
-const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.list', 'fs.grep', 'shell.run', 'shell.pty', 'read_diagnostics', 'git.status', 'git.diff', 'git.log', 'git.commit', 'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list', 'task', 'spawn_agents', 'skill'];
+const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.list', 'fs.grep', 'shell.run', 'shell.pty', 'read_diagnostics', 'git.status', 'git.diff', 'git.log', 'git.commit', 'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list', 'task', 'spawn_agents', 'skill', 'github.comment'];
 
 // ── LLM en el servidor (llamada interna a los endpoints existentes) ──
 
@@ -347,11 +500,22 @@ export class AgentSession {
   private abortCtrl = new AbortController();
   /** Quién cortó: el usuario (cancelación) o el límite de tiempo (fallo). */
   private stopReason: 'user' | 'timeout' | null = null;
+  /** Aprobaciones pendientes por id (F1-04); puede haber varias en paralelo. */
+  private readonly pendingApprovals = new Map<string, PendingApproval>();
+  /** Decisiones ya resueltas, para que repetir la misma petición sea idempotente. */
+  private readonly resolvedApprovals = new Map<string, ResolvedApproval>();
+  /** Reglas `allow-session` de esta instancia; nunca se escriben en disco. */
+  private readonly sessionApprovalRules = new Set<string>();
+  private readonly approvalTimeoutMs: number;
 
   constructor(cfg: SessionConfig, restored?: SessionStateV2) {
     this.cfg = cfg;
     this.maxSteps = cfg.maxSteps ?? 20;
     this.persistEnabled = cfg.persist === true;
+    const requestedTimeout = Number(cfg.approvalTimeoutMs);
+    this.approvalTimeoutMs = Number.isFinite(requestedTimeout) && requestedTimeout > 0
+      ? Math.min(requestedTimeout, DEFAULT_APPROVAL_TIMEOUT_MS)
+      : DEFAULT_APPROVAL_TIMEOUT_MS;
     if (restored) {
       this.id = restored.id;
       this.createdAt = restored.createdAt || Date.now();
@@ -380,6 +544,11 @@ export class AgentSession {
   getStopReason(): 'user' | 'timeout' | null { return this.stopReason; }
   setMode(mode: 'build' | 'plan' | 'readonly') { this.cfg.mode = mode; }
   setAllowedTools(tools: string[] | null) { this.cfg.allowedTools = tools; }
+
+  /** Aprobaciones que esperan una decisión (para clientes y pruebas). */
+  getPendingApprovals(): ApprovalRequestV2[] {
+    return [...this.pendingApprovals.values()].map((pending) => pending.request);
+  }
 
   /** ¿Hay un bucle en curso? `message` lo usa para responder 409. */
   isRunning(): boolean { return this.running; }
@@ -413,7 +582,7 @@ export class AgentSession {
       turns: this.turns.map((turn) => ({ ...turn })),
       steps: this.steps.map((step) => ({ ...step })),
       plan: this.plan.map((item) => ({ ...item })),
-      pendingApproval: null,
+      pendingApproval: this.pendingApprovalView(),
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
       ...(this.answer ? { answer: this.answer } : {}),
@@ -553,6 +722,7 @@ export class AgentSession {
   }
 
   private fail(msg: string) {
+    this.denyAllPending('failed');
     this.status = 'error';
     this.running = false;
     this.lastError = msg.slice(0, 4_000);
@@ -564,6 +734,8 @@ export class AgentSession {
     this.running = false;
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     try { this.abortCtrl.abort(); } catch { /* ya abortado */ }
+    // Ninguna tool puede quedar esperando una decisión que ya no llegará.
+    this.denyAllPending(reason === 'timeout' ? 'timeout' : 'cancelled');
     // Cancelar una sesión idle también deja constancia; done/error se respetan.
     if (this.status !== 'done' && this.status !== 'error') this.status = 'stopped';
     this.emit({ type: 'status', status: this.status });
@@ -573,16 +745,194 @@ export class AgentSession {
     return Math.floor((this.maxSteps - this.steps.length) / 2);
   }
 
-  private async runParallel(calls: { tool: string; input: any }[]) {
-    const results = await Promise.allSettled(
-      calls.map((c) =>
-        executeAgentTool(c.tool, { ...c.input, root: this.cfg.cwd }, { signal: this.abortCtrl.signal, sessionId: this.id }),
-      )
-    );
-    return calls.map((c, i) => {
-      const r = results[i];
-      if (r.status === 'fulfilled') return { tool: c.tool, ok: r.value.ok, data: r.value.data, error: r.value.error };
-      return { tool: c.tool, ok: false, error: String((r.reason as any)?.message || r.reason) };
+  private pendingApprovalView(): ApprovalRequestV2 | null {
+    const first = this.pendingApprovals.values().next().value as PendingApproval | undefined;
+    return first ? { ...first.request } : null;
+  }
+
+  /** ¿Esta llamada necesita una decisión humana? */
+  private requiresApproval(tool: string, input: any): boolean {
+    const def = TOOL_REGISTRY[tool];
+    if (!def) return false;
+    if (WRITE_TOOLS.has(tool)) return true;
+    try {
+      return def.requiresApproval(input, {
+        cwd: this.cfg.cwd,
+        approve: async () => ({ approved: false, reason: 'aprobación anidada no soportada' }),
+        log: () => {},
+      });
+    } catch {
+      // Si una definición futura falla, no se ejecuta sin preguntar.
+      return def.danger === true;
+    }
+  }
+
+  private isAllowedForSession(tool: string, input: any): boolean {
+    return this.sessionApprovalRules.has(`${tool}\u0000${approvalTarget(tool, input, this.cfg.cwd)}`);
+  }
+
+  /** Crea la petición, la publica y espera hasta que el cliente responda. */
+  private requestApproval(tool: string, input: any): Promise<ApprovalOutcome> {
+    const now = Date.now();
+    const request: ApprovalRequestV2 = {
+      id: uid('apr'),
+      sessionId: this.id,
+      tool,
+      input: redactApprovalValue(input),
+      ...approvalPreview(tool, input, this.cfg.cwd),
+      createdAt: now,
+      expiresAt: now + this.approvalTimeoutMs,
+    };
+
+    return new Promise<ApprovalOutcome>((resolve) => {
+      const pending: PendingApproval = { request, input, resolve, timer: null };
+      this.pendingApprovals.set(request.id, pending);
+      pending.timer = setTimeout(() => {
+        this.finishApproval(pending, 'deny', 'timeout');
+      }, Math.max(1, this.approvalTimeoutMs));
+      // En Node, un timer de 5 min no debe mantener vivo el proceso de tests.
+      (pending.timer as any)?.unref?.();
+      this.emit({ type: 'approval_request', approval: request });
+    });
+  }
+
+  private finishApproval(
+    pending: PendingApproval,
+    decision: ApprovalDecision,
+    reason?: string
+  ): Record<string, unknown> {
+    const id = pending.request.id;
+    const existing = this.resolvedApprovals.get(id);
+    if (existing) return existing.body;
+    if (!this.pendingApprovals.delete(id)) {
+      return this.resolvedApprovals.get(id)?.body || { success: false, error: 'aprobación no encontrada' };
+    }
+    if (pending.timer) { clearTimeout(pending.timer); pending.timer = null; }
+
+    if (decision === 'allow-session') {
+      const target = approvalTarget(pending.request.tool, pending.input, this.cfg.cwd);
+      this.sessionApprovalRules.add(`${pending.request.tool}\u0000${target}`);
+    }
+
+    const cleanReason = typeof reason === 'string' && reason.trim()
+      ? reason.trim().slice(0, 500)
+      : undefined;
+    const body: Record<string, unknown> = {
+      success: true,
+      approvalId: id,
+      decision,
+      ...(cleanReason ? { reason: cleanReason } : {}),
+    };
+    this.resolvedApprovals.set(id, { decision, body });
+    while (this.resolvedApprovals.size > MAX_RESOLVED_APPROVALS) {
+      const oldest = this.resolvedApprovals.keys().next().value as string | undefined;
+      if (!oldest) break;
+      this.resolvedApprovals.delete(oldest);
+    }
+
+    pending.resolve({
+      approved: decision !== 'deny',
+      decision,
+      id,
+      ...(cleanReason ? { reason: cleanReason } : {}),
+    });
+    this.emit({
+      type: 'approval_result',
+      approvalId: id,
+      decision,
+      ...(cleanReason ? { reason: cleanReason } : {}),
+    });
+    return body;
+  }
+
+  /** Deniega todas las pendientes; se usa al cancelar/fallar/borrar la sesión. */
+  denyAllPending(reason: 'cancelled' | 'timeout' | 'failed'): void {
+    for (const pending of [...this.pendingApprovals.values()]) {
+      this.finishApproval(pending, 'deny', reason);
+    }
+  }
+
+  /**
+   * Resolución HTTP de una aprobación. Devuelve el status y el cuerpo exacto
+   * para que el endpoint no tenga que inventar mensajes ni filtrar input.
+   */
+  resolveApproval(
+    approvalId: string,
+    decision: ApprovalDecision,
+    reason?: string
+  ): { status: number; body: Record<string, unknown> } {
+    if (!isApprovalDecision(decision)) {
+      return { status: 400, body: { success: false, error: 'decisión inválida' } };
+    }
+    const pending = this.pendingApprovals.get(approvalId);
+    if (pending) {
+      const body = this.finishApproval(pending, decision, reason);
+      return { status: 200, body };
+    }
+    const resolved = this.resolvedApprovals.get(approvalId);
+    if (!resolved) {
+      return { status: 404, body: { success: false, error: 'aprobación no encontrada' } };
+    }
+    if (resolved.decision !== decision) {
+      return {
+        status: 409,
+        body: { success: false, error: 'la aprobación ya fue resuelta con otra decisión' },
+      };
+    }
+    return { status: 200, body: resolved.body };
+  }
+
+  private async runOne(call: { tool: string; input: any }): Promise<ToolCallResult> {
+    let approval: ToolCallResult['approval'];
+    if (this.requiresApproval(call.tool, call.input) && !this.isAllowedForSession(call.tool, call.input)) {
+      if (this.stopReason) {
+        return { tool: call.tool, ok: false, error: 'Aprobación denegada: cancelled' };
+      }
+      const outcome = await this.requestApproval(call.tool, call.input);
+      approval = {
+        id: outcome.id,
+        decision: outcome.decision,
+        ...(outcome.reason ? { reason: outcome.reason } : {}),
+      };
+      if (!outcome.approved) {
+        return {
+          tool: call.tool,
+          ok: false,
+          error: `Aprobación denegada: ${outcome.reason || 'sin motivo'}`,
+          approval,
+        };
+      }
+    }
+
+    try {
+      const result = await executeAgentTool(
+        call.tool,
+        { ...call.input, root: this.cfg.cwd },
+        { signal: this.abortCtrl.signal, sessionId: this.id }
+      );
+      return {
+        tool: call.tool,
+        ok: result.ok,
+        data: result.data,
+        error: result.error,
+        ...(approval ? { approval } : {}),
+      };
+    } catch (error: any) {
+      return {
+        tool: call.tool,
+        ok: false,
+        error: String(error?.message || error),
+        ...(approval ? { approval } : {}),
+      };
+    }
+  }
+
+  private async runParallel(calls: { tool: string; input: any }[]): Promise<ToolCallResult[]> {
+    const results = await Promise.allSettled(calls.map((call) => this.runOne(call)));
+    return calls.map((call, index) => {
+      const result = results[index];
+      if (result.status === 'fulfilled') return result.value;
+      return { tool: call.tool, ok: false, error: String((result.reason as any)?.message || result.reason) };
     });
   }
 
@@ -713,6 +1063,7 @@ export class AgentSession {
         type: 'tool_result', toolId: r.tool, title: r.tool,
         content: r.ok ? JSON.stringify(r.data ?? {}).slice(0, 2000) : (r.error || 'error'),
         input: executable.find((e) => e.name === r.tool)?.args, output: r.data, status: r.ok ? 'completed' : 'failed',
+        ...(r.approval ? { approval: r.approval } : {}),
       });
       this.emit({ type: 'tool_result', toolId: r.tool, ok: r.ok, data: r.data, error: r.error });
     }
@@ -769,6 +1120,7 @@ export class AgentSession {
           type: 'tool_result', toolId: r.tool, title: r.tool,
           content: r.ok ? JSON.stringify(r.data ?? {}).slice(0, 2000) : (r.error || 'error'),
           input: executable.find((e) => e.tool === r.tool)?.input, output: r.data, status: r.ok ? 'completed' : 'failed',
+          ...(r.approval ? { approval: r.approval } : {}),
         });
         this.emit({ type: 'tool_result', toolId: r.tool, ok: r.ok, data: r.data, error: r.error });
       }
@@ -796,7 +1148,9 @@ function evictOldest(keepId?: string): void {
   if (sessions.size <= MAX_SESSIONS) return;
   const oldest = sessions.keys().next().value;
   if (oldest && oldest !== keepId) {
-    sessions.get(oldest)?.getEventBuffer().markGone('deleted');
+    const session = sessions.get(oldest);
+    session?.denyAllPending('cancelled');
+    session?.getEventBuffer().markGone('deleted');
     sessions.delete(oldest);
   }
 }
@@ -845,6 +1199,7 @@ export function forkSession(sourceId: string): AgentSession | undefined {
       keys: sourceCfg.keys,
       maxSteps: sourceCfg.maxSteps,
       allowedTools: sourceCfg.allowedTools,
+      approvalTimeoutMs: sourceCfg.approvalTimeoutMs,
       persist: true,
     },
     state
@@ -1011,7 +1366,9 @@ export async function executeTask(
 export function removeSession(id: string): void {
   // Cierra el SSE antes de sacar la sesión del registro: el cliente recibe
   // `gone` y no se queda esperando eventos que ya no van a llegar.
-  sessions.get(id)?.getEventBuffer().markGone('deleted');
+  const session = sessions.get(id);
+  session?.denyAllPending('cancelled');
+  session?.getEventBuffer().markGone('deleted');
   sessions.delete(id);
   // El borrado es también durable: si no, un `GET` posterior recargaría la
   // sesión desde disco y parecería que el DELETE no hizo nada.

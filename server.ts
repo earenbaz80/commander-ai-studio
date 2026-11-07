@@ -18,7 +18,8 @@ import { enforceTool, getPermissions, setPermissions } from './permissions';
 // `listSessions` ya lo exporta `sessionWorkspace` (sesiones de UI): se aliasa.
 import { createSession, forkSession, getOrLoadSession, listSessions as listAgentSessions, removeSession, stopSession } from './agentSession';
 import { isValidSessionId } from './src/agent/sessionStore';
-import { decodeSessionState } from './src/agent/sessionTypes';
+import { decodeSessionState, type ApprovalDecision } from './src/agent/sessionTypes';
+import { normalizeOpenAIToolCalls } from './src/agent/providers';
 import { attachSessionStream, parseStreamCursor } from './src/agent/sessionStream';
 import { cancelSubAgents, clearSubAgents, listSubAgents, subscribeSubAgents } from './subAgents';
 import { stopJobsForSession } from './shellJobs';
@@ -470,6 +471,11 @@ app.post('/api/agent/sessions', (req, res) => {
     };
     const hasKeys = Object.values(keys).some((value) => typeof value === 'string' && value.length > 0);
     const run = b.run === true;
+    // Tiempo de espera de una aprobación (F1-04). El cliente lo puede bajar
+    // para probar el timeout; nunca se permite superar los 5 minutos.
+    const approvalTimeoutMs = Number.isFinite(Number(b.approvalTimeoutMs))
+      ? Math.min(Math.max(Number(b.approvalTimeoutMs), 50), 300_000)
+      : undefined;
     const session = createSession({
       goal,
       cwd,
@@ -477,6 +483,7 @@ app.post('/api/agent/sessions', (req, res) => {
       maxSteps: Math.min(Math.max(Number(b.maxSteps) || 20, 1), 50),
       mode,
       allowedTools,
+      approvalTimeoutMs,
       keys: hasKeys ? keys : undefined,
       persist: run || b.persist === true,
     });
@@ -555,6 +562,31 @@ app.post('/api/agent/sessions/:id/message', (req, res) => {
     void session.start().catch(() => { /* el error queda en el estado */ });
     res.status(202).json({ success: true, state: session.toState() });
   } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+
+// Resolver una aprobación (F1-04). La decisión vive en la sesión, no en la
+// ruta: repetir la misma petición devuelve 200 y una decisión distinta 409.
+app.post('/api/agent/sessions/:id/approvals/:approvalId', (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!isValidSessionId(id)) return res.status(400).json({ success: false, error: 'id inválido' });
+    const approvalId = String(req.params.approvalId || '').trim();
+    if (!approvalId || approvalId.length > 200) {
+      return res.status(400).json({ success: false, error: 'approvalId inválido' });
+    }
+    const session = getOrLoadSession(id);
+    if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    const decision = String(req.body?.decision || '');
+    if (decision !== 'allow' && decision !== 'deny' && decision !== 'allow-session') {
+      return res.status(400).json({ success: false, error: 'decision inválida' });
+    }
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason : undefined;
+    const result = session.resolveApproval(approvalId, decision as ApprovalDecision, reason);
+    return res.status(result.status).json(result.body);
+  } catch {
+    // Sin detalles internos: la ruta no debe filtrar input ni rutas.
+    return res.status(500).json({ success: false, error: 'no se pudo resolver la aprobación' });
+  }
 });
 
 // Bifurca una sesión: copia historial/pasos/plan y devuelve una sesión nueva
@@ -3632,21 +3664,27 @@ app.post('/api/custom/generate', async (req, res) => {
     if (!url) return res.json({ ok: false, error: 'CUSTOM_BASE_URL requerido' });
     if (!key && !added) return res.json({ ok: false, error: 'CUSTOM_API_KEY requerida' });
 
+    const payload: Record<string, unknown> = {
+      model: targetModel || 'gpt-4o-mini',
+      messages: [
+        ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
+        { role: 'user', content: prompt },
+      ],
+      temperature,
+      max_tokens: maxTokens,
+    };
+    if (Array.isArray(tools) && tools.length > 0) {
+      payload.tools = tools;
+      payload.tool_choice = toolChoice || 'auto';
+    }
+
     const response = await fetch(`${url}/chat/completions`, {
       method: 'POST',
       headers: {
         ...(key ? { 'Authorization': `Bearer ${key}` } : {}),
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: targetModel || 'gpt-4o-mini',
-        messages: [
-          ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
-          { role: 'user', content: prompt },
-        ],
-        temperature,
-        max_tokens: maxTokens,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -3655,10 +3693,13 @@ app.post('/api/custom/generate', async (req, res) => {
     }
 
     const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || '';
+    const message = data.choices?.[0]?.message || {};
+    const text = message.content || '';
+    const toolCalls = normalizeOpenAIToolCalls(Array.isArray(message.tool_calls) ? message.tool_calls : []);
     return res.json({
       success: true,
       text,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       metrics: {
         promptTokens: data.usage?.prompt_tokens || 0,
         responseTokens: data.usage?.completion_tokens || 0,

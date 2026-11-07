@@ -23,6 +23,7 @@ import { uid } from '../agent/id';
 import {
   EventSequencer,
   decodeEvent,
+  type ApprovalDecision,
   type CliEventPayload,
   type CliEventV2,
   type SessionStateV2,
@@ -332,6 +333,39 @@ export async function forkServerSession(serverUrl: string, id: string): Promise<
     signal: AbortSignal.timeout(10_000),
   });
   return readSessionState(res);
+}
+
+/**
+ * Responde a una aprobación pendiente de una sesión del servidor (F1-04).
+ *
+ * El CLI recibe el `approval_request` por el SSE y devuelve la decisión aquí.
+ * Repetir la misma decisión es idempotente; una distinta responde 409.
+ */
+export async function respondApproval(
+  serverUrl: string,
+  sessionId: string,
+  approvalId: string,
+  decision: ApprovalDecision,
+  reason?: string
+): Promise<{ ok: boolean; status: number; data?: unknown; error?: string }> {
+  try {
+    const res = await fetch(
+      `${sessionEndpoint(serverUrl, `/${encodeURIComponent(sessionId)}/approvals/${encodeURIComponent(approvalId)}`)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision, ...(reason !== undefined ? { reason } : {}) }),
+        signal: AbortSignal.timeout(10_000),
+      }
+    );
+    const data = (await res.json().catch(() => ({}))) as { error?: unknown };
+    if (!res.ok) {
+      return { ok: false, status: res.status, data, error: String(data?.error || `HTTP ${res.status}`) };
+    }
+    return { ok: true, status: res.status, data };
+  } catch (error) {
+    return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 /** Crea la sesión que respaldará una corrida normal del CLI. */
