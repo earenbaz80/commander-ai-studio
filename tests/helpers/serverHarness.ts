@@ -69,6 +69,13 @@ function stopChild(child: ChildProcess): Promise<void> {
   });
 }
 
+export interface RequestOptions {
+  /** Cabeceras adicionales (auth, content-type, nombre de archivo…). */
+  headers?: Record<string, string>;
+  /** Cuerpo binario o de texto ya serializado, en vez de `body` JSON. */
+  rawBody?: Buffer | string;
+}
+
 export interface ServerHarness {
   /** Origen ya escuchando, p. ej. `http://127.0.0.1:53412`. */
   baseUrl: string;
@@ -78,7 +85,12 @@ export interface ServerHarness {
   logs: () => string;
   stop: () => Promise<void>;
   /** Petición HTTP con socket propio (ver `makeRequest`). */
-  request: (method: string, path: string, body?: unknown) => Promise<HttpResult>;
+  request: (
+    method: string,
+    path: string,
+    body?: unknown,
+    options?: RequestOptions
+  ) => Promise<HttpResult>;
 }
 
 export interface HttpResult {
@@ -100,10 +112,30 @@ export interface HttpResult {
  * importa (un cuerpo a medio leer deja el socket ocupado).
  */
 function makeRequest(baseUrl: string) {
-  return (method: string, path: string, body?: unknown): Promise<HttpResult> =>
+  return (
+    method: string,
+    path: string,
+    body?: unknown,
+    options?: RequestOptions
+  ): Promise<HttpResult> =>
     new Promise<HttpResult>((resolve, reject) => {
       const url = new URL(path, baseUrl);
-      const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
+      const rawBody = options?.rawBody;
+      const payload =
+        rawBody !== undefined
+          ? Buffer.isBuffer(rawBody)
+            ? rawBody
+            : Buffer.from(rawBody)
+          : body === undefined
+            ? null
+            : Buffer.from(JSON.stringify(body));
+      const headers: Record<string, string> = { ...(options?.headers || {}) };
+      if (payload) {
+        if (!headers['Content-Type'] && !headers['content-type']) {
+          headers['Content-Type'] = 'application/json';
+        }
+        headers['Content-Length'] = String(payload.length);
+      }
       const req = http.request(
         {
           hostname: url.hostname,
@@ -111,7 +143,7 @@ function makeRequest(baseUrl: string) {
           path: url.pathname + url.search,
           method,
           agent: false,
-          headers: payload ? { 'Content-Type': 'application/json', 'Content-Length': String(payload.length) } : {},
+          headers,
         },
         (res) => {
           const chunks: Buffer[] = [];
@@ -323,6 +355,8 @@ export async function spawnServer(): Promise<ServerHarness> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-http-'));
   const dbPath = path.join(dir, 'studio.db');
   const publishDir = path.join(dir, 'publish');
+  const tenantDbPath = path.join(dir, 'tenants.db');
+  const tenantStorageDir = path.join(dir, 'tenant-storage');
 
   // `NODE_ENV=production` aquí no significa «desplegar»: es la única forma de
   // que el server NO monte Vite como middleware (`server.ts`, bootstrap). Con
@@ -336,8 +370,18 @@ export async function spawnServer(): Promise<ServerHarness> {
       PORT: '0',
       NODE_ENV: 'production',
       COMMANDER_DB_PATH: dbPath,
+      // El backend multiinquilino tampoco puede escribir en `.commander`.
+      COMMANDER_TENANT_DB_PATH: tenantDbPath,
+      COMMANDER_TENANT_STORAGE_DIR: tenantStorageDir,
       // Las releases de los tests no pueden caer en el .commander real.
       COMMANDER_PUBLISH_DIR: publishDir,
+      // Las sesiones del agente (F1-02) tampoco.
+      COMMANDER_AGENT_SESSIONS_DIR: path.join(dir, 'agent-sessions'),
+      // Aunque el shell tenga credenciales, la suite nunca debe publicar en
+      // una cuenta Vercel real. Los tests del adaptador usan un servidor local.
+      VERCEL_TOKEN: '',
+      VERCEL_PROJECT_ID: '',
+      VERCEL_TEAM_ID: '',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

@@ -16,7 +16,9 @@ import { setServerBaseUrl } from './serverRuntime';
 import { addRoot, listRoots, removeRoot, removableRoots, resolveProjectPath } from './projects';
 import { enforceTool, getPermissions, setPermissions } from './permissions';
 // `listSessions` ya lo exporta `sessionWorkspace` (sesiones de UI): se aliasa.
-import { createSession, getSession, listSessions as listAgentSessions, removeSession, stopSession } from './agentSession';
+import { createSession, forkSession, getOrLoadSession, listSessions as listAgentSessions, removeSession, stopSession } from './agentSession';
+import { isValidSessionId } from './src/agent/sessionStore';
+import { decodeSessionState } from './src/agent/sessionTypes';
 import { cancelSubAgents, clearSubAgents, listSubAgents, subscribeSubAgents } from './subAgents';
 import { stopJobsForSession } from './shellJobs';
 import { closePtysForSession } from './ptySessions';
@@ -454,6 +456,19 @@ app.post('/api/agent/sessions', (req, res) => {
     const cwd = resolveProjectPath('.', String(b.cwd || b.root || process.cwd())).abs;
     const mode = ['build', 'plan', 'readonly'].includes(String(b.mode)) ? String(b.mode) as any : undefined;
     const allowedTools = Array.isArray(b.allowedTools) ? b.allowedTools.map(String).slice(0, 50) : undefined;
+    // Las claves viven sólo en memoria durante la sesión (igual que en el
+    // resto de endpoints) y se filtran a las conocidas.
+    const rawKeys = b.keys && typeof b.keys === 'object' ? b.keys : {};
+    const keys = {
+      OPENROUTER_API_KEY: typeof rawKeys.OPENROUTER_API_KEY === 'string' ? rawKeys.OPENROUTER_API_KEY : undefined,
+      OLLAMA_HOST: typeof rawKeys.OLLAMA_HOST === 'string' ? rawKeys.OLLAMA_HOST : undefined,
+      CUSTOM_BASE_URL: typeof rawKeys.CUSTOM_BASE_URL === 'string' ? rawKeys.CUSTOM_BASE_URL : undefined,
+      CUSTOM_API_KEY: typeof rawKeys.CUSTOM_API_KEY === 'string' ? rawKeys.CUSTOM_API_KEY : undefined,
+      OPENCODE_API_KEY: typeof rawKeys.OPENCODE_API_KEY === 'string' ? rawKeys.OPENCODE_API_KEY : undefined,
+      CUSTOM_MODEL: typeof rawKeys.CUSTOM_MODEL === 'string' ? rawKeys.CUSTOM_MODEL : undefined,
+    };
+    const hasKeys = Object.values(keys).some((value) => typeof value === 'string' && value.length > 0);
+    const run = b.run === true;
     const session = createSession({
       goal,
       cwd,
@@ -461,8 +476,17 @@ app.post('/api/agent/sessions', (req, res) => {
       maxSteps: Math.min(Math.max(Number(b.maxSteps) || 20, 1), 50),
       mode,
       allowedTools,
+      keys: hasKeys ? keys : undefined,
+      persist: run || b.persist === true,
     });
-    res.json({ success: true, session: { id: session.id, goal, cwd, model: session.getModel(), status: session.getStatus() } });
+    // `run: true` crea una sesión ejecutable. `start()` marca `running` de forma
+    // síncrona, así que la respuesta ya refleja el estado real.
+    if (run) void session.start().catch(() => { /* el error queda en el estado */ });
+    res.json({
+      success: true,
+      session: { id: session.id, goal, cwd, model: session.getModel(), status: session.getStatus() },
+      state: session.toState(),
+    });
   } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
 });
 app.get('/api/agent/sessions', (_req, res) => {
@@ -470,10 +494,89 @@ app.get('/api/agent/sessions', (_req, res) => {
     res.json({ success: true, sessions: listAgentSessions() });
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
 });
+
+// Estado completo de una sesión (contrato v2). Carga lazy desde disco: no
+// arranca nada solo, sólo reconstruye lo que ya existía.
+app.get('/api/agent/sessions/:id', (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!isValidSessionId(id)) return res.status(400).json({ success: false, error: 'id inválido' });
+    const session = getOrLoadSession(id);
+    if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    // `running` distingue un bucle autoritativo en vuelo de un estado `running`
+    // que dejó un CLI interrumpido: el segundo sí se puede reanudar.
+    res.json({ success: true, running: session.isRunning(), state: session.toState() });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
+});
+
+// Añadir un turno y arrancar. Si el bucle sigue vivo se responde 409: dos
+// `message` concurrentes no pueden duplicar pasos en la misma sesión.
+app.post('/api/agent/sessions/:id/message', (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!isValidSessionId(id)) return res.status(400).json({ success: false, error: 'id inválido' });
+    const session = getOrLoadSession(id);
+    if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    const text = String(req.body?.text ?? req.body?.message ?? '').trim();
+    if (!text) return res.status(400).json({ success: false, error: 'text requerido' });
+    if (text.length > 20_000) return res.status(400).json({ success: false, error: 'text demasiado largo (>20000)' });
+    if (session.isRunning()) return res.status(409).json({ success: false, error: 'la sesión ya está en ejecución' });
+    session.addMessage(text);
+    void session.start().catch(() => { /* el error queda en el estado */ });
+    res.status(202).json({ success: true, state: session.toState() });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+
+// Bifurca una sesión: copia historial/pasos/plan y devuelve una sesión nueva
+// `idle`. La fuente no se muta. Con `text` se añade el primer turno; con
+// `run:true` se arranca el bucle autoritativo de la copia.
+app.post('/api/agent/sessions/:id/fork', (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!isValidSessionId(id)) return res.status(400).json({ success: false, error: 'id inválido' });
+    const source = getOrLoadSession(id);
+    if (!source) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    if (source.isRunning()) return res.status(409).json({ success: false, error: 'la sesión está en ejecución' });
+    const b = req.body || {};
+    const text = String(b.text ?? b.message ?? '').trim();
+    if (text.length > 20_000) return res.status(400).json({ success: false, error: 'text demasiado largo (>20000)' });
+    const session = forkSession(id);
+    if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    if (text) session.addMessage(text);
+    if (b.run === true) void session.start().catch(() => { /* el error queda en el estado */ });
+    res.status(201).json({
+      success: true,
+      session: { id: session.id, goal: session.getGoal(), status: session.getStatus() },
+      state: session.toState(),
+    });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+
+// Checkpoint del CLI mientras el bucle corre en el proceso del cliente (F1-02).
+// El estado sigue viviendo en el servidor; sólo se aceptan turnos/pasos/plan y
+// el estado de la corrida, no cambios de objetivo o cwd. Un bucle autoritativo
+// en marcha no puede ser pisado por un cliente.
+app.put('/api/agent/sessions/:id/state', (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!isValidSessionId(id)) return res.status(400).json({ success: false, error: 'id inválido' });
+    const session = getOrLoadSession(id);
+    if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    if (session.isRunning()) return res.status(409).json({ success: false, error: 'la sesión está en ejecución' });
+    const state = decodeSessionState(req.body?.state ?? req.body);
+    if (!state || state.id !== id) {
+      return res.status(400).json({ success: false, error: 'estado inválido o de otra sesión' });
+    }
+    session.replaceState(state);
+    res.json({ success: true, state: session.toState() });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+
 app.delete('/api/agent/sessions/:id', (req, res) => {
   try {
     const id = String(req.params.id || '');
-    if (!getSession(id)) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    if (!isValidSessionId(id)) return res.status(400).json({ success: false, error: 'id inválido' });
+    if (!getOrLoadSession(id)) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
     removeSession(id);
     // Los subagentes de una sesión borrada ya no se pueden mostrar.
     clearSubAgents(id);
@@ -490,7 +593,13 @@ app.delete('/api/agent/sessions/:id', (req, res) => {
 app.post('/api/agent/sessions/:id/cancel', async (req, res) => {
   try {
     const id = String(req.params.id || '');
-    if (!getSession(id)) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    if (!isValidSessionId(id)) return res.status(400).json({ success: false, error: 'id inválido' });
+    const session = getOrLoadSession(id);
+    if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    // Cancelar sólo a los hijos dejaría al bucle padre gastando tokens: la
+    // sesión autoritativa se para también.
+    const parentCancelled = session.getStatus() === 'running' || session.getStatus() === 'idle';
+    session.stop();
     const ids = cancelSubAgents(id);
     // Los trabajos en segundo plano de la tanda se paran siempre: un
     // `background: true` sobrevive al hijo que lo lanzó, así que mirar sólo a
@@ -504,7 +613,7 @@ app.post('/api/agent/sessions/:id/cancel', async (req, res) => {
       jobsStopped.push(...(await stopJobsForSession(sid)));
       ptysClosed += closePtysForSession(sid);
     }
-    res.json({ success: true, cancelled: cancelados, ids, jobsStopped, ptysClosed });
+    res.json({ success: true, cancelled: cancelados, ids, jobsStopped, ptysClosed, parentCancelled });
   } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
 });
 
@@ -513,7 +622,7 @@ app.post('/api/agent/sessions/:id/cancel', async (req, res) => {
 app.get('/api/agent/sessions/:id/subagents', (req, res) => {
   try {
     const id = String(req.params.id || '');
-    if (!getSession(id)) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    if (!getOrLoadSession(id)) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
     res.json({ success: true, subagents: listSubAgents(id) });
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
 });
@@ -523,7 +632,7 @@ app.get('/api/agent/sessions/:id/subagents', (req, res) => {
 // actualizándose aunque su pestaña esté cerrada.
 app.get('/api/agent/sessions/:id/events', (req, res) => {
   const id = String(req.params.id || '');
-  if (!getSession(id)) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+  if (!getOrLoadSession(id)) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');

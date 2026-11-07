@@ -5,7 +5,8 @@ import path from 'path';
 import fs from 'fs';
 import { loadConfig, writeConfig, getConfigPath, getProviderConfig } from '../src/config/index.js';
 import { CommanderConfigSchema } from '../src/config/schema.js';
-import { checkHealth, runAgent } from '../src/cli/agentClient.js';
+import { checkHealth, forkServerSession, loadServerSession, runAgent } from '../src/cli/agentClient.js';
+import { encodeEvent, makeEventV2, type SessionStateV2 } from '../src/agent/sessionTypes.js';
 import { AgentRenderer, Tui } from '../src/cli/tui.js';
 import { GEMINI_DEFAULT_MODEL } from '../src/config/geminiModels.js';
 
@@ -273,17 +274,52 @@ program
   .option('--max-steps <number>', 'Max steps', '25')
   .option('--no-stream', 'Desactivar streaming de tokens (por defecto: activado)')
   .option('--json', 'Emitir eventos como NDJSON (para integraciones como la extensión VS Code)')
+  .option('--resume <id>', 'Continuar una sesión persistida en el servidor')
+  .option('--fork <id>', 'Bifurcar una sesión persistida en una sesión nueva')
   .option('--no-approval', 'Disable approval prompts (no aplica en headless)')
   .action(async (task, opts) => {
     const serverUrl = String(opts.server);
     const health = await checkHealth(serverUrl);
     if (!health.ok) {
-      console.error(`[commander] Servidor no disponible en ${serverUrl} (${health.detail || 'sin detalle'}).`);
-      console.error('[commander] Arráncalo con: npm run dev   (o: commander serve)');
-      process.exit(1);
+      // `process.exitCode` deja que Node vacíe el pipe al salir; `process.exit`
+      // dentro del callback de `write` aborta en Windows (libuv).
+      process.exitCode = 1;
+      process.stderr.write(
+        `[commander] Servidor no disponible en ${serverUrl} (${health.detail || 'sin detalle'}).\n` +
+          '[commander] Arráncalo con: npm run dev   (o: commander serve)\n'
+      );
+      return;
     }
 
-    const model = String(opts.model || GEMINI_DEFAULT_MODEL);
+    if (opts.resume && opts.fork) {
+      const text = 'Usa --resume o --fork, no ambos a la vez.';
+      process.exitCode = 1;
+      if (opts.json) {
+        process.stdout.write(`${encodeEvent(makeEventV2('cli', 1, { type: 'error', text }))}\n`);
+      } else {
+        process.stderr.write(`[commander] ${text}\n`);
+      }
+      return;
+    }
+
+    // La sesión se resuelve antes de crear la TUI para que el encabezado use
+    // el modelo persistido cuando no se pasa --model.
+    let resumeFrom: SessionStateV2 | undefined;
+    try {
+      if (opts.resume) resumeFrom = await loadServerSession(serverUrl, String(opts.resume));
+      else if (opts.fork) resumeFrom = await forkServerSession(serverUrl, String(opts.fork));
+    } catch (e) {
+      const text = e instanceof Error ? e.message : String(e);
+      process.exitCode = 1;
+      if (opts.json) {
+        process.stdout.write(`${encodeEvent(makeEventV2('cli', 1, { type: 'error', text }))}\n`);
+      } else {
+        process.stderr.write(`[commander] ${text}\n`);
+      }
+      return;
+    }
+
+    const model = String(opts.model || resumeFrom?.model || GEMINI_DEFAULT_MODEL);
     const maxSteps = Math.max(1, Number(opts.maxSteps) || 25);
     const stream = opts.stream !== false;
 
@@ -297,17 +333,29 @@ program
           model,
           maxSteps,
           stream,
-          onEvent: (event) => process.stdout.write(`${JSON.stringify(event)}\n`),
+          resumeFrom,
+          goal: resumeFrom?.goal,
+          persistSession: !resumeFrom,
+          // Un único serializador para --json (F1-01): el mismo `encodeEvent`
+          // que usan el SSE y la TUI, con sobre v2 y `seq` por sesión.
+          onEvent: (event) => process.stdout.write(`${encodeEvent(event)}\n`),
         });
-        process.stdout.write(
-          `${JSON.stringify({ type: 'done', answer: result.answer, steps: result.steps })}\n`
-        );
-        if (!result.answer) process.exit(1);
+        // `process.exitCode` deja que Node vacíe stdout al salir; llamar a
+        // `process.exit` desde el callback de `write` aborta en Windows.
+        const done = makeEventV2(result.sessionId, result.seq + 1, {
+          type: 'done',
+          answer: result.answer,
+          steps: result.steps,
+        });
+        process.stdout.write(`${encodeEvent(done)}\n`);
+        process.exitCode = result.answer ? 0 : 1;
       } catch (e) {
-        process.stdout.write(
-          `${JSON.stringify({ type: 'error', text: e instanceof Error ? e.message : String(e) })}\n`
-        );
-        process.exit(1);
+        const error = makeEventV2('cli', 1, {
+          type: 'error',
+          text: e instanceof Error ? e.message : String(e),
+        });
+        process.stdout.write(`${encodeEvent(error)}\n`);
+        process.exitCode = 1;
       }
       return;
     }
@@ -329,10 +377,18 @@ program
         model,
         maxSteps,
         stream,
+        resumeFrom,
+        goal: resumeFrom?.goal,
+        persistSession: !resumeFrom,
         onEvent: (event) => renderer.handle(event),
       });
     } catch (e) {
-      renderer.handle({ type: 'error', text: e instanceof Error ? e.message : String(e) });
+      renderer.handle(
+        makeEventV2('cli', 1, {
+          type: 'error',
+          text: e instanceof Error ? e.message : String(e),
+        })
+      );
       renderer.finish('', 0);
       process.exit(1);
     }

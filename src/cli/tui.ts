@@ -7,7 +7,7 @@
  *
  * Colores: respeta `NO_COLOR` (https://no-color.org) y `TERM=dumb`.
  */
-import type { CliAgentEvent } from './agentClient';
+import type { CliEventV2 } from '../agent/sessionTypes';
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
@@ -134,7 +134,7 @@ export class AgentRenderer {
     }
   }
 
-  handle(event: CliAgentEvent): void {
+  handle(event: CliEventV2): void {
     this.ensureHeader();
     const t = this.tui;
     switch (event.type) {
@@ -179,6 +179,29 @@ export class AgentRenderer {
           t.line();
           t.line(t.green(event.text));
         }
+        break;
+
+      case 'session':
+        // La cabecera ya pinta objetivo/modelo; el id solo interesa a --json.
+        break;
+
+      case 'plan':
+        t.stopSpinner();
+        this.closeStream();
+        for (const item of event.plan) {
+          t.line(`  ${item.done ? t.green('✔') : t.gray('☐')} ${item.text}`);
+        }
+        break;
+
+      // F1-04/F1-06: todavía no hay canal que las produzca. Existen en el
+      // contrato para que el render no tenga que cambiar cuando lleguen.
+      case 'approval_request':
+      case 'approval_result':
+      case 'question':
+        break;
+
+      case 'done':
+        // `bin/commander.ts` imprime el cierre con el resumen de la corrida.
         break;
 
       case 'error':

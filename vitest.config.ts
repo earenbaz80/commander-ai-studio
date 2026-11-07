@@ -38,14 +38,18 @@ export default defineConfig({
         },
       },
       {
-        // `tests/unit` y `tests/mcp` son lógica pura: no tocan el DOM, así que
-        // no necesitan jsdom ni sus polyfills (ver `tests/unit/setup.ts`).
+        // `tests/unit`, `tests/mcp` y `tests/agent` son lógica pura: no tocan el
+        // DOM, así que no necesitan jsdom ni sus polyfills (ver `tests/unit/setup.ts`).
         test: {
           ...comun,
           name: 'node',
           environment: 'node',
           setupFiles: ['./tests/unit/setup.ts'],
-          include: ['tests/unit/**/*.test.ts', 'tests/mcp/**/*.test.ts'],
+          include: [
+            'tests/unit/**/*.test.ts',
+            'tests/mcp/**/*.test.ts',
+            'tests/agent/**/*.test.ts',
+          ],
         },
       },
     ],
