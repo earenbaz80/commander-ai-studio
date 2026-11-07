@@ -45,6 +45,21 @@ describe('PreferencesModal · sección Nono', () => {
     expect(JSON.parse(localStorage.getItem(NONO_MEMORY_KEY) || '{}').ui.orbSkin).toBe(true);
   });
 
+  test('permite desactivar la interpolación de la mirada', () => {
+    render(<PreferencesModal isOpen onClose={() => {}} />);
+    irASeccion('Nono');
+
+    const instantanea = screen.getByTestId('nono-instant-gaze') as HTMLInputElement;
+    expect(instantanea.checked).toBe(false);
+
+    fireEvent.click(instantanea);
+    expect(instantanea.checked).toBe(true);
+    expect(JSON.parse(localStorage.getItem(NONO_MEMORY_KEY) || '{}').ui.instantGaze).toBe(true);
+
+    fireEvent.click(screen.getByTestId('nono-instant-gaze'));
+    expect(JSON.parse(localStorage.getItem(NONO_MEMORY_KEY) || '{}').ui.instantGaze).toBe(false);
+  });
+
   test('edita colores, aplica presets y guarda el acento clásico', () => {
     render(<PreferencesModal isOpen onClose={() => {}} />);
     irASeccion('Nono');

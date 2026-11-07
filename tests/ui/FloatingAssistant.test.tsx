@@ -386,19 +386,51 @@ describe('FloatingAssistant (Nono)', () => {
     const getPupil = () =>
       document.querySelector('svg[data-expression] circle[fill="#000000"]') as SVGCircleElement | null;
 
-    test('las pupilas miran hacia el puntero', () => {
+    test('los ojos siguen el puntero con una interpolación corta', () => {
       render(<FloatingAssistant lang="es" />);
       stubHeadRect();
 
-      // Sin movimiento, ambas pupilas están centradas (20 es el ojo izquierdo)
+      // Sin movimiento, la pupila izquierda está centrada en (20, 38).
       expect(Number(getPupil()?.getAttribute('cx'))).toBe(20);
+      expect(Number(getPupil()?.getAttribute('cy'))).toBe(38);
 
+      // El primer frame sólo recorre una parte del camino: no salta al cursor.
       fireEvent.mouseMove(window, { clientX: 1000, clientY: 300 });
-      expect(Number(getPupil()?.getAttribute('cx'))).toBeGreaterThan(20);
+      expect(Number(getPupil()?.getAttribute('cx'))).toBe(20);
+      act(() => { vi.advanceTimersByTime(16); });
+      const firstStepX = Number(getPupil()?.getAttribute('cx'));
+      expect(firstStepX).toBeGreaterThan(20);
+      expect(firstStepX).toBeLessThan(20.5);
+
+      // En unos cientos de milisegundos alcanza el tope horizontal.
+      act(() => { vi.advanceTimersByTime(400); });
+      expect(Number(getPupil()?.getAttribute('cx'))).toBeCloseTo(20.5, 1);
       expect(Number(getPupil()?.getAttribute('cy'))).toBeCloseTo(38, 1);
 
+      // Un salto al eje vertical también se interpola desde la posición actual.
       fireEvent.mouseMove(window, { clientX: 500, clientY: 800 });
-      expect(Number(getPupil()?.getAttribute('cy'))).toBeGreaterThan(38);
+      act(() => { vi.advanceTimersByTime(16); });
+      const firstStepY = Number(getPupil()?.getAttribute('cy'));
+      expect(firstStepY).toBeGreaterThan(38);
+      expect(firstStepY).toBeLessThan(38.5);
+
+      act(() => { vi.advanceTimersByTime(400); });
+      expect(Number(getPupil()?.getAttribute('cy'))).toBeCloseTo(38.5, 1);
+    });
+
+    test('con la mirada instantánea el ojo salta al puntero en el mismo evento', () => {
+      localStorage.setItem('nono-memory-v1', JSON.stringify({ ui: { instantGaze: true } }));
+      render(<FloatingAssistant lang="es" />);
+      stubHeadRect();
+
+      // Sin avanzar el reloj: la pupila ya está en el tope tras el evento.
+      fireEvent.mouseMove(window, { clientX: 1000, clientY: 300 });
+      expect(Number(getPupil()?.getAttribute('cx'))).toBeCloseTo(20.5, 5);
+      expect(Number(getPupil()?.getAttribute('cy'))).toBeCloseTo(38, 5);
+
+      fireEvent.mouseMove(window, { clientX: 500, clientY: 800 });
+      expect(Number(getPupil()?.getAttribute('cx'))).toBeCloseTo(20, 5);
+      expect(Number(getPupil()?.getAttribute('cy'))).toBeCloseTo(38.5, 5);
     });
   });
 

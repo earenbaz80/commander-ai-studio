@@ -9,6 +9,7 @@ import {
   Battery,
   BatteryCharging,
   Bot,
+  Eye,
   Timer,
   Settings2,
   SlidersHorizontal,
@@ -998,6 +999,24 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                         onChange={(e) => updateNonoUI('forceMotion', e.target.checked)}
                         className="accent-[var(--nc-text)]"
                         aria-label={t('Animar siempre', 'Always animate', 'Immer animieren')}
+                      />
+                    </MenuRow>
+                    <MenuRow
+                      icon={<Eye className="w-4 h-4 text-[var(--nc-text)]" />}
+                      label={t('Mirada instantánea', 'Instant gaze', 'Sofortiger Blick')}
+                      hint={t(
+                        'Accesibilidad: desactiva la interpolación y los ojos saltan al puntero',
+                        'Accessibility: disables interpolation so the eyes jump to the pointer',
+                        'Barrierefreiheit: deaktiviert die Interpolation, die Augen springen zum Zeiger'
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={nonoMemory.ui.instantGaze}
+                        onChange={(e) => updateNonoUI('instantGaze', e.target.checked)}
+                        className="accent-[var(--nc-text)]"
+                        data-testid="nono-instant-gaze"
+                        aria-label={t('Mirada instantánea', 'Instant gaze', 'Sofortiger Blick')}
                       />
                     </MenuRow>
                     <MenuRow
