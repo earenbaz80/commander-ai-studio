@@ -29,12 +29,14 @@ import { GEMINI_DEFAULT_MODEL } from './src/config/geminiModels';
 import {
   SESSION_SCHEMA_VERSION,
   normalizeSessionStatus,
+  type CliEventPayload,
   type SessionPlanItemV2,
   type SessionStateV2,
   type SessionStepV2,
   type SessionTurnV2,
 } from './src/agent/sessionTypes';
 import { createSessionStore, isValidSessionId, type SessionStore } from './src/agent/sessionStore';
+import { SessionEventBuffer, type SessionGoneReason } from './src/agent/sessionStream';
 
 // ── Eventos SSE ──
 
@@ -46,6 +48,48 @@ export type AgentEvent =
   | { type: 'tool_result'; toolId: string; ok: boolean; data?: unknown; error?: string }
   | { type: 'finish'; answer: string }
   | { type: 'error'; error: string };
+
+function streamSummary(data: unknown): string {
+  try {
+    return (JSON.stringify(data ?? '') || '').slice(0, 500);
+  } catch {
+    return String(data ?? '').slice(0, 500);
+  }
+}
+
+/** Traduce el evento legado del servidor al sobre v2 que consume el SSE. */
+function toCliPayload(evt: AgentEvent): CliEventPayload | null {
+  switch (evt.type) {
+    case 'status':
+      return { type: 'status', text: evt.status };
+    case 'thought':
+      return { type: 'thought', text: evt.content };
+    case 'plan':
+      return { type: 'plan', plan: evt.plan };
+    case 'tool_call':
+      return { type: 'tool_call', tool: evt.toolId, input: evt.input };
+    case 'tool_result':
+      return {
+        type: 'tool_result',
+        tool: evt.toolId,
+        ok: evt.ok,
+        summary: evt.ok ? streamSummary(evt.data) : (evt.error || 'error'),
+      };
+    case 'finish':
+      return { type: 'answer', text: evt.answer };
+    case 'error':
+      return { type: 'error', text: evt.error };
+    default:
+      return null;
+  }
+}
+
+function goneReasonForStatus(status: string): SessionGoneReason | null {
+  if (status === 'done') return 'completed';
+  if (status === 'error') return 'failed';
+  if (status === 'stopped') return 'cancelled';
+  return null;
+}
 
 /** El paso del servidor es exactamente el del contrato v2 (F1-01). */
 export type AgentStep = SessionStepV2;
@@ -291,6 +335,8 @@ export class AgentSession {
   private agentsMd = '';
   private mcpSchema = '';
   private listeners = new Set<(evt: AgentEvent) => void>();
+  /** Buffer reanudable del SSE (F1-03); sobrevive a las desconexiones. */
+  private readonly eventStream: SessionEventBuffer;
   private running = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
   /**
@@ -321,9 +367,11 @@ export class AgentSession {
       this.createdAt = Date.now();
       this.updatedAt = this.createdAt;
     }
+    this.eventStream = new SessionEventBuffer(this.id);
   }
 
   getStatus(): SessionStatus { return this.status; }
+  getEventBuffer(): SessionEventBuffer { return this.eventStream; }
   getSteps(): AgentStep[] { return this.steps; }
   getPlan(): AgentPlanItem[] { return this.plan; }
   getGoal(): string { return this.cfg.goal; }
@@ -383,7 +431,8 @@ export class AgentSession {
    */
   replaceState(state: SessionStateV2): void {
     if (this.running) throw new Error('la sesión está en ejecución');
-    this.status = legacyStatus(normalizeSessionStatus(state.status));
+    const nextStatus = normalizeSessionStatus(state.status);
+    this.status = legacyStatus(nextStatus);
     this.steps = state.steps.slice(-MAX_STEPS_IN_MEMORY).map((step) => ({ ...step }));
     this.plan = state.plan.slice(-100).map((item) => ({ ...item }));
     this.turns = state.turns.slice(-20).map((turn) => ({ ...turn }));
@@ -392,6 +441,10 @@ export class AgentSession {
     this.stopReason = null;
     this.updatedAt = Date.now();
     this.touch();
+    if (nextStatus === 'completed') this.eventStream.markGone('completed');
+    else if (nextStatus === 'failed') this.eventStream.markGone('failed');
+    else if (nextStatus === 'cancelled') this.eventStream.markGone('cancelled');
+    else this.eventStream.reopen();
   }
 
   /**
@@ -416,12 +469,20 @@ export class AgentSession {
   }
 
   private emit(evt: AgentEvent) {
+    const payload = toCliPayload(evt);
+    if (payload) this.eventStream.publish(payload);
     for (const fn of this.listeners) {
       try { fn(evt); } catch { /* listener roto */ }
     }
     // Cada evento refleja un avance (estado, plan, tool…): se persiste aquí y
     // no en cada sitio que cambia el estado.
     this.touch();
+    if (evt.type === 'status') {
+      const reason = goneReasonForStatus(evt.status);
+      if (reason) this.eventStream.markGone(reason);
+    } else if (evt.type === 'error') {
+      this.eventStream.markGone('failed');
+    }
   }
 
   private addStep(step: Omit<AgentStep, 'id' | 'ts'>): AgentStep {
@@ -444,6 +505,8 @@ export class AgentSession {
 
   async start() {
     if (this.running) return;
+    // Un turno nuevo reabre el stream; el `seq` sigue desde el último emitido.
+    this.eventStream.reopen();
     // Síncrono a propósito: dos `message` concurrentes ven el segundo como 409.
     this.running = true;
     // Sin esto la sesión corría pero `getStatus()` seguía diciendo `idle`: la
@@ -636,6 +699,9 @@ export class AgentSession {
     this.turns.push({ role: 'assistant', text: `${native.thought || ''}\nCalls: ${executable.map((m) => m.name).join(', ')}`.slice(0, 2000), ts: Date.now() });
     if (this.turns.length > 10) this.turns = this.turns.slice(-10);
 
+    for (const call of executable) {
+      this.emit({ type: 'tool_call', toolId: call.name, input: call.args });
+    }
     const results = await this.runParallel(executable.map((m) => ({ tool: m.name, input: m.args })));
     // Cancelado mientras corrían las tools: no se anotan resultados ni se sigue.
     if (this.stopReason) return;
@@ -691,6 +757,9 @@ export class AgentSession {
     const executable = calls.slice(0, budget);
 
     if (executable.length > 0) {
+      for (const call of executable) {
+        this.emit({ type: 'tool_call', toolId: call.tool, input: call.input });
+      }
       const results = await this.runParallel(executable.map((tc) => ({ tool: tc.tool, input: tc.input })));
       if (this.stopReason) return;
       this.turns.push({ role: 'tool', text: `Resultados:\n${JSON.stringify(results).slice(0, 3000)}`, ts: Date.now() });
@@ -726,7 +795,10 @@ const MAX_SESSIONS = 100;
 function evictOldest(keepId?: string): void {
   if (sessions.size <= MAX_SESSIONS) return;
   const oldest = sessions.keys().next().value;
-  if (oldest && oldest !== keepId) sessions.delete(oldest);
+  if (oldest && oldest !== keepId) {
+    sessions.get(oldest)?.getEventBuffer().markGone('deleted');
+    sessions.delete(oldest);
+  }
 }
 
 export function createSession(cfg: SessionConfig): AgentSession {
@@ -937,6 +1009,9 @@ export async function executeTask(
 }
 
 export function removeSession(id: string): void {
+  // Cierra el SSE antes de sacar la sesión del registro: el cliente recibe
+  // `gone` y no se queda esperando eventos que ya no van a llegar.
+  sessions.get(id)?.getEventBuffer().markGone('deleted');
   sessions.delete(id);
   // El borrado es también durable: si no, un `GET` posterior recargaría la
   // sesión desde disco y parecería que el DELETE no hizo nada.

@@ -22,6 +22,7 @@ import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
 import { uid } from '../agent/id';
 import {
   EventSequencer,
+  decodeEvent,
   type CliEventPayload,
   type CliEventV2,
   type SessionStateV2,
@@ -367,6 +368,234 @@ async function saveServerState(serverUrl: string, state: SessionStateV2): Promis
     });
   } catch {
     /* la corrida local sigue; el siguiente checkpoint reintenta */
+  }
+}
+
+export interface ConsumeSessionStreamOptions {
+  serverUrl: string;
+  sessionId: string;
+  /** Cursor inicial; normalmente el último `seq` ya renderizado. */
+  after?: number;
+  signal?: AbortSignal;
+  onEvent?: (event: CliEventV2) => void;
+  /** El servidor desalojó el cursor: hay que reemplazar el estado local. */
+  onResync?: (state: SessionStateV2) => void;
+  onGone?: (reason: string) => void;
+  /** Intentos de reconexión después de la primera conexión (por defecto 3). */
+  maxRetries?: number;
+  /** Backoff por caída; por defecto 250 ms → 1 s → 2 s. */
+  retryDelaysMs?: readonly number[];
+}
+
+export interface ConsumeSessionStreamResult {
+  lastSeq: number;
+  resyncs: number;
+  reconnects: number;
+  gone?: string;
+}
+
+interface SseReadResult {
+  lastSeq: number;
+  resyncs: number;
+  gone?: string;
+  /** Error de red a mitad del stream; el cursor parcial ya está actualizado. */
+  error?: unknown;
+}
+
+function abortError(): Error {
+  const error = new Error('stream abortado');
+  error.name = 'AbortError';
+  return error;
+}
+
+function waitForRetry(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(abortError());
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, Math.max(0, ms));
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortError());
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/**
+ * Parser SSE incremental del stream de sesiones.
+ *
+ * Acepta comentarios de keep-alive, varios `data:` por evento y eventos sin
+ * `id`; la deduplicación se hace por `seq`, no por el orden de llegada.
+ */
+async function readSessionSse(
+  body: ReadableStream<Uint8Array>,
+  initialSeq: number,
+  options: ConsumeSessionStreamOptions
+): Promise<SseReadResult> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let eventName = 'message';
+  let eventId: number | undefined;
+  let dataLines: string[] = [];
+  let lastSeq = initialSeq;
+  let resyncs = 0;
+  let gone: string | undefined;
+
+  const dispatch = (): boolean => {
+    if (dataLines.length === 0) {
+      eventName = 'message';
+      eventId = undefined;
+      return false;
+    }
+    const data = dataLines.join('\n');
+    const id = eventId;
+    const name = eventName;
+    eventName = 'message';
+    eventId = undefined;
+    dataLines = [];
+
+    if (name === 'resync') {
+      try {
+        const state = JSON.parse(data) as SessionStateV2;
+        if (state && typeof state.id === 'string' && state.id) options.onResync?.(state);
+      } catch {
+        /* un resync ilegible no debe tumbar el CLI */
+      }
+      // El resync reemplaza el cursor: el servidor puede mandar un id menor
+      // que el que traía el cliente si la sesión se reinició.
+      if (typeof id === 'number') lastSeq = id;
+      resyncs += 1;
+      return false;
+    }
+
+    if (name === 'gone') {
+      try {
+        const payload = JSON.parse(data) as { reason?: unknown };
+        gone = typeof payload?.reason === 'string' ? payload.reason : 'gone';
+      } catch {
+        gone = 'gone';
+      }
+      options.onGone?.(gone);
+      return true;
+    }
+
+    const event = decodeEvent(data);
+    if (event) {
+      const seq = event.seq > 0 ? event.seq : id ?? 0;
+      if (seq > lastSeq) {
+        lastSeq = seq;
+        options.onEvent?.(event);
+      }
+    }
+    if (typeof id === 'number' && id > lastSeq) lastSeq = id;
+    return false;
+  };
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let newline = buffer.indexOf('\n');
+      while (newline >= 0) {
+        const raw = buffer.slice(0, newline).replace(/\r$/, '');
+        buffer = buffer.slice(newline + 1);
+        if (raw === '') {
+          if (dispatch()) {
+            await reader.cancel().catch(() => {});
+            return { lastSeq, resyncs, gone };
+          }
+        } else if (raw.startsWith(':')) {
+          // Comentario de keep-alive.
+        } else {
+          const colon = raw.indexOf(':');
+          const field = colon >= 0 ? raw.slice(0, colon) : raw;
+          let value = colon >= 0 ? raw.slice(colon + 1) : '';
+          if (value.startsWith(' ')) value = value.slice(1);
+          if (field === 'event') eventName = value;
+          else if (field === 'id') {
+            const parsed = Number(value);
+            if (Number.isSafeInteger(parsed) && parsed >= 0) eventId = parsed;
+          } else if (field === 'data') dataLines.push(value);
+        }
+        newline = buffer.indexOf('\n');
+      }
+    }
+    if (buffer.trim()) {
+      const raw = buffer.replace(/\r$/, '');
+      if (raw.startsWith('data:')) dataLines.push(raw.slice(5).replace(/^ /, ''));
+    }
+    if (dispatch()) return { lastSeq, resyncs, gone };
+    return { lastSeq, resyncs };
+  } catch (error) {
+    // Un corte a mitad de stream conserva lo ya deduplicado: la reconexión
+    // empieza en `lastSeq`, no en el cursor inicial.
+    return { lastSeq, resyncs, gone, error };
+  } finally {
+    try { reader.releaseLock(); } catch { /* ya liberado */ }
+  }
+}
+
+/**
+ * Consume `GET /api/agent/sessions/:id/stream` con reconexión y deduplicación.
+ *
+ * Se reconecta hasta 3 veces con 250 ms → 1 s → 2 s. Un `gone` termina el
+ * consumo; un `resync` reemplaza el estado local y continúa desde el `id` del
+ * evento. Desconectar este cliente no detiene la corrida del servidor.
+ */
+export async function consumeSessionStream(
+  options: ConsumeSessionStreamOptions
+): Promise<ConsumeSessionStreamResult> {
+  let lastSeq = Math.max(0, Math.floor(Number(options.after) || 0));
+  let reconnects = 0;
+  let resyncs = 0;
+  const maxRetries = Math.max(0, Math.floor(options.maxRetries ?? 3));
+  const delays = options.retryDelaysMs ?? [250, 1_000, 2_000];
+
+  for (let attempt = 0; ; attempt++) {
+    if (options.signal?.aborted) throw abortError();
+    let fatal: Error | null = null;
+    try {
+      const query = `?after=${encodeURIComponent(String(lastSeq))}`;
+      const url = `${normalizeServerUrl(options.serverUrl)}/api/agent/sessions/${encodeURIComponent(options.sessionId)}/stream${query}`;
+      const headers: Record<string, string> = { Accept: 'text/event-stream' };
+      if (lastSeq > 0) headers['Last-Event-ID'] = String(lastSeq);
+      const response = await fetch(url, { headers, signal: options.signal });
+      if (response.status === 404) {
+        fatal = new Error('sesión no encontrada');
+      } else if (!response.ok) {
+        fatal = new Error(`HTTP ${response.status}`);
+      } else if (!response.body) {
+        fatal = new Error('el stream no tiene cuerpo');
+      } else {
+        const type = response.headers.get('content-type') || '';
+        if (!type.includes('text/event-stream')) {
+          const text = await response.text().catch(() => '');
+          fatal = new Error(`respuesta no SSE: ${type || 'sin content-type'} ${text.slice(0, 200)}`);
+        } else {
+          const result = await readSessionSse(response.body, lastSeq, options);
+          lastSeq = result.lastSeq;
+          resyncs += result.resyncs;
+          if (result.gone) {
+            return { lastSeq, resyncs, reconnects, gone: result.gone };
+          }
+          if (result.error) throw result.error;
+        }
+      }
+    } catch (error) {
+      if (options.signal?.aborted) throw abortError();
+      if (fatal) throw fatal;
+      if (attempt >= maxRetries) throw error;
+    }
+
+    if (fatal) throw fatal;
+    if (attempt >= maxRetries) throw new Error('el stream terminó sin evento gone');
+    const delay = delays[Math.min(attempt, delays.length - 1)] ?? 0;
+    reconnects += 1;
+    await waitForRetry(delay, options.signal);
   }
 }
 
