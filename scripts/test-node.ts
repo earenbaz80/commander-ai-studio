@@ -11,9 +11,23 @@
  * `npm run test:node -- tests/persistence.test.ts`).
  */
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { createServerBroker, SHARED_CONTROL_ENV } from '../tests/helpers/serverHarness.js';
 
 const patterns = process.argv.slice(2);
+
+// La suite no debe leer la config ni las credenciales reales del usuario, y los
+// tests de shell necesitan encontrar el mismo Node que ejecuta el runner aunque
+// no esté en el PATH del sistema.
+const isolatedHome = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-test-home-'));
+process.env.HOME = isolatedHome;
+process.env.USERPROFILE = isolatedHome;
+process.env.PATH = `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH ?? ''}`;
+const cleanupIsolatedHome = () => {
+  try { fs.rmSync(isolatedHome, { recursive: true, force: true }); } catch { /* archivos aún abiertos */ }
+};
 // `tests/cli` contiene el E2E del CLI (F1-14), que usa su propio proveedor
 // falso y no pide el server compartido; se incluye en la corrida por defecto.
 const files =
@@ -35,6 +49,7 @@ const shutdown = async (code: number) => {
   closing = true;
   try { runner.kill('SIGTERM'); } catch { /* ya terminó */ }
   await broker.stop();
+  cleanupIsolatedHome();
   process.exit(code);
 };
 process.on('SIGINT', () => void shutdown(130));
@@ -48,6 +63,7 @@ const code = await new Promise<number>((resolve) => {
 if (code !== 0) console.error(`\n[test:node] log del server compartido:\n${broker.logs()}\n`);
 
 await broker.stop();
+cleanupIsolatedHome();
 
 // Sin peticiones no hay server: decirlo evita que alguien lo busque en los logs.
 if (broker.requests() === 0) {
