@@ -26,6 +26,15 @@ import { executeAgentTool } from './agentTools';
 import { startSubAgent, finishSubAgent } from './subAgents';
 import { getServerBaseUrl } from './serverRuntime';
 import { GEMINI_DEFAULT_MODEL } from './src/config/geminiModels';
+import {
+  SESSION_SCHEMA_VERSION,
+  normalizeSessionStatus,
+  type SessionPlanItemV2,
+  type SessionStateV2,
+  type SessionStepV2,
+  type SessionTurnV2,
+} from './src/agent/sessionTypes';
+import { createSessionStore, isValidSessionId, type SessionStore } from './src/agent/sessionStore';
 
 // ── Eventos SSE ──
 
@@ -38,23 +47,22 @@ export type AgentEvent =
   | { type: 'finish'; answer: string }
   | { type: 'error'; error: string };
 
-export interface AgentStep {
-  id: string;
-  type: 'thought' | 'tool_call' | 'tool_result' | 'plan' | 'subagent';
-  toolId?: string;
-  title: string;
-  content: string;
-  input?: unknown;
-  output?: unknown;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-  durationMs?: number;
-  ts: number;
-}
+/** El paso del servidor es exactamente el del contrato v2 (F1-01). */
+export type AgentStep = SessionStepV2;
 
-export interface AgentPlanItem {
-  id: string;
-  text: string;
-  done: boolean;
+export type AgentPlanItem = SessionPlanItemV2;
+
+/** Tope de pasos que se conservan; el store trunca al mismo número. */
+const MAX_STEPS_IN_MEMORY = 200;
+
+/** Estado v2 → estado interno legado (la UI y el SSE siguen esperando éste). */
+function legacyStatus(status: SessionStateV2['status']): SessionStatus {
+  switch (status) {
+    case 'completed': return 'done';
+    case 'failed': return 'error';
+    case 'cancelled': return 'stopped';
+    default: return status;
+  }
 }
 
 export interface AgentKeys {
@@ -93,6 +101,12 @@ export interface SessionConfig {
   mode?: 'build' | 'plan' | 'readonly';
   /** Tools permitidas (null = todas). */
   allowedTools?: string[] | null;
+  /**
+   * Persistir el estado en `.commander/agent-sessions` (write-through).
+   * Sólo lo piden el servidor y las sesiones que nacen de una petición HTTP:
+   * los subagentes y las pruebas directas no deben llenar el disco.
+   */
+  persist?: boolean;
 }
 
 /** `idle`: sesión creada como contexto padre y nunca arrancada (no gasta tokens). */
@@ -262,13 +276,18 @@ ${ctx.toolSchema}`;
 export class AgentSession {
   readonly id: string;
   /** Cuándo se creó: `listSessions` lo devolvía como 0, que no ordena nada. */
-  readonly createdAt = Date.now();
+  readonly createdAt: number;
   private cfg: SessionConfig;
   private maxSteps: number;
   private status: SessionStatus = 'idle';
   private steps: AgentStep[] = [];
   private plan: AgentPlanItem[] = [];
-  private turns: { role: string; text: string }[] = [];
+  private turns: SessionTurnV2[] = [];
+  /** Write-through al store; false en subagentes y sesiones de prueba. */
+  private readonly persistEnabled: boolean;
+  private answer = '';
+  private lastError = '';
+  private updatedAt: number;
   private agentsMd = '';
   private mcpSchema = '';
   private listeners = new Set<(evt: AgentEvent) => void>();
@@ -283,10 +302,25 @@ export class AgentSession {
   /** Quién cortó: el usuario (cancelación) o el límite de tiempo (fallo). */
   private stopReason: 'user' | 'timeout' | null = null;
 
-  constructor(cfg: SessionConfig) {
-    this.id = uid('sess');
+  constructor(cfg: SessionConfig, restored?: SessionStateV2) {
     this.cfg = cfg;
     this.maxSteps = cfg.maxSteps ?? 20;
+    this.persistEnabled = cfg.persist === true;
+    if (restored) {
+      this.id = restored.id;
+      this.createdAt = restored.createdAt || Date.now();
+      this.updatedAt = restored.updatedAt || this.createdAt;
+      this.status = legacyStatus(restored.status);
+      this.steps = restored.steps.map((step) => ({ ...step }));
+      this.plan = restored.plan.map((item) => ({ ...item }));
+      this.turns = restored.turns.map((turn) => ({ ...turn }));
+      this.answer = restored.answer ?? '';
+      this.lastError = restored.error ?? '';
+    } else {
+      this.id = uid('sess');
+      this.createdAt = Date.now();
+      this.updatedAt = this.createdAt;
+    }
   }
 
   getStatus(): SessionStatus { return this.status; }
@@ -299,6 +333,83 @@ export class AgentSession {
   setMode(mode: 'build' | 'plan' | 'readonly') { this.cfg.mode = mode; }
   setAllowedTools(tools: string[] | null) { this.cfg.allowedTools = tools; }
 
+  /** ¿Hay un bucle en curso? `message` lo usa para responder 409. */
+  isRunning(): boolean { return this.running; }
+
+  /**
+   * Añade un turno de usuario. No arranca: el endpoint decide si ejecuta, así
+   * que una sesión persistida se puede seguir sin lanzar nada sola.
+   */
+  addMessage(text: string): SessionTurnV2 {
+    const turn: SessionTurnV2 = {
+      role: 'user',
+      text: text.slice(0, 20_000),
+      ts: Date.now(),
+    };
+    this.turns.push(turn);
+    if (this.turns.length > 20) this.turns = this.turns.slice(-20);
+    this.touch();
+    return turn;
+  }
+
+  /** Proyección v2 del estado; es lo que devuelve `GET /sessions/:id`. */
+  toState(): SessionStateV2 {
+    return {
+      schemaVersion: SESSION_SCHEMA_VERSION,
+      id: this.id,
+      goal: this.cfg.goal,
+      cwd: this.cfg.cwd,
+      model: this.getModel(),
+      mode: this.cfg.mode ?? 'build',
+      status: normalizeSessionStatus(this.status),
+      turns: this.turns.map((turn) => ({ ...turn })),
+      steps: this.steps.map((step) => ({ ...step })),
+      plan: this.plan.map((item) => ({ ...item })),
+      pendingApproval: null,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
+      ...(this.answer ? { answer: this.answer } : {}),
+      ...(this.lastError ? { error: this.lastError } : {}),
+    };
+  }
+
+  /**
+   * Reemplaza el estado con un checkpoint de un cliente.
+   *
+   * El CLI ejecuta el bucle en su proceso (para conservar streaming) y
+   * sincroniza aquí cada avance. El servidor sigue siendo el dueño del estado:
+   * sólo se aceptan turnos/pasos/plan, nunca un cambio de objetivo o cwd. Si el
+   * bucle autoritativo está corriendo, el llamador debe responder 409.
+   */
+  replaceState(state: SessionStateV2): void {
+    if (this.running) throw new Error('la sesión está en ejecución');
+    this.status = legacyStatus(normalizeSessionStatus(state.status));
+    this.steps = state.steps.slice(-MAX_STEPS_IN_MEMORY).map((step) => ({ ...step }));
+    this.plan = state.plan.slice(-100).map((item) => ({ ...item }));
+    this.turns = state.turns.slice(-20).map((turn) => ({ ...turn }));
+    this.answer = state.answer ?? '';
+    this.lastError = state.error ?? '';
+    this.stopReason = null;
+    this.updatedAt = Date.now();
+    this.touch();
+  }
+
+  /**
+   * Write-through: el estado se guarda en cada cambio relevante. Si el disco
+   * falla no se tumba el bucle; la sesión sigue viviendo en memoria.
+   */
+  private touch(): void {
+    this.updatedAt = Date.now();
+    if (!this.persistEnabled) return;
+    try {
+      this.stateStore().save(this.toState());
+    } catch { /* disco no disponible: queda en memoria */ }
+  }
+
+  private stateStore(): SessionStore {
+    return createSessionStore();
+  }
+
   addListener(fn: (evt: AgentEvent) => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
@@ -308,11 +419,18 @@ export class AgentSession {
     for (const fn of this.listeners) {
       try { fn(evt); } catch { /* listener roto */ }
     }
+    // Cada evento refleja un avance (estado, plan, tool…): se persiste aquí y
+    // no en cada sitio que cambia el estado.
+    this.touch();
   }
 
   private addStep(step: Omit<AgentStep, 'id' | 'ts'>): AgentStep {
     const full: AgentStep = { ...step, id: uid('step'), ts: Date.now() };
     this.steps.push(full);
+    if (this.steps.length > MAX_STEPS_IN_MEMORY) {
+      this.steps = this.steps.slice(-MAX_STEPS_IN_MEMORY);
+    }
+    this.touch();
     return full;
   }
 
@@ -325,10 +443,17 @@ export class AgentSession {
   }
 
   async start() {
+    if (this.running) return;
+    // Síncrono a propósito: dos `message` concurrentes ven el segundo como 409.
     this.running = true;
     // Sin esto la sesión corría pero `getStatus()` seguía diciendo `idle`: la
     // distinción entre «creada como padre» y «trabajando» se perdía.
     this.status = 'running';
+    this.stopReason = null;
+    this.lastError = '';
+    if (this.turns.length === 0) {
+      this.turns.push({ role: 'user', text: this.cfg.goal, ts: Date.now() });
+    }
     this.emit({ type: 'status', status: 'running' });
     try {
       await this.loadContext();
@@ -367,6 +492,7 @@ export class AgentSession {
   private fail(msg: string) {
     this.status = 'error';
     this.running = false;
+    this.lastError = msg.slice(0, 4_000);
     this.emit({ type: 'error', error: msg });
   }
 
@@ -375,7 +501,8 @@ export class AgentSession {
     this.running = false;
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     try { this.abortCtrl.abort(); } catch { /* ya abortado */ }
-    if (this.status === 'running') this.status = 'stopped';
+    // Cancelar una sesión idle también deja constancia; done/error se respetan.
+    if (this.status !== 'done' && this.status !== 'error') this.status = 'stopped';
     this.emit({ type: 'status', status: this.status });
   }
 
@@ -480,14 +607,16 @@ export class AgentSession {
     if (mapped.length === 0) {
       // Un turno que sólo actualizó el plan no es la respuesta final.
       if (planCalls.length > 0) {
-        this.turns.push({ role: 'model', text: native.thought || '(plan actualizado)' });
+        this.turns.push({ role: 'assistant', text: native.thought || '(plan actualizado)', ts: Date.now() });
         if (this.turns.length > 10) this.turns = this.turns.slice(-10);
         return;
       }
-      this.turns.push({ role: 'model', text: native.thought || '(sin salida)' });
+      this.turns.push({ role: 'assistant', text: native.thought || '(sin salida)', ts: Date.now() });
       if (this.turns.length > 10) this.turns = this.turns.slice(-10);
-      this.addStep({ type: 'thought', title: 'Finalizado', content: native.thought || 'Objetivo completado.', status: 'completed' });
-      this.emit({ type: 'finish', answer: native.thought || 'Objetivo completado.' });
+      const finalAnswer = native.thought || 'Objetivo completado.';
+      this.answer = finalAnswer;
+      this.addStep({ type: 'thought', title: 'Finalizado', content: finalAnswer, status: 'completed' });
+      this.emit({ type: 'finish', answer: finalAnswer });
       this.status = 'done';
       this.running = false;
       this.emit({ type: 'status', status: 'done' });
@@ -496,7 +625,7 @@ export class AgentSession {
 
     const budget = this.toolBudget();
     if (budget <= 0) {
-      this.turns.push({ role: 'model', text: native.thought || '(sin salida)' });
+      this.turns.push({ role: 'assistant', text: native.thought || '(sin salida)', ts: Date.now() });
       this.status = 'done';
       this.running = false;
       this.emit({ type: 'status', status: 'done' });
@@ -504,13 +633,13 @@ export class AgentSession {
     }
     const executable = mapped.slice(0, budget);
 
-    this.turns.push({ role: 'model', text: `${native.thought || ''}\nCalls: ${executable.map((m) => m.name).join(', ')}`.slice(0, 2000) });
+    this.turns.push({ role: 'assistant', text: `${native.thought || ''}\nCalls: ${executable.map((m) => m.name).join(', ')}`.slice(0, 2000), ts: Date.now() });
     if (this.turns.length > 10) this.turns = this.turns.slice(-10);
 
     const results = await this.runParallel(executable.map((m) => ({ tool: m.name, input: m.args })));
     // Cancelado mientras corrían las tools: no se anotan resultados ni se sigue.
     if (this.stopReason) return;
-    this.turns.push({ role: 'user', text: `Resultados:\n${JSON.stringify(results).slice(0, 3000)}` });
+    this.turns.push({ role: 'tool', text: `Resultados:\n${JSON.stringify(results).slice(0, 3000)}`, ts: Date.now() });
     if (this.turns.length > 10) this.turns = this.turns.slice(-10);
 
     for (const r of results) {
@@ -541,13 +670,14 @@ export class AgentSession {
     if (llmRes.thought) {
       this.addStep({ type: 'thought', title: 'Razonamiento', content: llmRes.thought, status: 'completed' });
       this.emit({ type: 'thought', title: 'Razonamiento', content: llmRes.thought });
-      this.turns.push({ role: 'model', text: llmRes.thought });
+      this.turns.push({ role: 'assistant', text: llmRes.thought, ts: Date.now() });
     }
     if (llmRes.finish) {
       if (llmRes.answer) {
+        this.answer = llmRes.answer;
         this.addStep({ type: 'thought', title: 'Finalizado', content: llmRes.answer, status: 'completed' });
         this.emit({ type: 'finish', answer: llmRes.answer });
-        this.turns.push({ role: 'model', text: llmRes.answer });
+        this.turns.push({ role: 'assistant', text: llmRes.answer, ts: Date.now() });
       }
       this.status = 'done';
       this.running = false;
@@ -563,7 +693,7 @@ export class AgentSession {
     if (executable.length > 0) {
       const results = await this.runParallel(executable.map((tc) => ({ tool: tc.tool, input: tc.input })));
       if (this.stopReason) return;
-      this.turns.push({ role: 'user', text: `Resultados:\n${JSON.stringify(results).slice(0, 3000)}` });
+      this.turns.push({ role: 'tool', text: `Resultados:\n${JSON.stringify(results).slice(0, 3000)}`, ts: Date.now() });
       if (this.turns.length > 10) this.turns = this.turns.slice(-10);
       for (const r of results) {
         this.addStep({
@@ -593,18 +723,98 @@ const sessions = new Map<string, AgentSession>();
 /** Tope del registro en memoria: una sesión padre por tarea se acumularía. */
 const MAX_SESSIONS = 100;
 
+function evictOldest(keepId?: string): void {
+  if (sessions.size <= MAX_SESSIONS) return;
+  const oldest = sessions.keys().next().value;
+  if (oldest && oldest !== keepId) sessions.delete(oldest);
+}
+
 export function createSession(cfg: SessionConfig): AgentSession {
   const s = new AgentSession(cfg);
   sessions.set(s.id, s);
-  if (sessions.size > MAX_SESSIONS) {
-    const oldest = sessions.keys().next().value;
-    if (oldest && oldest !== s.id) sessions.delete(oldest);
+  evictOldest(s.id);
+  if (cfg.persist) {
+    // Sin esto una sesión ejecutable no existiría en disco hasta su primer
+    // cambio: un `GET` justo después de crearla daría 404 tras un reinicio.
+    try { createSessionStore().save(s.toState()); } catch { /* disco no disponible */ }
   }
   return s;
 }
 
+/**
+ * Bifurca una sesión existente en una sesión nueva.
+ *
+ * La copia conserva historial, pasos y plan —para que el nuevo hilo tenga
+ * contexto— pero nace `idle`, sin respuesta ni error y con id propio. La sesión
+ * origen no se toca: bifurcar es una lectura, no una mutación. Las claves viven
+ * sólo en memoria y se heredan, igual que la configuración de ejecución.
+ */
+export function forkSession(sourceId: string): AgentSession | undefined {
+  const source = getOrLoadSession(sourceId);
+  if (!source) return undefined;
+  const sourceCfg = source.getConfig();
+  // JSON es suficiente: el estado v2 sólo tiene datos planos.
+  const state = JSON.parse(JSON.stringify(source.toState())) as SessionStateV2;
+  const now = Date.now();
+  state.id = uid('sess');
+  state.status = 'idle';
+  state.pendingApproval = null;
+  state.createdAt = now;
+  state.updatedAt = now;
+  delete state.answer;
+  delete state.error;
+
+  const session = new AgentSession(
+    {
+      goal: state.goal,
+      cwd: state.cwd,
+      model: state.model || sourceCfg.model,
+      mode: state.mode,
+      keys: sourceCfg.keys,
+      maxSteps: sourceCfg.maxSteps,
+      allowedTools: sourceCfg.allowedTools,
+      persist: true,
+    },
+    state
+  );
+  sessions.set(session.id, session);
+  evictOldest(session.id);
+  try { createSessionStore().save(session.toState()); } catch { /* disco no disponible */ }
+  return session;
+}
+
 export function getSession(id: string): AgentSession | undefined {
   return sessions.get(id);
+}
+
+/**
+ * Sesión en memoria o, si no está, cargada de disco.
+ *
+ * Carga lazy por id: no arranca nada solo. El estado persistido se reconstruye
+ * en una `AgentSession` normal, así que `message`, `cancel` y `GET` funcionan
+ * igual tras reiniciar el servidor.
+ */
+export function getOrLoadSession(id: string): AgentSession | undefined {
+  const inMemory = sessions.get(id);
+  if (inMemory) return inMemory;
+  if (!isValidSessionId(id)) return undefined;
+  let state: SessionStateV2 | null = null;
+  try { state = createSessionStore().load(id); } catch { state = null; }
+  if (!state) return undefined;
+  const session = new AgentSession(
+    {
+      goal: state.goal,
+      cwd: state.cwd,
+      model: state.model || undefined,
+      mode: state.mode,
+      persist: true,
+      maxSteps: 20,
+    },
+    state
+  );
+  sessions.set(session.id, session);
+  evictOldest(session.id);
+  return session;
 }
 
 export function listSessions(): Array<{ id: string; goal: string; model: string; status: SessionStatus; steps: number; createdAt: number }> {
@@ -614,7 +824,7 @@ export function listSessions(): Array<{ id: string; goal: string; model: string;
 }
 
 export function stopSession(id: string): boolean {
-  const s = sessions.get(id);
+  const s = getOrLoadSession(id);
   if (!s) return false;
   s.stop();
   return true;
@@ -728,4 +938,9 @@ export async function executeTask(
 
 export function removeSession(id: string): void {
   sessions.delete(id);
+  // El borrado es también durable: si no, un `GET` posterior recargaría la
+  // sesión desde disco y parecería que el DELETE no hizo nada.
+  if (isValidSessionId(id)) {
+    try { createSessionStore().remove(id); } catch { /* sin archivo */ }
+  }
 }

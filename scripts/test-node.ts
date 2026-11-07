@@ -14,7 +14,10 @@ import { spawn } from 'node:child_process';
 import { createServerBroker, SHARED_CONTROL_ENV } from '../tests/helpers/serverHarness.js';
 
 const patterns = process.argv.slice(2);
-const files = patterns.length > 0 ? patterns : ['tests/*.test.ts'];
+// `tests/cli` contiene el E2E del CLI (F1-14), que usa su propio proveedor
+// falso y no pide el server compartido; se incluye en la corrida por defecto.
+const files =
+  patterns.length > 0 ? patterns : ['tests/*.test.ts', 'tests/cli/*.test.ts'];
 
 const broker = await createServerBroker((srv) => {
   console.log(`[test:node] server compartido en ${srv.baseUrl} (base: ${srv.dbPath})`);

@@ -14,21 +14,27 @@
  * La UI de terminal (colores, spinner, etc.) es responsabilidad del llamador
  * a través de `onEvent`.
  */
-import { AGENT_FUNCTION_DECLARATIONS } from '../agent/fnTools';
+import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from '../agent/fnTools';
 import { toOpenAITools, toolDialectForModel } from '../agent/providers';
 import { PLAN_TOOL } from '../agent/plan';
 import { resolveEndpoint, resolveStreamEndpoint } from '../lib/aiProviders';
 import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
+import { uid } from '../agent/id';
+import {
+  EventSequencer,
+  type CliEventPayload,
+  type CliEventV2,
+  type SessionStateV2,
+  type SessionStepV2,
+  type SessionTurnV2,
+} from '../agent/sessionTypes';
 
-export type CliAgentEvent =
-  | { type: 'status'; text: string }
-  /** Delta de texto del modelo durante el streaming (si está habilitado). */
-  | { type: 'chunk'; text: string }
-  | { type: 'thought'; text: string }
-  | { type: 'tool_call'; tool: string; input: unknown }
-  | { type: 'tool_result'; tool: string; ok: boolean; summary: string }
-  | { type: 'answer'; text: string }
-  | { type: 'error'; text: string };
+/**
+ * Nombre heredado del contrato. A partir de F1-01 es el evento v2 completo
+ * (`schemaVersion`, `seq` y `sessionId` incluidos); se conserva para no romper
+ * a quien ya lo importaba.
+ */
+export type CliAgentEvent = CliEventV2;
 
 export interface RunAgentOptions {
   /** URL base del servidor embebido (sin barra final). */
@@ -46,8 +52,20 @@ export interface RunAgentOptions {
    * dialecto Gemini; el resto cae automáticamente a la llamada sin streaming.
    */
   stream?: boolean;
-  /** Callback de progreso para la TUI. */
-  onEvent?: (event: CliAgentEvent) => void;
+  /** Callback de progreso: eventos v2 con `seq` y `sessionId`. */
+  onEvent?: (event: CliEventV2) => void;
+  /** Id fijo de sesión; los tests y los goldens lo usan para ser deterministas. */
+  sessionId?: string;
+  /** Objetivo original de la sesión; en resume/fork `task` es el turno nuevo. */
+  goal?: string;
+  /** Estado persistido que se continúa (resume/fork). */
+  resumeFrom?: SessionStateV2;
+  /**
+   * Crear una sesión en el servidor y sincronizar cada avance. Lo activa el CLI
+   * en las corridas normales para que `--resume` tenga algo que continuar. Los
+   * tests directos y el golden no lo activan: no tocan la red de sesiones.
+   */
+  persistSession?: boolean;
 }
 
 interface ToolCall {
@@ -113,15 +131,16 @@ function buildPayload(
   dialect: ReturnType<typeof toolDialectForModel>
 ): Record<string, unknown> {
   const model = opts.model || GEMINI_DEFAULT_MODEL;
+  const objective = opts.goal || opts.task;
   const user =
-    `OBJETIVO: ${opts.task}\nCWD: ${opts.cwd}\n\n` +
+    `OBJETIVO: ${objective}\nCWD: ${opts.cwd}\n\n` +
     (history.length
       ? `HISTORIAL:\n${history.join('\n')}`
       : 'Aún no hay pasos. Empieza explorando el proyecto.');
 
   const systemInstruction =
     'Eres un agente autónomo de código. Razona brevemente y llama herramientas ' +
-    `para avanzar hacia: ${opts.task}. Si el objetivo está cumplido, responde ` +
+    `para avanzar hacia: ${objective}. Si el objetivo está cumplido, responde ` +
     'SOLO texto final sin llamar herramientas.';
 
   const payload: Record<string, unknown> = {
@@ -269,17 +288,180 @@ function summarize(data: unknown, max = 500): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+/** Respuesta de la API de sesiones; el estado siempre es v2. */
+interface SessionStateResponse {
+  success?: boolean;
+  state?: SessionStateV2;
+  error?: string;
+  /** Sólo lo devuelve GET: hay un bucle autoritativo en el servidor. */
+  running?: boolean;
+}
+
+function sessionEndpoint(serverUrl: string, suffix: string): string {
+  return `${normalizeServerUrl(serverUrl)}/api/agent/sessions${suffix}`;
+}
+
+/** Lee y valida una respuesta de sesión sin asumir que el cuerpo es JSON. */
+async function readSessionState(res: Response, rejectRunning = false): Promise<SessionStateV2> {
+  const body = (await res.json().catch(() => ({}))) as SessionStateResponse;
+  if (!res.ok) throw new Error(String(body.error || `HTTP ${res.status}`));
+  if (!body.state || typeof body.state.id !== 'string' || !body.state.id) {
+    throw new Error('respuesta sin estado de sesión');
+  }
+  if (rejectRunning && body.running === true) {
+    throw new Error('la sesión está en ejecución; cancélala antes de reanudarla');
+  }
+  return body.state;
+}
+
+/** Carga una sesión persistida para `--resume`. */
+export async function loadServerSession(serverUrl: string, id: string): Promise<SessionStateV2> {
+  const res = await fetch(sessionEndpoint(serverUrl, `/${encodeURIComponent(id)}`), {
+    signal: AbortSignal.timeout(10_000),
+  });
+  return readSessionState(res, true);
+}
+
+/** Bifurca una sesión en el servidor para `--fork`; la fuente no se muta. */
+export async function forkServerSession(serverUrl: string, id: string): Promise<SessionStateV2> {
+  const res = await fetch(sessionEndpoint(serverUrl, `/${encodeURIComponent(id)}/fork`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ run: false }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  return readSessionState(res);
+}
+
+/** Crea la sesión que respaldará una corrida normal del CLI. */
+async function createServerSession(opts: RunAgentOptions): Promise<SessionStateV2 | null> {
+  try {
+    const res = await fetch(sessionEndpoint(opts.serverUrl, ''), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        goal: opts.task,
+        cwd: opts.cwd,
+        model: opts.model || GEMINI_DEFAULT_MODEL,
+        maxSteps: opts.maxSteps ?? 25,
+        persist: true,
+      }),
+      signal: AbortSignal.timeout(4_000),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json().catch(() => ({}))) as SessionStateResponse;
+    return body.state && typeof body.state.id === 'string' ? body.state : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Checkpoint best-effort: un fallo de disco/red no debe tumbar el agente. */
+async function saveServerState(serverUrl: string, state: SessionStateV2): Promise<void> {
+  try {
+    await fetch(sessionEndpoint(serverUrl, `/${encodeURIComponent(state.id)}/state`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state }),
+      signal: AbortSignal.timeout(4_000),
+    });
+  } catch {
+    /* la corrida local sigue; el siguiente checkpoint reintenta */
+  }
+}
+
 /**
  * Ejecuta el bucle del agente hasta terminar o agotar `maxSteps`.
- * Devuelve la respuesta final (si la hubo) y el número de pasos consumidos.
+ *
+ * Con `persistSession` (lo activa el CLI) la corrida crea una sesión en el
+ * servidor y sincroniza turnos/pasos en cada avance; con `resumeFrom` continúa
+ * una sesión existente sin repetir el historial. El bucle sigue siendo local
+ * para conservar el streaming hasta que F1-03 lo mueva al servidor.
  */
 export async function runAgent(
   opts: RunAgentOptions
-): Promise<{ answer: string; steps: number }> {
-  const emit = opts.onEvent ?? (() => {});
+): Promise<{ answer: string; steps: number; sessionId: string; seq: number }> {
+  const resumed = opts.resumeFrom
+    ? (JSON.parse(JSON.stringify(opts.resumeFrom)) as SessionStateV2)
+    : null;
+  let sessionId = resumed?.id || opts.sessionId || '';
+  let state: SessionStateV2 | null = resumed;
+  let syncEnabled = Boolean(resumed);
+
+  // Las corridas normales del CLI dejan una sesión reanudable. Los tests
+  // directos/goldens fijan `sessionId` y no habilitan `persistSession`, así que
+  // no hacen peticiones de sesión y su contrato queda determinista.
+  if (!sessionId && opts.persistSession) {
+    const created = await createServerSession(opts);
+    if (created) {
+      state = created;
+      sessionId = created.id;
+      syncEnabled = true;
+    }
+  }
+  if (!sessionId) sessionId = uid('sess');
+
+  const sequencer = new EventSequencer(sessionId, state?.steps.length ?? 0);
+  const onEvent = opts.onEvent ?? (() => {});
+  const emit = (payload: CliEventPayload) => onEvent(sequencer.next(payload));
+  const done = (answer: string, steps: number) => ({
+    answer,
+    steps,
+    sessionId: sequencer.sessionId,
+    seq: sequencer.lastSeq,
+  });
   const maxSteps = Math.max(1, opts.maxSteps ?? 25);
-  const history: string[] = [];
+  const goal = state?.goal || opts.goal || opts.task;
+  const model = opts.model || state?.model || GEMINI_DEFAULT_MODEL;
+  // A partir de aquí todo (incluido el prompt y el evento `session`) usa el
+  // objetivo persistido y el modelo real de la sesión reanudada.
+  opts = { ...opts, goal, model };
+  const history: string[] = resumed
+    ? (resumed.turns || []).map((turn) => `${turn.role.toUpperCase()}: ${turn.text}`)
+    : [];
+  if (resumed) history.push(`USER: ${opts.task}`);
   let steps = 0;
+
+  const sync = async () => {
+    if (!state || !syncEnabled) return;
+    await saveServerState(opts.serverUrl, state);
+  };
+  const addStep = async (step: Omit<SessionStepV2, 'id' | 'ts'>) => {
+    if (!state) return;
+    state.steps.push({ ...step, id: uid('step'), ts: Date.now() });
+    if (state.steps.length > 200) state.steps = state.steps.slice(-200);
+    state.updatedAt = Date.now();
+    await sync();
+  };
+  const addTurn = (turn: Omit<SessionTurnV2, 'ts'>) => {
+    if (!state) return;
+    state.turns.push({ ...turn, text: turn.text.slice(0, 8_000), ts: Date.now() });
+    if (state.turns.length > 20) state.turns = state.turns.slice(-20);
+    state.updatedAt = Date.now();
+  };
+
+  if (state) {
+    addTurn({ role: 'user', text: opts.task });
+    state.status = 'running';
+    delete state.answer;
+    delete state.error;
+    state.updatedAt = Date.now();
+    await sync();
+  }
+
+  // Primer evento: identifica la sesión antes de cualquier progreso. Así un
+  // consumidor que se conecte tarde sabe a quién pertenecen los `seq`.
+  emit({
+    type: 'session',
+    session: {
+      id: sequencer.sessionId,
+      goal,
+      cwd: opts.cwd,
+      model,
+      mode: state?.mode || 'build',
+      status: 'running',
+    },
+  });
 
   for (let i = 0; i < maxSteps; i++) {
     steps = i + 1;
@@ -293,32 +475,96 @@ export async function runAgent(
         emit({ type: 'chunk', text })
       ));
     } catch (e) {
-      emit({ type: 'error', text: e instanceof Error ? e.message : String(e) });
-      return { answer: '', steps };
+      const text = e instanceof Error ? e.message : String(e);
+      emit({ type: 'error', text });
+      if (state) {
+        state.status = 'failed';
+        state.error = text;
+        state.updatedAt = Date.now();
+        await sync();
+      }
+      return done('', steps);
     }
 
+    if (thought) {
+      addTurn({ role: 'assistant', text: thought });
+      await addStep({
+        type: 'thought',
+        title: 'Razonamiento',
+        content: thought.slice(0, 2_000),
+        status: 'completed',
+      });
+    }
     // Con streaming el texto ya se vio en vivo; no lo repetimos.
     if (thought && !streamed) emit({ type: 'thought', text: thought });
 
     if (calls.length === 0) {
-      emit({ type: 'answer', text: thought || '(el modelo no devolvió respuesta)' });
-      return { answer: thought, steps };
+      const answer = thought || '(el modelo no devolvió respuesta)';
+      addTurn({ role: 'assistant', text: answer });
+      await addStep({ type: 'thought', title: 'Finalizado', content: answer, status: 'completed' });
+      if (state) {
+        state.answer = answer;
+        state.status = 'completed';
+        state.updatedAt = Date.now();
+        await sync();
+      }
+      emit({ type: 'answer', text: answer });
+      return done(thought, steps);
     }
 
     history.push(`ASISTENTE: ${thought}`);
     for (const call of calls) {
-      emit({ type: 'tool_call', tool: call.name, input: call.args });
-      const result = await runTool(opts.serverUrl, call.name, {
-        ...call.args,
+      // El modelo devuelve el nombre de la función (`fs_read`), no el id de la
+      // tool del servidor (`fs.read`). Sin esta traducción el endpoint responde
+      // "tool desconocida" y el agente headless no puede hacer nada.
+      const mapped = mapFunctionCall(call.name, call.args);
+      if (!mapped) {
+        const text = `Tool desconocida devuelta por el modelo: ${call.name}`;
+        emit({ type: 'error', text });
+        history.push(`TOOL ${call.name} → ERROR: ${text}`);
+        await addStep({ type: 'thought', title: 'Tool desconocida', content: text, status: 'failed' });
+        continue;
+      }
+      const input =
+        mapped.input && typeof mapped.input === 'object'
+          ? (mapped.input as Record<string, unknown>)
+          : {};
+      emit({ type: 'tool_call', tool: mapped.tool, input: mapped.input });
+      await addStep({
+        type: 'tool_call',
+        toolId: mapped.tool,
+        title: mapped.tool,
+        content: summarize(mapped.input ?? {}, 500),
+        input: mapped.input,
+        status: 'running',
+      });
+      const result = await runTool(opts.serverUrl, mapped.tool, {
+        ...input,
         root: opts.cwd,
       });
       const summary = result.ok ? summarize(result.data) : `ERROR: ${result.error}`;
-      emit({ type: 'tool_result', tool: call.name, ok: result.ok, summary });
-      history.push(`TOOL ${call.name} → ${summary}`);
+      emit({ type: 'tool_result', tool: mapped.tool, ok: result.ok, summary });
+      history.push(`TOOL ${mapped.tool} → ${summary}`);
+      addTurn({ role: 'tool', text: `TOOL ${mapped.tool} → ${summary}` });
+      await addStep({
+        type: 'tool_result',
+        toolId: mapped.tool,
+        title: mapped.tool,
+        content: result.ok ? summarize(result.data, 2_000) : `ERROR: ${result.error}`,
+        input: mapped.input,
+        output: result.data,
+        status: result.ok ? 'completed' : 'failed',
+      });
     }
   }
 
   const text = `Se alcanzó el límite de ${maxSteps} pasos sin obtener respuesta final.`;
   emit({ type: 'error', text });
-  return { answer: '', steps };
+  if (state) {
+    state.status = 'failed';
+    state.error = text;
+    state.updatedAt = Date.now();
+    await sync();
+  }
+  return done('', steps);
 }

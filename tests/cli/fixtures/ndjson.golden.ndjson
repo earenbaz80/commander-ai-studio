@@ -1,0 +1,10 @@
+{"schemaVersion":2,"seq":1,"sessionId":"sess_golden","type":"session","session":{"id":"sess_golden","goal":"SCENARIO:tool-error Ejecuta el caso golden.","cwd":"/workspace/demo","model":"gemini-2.5-flash","mode":"build","status":"running"}}
+{"schemaVersion":2,"seq":2,"sessionId":"sess_golden","type":"status","text":"Paso 1/5: pensando…"}
+{"schemaVersion":2,"seq":3,"sessionId":"sess_golden","type":"thought","text":"Voy a leer y probar una tool."}
+{"schemaVersion":2,"seq":4,"sessionId":"sess_golden","type":"tool_call","tool":"fs.read","input":{"path":"README.md"}}
+{"schemaVersion":2,"seq":5,"sessionId":"sess_golden","type":"tool_result","tool":"fs.read","ok":true,"summary":"{\"ok\":true,\"data\":{\"content\":\"contenido de prueba\",\"path\":\"README.md\"}}"}
+{"schemaVersion":2,"seq":6,"sessionId":"sess_golden","type":"error","text":"Tool desconocida devuelta por el modelo: no_existe"}
+{"schemaVersion":2,"seq":7,"sessionId":"sess_golden","type":"status","text":"Paso 2/5: pensando…"}
+{"schemaVersion":2,"seq":8,"sessionId":"sess_golden","type":"thought","text":"Listo: el faro funciona."}
+{"schemaVersion":2,"seq":9,"sessionId":"sess_golden","type":"answer","text":"Listo: el faro funciona."}
+{"schemaVersion":2,"seq":10,"sessionId":"sess_golden","type":"done","answer":"Listo: el faro funciona.","steps":2}
