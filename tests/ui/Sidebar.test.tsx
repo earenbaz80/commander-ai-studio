@@ -330,10 +330,11 @@ describe('Sidebar (panel lateral agrupado)', () => {
     expect(JSON.parse(localStorage.getItem('commander_archived_projects') || '[]')).toContain('name:uno');
   });
 
-  test('archiva cada carpeta por su ruta aunque compartan el mismo remoto', () => {
+  test('el remoto de Git identifica el proyecto: dos clones comparten el archivo', () => {
     render(
       <Sidebar
         {...baseProps()}
+        currentUserUid="uid-1"
         serverSessions={[
           {
             id: 'th-alpha',
@@ -351,6 +352,36 @@ describe('Sidebar (panel lateral agrupado)', () => {
       />
     );
 
+    // Dos carpetas, un solo proyecto: el remoto manda sobre la ruta.
+    expect(screen.getAllByTestId('project-group-uno')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Opciones del proyecto uno' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Archivar' }));
+
+    expect(screen.queryByTestId('session-row-th-alpha')).toBeNull();
+    expect(screen.queryByTestId('session-row-th-beta')).toBeNull();
+    const archived = JSON.parse(localStorage.getItem('commander_archived_projects') || '[]');
+    expect(archived).toContain('remote:github.com/org/alpha');
+    expect(archived).not.toContain('path:C:/repo/a/uno');
+    expect(archived).not.toContain('path:C:/repo/b/uno');
+    expect(archived).not.toContain('name:uno');
+    expect(archiveSyncMocks.setProjectArchivedRemote).toHaveBeenCalledWith(
+      'uid-1',
+      ['remote:github.com/org/alpha'],
+      true
+    );
+  });
+
+  test('dos repos distintos con la misma carpeta se archivan por separado', () => {
+    render(
+      <Sidebar
+        {...baseProps()}
+        serverSessions={[
+          { id: 'th-alpha', title: 'Alpha', project_path: 'C:/repo/a/uno', git_remote: 'github.com/org/alpha' },
+          { id: 'th-beta', title: 'Beta', project_path: 'C:/repo/b/uno', git_remote: 'github.com/org/beta' },
+        ]}
+      />
+    );
+
     const groups = screen.getAllByTestId('project-group-uno');
     expect(groups).toHaveLength(2);
     fireEvent.click(within(groups[0]).getByRole('button', { name: 'Opciones del proyecto uno' }));
@@ -359,13 +390,12 @@ describe('Sidebar (panel lateral agrupado)', () => {
     expect(screen.queryByTestId('session-row-th-alpha')).toBeNull();
     expect(screen.getByTestId('session-row-th-beta')).toBeInTheDocument();
     const archived = JSON.parse(localStorage.getItem('commander_archived_projects') || '[]');
-    expect(archived).toContain('path:C:/repo/a/uno');
-    expect(archived).not.toContain('path:C:/repo/b/uno');
-    expect(archived).not.toContain('remote:github.com/org/alpha');
-    expect(archived).not.toContain('name:uno');
+    expect(archived).toContain('remote:github.com/org/alpha');
+    expect(archived).not.toContain('remote:github.com/org/beta');
+    expect(archived).not.toContain('path:C:/repo/a/uno');
   });
 
-  test('ignora un archivado antiguo por remoto', () => {
+  test('aplica un archivado por remoto guardado por una versión anterior', () => {
     localStorage.setItem(
       'commander_archived_projects',
       JSON.stringify(['remote:github.com/org/alpha'])
@@ -384,7 +414,10 @@ describe('Sidebar (panel lateral agrupado)', () => {
       />
     );
 
+    expect(screen.queryByTestId('session-row-th-remoto')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar archivados' }));
     expect(screen.getByTestId('session-row-th-remoto')).toBeInTheDocument();
+    expect(screen.getByTestId('project-group-uno')).toHaveTextContent('ARCHIVADO');
   });
 
   test('aplica un archivado antiguo por nombre si el proyecto es inequívoco', () => {
@@ -432,7 +465,9 @@ describe('Sidebar (panel lateral agrupado)', () => {
             id: 'th-beta',
             title: 'Beta',
             project_path: 'C:/repo/b/uno',
-            git_remote: 'github.com/org/alpha',
+            // Repos distintos: con remotos distintos siguen siendo dos grupos
+            // homónimos y el nombre antiguo no alcanza a ninguno.
+            git_remote: 'github.com/org/beta',
           },
         ]}
       />
