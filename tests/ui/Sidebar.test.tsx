@@ -396,6 +396,13 @@ describe('Sidebar (panel lateral agrupado)', () => {
     const remotes = screen.getAllByTestId('project-remote');
     expect(remotes).toHaveLength(1);
     expect(remotes[0]).toHaveTextContent('github.com/org/commander-ai-studio');
+    // El remoto abre el repositorio en otra pestaña.
+    expect(screen.getByRole('link', { name: 'github.com/org/commander-ai-studio' })).toHaveAttribute(
+      'href',
+      'https://github.com/org/commander-ai-studio'
+    );
+    expect(remotes[0]).toHaveAttribute('target', '_blank');
+    expect(remotes[0]).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   test('dos repos distintos con la misma carpeta se archivan por separado', () => {
