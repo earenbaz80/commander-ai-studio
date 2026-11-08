@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, Columns, Code2, Bot, ChevronDown, ChevronRight, Hammer, Play, RefreshCw, Pin, Pencil, Archive, ArchiveRestore, FolderOpen, GitBranch, MoreHorizontal } from 'lucide-react';
+import { MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, Columns, Code2, Bot, ChevronDown, ChevronRight, Hammer, Play, RefreshCw, Pin, Pencil, Archive, ArchiveRestore, FolderOpen, GitBranch, Copy, MoreHorizontal } from 'lucide-react';
 import { StudioMode, HistorySession } from '../types/studio';
 import { Language, TRANSLATIONS } from '../i18n/translations';
 import type { ConversationHit } from '../agent/persistence';
@@ -395,6 +395,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
     };
   }, [openProjectMenu]);
 
+  /** Copia la ruta local; sin portapapeles disponible el menú no se rompe. */
+  const copyProjectPath = async (group: ProjectGroup) => {
+    if (!group.path) return;
+    setOpenProjectMenu(null);
+    try {
+      await navigator.clipboard.writeText(group.path);
+    } catch (error) {
+      console.warn('No se pudo copiar la ruta del proyecto:', error);
+    }
+  };
+
   const renderProjectHeader = (group: ProjectGroup) => {
     const archived = isArchivedGroup(group);
     const menuOpen = openProjectMenu === group.key;
@@ -458,6 +469,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="flex w-full items-center gap-2 px-1.5 py-1 text-left text-[10px] text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] hover:text-white"
                 >
                   <GitBranch className="w-3 h-3" /> {lang === 'es' ? 'Conectar con GitHub' : lang === 'de' ? 'GitHub verbinden' : 'Connect GitHub'}
+                </button>
+              )}
+              {group.path && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void copyProjectPath(group)}
+                  className="flex w-full items-center gap-2 px-1.5 py-1 text-left text-[10px] text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] hover:text-white"
+                >
+                  <Copy className="w-3 h-3" /> {lang === 'es' ? 'Copiar ruta' : lang === 'de' ? 'Pfad kopieren' : 'Copy path'}
                 </button>
               )}
               <button
