@@ -10,14 +10,18 @@ import {
   ArrowLeft,
   ArrowRight,
   Camera,
+  Circle,
   Download,
   ExternalLink,
   Globe,
   Loader2,
   Play,
   RefreshCw,
+  Square,
 } from 'lucide-react';
 import { useBrowserSessionFeed } from '../../hooks/useBrowserSessionFeed';
+import { useBrowserRecording } from '../../hooks/useBrowserRecording';
+import { formatMediaTime } from '../../artifacts/utils';
 import type { Language } from '../../i18n/translations';
 import { deText } from '../../i18n/de';
 import {
@@ -88,6 +92,7 @@ export const BrowserView: React.FC<{ projectPath: string; lang?: Language }> = (
     create: true,
     sessionId: selectedSessionId || undefined,
   });
+  const { setSession } = feed;
   const [url, setUrl] = useState('http://localhost:3001');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -99,6 +104,7 @@ export const BrowserView: React.FC<{ projectPath: string; lang?: Language }> = (
 
   const session = feed.session;
   const frame = feed.frame;
+  const recorder = useBrowserRecording(projectPath, session, frame);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -135,7 +141,7 @@ export const BrowserView: React.FC<{ projectPath: string; lang?: Language }> = (
       setStatus(nextStatus);
       try {
         const updated = await sendBrowserInput(session.id, input);
-        feed.setSession(updated);
+        setSession(updated);
         if (updated.page.url && updated.page.url !== 'about:blank') setUrl(updated.page.url);
       } catch (e: any) {
         setError(String(e?.message || e).slice(0, 300));
@@ -144,7 +150,7 @@ export const BrowserView: React.FC<{ projectPath: string; lang?: Language }> = (
         setStatus('');
       }
     },
-    [session, busy, feed.setSession],
+    [session, busy, setSession],
   );
 
   const navigate = useCallback(
@@ -380,6 +386,23 @@ export const BrowserView: React.FC<{ projectPath: string; lang?: Language }> = (
         >
           <Download className="w-3.5 h-3.5" />
         </button>
+        <button
+          data-testid="browser-record"
+          onClick={() => (recorder.recording ? void recorder.stop() : recorder.start())}
+          disabled={!session || recorder.saving}
+          className={`p-1 rounded disabled:opacity-30 shrink-0 ${recorder.recording ? 'text-red-300 bg-red-500/15' : 'text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)]'}`}
+          title={recorder.recording ? L('Detener grabación', 'Stop recording') : L('Grabar navegador', 'Record browser')}
+          aria-label={recorder.recording ? L('Detener grabación', 'Stop recording') : L('Grabar navegador', 'Record browser')}
+          aria-pressed={recorder.recording}
+        >
+          {recorder.saving ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : recorder.recording ? (
+            <Square className="w-3.5 h-3.5 fill-current" />
+          ) : (
+            <Circle className="w-3.5 h-3.5 fill-red-500 text-red-400" />
+          )}
+        </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-1 px-1.5 py-1 border-b border-[var(--nc-border-dark)] shrink-0">
@@ -393,7 +416,7 @@ export const BrowserView: React.FC<{ projectPath: string; lang?: Language }> = (
             setSelectedSessionId(nextId);
             setStatus(nextId ? L('Cambiando de sesión…', 'Switching session…') : '');
           }}
-          disabled={selectorSessions.length === 0}
+          disabled={selectorSessions.length === 0 || recorder.recording || recorder.saving}
           aria-label={L('Sesión del navegador', 'Browser session')}
           className="max-w-[45%] bg-[var(--nc-bg-deep)] text-[9px] font-mono text-[var(--nc-text)] px-1 py-0.5 rounded border border-[var(--nc-border-dark)] outline-none focus:border-[var(--nc-border-light)] disabled:opacity-40"
         >
@@ -412,8 +435,24 @@ export const BrowserView: React.FC<{ projectPath: string; lang?: Language }> = (
             {link.label}
           </button>
         ))}
-        <span className="ml-auto text-[10px] font-mono text-[var(--nc-text)]/50 truncate max-w-[50%]">
-          {status || connectedLabel}
+        <span className="ml-auto flex items-center gap-2 min-w-0 text-[10px] font-mono text-[var(--nc-text)]/50">
+          {recorder.recording && (
+            <span data-testid="browser-recording-status" className="flex items-center gap-1 text-red-300 shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+              REC {formatMediaTime(recorder.elapsedMs)} · {recorder.frameCount}f
+            </span>
+          )}
+          {!recorder.recording && recorder.savedId && (
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('commander:open-workbench-tab', { detail: { tab: 'artifacts' } }))}
+              className="text-[var(--nc-text-accent)] hover:underline shrink-0"
+              title={L('Ver artifact guardado', 'View saved artifact')}
+            >
+              {L('Grabación guardada', 'Recording saved')} · {L('Ver', 'View')}
+            </button>
+          )}
+          <span className="truncate">{status || connectedLabel}</span>
         </span>
       </div>
 
@@ -454,9 +493,9 @@ export const BrowserView: React.FC<{ projectPath: string; lang?: Language }> = (
         )}
       </div>
 
-      {(error || feed.error) && (
+      {(error || feed.error || recorder.error) && (
         <div className="px-2 py-1 border-t border-[var(--nc-danger)] text-[10px] font-mono text-[var(--nc-danger)]">
-          {error || feed.error}
+          {error || feed.error || recorder.error}
         </div>
       )}
 
