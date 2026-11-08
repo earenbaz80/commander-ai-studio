@@ -1,7 +1,7 @@
 # Backlog ejecutable — Fase 1 (CLI/TUI de primera clase y sesión única)
 
 > **Base:** Fase 1 de [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md).
-> **Estado:** los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #11 (F1-10) y #12 (F1-11) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). La tabla de §2 enlaza cada ID con su issue; los cuerpos versionados están en [docs/parity/issues/](issues/README.md).
+> **Estado:** los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). La tabla de §2 enlaza cada ID con su issue; los cuerpos versionados están en [docs/parity/issues/](issues/README.md).
 > **Estimaciones:** días-persona, ±30 %. Suman **21,0 d-persona**, que con 2 personas en paralelo son ≈ 11–12 días de calendario; el gate G1 añade 5 días de dogfooding.
 > **Regla de cierre de cada issue:** `tsc --noEmit` + pruebas focalizadas en verde. Si toca UI, además `vite build`. Ningún issue se cierra con mocks que sustituyan una aserción real.
 
@@ -36,7 +36,7 @@
 | F1-11 | [#12](https://github.com/earenbaz80/commander-ai-studio/issues/12) | Cerrado | Regresión del contrato `--json`/NDJSON | 0,5 | F1-01 | PR3 |
 | F1-12 | [#13](https://github.com/earenbaz80/commander-ai-studio/issues/13) | Abierto | Seis subagentes con allowlist y worktree opcional | 2,0 | F1-02 | PR4 |
 | F1-13 | [#14](https://github.com/earenbaz80/commander-ai-studio/issues/14) | Abierto | Plan persistente con estados, archivos y criterios | 1,0 | F1-02 | PR4 |
-| F1-14 | [#15](https://github.com/earenbaz80/commander-ai-studio/issues/15) | Abierto | Arnés E2E del CLI con proveedor falso determinista | 1,5 | F1-02, F1-04, F1-08 | PR5 |
+| F1-14 | [#15](https://github.com/earenbaz80/commander-ai-studio/issues/15) | Cerrado | Arnés E2E del CLI con proveedor falso determinista | 1,5 | F1-02, F1-04, F1-08 | PR5 |
 
 ## 3. Issues
 
@@ -399,7 +399,7 @@
 **Labels:** `f1`, `p0`, `area:cli`, `tests`
 **Estimación:** 1,5 d-persona · **Depende de:** F1-02, F1-04, F1-08
 
-**Estado:** Abierto — arnés E2E completo (16/16); el cierre del issue queda pendiente de sincronización.
+**Estado:** Cerrado — arnés E2E completo (16/16); cerrado como completado.
 
 **Por qué.** Sin clave de modelo no se puede verificar el flujo completo, y F1 necesita pruebas que no dependan de un proveedor real. Un servidor falso que responde guiones fijos permite probar approvals, preguntas, resume y reconexión de forma determinista.
 
@@ -420,10 +420,9 @@
 - Fallos encontrados y corregidos: las credenciales `custom/` no viajaban en `callAgentLLMTools` y `apiRoutes` no extraía los routers de integraciones/backend. Ambos quedaron verificados.
 - Aislamiento: el runner crea un `HOME` temporal; sin él, 3 tests de fallback de Gemini leían/escribían la config global y contaminaban la corrida. No es una regresión de producto.
 
-**Pendiente de alcance**
+**Cierre**
 - Los 3 casos que quedaban —approval de escritura, `ask_user` en `--json` y reconexión SSE— ya están cubiertos en `tests/cli/e2e.test.ts` sobre `attach --json` y el fixture SSE; no quedan `test.todo` en F1-14.
 - `ask_user` en el bucle de `agent` sigue siendo alcance de F1-06; este arnés cubre el evento `question` y el canal de sesión, no el prompt interactivo.
-- F1-14 queda abierto hasta sincronizar el cierre con el issue #15.
 
 **Pruebas**
 - `tests/cli/e2e.test.ts`: 16 casos implementados, sin `test.todo`, con `spawn` del CLI contra el falso. Escenarios: `final`, `tool`, `tool-three`, `tool-denied`, `max-steps`, `unknown-tool`, `stream`, `llm-error`, approvals, `question` y reconexión SSE.
@@ -487,7 +486,7 @@ F1-02 + F1-04 + F1-08 ───────────────────�
 
 ## 8. Issues en GitHub
 
-Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #11 (F1-10) y #12 (F1-11) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). No vuelvas a ejecutar `gh issue create`, porque duplicaría el backlog. El mapeo está en la tabla de §2 y el cuerpo versionado de cada issue, en [`docs/parity/issues/`](issues/README.md).
+Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). No vuelvas a ejecutar `gh issue create`, porque duplicaría el backlog. El mapeo está en la tabla de §2 y el cuerpo versionado de cada issue, en [`docs/parity/issues/`](issues/README.md).
 
 Para actualizar el cuerpo de un issue ya creado:
 
