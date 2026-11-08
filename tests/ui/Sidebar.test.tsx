@@ -327,6 +327,33 @@ describe('Sidebar (panel lateral agrupado)', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  test('avisa si el portapapeles rechaza la ruta local del proyecto', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('permiso denegado'));
+    const onProjectPathCopied = vi.fn();
+    const onProjectPathCopyFailed = vi.fn();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, writable: true });
+    try {
+      render(
+        <Sidebar
+          {...baseProps()}
+          onProjectPathCopied={onProjectPathCopied}
+          onProjectPathCopyFailed={onProjectPathCopyFailed}
+          serverSessions={[{ id: 'th-uno', title: 'Refactor', project_path: 'C:/repo/uno' }]}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Opciones del proyecto uno' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copiar ruta' }));
+
+      await waitFor(() => expect(onProjectPathCopyFailed).toHaveBeenCalledWith('C:/repo/uno'));
+      expect(onProjectPathCopied).not.toHaveBeenCalled();
+      expect(screen.queryByRole('menu')).toBeNull();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   test('aplica el archivo de la cuenta y reconoce un proyecto por nombre', () => {
     render(
       <Sidebar

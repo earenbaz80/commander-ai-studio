@@ -1429,6 +1429,12 @@ export default function App() {
                   text: `${lang === 'es' ? 'Ruta copiada' : lang === 'de' ? 'Pfad kopiert' : 'Path copied'}: ${path}`,
                 })
               }
+              onProjectPathCopyFailed={(path) =>
+                setProjectToast({
+                  kind: 'err',
+                  text: `${lang === 'es' ? 'No se pudo copiar la ruta' : lang === 'de' ? 'Pfad konnte nicht kopiert werden' : 'Could not copy the path'}: ${path}`,
+                })
+              }
               onOpenCompile={() => setIsCompilerModalOpen(true)}
               lang={lang as any}
               currentUserUid={currentUser?.uid ?? null}
