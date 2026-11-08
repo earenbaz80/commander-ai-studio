@@ -53,6 +53,36 @@ function normalizeArchiveKeys(keys: string[]): string[] {
   return Array.from(new Set(keys.filter((key) => typeof key === 'string' && key.length > 0)));
 }
 
+/**
+ * Respaldo para navegadores sin Clipboard API. `execCommand` está obsoleto,
+ * pero sigue siendo la única vía en contextos no seguros y navegadores antiguos.
+ */
+function copyTextFallback(text: string): boolean {
+  if (typeof document === 'undefined' || typeof document.execCommand !== 'function' || !document.body) {
+    return false;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.setAttribute('aria-hidden', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.opacity = '0';
+  const activeElement = document.activeElement;
+  document.body.appendChild(textarea);
+  try {
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, text.length);
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    textarea.remove();
+    if (activeElement instanceof HTMLElement) activeElement.focus();
+  }
+}
+
 function loadArchivedProjects(): string[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(ARCHIVED_PROJECTS_KEY) || '[]');
@@ -401,13 +431,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
     };
   }, [openProjectMenu]);
 
-  /** Copia la ruta local; sin portapapeles disponible el menú no se rompe. */
+  /** Copia la ruta local; si no hay Clipboard API prueba el método antiguo. */
   const copyProjectPath = async (group: ProjectGroup) => {
     const projectPath = group.path;
     if (!projectPath) return;
     setOpenProjectMenu(null);
     try {
-      await navigator.clipboard.writeText(projectPath);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(projectPath);
+      } else if (!copyTextFallback(projectPath)) {
+        throw new Error('El portapapeles no está disponible');
+      }
       onProjectPathCopied?.(projectPath);
     } catch (error) {
       console.warn('No se pudo copiar la ruta del proyecto:', error);

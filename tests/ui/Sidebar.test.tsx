@@ -327,6 +327,43 @@ describe('Sidebar (panel lateral agrupado)', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  test('copia la ruta con el método antiguo si no existe Clipboard API', async () => {
+    const execCommand = vi.fn((command: string) => {
+      expect(command).toBe('copy');
+      expect((document.querySelector('textarea') as HTMLTextAreaElement | null)?.value).toBe('C:/repo/uno');
+      return true;
+    });
+    const execCommandDescriptor = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand, writable: true });
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, writable: true });
+    const onProjectPathCopied = vi.fn();
+    const onProjectPathCopyFailed = vi.fn();
+    try {
+      render(
+        <Sidebar
+          {...baseProps()}
+          onProjectPathCopied={onProjectPathCopied}
+          onProjectPathCopyFailed={onProjectPathCopyFailed}
+          serverSessions={[{ id: 'th-uno', title: 'Refactor', project_path: 'C:/repo/uno' }]}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Opciones del proyecto uno' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copiar ruta' }));
+
+      await waitFor(() => expect(onProjectPathCopied).toHaveBeenCalledWith('C:/repo/uno'));
+      expect(execCommand).toHaveBeenCalledWith('copy');
+      expect(onProjectPathCopyFailed).not.toHaveBeenCalled();
+      expect(document.querySelector('textarea')).toBeNull();
+    } finally {
+      if (execCommandDescriptor) {
+        Object.defineProperty(document, 'execCommand', execCommandDescriptor);
+      } else {
+        Reflect.deleteProperty(document, 'execCommand');
+      }
+    }
+  });
+
   test('avisa si el portapapeles rechaza la ruta local del proyecto', async () => {
     const writeText = vi.fn().mockRejectedValue(new Error('permiso denegado'));
     const onProjectPathCopied = vi.fn();
