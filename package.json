@@ -128,7 +128,7 @@
     "prettier": "^3.4.2",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.2",
+    "typescript": "^7.0.2",
     "typescript-language-server": "^6.0.2",
     "vitest": "^5.0.4"
   },
