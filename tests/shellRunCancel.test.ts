@@ -9,11 +9,31 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { runPipeline } from '../shellJobs.js';
 import { executeAgentTool } from '../agentTools.js';
+import { setPermissions } from '../permissions.js';
 
 /** Válido en los dos sistemas y que no termina solo en varios segundos. */
 const LENTO = process.platform === 'win32' ? 'ping -n 30 127.0.0.1' : 'ping -c 30 127.0.0.1';
+
+/**
+ * Root temporal con permisos de build.
+ *
+ * `shell.run` sin `root` resuelve sus permisos contra el cwd del repo: con el
+ * proyecto en readonly el gate devolvía 403 antes de mirar la señal y el test
+ * dejaba de probar la cancelación. El pipeline sigue corriendo en
+ * `process.cwd()` (no toca archivos); este root sólo aísla la puerta.
+ */
+const WORK_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'shell-cancel-root-'));
+setPermissions(WORK_ROOT, {
+  mode: 'build',
+  allowedTools: null,
+  deniedTools: [],
+  files: { read: [], write: [] },
+});
 
 test('cancelar corta un pipeline en vuelo en vez de esperar a que termine', async () => {
   const ctrl = new AbortController();
@@ -36,7 +56,11 @@ test('una señal ya abortada no arranca el proceso', async () => {
 });
 
 test('shell.run propaga la señal de la sesión hasta el proceso', async () => {
-  const res = await executeAgentTool('shell.run', { command: 'echo hola' }, { signal: AbortSignal.abort() });
+  const res = await executeAgentTool(
+    'shell.run',
+    { command: 'echo hola', root: WORK_ROOT },
+    { signal: AbortSignal.abort() },
+  );
 
   assert.equal(res.ok, false);
   assert.match(String(res.error), /Cancelado/);
