@@ -413,14 +413,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {group.name}
           </span>
           {showRemote && (
-            <span
+            <a
               data-testid="project-remote"
-              className="flex min-w-0 items-center gap-1 text-[8px] text-[var(--nc-text)]/60"
+              href={`https://${group.remote}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex min-w-0 items-center gap-1 text-[8px] text-[var(--nc-text)]/60 hover:text-white hover:underline"
               title={group.remote}
             >
               <GitBranch className="h-2.5 w-2.5 shrink-0" aria-hidden />
               <span className="truncate">{group.remote}</span>
-            </span>
+            </a>
           )}
         </span>
         {archived && (
