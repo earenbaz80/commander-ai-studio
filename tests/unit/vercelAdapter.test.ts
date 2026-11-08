@@ -234,13 +234,16 @@ describe('VercelDeploymentAdapter', () => {
     ).rejects.toThrow(/VERCEL_TOKEN/);
   });
 
-  it('selecciona Vercel sólo cuando hay token y proyecto', () => {
-    expect(createConfiguredDeploymentAdapter({}).id).toBe('fake');
-    expect(
-      createConfiguredDeploymentAdapter({
-        VERCEL_TOKEN: 'token',
-        VERCEL_PROJECT_ID: 'prj_demo',
-      }).id
-    ).toBe('vercel');
+  it('siempre usa Vercel y expone si está configurado', () => {
+    const empty = createConfiguredDeploymentAdapter({});
+    expect(empty.id).toBe('vercel');
+    expect(empty.configured).toBe(false);
+
+    const configured = createConfiguredDeploymentAdapter({
+      VERCEL_TOKEN: 'token',
+      VERCEL_PROJECT_ID: 'prj_demo',
+    });
+    expect(configured.id).toBe('vercel');
+    expect(configured.configured).toBe(true);
   });
 });

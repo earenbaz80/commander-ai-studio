@@ -114,6 +114,8 @@ export interface RemoteDeploymentState {
 
 export interface DeploymentAdapter {
   readonly id: string;
+  /** false cuando faltan credenciales; la UI no debe ofrecer un deploy. */
+  readonly configured: boolean;
   detectProject(root: string): Promise<ProjectDescriptor>;
   preflight(input: PreflightInput): Promise<PreflightResult>;
   deploy(input: DeployInput): Promise<DeploymentRecord>;

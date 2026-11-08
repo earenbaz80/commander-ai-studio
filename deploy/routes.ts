@@ -2,8 +2,8 @@
  * Rutas HTTP de despliegue.
  *
  * El router no conoce al proveedor: recibe un `DeploymentAdapter` y traduce
- * releases locales a su contrato. El fake y Vercel comparten exactamente el
- * mismo ciclo de preview, promoción, rollback y logs.
+ * releases locales a su contrato. El adaptador debe declarar si está
+ * configurado; sin credenciales no se llama al proveedor ni se finge un deploy.
  */
 import express, { type Response } from 'express';
 import { getReleaseForDeploy } from '../publisher';
@@ -47,9 +47,24 @@ export function createDeployRouter(
 
   router.get('/status', async (req, res) => {
     try {
+      if (!adapter.configured) {
+        return res.json({
+          success: true,
+          provider: adapter.id,
+          configured: false,
+          status: null,
+          missingConfig:
+            adapter.id === 'vercel' ? ['VERCEL_TOKEN', 'VERCEL_PROJECT_ID'] : [],
+        });
+      }
       const root = resolveProjectRoot(req.query.root);
       const project = await projectFor(root);
-      return res.json({ success: true, status: await adapter.status(project) });
+      return res.json({
+        success: true,
+        provider: adapter.id,
+        configured: true,
+        status: await adapter.status(project),
+      });
     } catch (error: any) {
       return deployError(res, error);
     }
