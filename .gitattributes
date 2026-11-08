@@ -1,0 +1,3 @@
+# El golden NDJSON se compara byte a byte y el CLI emite LF. En Windows,
+# core.autocrlf=true convertiría el archivo a CRLF durante el checkout.
+*.ndjson text eol=lf
