@@ -371,6 +371,33 @@ describe('Sidebar (panel lateral agrupado)', () => {
     );
   });
 
+  test('muestra el remoto cuando la carpeta no coincide con el repositorio', () => {
+    render(
+      <Sidebar
+        {...baseProps()}
+        serverSessions={[
+          {
+            id: 'th-clon',
+            title: 'Clon',
+            project_path: 'C:/repo/commander-2.5.1',
+            git_remote: 'github.com/org/commander-ai-studio',
+          },
+          {
+            id: 'th-alfa',
+            title: 'Alfa',
+            project_path: 'C:/repo/Alpha',
+            git_remote: 'github.com/org/alpha',
+          },
+        ]}
+      />
+    );
+
+    // Sólo el grupo cuya carpeta no se llama como el repositorio muestra el remoto.
+    const remotes = screen.getAllByTestId('project-remote');
+    expect(remotes).toHaveLength(1);
+    expect(remotes[0]).toHaveTextContent('github.com/org/commander-ai-studio');
+  });
+
   test('dos repos distintos con la misma carpeta se archivan por separado', () => {
     render(
       <Sidebar

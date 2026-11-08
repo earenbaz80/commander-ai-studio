@@ -80,6 +80,7 @@ interface ProjectGroup {
   key: string;
   name: string;
   path: string;
+  remote: string;
   rows: HistoryRow[];
 }
 
@@ -246,7 +247,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       const key = remote ? `remote:${remote}` : path ? `path:${path}` : `name:${name}`;
       let group = groups.get(key);
       if (!group) {
-        group = { key, name, path, rows: [] };
+        group = { key, name, path, remote, rows: [] };
         groups.set(key, group);
       }
       group.rows.push(row);
@@ -397,14 +398,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const renderProjectHeader = (group: ProjectGroup) => {
     const archived = isArchivedGroup(group);
     const menuOpen = openProjectMenu === group.key;
+    const repoName = group.remote.split('/').filter(Boolean).pop() || '';
+    // La carpeta y el repositorio suelen llamarse igual; cuando no, el remoto
+    // aclara por qué dos rutas distintas comparten grupo.
+    const showRemote = !!group.remote && repoName.toLowerCase() !== group.name.toLowerCase();
     return (
       <div
         data-testid={`project-group-${group.name}`}
         className={`relative flex items-center gap-1 px-1 pt-2 pb-0.5 text-[10px] font-mono ${archived ? 'opacity-60' : ''}`}
       >
         <FolderOpen className="w-3 h-3 shrink-0 text-[var(--nc-text-accent)]" aria-hidden />
-        <span className="flex-1 truncate font-bold text-[var(--nc-text-accent)]" title={group.path || group.name}>
-          {group.name}
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate font-bold text-[var(--nc-text-accent)]" title={group.path || group.name}>
+            {group.name}
+          </span>
+          {showRemote && (
+            <span
+              data-testid="project-remote"
+              className="flex min-w-0 items-center gap-1 text-[8px] text-[var(--nc-text)]/60"
+              title={group.remote}
+            >
+              <GitBranch className="h-2.5 w-2.5 shrink-0" aria-hidden />
+              <span className="truncate">{group.remote}</span>
+            </span>
+          )}
         </span>
         {archived && (
           <span className="border border-[var(--nc-text)]/40 px-1 text-[8px] text-[var(--nc-text)]">
