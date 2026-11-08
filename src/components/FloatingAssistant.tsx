@@ -3,6 +3,7 @@ import { Clipboard, PanelRight, Hammer, Library, Search, Trash2, Plus, Send, X, 
 import type { LucideIcon } from 'lucide-react';
 import type { FloatingAssistantProps, FloatingAssistantHandle, NonoExpression } from './nono/content';
 import { NonoHead } from './nono/NonoHead';
+import { resolveNonoSkin } from '../features/nono/nonoMemoryStore';
 import {
   useNonoDrag,
   useNonoChat,
@@ -19,6 +20,15 @@ const IDLE_SLEEP_MS = 5 * 60 * 1000;
 const IDLE_DRIFT_MS = 15 * 1000;
 /** Con el puntero quieto, el orbe empieza a mirar a los lados por su cuenta. */
 const IDLE_GAZE_MS = 2200;
+/** Duración de cada cierre de párpado; debe coincidir con `.nono-eye-shutter`. */
+const BLINK_DURATION_MS = 180;
+/** Pausa breve entre los dos cierres de un parpadeo doble. */
+const DOUBLE_BLINK_GAP_MS = 90;
+/** Probabilidad de encadenar un segundo cierre. */
+const DOUBLE_BLINK_CHANCE = 0.2;
+/** Cadencia normal entre parpadeos: 3,5–8,5 s. */
+const BLINK_MIN_DELAY_MS = 3500;
+const BLINK_DELAY_RANGE_MS = 5000;
 /** Cadencia de la interpolación de la mirada (~60 fps). */
 const EYE_FOLLOW_FRAME_MS = 16;
 /** Constante de tiempo del seguimiento ocular: llega al puntero en una fracción de segundo. */
@@ -62,6 +72,14 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
 
   /** Texto corto por idioma (el resto del archivo usa ternarios en línea). */
   const tr = (es: string, en: string, de?: string) => (lang === 'es' ? es : lang === 'de' && de ? de : en);
+
+  /** Mientras procesa, el orbe dice siempre que sí; un error cambia el aviso. */
+  const affirmativePhrase =
+    lang === 'es'
+      ? '¡Sí! Voy con ello.'
+      : lang === 'de'
+        ? 'Ja! Ich mache das.'
+        : 'Yes! On it.';
 
   // Deriva en reposo: se enciende cuando nadie interactúa con Nono.
   const [hovered, setHovered] = useState(false);
@@ -159,6 +177,20 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
     return () => root.classList.remove('nono-force-motion');
   }, [memory.ui.forceMotion]);
 
+  /**
+   * El asentimiento del orbe al procesar se decide en Configuración.
+   *
+   * Las clases del root permiten que la elección gane a
+   * `prefers-reduced-motion` en ambos sentidos: activado asiente aunque el
+   * sistema pida menos movimiento; desactivado no asiente aunque lo permita.
+   */
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle('nono-orb-rotate-on', memory.ui.orbRotate);
+    root.classList.toggle('nono-orb-rotate-off', !memory.ui.orbRotate);
+    return () => root.classList.remove('nono-orb-rotate-on', 'nono-orb-rotate-off');
+  }, [memory.ui.orbRotate]);
+
   // El contexto (diagnósticos, git, TODOs) se revisa al arrancar y cada 3 min
   // aunque el panel esté cerrado: antes sólo se calculaba al abrirlo, así que
   // la sugerencia llegaba cuando ya estabas dentro.
@@ -187,8 +219,9 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
         label: lang === 'es' ? 'Abrir Nono' : lang === 'de' ? 'Nono öffnen' : 'Open Nono',
         onClick: () => setIsOpen(true),
       },
+      onClose: () => dismiss(fresh.id),
     });
-  }, [suggestions, isOpen, hidden, showToast, lang, setIsOpen]);
+  }, [suggestions, isOpen, hidden, showToast, lang, setIsOpen, dismiss]);
 
   // En modo docked el panel está siempre abierto (no hay cabeza flotante para abrirlo).
   useEffect(() => { if (docked) setIsOpen(true); }, [docked, setIsOpen]);
@@ -209,9 +242,9 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
   }, [status, lang, setExpression, showContextPhrase]);
 
   // Procesamiento en curso (respuesta del chat o corrida del agente): Nono
-  // acompaña la espera con cara de pensar, un gesto propio y una frase corta;
-  // al terminar celebra un instante. Sólo reacciona al cambio de estado, no a
-  // cada re-render ni a cada token.
+  // acompaña la espera con una cara propia y una frase corta; al terminar
+  // celebra un instante. Sólo reacciona al cambio de estado, no a cada
+  // re-render ni a cada token.
   const wasBusyRef = useRef(false);
   useEffect(() => {
     if (busy === wasBusyRef.current) return;
@@ -220,21 +253,37 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
       if (isOpen || asleepRef.current) return;
       setExpression('thinking');
       showContextPhrase(
-        lang === 'es'
-          ? 'Estoy en ello, dame un momento…'
-          : lang === 'de'
-            ? 'Ich bin dran, einen Moment…'
-            : 'On it, give me a moment…',
+        memory.ui.orbSkin
+          ? affirmativePhrase
+          : lang === 'es'
+            ? 'Estoy en ello, dame un momento…'
+            : lang === 'de'
+              ? 'Ich bin dran, einen Moment…'
+              : 'On it, give me a moment…',
         6000
       );
       return;
     }
-    // Al acabar: alivio breve, salvo que el panel o el teclado lleven el mando.
-    if (isOpen || isTyping || asleepRef.current) return;
+    // Al acabar: alivio breve, salvo que el panel, el teclado o un error lleven
+    // el mando. Un fallo no se celebra con «¡Listo!».
+    if (isOpen || isTyping || asleepRef.current || status?.type === 'error') return;
     // Gafas de sol: la corrida terminó bien.
     setExpression('cool');
     showContextPhrase(lang === 'es' ? '¡Listo!' : lang === 'de' ? 'Fertig!' : 'Done!', 2500);
-  }, [busy, isOpen, isTyping, lang, setExpression, showContextPhrase]);
+  }, [busy, isOpen, isTyping, lang, memory.ui.orbSkin, affirmativePhrase, status?.type, setExpression, showContextPhrase]);
+
+  // El orbe no tiene la pantalla de binario del clásico: mientras procesa mira
+  // hacia el chat y asiente, y el bocadillo dice siempre que sí. La frase se
+  // refresca para que siga visible en esperas largas; un error la retira y deja
+  // el aviso de fallo.
+  useEffect(() => {
+    if (!busy || !memory.ui.orbSkin || isOpen || asleepRef.current || status?.type === 'error') return;
+    showContextPhrase(affirmativePhrase, 6000);
+    const timer = setInterval(() => {
+      if (status?.type !== 'error') showContextPhrase(affirmativePhrase, 6000);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [busy, isOpen, memory.ui.orbSkin, showContextPhrase, status?.type, affirmativePhrase]);
 
   // Saludo inicial con typing effect
   const greetingText = (() => {
@@ -398,18 +447,45 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
   const [blink, setBlink] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+
+    const schedule = (fn: () => void, delay: number) => {
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        if (!cancelled) fn();
+      }, delay);
+      timers.add(timer);
+    };
+
+    const closeEyes = () => {
+      setBlink(true);
+      schedule(() => {
+        setBlink(false);
+        // De vez en cuando, un segundo cierre corto: menos mecánico que un
+        // parpadeo idéntico cada vez.
+        if (Math.random() < DOUBLE_BLINK_CHANCE) {
+          schedule(() => {
+            setBlink(true);
+            schedule(() => setBlink(false), BLINK_DURATION_MS);
+          }, DOUBLE_BLINK_GAP_MS);
+        }
+      }, BLINK_DURATION_MS);
+    };
+
     const loop = () => {
       if (cancelled) return;
-      timer = setTimeout(() => {
-        if (cancelled) return;
-        setBlink(true);
-        setTimeout(() => { if (!cancelled) setBlink(false); }, 120);
+      schedule(() => {
+        closeEyes();
         loop();
-      }, 2000 + Math.random() * 4000);
+      }, BLINK_MIN_DELAY_MS + Math.random() * BLINK_DELAY_RANGE_MS);
     };
+
     loop();
-    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+    return () => {
+      cancelled = true;
+      for (const timer of timers) clearTimeout(timer);
+      timers.clear();
+    };
   }, []);
 
   // Mirada en reposo: si el puntero deja de moverse, el orbe barre la mirada a
@@ -436,16 +512,29 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
   }, []);
 
   // Cerrar con Escape
-  useEffect(() => { const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && isOpen) setIsOpen(false); }; window.addEventListener('keydown', handleKey); return () => window.removeEventListener('keydown', handleKey); }, [isOpen]);
+  useEffect(() => { const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && isOpen) setIsOpen(false); }; window.addEventListener('keydown', handleKey); return () => window.removeEventListener('keydown', handleKey); }, [isOpen, setIsOpen]);
 
   // Estilos computados
   const GAP = 8;
+  const PANEL_MIN_HEIGHT = 320;
+  const PANEL_MAX_HEIGHT = 520;
+  const PANEL_MARGIN = 8;
   const headStyle: React.CSSProperties = dragPos
     ? { left: 0, top: 0, transform: `translate3d(${dragPos.x}px, ${dragPos.y}px, 0) ${isTyping ? 'rotate(-7deg)' : ''}`, willChange: 'transform', transition: isTyping ? 'transform 0.25s ease-out' : 'none' }
     : isTyping ? { bottom: anchor.bottom + GAP, right: anchor.right + GAP, transform: 'rotate(-7deg)', transition: 'transform 0.25s ease-out' } : { bottom: anchor.bottom + GAP, right: anchor.right + GAP };
 
   const headBottomEdge = dragPos ? window.innerHeight - dragPos.y - 64 : anchor.bottom;
-  const panelStyle: React.CSSProperties = { bottom: Math.max(8, Math.min(headBottomEdge + 68, window.innerHeight - 340)), right: 8, height: 320 };
+  const viewportHeight = window.innerHeight;
+  const panelHeight = Math.min(
+    PANEL_MAX_HEIGHT,
+    Math.max(PANEL_MIN_HEIGHT, Math.round(viewportHeight * 0.6)),
+    Math.max(0, viewportHeight - PANEL_MARGIN * 2)
+  );
+  const panelBottom = Math.max(
+    PANEL_MARGIN,
+    Math.min(headBottomEdge + 68, viewportHeight - panelHeight - PANEL_MARGIN)
+  );
+  const panelStyle: React.CSSProperties = { bottom: panelBottom, right: PANEL_MARGIN, height: panelHeight };
 
   const headTopPx = dragPos ? dragPos.y : Math.max(0, window.innerHeight - anchor.bottom - GAP - 64);
   const headRightPx = dragPos ? Math.max(8, window.innerWidth - dragPos.x - 64) : anchor.right + GAP;
@@ -481,7 +570,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
 
       {/* Panel de chat */}
       {isOpen && (
-        <div className={`nono-panel ${docked ? 'relative w-full h-full' : 'fixed z-[9999] w-80 max-w-[calc(100vw-2rem)]'} bg-[var(--nc-bg-deep)] border-2 border-[var(--nc-border-light)] rounded-lg shadow-[0_0_30px_rgba(0,255,255,0.3)] flex flex-col overflow-hidden`} style={docked ? undefined : panelStyle}>
+        <div className={`nono-panel ${docked ? 'relative w-full h-full' : 'fixed z-[9999] w-[360px] max-w-[calc(100vw-1rem)]'} bg-[var(--nc-bg-deep)] border-2 border-[var(--nc-border-light)] rounded-lg shadow-[0_0_30px_rgba(0,255,255,0.3)] flex flex-col overflow-hidden`} style={docked ? undefined : panelStyle}>
           <div className="flex items-center justify-between px-3 py-2 bg-[var(--nc-header-bg)] border-b-2 border-[var(--nc-border-dark)] shrink-0">
             <div className="flex items-center gap-2">
               <span className="text-black font-bold text-sm">Nono</span>
@@ -494,7 +583,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
             <button onClick={() => { if (docked && onToggleDock) onToggleDock(); else setIsOpen(false); }} aria-label="Cerrar" className="text-black hover:text-red-500 font-bold leading-none px-1"><X className="w-4 h-4" /></button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1 px-2 py-1 bg-[var(--nc-bg-deep)] border-b border-[var(--nc-border-dark)] shrink-0">
+          <div className="flex flex-nowrap items-center gap-1 px-2 py-1 bg-[var(--nc-bg-deep)] border-b border-[var(--nc-border-dark)] shrink-0 overflow-x-auto nc-x-scroll [&>button]:shrink-0">
             <button onClick={handleClearChat} aria-label="Limpiar chat" className="text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] border border-[var(--nc-border-dark)] rounded px-1.5 py-0.5 text-[10px] font-bold"><Trash2 className="w-3.5 h-3.5" /></button>
             <button onClick={handleCopyLast} aria-label="Copiar último" className="text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] border border-[var(--nc-border-dark)] rounded px-1.5 py-0.5 text-[10px] font-bold"><Clipboard className="w-3.5 h-3.5" /></button>
             {onNewPrompt && <button onClick={handleNewPromptClick} aria-label="Nuevo chat" className="text-[var(--nc-text-accent)] hover:bg-[var(--nc-bg-hover)] border border-[var(--nc-border-dark)] rounded px-1.5 py-0.5 text-[10px] font-bold"><Plus className="w-3.5 h-3.5" /></button>}
@@ -547,7 +636,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
                       'Immer animieren, auch wenn das System weniger Bewegung möchte'
                     )
               }
-              className={`ml-auto flex items-center gap-1 border rounded px-1.5 py-0.5 text-[10px] font-bold ${memory.ui.forceMotion ? 'bg-[var(--nc-active-bg)] text-black border-[var(--nc-text-accent)]' : 'text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] border-[var(--nc-border-dark)]'}`}
+              className={`flex shrink-0 items-center gap-1 border rounded px-1.5 py-0.5 text-[10px] font-bold ${memory.ui.forceMotion ? 'bg-[var(--nc-active-bg)] text-black border-[var(--nc-text-accent)]' : 'text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] border-[var(--nc-border-dark)]'}`}
             >
               <Activity className="w-3.5 h-3.5" />
               {lang === 'es' ? 'animar' : lang === 'de' ? 'animieren' : 'animate'}
@@ -555,7 +644,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
           </div>
 
           {(onOpenWorkbench || onOpenCompile || onOpenGallery || onOpenSearch) && (
-            <div className="flex flex-wrap gap-1 px-2 py-1 bg-[var(--nc-bg-deep)] border-b border-[var(--nc-border-dark)] shrink-0">
+            <div className="flex flex-nowrap gap-1 px-2 py-1 bg-[var(--nc-bg-deep)] border-b border-[var(--nc-border-dark)] shrink-0 overflow-x-auto nc-x-scroll [&>button]:shrink-0">
               {onOpenWorkbench && <ActionChip icon={PanelRight} label={lang === 'es' ? 'Workbench' : 'Workbench'} onClick={() => { onOpenWorkbench(); setExpression('happy'); }} />}
               {onOpenCompile && <ActionChip icon={Hammer} label={lang === 'es' ? 'Compilar' : 'Compile'} onClick={() => { onOpenCompile(); setExpression('happy'); }} color="yellow" />}
               {onOpenGallery && <ActionChip icon={Library} label={lang === 'es' ? 'Galería' : 'Gallery'} onClick={() => { onOpenGallery(); setExpression('happy'); }} />}
@@ -574,10 +663,10 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-[var(--nc-bg-deep)]">
+          <div data-testid="nono-messages" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 space-y-2 bg-[var(--nc-bg-deep)]">
             {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.fromUser ? 'justify-end' : 'justify-start'}`}>
-                <div data-testid={msg.fromUser ? 'nono-user-bubble' : 'nono-message-bubble'} className={`nc-x-scroll max-w-[85%] px-3 py-1.5 rounded-lg text-xs ${msg.fromUser ? 'bg-[var(--nc-active-bg)] text-black font-bold' : 'bg-[var(--nc-bg-deep)] text-[var(--nc-text)] border border-[var(--nc-border-dark)]'}`}>
+                <div data-testid={msg.fromUser ? 'nono-user-bubble' : 'nono-message-bubble'} className={`max-w-[85%] break-words px-3 py-1.5 rounded-lg text-xs ${msg.fromUser ? 'bg-[var(--nc-active-bg)] text-black font-bold' : 'bg-[var(--nc-bg-deep)] text-[var(--nc-text)] border border-[var(--nc-border-dark)]'}`}>
                   <p>{msg.text}</p>
                   <span className="text-[9px] opacity-50 block text-right">{msg.timestamp}</span>
                 </div>
@@ -588,7 +677,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
           </div>
 
           <div className="flex gap-1 p-2 bg-[var(--nc-bg-deep)] border-t border-[var(--nc-border-dark)] shrink-0">
-            <input ref={inputRef} type="text" value={inputValue} onChange={e => setInputValue(e.target.value)} onKeyDown={handleKeyDown} placeholder={lang === 'es' ? 'Escribe...' : lang === 'de' ? 'Eingabe...' : 'Type...'} className="flex-1 bg-[var(--nc-bg-panel)] text-[var(--nc-text)] text-xs px-2 py-1.5 rounded border border-[var(--nc-border-dark)] outline-none placeholder:text-[var(--nc-text)]/40 focus:border-[var(--nc-border-light)]" />
+            <input ref={inputRef} type="text" value={inputValue} onChange={e => setInputValue(e.target.value)} onKeyDown={handleKeyDown} placeholder={lang === 'es' ? 'Escribe...' : lang === 'de' ? 'Eingabe...' : 'Type...'} className="min-w-0 flex-1 bg-[var(--nc-bg-panel)] text-[var(--nc-text)] text-xs px-2 py-1.5 rounded border border-[var(--nc-border-dark)] outline-none placeholder:text-[var(--nc-text)]/40 focus:border-[var(--nc-border-light)]" />
             <button onClick={handleSend} aria-label="Enviar" className="nc-button !px-2 !py-1 text-xs font-bold flex items-center gap-1"><Send className="w-3.5 h-3.5" /></button>
           </div>
         </div>
@@ -651,7 +740,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
           show3D={true}
           busy={busy}
           idleGaze={gazeIdle}
-          variant={memory.ui.orbSkin ? 'orb' : 'classic'}
+          variant={resolveNonoSkin(memory.ui)}
           orbColors={memory.ui.orbColors}
           classicAccent={memory.ui.classicAccent}
         />
@@ -673,7 +762,7 @@ FloatingAssistant.displayName = 'FloatingAssistant';
 /** Chip de acción reutilizable */
 interface ActionChipProps { icon: LucideIcon; label: string; onClick: () => void; color?: 'cyan' | 'yellow'; }
 const ActionChip = ({ icon: Icon, label, onClick, color = 'cyan' }: ActionChipProps) => (
-  <button onClick={onClick} className={`flex items-center gap-1 text-[9px] font-bold ${color === 'yellow' ? 'text-[var(--nc-text-accent)]' : 'text-[var(--nc-text)]'} bg-[var(--nc-bg-main)] hover:bg-[var(--nc-header-bg)] hover:text-black border border-[var(--nc-border-light)]/60 rounded px-1.5 py-0.5`}>
+  <button onClick={onClick} className={`flex shrink-0 items-center gap-1 text-[9px] font-bold ${color === 'yellow' ? 'text-[var(--nc-text-accent)]' : 'text-[var(--nc-text)]'} bg-[var(--nc-bg-main)] hover:bg-[var(--nc-header-bg)] hover:text-black border border-[var(--nc-border-light)]/60 rounded px-1.5 py-0.5`}>
     <Icon className="w-3 h-3" /> {label}
   </button>
 );

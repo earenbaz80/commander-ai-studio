@@ -73,6 +73,29 @@ describe('FloatingAssistant (Nono)', () => {
       expect(getExpression()).toBe('cool');
     });
 
+    test('el orbe procesando mira arriba, asiente y dice que sí', () => {
+      localStorage.setItem('nono-memory-v1', JSON.stringify({ ui: { orbSkin: true } }));
+      render(<FloatingAssistant lang="es" busy />);
+
+      const face = document.querySelector(
+        'svg[data-variant="orb"] [data-testid="nono-orb-busy-face"]'
+      );
+      expect(face).toBeTruthy();
+      expect(face?.getAttribute('data-look')).toBe('up');
+      expect(document.querySelector('svg[data-variant="orb"] .nono-orb-affirm')).toBeTruthy();
+      expect(document.querySelector('.nono-orb-rotor')).toBeNull();
+      expect(document.querySelector('.nono-orb-latitudes')).toBeNull();
+      // La cara de proceso sustituye a los ojos normales, no los oculta.
+      expect(screen.queryByTestId('nono-orb-eyes')).toBeNull();
+      expect(screen.getByText('¡Sí! Voy con ello.')).toBeInTheDocument();
+      expect(screen.queryByText('Procesando…')).toBeNull();
+
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      expect(screen.getByText('¡Sí! Voy con ello.')).toBeInTheDocument();
+    });
+
     test('se ancla a la línea del chat cuando existe', () => {
       const divider = document.createElement('div');
       divider.setAttribute('data-chat-divider', '');
@@ -102,6 +125,17 @@ describe('FloatingAssistant (Nono)', () => {
       fireEvent.click(getHead());
       expect(document.querySelector('.nono-panel')).toBeInTheDocument();
       expect(screen.getByText('Nono')).toBeInTheDocument();
+    });
+
+    test('el panel se adapta a la ventana y la lista de mensajes queda desplazable', () => {
+      render(<FloatingAssistant lang="es" />);
+      fireEvent.click(getHead());
+
+      const panel = document.querySelector('.nono-panel') as HTMLElement;
+      const messages = screen.getByTestId('nono-messages');
+      expect(panel.style.height).not.toBe('320px');
+      expect(Number.parseInt(panel.style.height, 10)).toBeGreaterThan(320);
+      expect(messages).toHaveClass('min-h-0', 'overflow-y-auto', 'overscroll-contain');
     });
 
     test('el saludo es un mensaje de Nono (no del usuario)', () => {
@@ -383,39 +417,44 @@ describe('FloatingAssistant (Nono)', () => {
         ({ left: 480, top: 280, right: 520, bottom: 320, width: 40, height: 40, x: 480, y: 280 }) as DOMRect;
     };
 
-    const getPupil = () =>
-      document.querySelector('svg[data-expression] circle[fill="#000000"]') as SVGCircleElement | null;
+    const getEye = () =>
+      document.querySelector('svg[data-expression] rect.nono-eye-square') as SVGRectElement | null;
 
     test('los ojos siguen el puntero con una interpolación corta', () => {
       render(<FloatingAssistant lang="es" />);
       stubHeadRect();
 
-      // Sin movimiento, la pupila izquierda está centrada en (20, 38).
-      expect(Number(getPupil()?.getAttribute('cx'))).toBe(20);
-      expect(Number(getPupil()?.getAttribute('cy'))).toBe(38);
+      // Sin movimiento, el ojo está centrado en (20, 38); el tamaño lo decide
+      // la expresión, así que se mide en vez de fijarlo.
+      const initial = getEye() as SVGRectElement;
+      const size = Number(initial.getAttribute('width'));
+      const initialX = Number(initial.getAttribute('x'));
+      const initialY = Number(initial.getAttribute('y'));
+      const centerX = initialX + size / 2;
+      const centerY = initialY + size / 2;
+      expect(centerX).toBe(20);
+      expect(centerY).toBe(38);
 
       // El primer frame sólo recorre una parte del camino: no salta al cursor.
       fireEvent.mouseMove(window, { clientX: 1000, clientY: 300 });
-      expect(Number(getPupil()?.getAttribute('cx'))).toBe(20);
       act(() => { vi.advanceTimersByTime(16); });
-      const firstStepX = Number(getPupil()?.getAttribute('cx'));
-      expect(firstStepX).toBeGreaterThan(20);
-      expect(firstStepX).toBeLessThan(20.5);
+      const firstStepX = Number(getEye()?.getAttribute('x')) + size / 2;
+      expect(firstStepX).toBeGreaterThan(centerX);
+      expect(firstStepX).toBeLessThan(centerX + 0.5);
 
       // En unos cientos de milisegundos alcanza el tope horizontal.
       act(() => { vi.advanceTimersByTime(400); });
-      expect(Number(getPupil()?.getAttribute('cx'))).toBeCloseTo(20.5, 1);
-      expect(Number(getPupil()?.getAttribute('cy'))).toBeCloseTo(38, 1);
+      expect(Number(getEye()?.getAttribute('x')) + size / 2).toBeCloseTo(centerX + 0.5, 1);
 
       // Un salto al eje vertical también se interpola desde la posición actual.
       fireEvent.mouseMove(window, { clientX: 500, clientY: 800 });
       act(() => { vi.advanceTimersByTime(16); });
-      const firstStepY = Number(getPupil()?.getAttribute('cy'));
-      expect(firstStepY).toBeGreaterThan(38);
-      expect(firstStepY).toBeLessThan(38.5);
+      const firstStepY = Number(getEye()?.getAttribute('y')) + size / 2;
+      expect(firstStepY).toBeGreaterThan(centerY);
+      expect(firstStepY).toBeLessThan(centerY + 0.5);
 
       act(() => { vi.advanceTimersByTime(400); });
-      expect(Number(getPupil()?.getAttribute('cy'))).toBeCloseTo(38.5, 1);
+      expect(Number(getEye()?.getAttribute('y')) + size / 2).toBeCloseTo(centerY + 0.5, 1);
     });
 
     test('con la mirada instantánea el ojo salta al puntero en el mismo evento', () => {
@@ -423,14 +462,72 @@ describe('FloatingAssistant (Nono)', () => {
       render(<FloatingAssistant lang="es" />);
       stubHeadRect();
 
-      // Sin avanzar el reloj: la pupila ya está en el tope tras el evento.
+      const initial = getEye() as SVGRectElement;
+      const size = Number(initial.getAttribute('width'));
+      const centerX = Number(initial.getAttribute('x')) + size / 2;
+      const centerY = Number(initial.getAttribute('y')) + size / 2;
+
+      // Sin avanzar el reloj: la mirada ya está en el tope tras el evento.
       fireEvent.mouseMove(window, { clientX: 1000, clientY: 300 });
-      expect(Number(getPupil()?.getAttribute('cx'))).toBeCloseTo(20.5, 5);
-      expect(Number(getPupil()?.getAttribute('cy'))).toBeCloseTo(38, 5);
+      expect(Number(getEye()?.getAttribute('x')) + size / 2).toBeCloseTo(centerX + 0.5, 5);
 
       fireEvent.mouseMove(window, { clientX: 500, clientY: 800 });
-      expect(Number(getPupil()?.getAttribute('cx'))).toBeCloseTo(20, 5);
-      expect(Number(getPupil()?.getAttribute('cy'))).toBeCloseTo(38.5, 5);
+      expect(Number(getEye()?.getAttribute('y')) + size / 2).toBeCloseTo(centerY + 0.5, 5);
+    });
+
+    test('los ojos cuadrados parpadean con un cierre de persiana', () => {
+      const randomSpy = vi.spyOn(Math, 'random')
+        .mockReturnValueOnce(0) // primer parpadeo a 3500 ms
+        .mockReturnValueOnce(0) // siguiente a 7000 ms
+        .mockReturnValue(0.99); // sin doble parpadeo
+      render(<FloatingAssistant lang="es" />);
+
+      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(false);
+
+      // El primer parpadeo llega a los 3500 ms, después de que el saludo haya
+      // devuelto la expresión a neutral.
+      act(() => { vi.advanceTimersByTime(3500); });
+      expect(getEye()).not.toBeNull();
+      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(true);
+      expect(getSvg().getAttribute('data-blink')).toBe('true');
+
+      // El cierre dura 180 ms y luego el ojo vuelve a abrirse.
+      act(() => { vi.advanceTimersByTime(180); });
+      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(false);
+      expect(getSvg().getAttribute('data-blink')).toBe('false');
+
+      // Con esta tirada no hay segundo cierre.
+      act(() => { vi.advanceTimersByTime(90); });
+      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(false);
+
+      // La cadencia normal vuelve a disparar el parpadeo a los 7000 ms.
+      act(() => { vi.advanceTimersByTime(3230); });
+      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(true);
+
+      randomSpy.mockRestore();
+    });
+
+    test('a veces encadena un segundo parpadeo', () => {
+      const randomSpy = vi.spyOn(Math, 'random')
+        .mockReturnValueOnce(0) // primer parpadeo a 3500 ms
+        .mockReturnValueOnce(0) // siguiente a 7000 ms
+        .mockReturnValue(0); // probabilidad de doble parpadeo
+      render(<FloatingAssistant lang="es" />);
+
+      act(() => { vi.advanceTimersByTime(3500); });
+      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(true);
+
+      act(() => { vi.advanceTimersByTime(180); });
+      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(false);
+
+      // Breve pausa y segundo cierre: el doble parpadeo dura 180 ms más.
+      act(() => { vi.advanceTimersByTime(90); });
+      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(true);
+
+      act(() => { vi.advanceTimersByTime(180); });
+      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(false);
+
+      randomSpy.mockRestore();
     });
   });
 
@@ -683,6 +780,36 @@ describe('FloatingAssistant (Nono)', () => {
       expect(getExpression()).toBe('error');
     });
 
+    test('un error durante el procesamiento retira la cara satisfecha y el «sí»', () => {
+      localStorage.setItem('nono-memory-v1', JSON.stringify({ ui: { orbSkin: true } }));
+      const { rerender } = render(
+        <FloatingAssistant lang="es" busy status={{ type: 'generating' }} />
+      );
+
+      expect(screen.getByTestId('nono-orb-busy-face')).toBeInTheDocument();
+      expect(screen.getByText('¡Sí! Voy con ello.')).toBeInTheDocument();
+
+      rerender(<FloatingAssistant lang="es" busy status={{ type: 'error' }} />);
+
+      expect(getExpression()).toBe('error');
+      expect(screen.queryByTestId('nono-orb-busy-face')).toBeNull();
+      expect(screen.getByTestId('nono-orb-eyes')).toBeInTheDocument();
+      expect(screen.queryByText('¡Sí! Voy con ello.')).toBeNull();
+      expect(screen.getByText('⚠️ Algo falló. ¿Reviso?')).toBeInTheDocument();
+    });
+
+    test('un error no se convierte en «¡Listo!» al terminar', () => {
+      const { rerender } = render(
+        <FloatingAssistant lang="es" busy status={{ type: 'error' }} />
+      );
+
+      rerender(<FloatingAssistant lang="es" busy={false} status={{ type: 'error' }} />);
+
+      expect(getExpression()).toBe('error');
+      expect(screen.getByText('⚠️ Algo falló. ¿Reviso?')).toBeInTheDocument();
+      expect(screen.queryByText('¡Listo!')).toBeNull();
+    });
+
     test('al terminar (done) se felicita y vuelve a neutral', () => {
       render(<FloatingAssistant lang="es" status={{ type: 'done' }} />);
       expect(getExpression()).toBe('happy');
@@ -834,6 +961,46 @@ describe('FloatingAssistant (Nono)', () => {
 
       const saved = JSON.parse(localStorage.getItem('nono-memory-v1')!);
       expect(saved.ui.forceMotion).toBe(true);
+    });
+  });
+
+  describe('asentimiento del orbe al procesar', () => {
+    const rootOn = () => document.documentElement.classList.contains('nono-orb-rotate-on');
+    const rootOff = () => document.documentElement.classList.contains('nono-orb-rotate-off');
+
+    beforeEach(() => {
+      // El root es compartido: ningún caso debe heredar el estado del anterior.
+      document.documentElement.classList.remove('nono-orb-rotate-on', 'nono-orb-rotate-off');
+    });
+
+    test('por defecto el asentimiento queda activado', () => {
+      render(<FloatingAssistant lang="es" />);
+
+      expect(rootOn()).toBe(true);
+      expect(rootOff()).toBe(false);
+    });
+
+    test('el ajuste guardado desactiva el asentimiento aunque el sistema lo permita', () => {
+      localStorage.setItem(
+        'nono-memory-v1',
+        JSON.stringify({ ui: { orbSkin: true, orbRotate: false } })
+      );
+      render(<FloatingAssistant lang="es" busy />);
+
+      expect(rootOn()).toBe(false);
+      expect(rootOff()).toBe(true);
+      // La cara sigue montada; el CSS decide si asiente.
+      expect(document.querySelector('.nono-orb-affirm')).toBeTruthy();
+    });
+
+    test('desmontar limpia las clases del root', () => {
+      const { unmount } = render(<FloatingAssistant lang="es" />);
+      expect(rootOn()).toBe(true);
+
+      unmount();
+
+      expect(rootOn()).toBe(false);
+      expect(rootOff()).toBe(false);
     });
   });
 });

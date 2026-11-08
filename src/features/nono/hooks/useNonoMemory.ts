@@ -64,6 +64,14 @@ export function useNonoMemory() {
     }));
   }, [commit]);
 
+  /** Aplica varias claves de `ui` en una sola escritura. */
+  const updateUIPatch = useCallback((patch: Partial<NonoMemory['ui']>) => {
+    commit(prev => ({
+      ...prev,
+      ui: { ...prev.ui, ...patch },
+    }));
+  }, [commit]);
+
   /** Cambia sólo las claves de color indicadas, conservando el resto. */
   const updateOrbColors = useCallback((patch: Partial<NonoOrbColors>) => {
     commit(prev => ({
@@ -119,6 +127,7 @@ export function useNonoMemory() {
     updateStack,
     updatePattern,
     updateUI,
+    updateUIPatch,
     updateOrbColors,
     recordInteraction,
     getSuggestions,
