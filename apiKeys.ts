@@ -77,12 +77,15 @@ export function handleApiKeyGet(req: Request, res: Response) {
     if (!key || !VALID_KEYS.has(key)) {
       return res.status(400).json({ success: false, error: 'Key inválida' });
     }
+    // Sólo se informa de la presencia: el valor vive en la cookie httpOnly y
+    // no sale nunca del servidor. Cualquier JS del origen que llamara a este
+    // endpoint se llevaba todas las claves en claro.
     const cookies = (req as any).cookies || {};
-    const value = cookies[`${COOKIE_PREFIX}${key}`] || '';
-    return res.json({ success: true, key, value });
+    const configured = !!cookies[`${COOKIE_PREFIX}${key}`];
+    return res.json({ success: true, key, configured });
   } catch (error: any) {
-    console.error('Error leyendo API key:', error);
-    return res.status(500).json({ success: false, error: 'Error leyendo API key' });
+    console.error('Error leyendo estado de API key:', error);
+    return res.status(500).json({ success: false, error: 'Error leyendo estado de API key' });
   }
 }
 

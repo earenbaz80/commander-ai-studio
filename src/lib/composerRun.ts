@@ -6,7 +6,6 @@
  * parseo y la llamada sin montar React, y deja la pantalla ocupándose de
  * ordenar, no de hablar con el proveedor.
  */
-import { getCachedApiKey } from './apiKeys';
 import { ALL_MODELS } from '../data/models';
 import { resolveChatRoute } from './aiRouting';
 import { resolveContextMentions } from '../data/contextMentions';
@@ -102,7 +101,6 @@ Genera los archivos modificados con el código completo para cada uno.`;
     ? {
         prompt: userPrompt,
         model: selectedModel,
-        anthropicApiKey: parameters.anthropicApiKey || getCachedApiKey('ANTHROPIC_API_KEY') || undefined,
         systemInstruction: SYSTEM_PROMPT,
         temperature: 0.2,
         maxTokens: 4096,
@@ -122,7 +120,6 @@ Genera los archivos modificados con el código completo para cada uno.`;
           model: selectedModel,
           temperature: 0.2,
           maxTokens: 4096,
-          apiKey: getCachedApiKey('GEMINI_API_KEY') || undefined,
         };
 
   let data: any;
