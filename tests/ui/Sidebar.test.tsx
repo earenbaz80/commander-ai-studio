@@ -307,6 +307,22 @@ describe('Sidebar (panel lateral agrupado)', () => {
     expect(screen.getByTestId('session-row-th-uno')).toBeInTheDocument();
   });
 
+  test('copia la ruta local del proyecto desde su menú', () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, writable: true });
+    render(
+      <Sidebar
+        {...baseProps()}
+        serverSessions={[{ id: 'th-uno', title: 'Refactor', project_path: 'C:/repo/uno' }]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Opciones del proyecto uno' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copiar ruta' }));
+    expect(writeText).toHaveBeenCalledWith('C:/repo/uno');
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
   test('aplica el archivo de la cuenta y reconoce un proyecto por nombre', () => {
     render(
       <Sidebar
