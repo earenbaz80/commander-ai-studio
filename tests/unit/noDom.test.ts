@@ -126,6 +126,10 @@ export interface Uso {
  * Una guarda guardada en una variable (`const enNode = typeof window ===
  * 'undefined'`) no exime: el escáner no puede saber si luego se usa, así que la
  * decisión se ve en el mensaje en vez de silenciarse.
+ *
+ * Un identificador dentro de un literal con comillas simples o dobles no es un
+ * uso: un fixture puede contener `document.body` sin ejecutarlo. Las plantillas
+ * se siguen escaneando porque `${...}` sí contiene código.
  */
 export function usosSinGuardar(fuente: string): Uso[] {
   const originales = fuente.split('\n');
@@ -238,6 +242,11 @@ export function usosSinGuardar(fuente: string): Uso[] {
 
     for (const evento of eventos) {
       recorrer(evento.columna);
+
+      // Un literal de texto no ejecuta nada: un fixture como
+      // 'document.body...' no es un acceso al DOM. Las plantillas no se saltan
+      // porque `${...}` sí contiene código.
+      if (enCadena === "'" || enCadena === '"') continue;
 
       if (evento.tipo === 'guarda') {
         // Sólo la condición de un `if` delimita un bloque: una asignación no guarda nada.
@@ -617,6 +626,17 @@ if (typeof document === 'undefined') throw new Error('sin DOM');`;
     const fuente = `// Aquí hablábamos de window y de document sin tocarlos.
 export const nada = 1;`;
     expect(usos(fuente)).toEqual([]);
+  });
+
+  test('un literal de texto no es un uso, pero el código real sí', () => {
+    const fuente = `const fixture = 'document.body.dataset.publicado = "si";';
+export const real = document.title;`;
+    expect(usos(fuente)).toEqual(['document · export const real = document.title;']);
+  });
+
+  test('cerrar un literal devuelve el escáner al código de la línea', () => {
+    const fuente = `const fixture = 'document.title'; const real = window.location.href;`;
+    expect(usos(fuente)).toEqual([`window · ${fuente}`]);
   });
 
   test('una guarda con la condición partida en varias líneas cubre lo de después', () => {
