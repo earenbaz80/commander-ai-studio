@@ -319,6 +319,55 @@ describe('App (integración)', { timeout: 20_000 }, () => {
     });
   });
 
+  test('copia la ruta del proyecto desde App y confirma con el aviso', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    const thread = {
+      id: 'th-copiar-ruta',
+      title: 'Proyecto abierto',
+      project_path: 'C:/proj',
+      status: 'active',
+      model: 'gemini-3.5-flash',
+      agent_mode: 'chat',
+      execution_mode: 'build',
+      turn_state: 'idle',
+      created_at: 1,
+      updated_at: 2,
+      pinned: 0,
+      project_id: null,
+      state_json: null,
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url) === '/api/threads') {
+        return Promise.resolve({ ok: true, json: async () => ({ threads: [thread] }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ roots: [] }) });
+    });
+    global.fetch = fetchMock as any;
+
+    try {
+      await bootApp();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Opciones del proyecto proj' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copiar ruta' }));
+
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith('C:/proj'));
+      expect(await screen.findByText('Ruta copiada: C:/proj')).toBeInTheDocument();
+      expect(screen.queryByText(/No se pudo copiar la ruta/)).toBeNull();
+    } finally {
+      if (clipboardDescriptor) {
+        Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+      } else {
+        Reflect.deleteProperty(navigator, 'clipboard');
+      }
+    }
+  });
+
   test('el atajo Ctrl+K abre la paleta y Escape la cierra', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ roots: [] }) });
     await bootApp();
