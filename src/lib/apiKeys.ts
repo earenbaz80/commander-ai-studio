@@ -1,16 +1,31 @@
 /**
- * Gestor de API keys seguras vía cookies httpOnly.
- * Las keys nunca se almacenan en localStorage ni en el código del cliente.
+ * Gestor de API keys del cliente: sólo sabe si cada clave está configurada.
+ *
+ * El valor vive en una cookie httpOnly y el servidor no lo devuelve nunca, así
+ * que el navegador no puede leerlo ni cachearlo. Lo que sí se cachea es el
+ * booleano de `GET /api/keys` para que la UI pinte el estado sin una petición
+ * por render.
  */
-const API_KEYS_ENDPOINT = '/api/keys';
+import { isApiKeyConfigured, setApiKeyConfigured } from './apiKeyFlags';
 
-const KEY_CACHE: Record<string, string> = {};
+export { isApiKeyConfigured };
 
 /**
- * Allowlist del cliente: las keys que el panel carga y guarda por cookie.
+ * Compatibilidad temporal para llamadas que todavía no se migraron.
+ * No lee localStorage ni devuelve valores: el servidor resuelve la cookie.
+ * @deprecated Usa `isApiKeyConfigured` o deja que el servidor lea la cookie.
+ */
+export function getCachedApiKey(_key: string): string | undefined {
+  return undefined;
+}
+
+const API_KEYS_ENDPOINT = '/api/keys';
+
+/**
+ * Allowlist del cliente: las keys que el panel guarda y cuyo estado consulta.
  *
  * Espejo de `VALID_KEYS` en `apiKeys.ts` (servidor). Una lista más corta deja
- * keys del panel sin precargar; una más larga manda un POST que el servidor
+ * keys del panel sin estado; una más larga manda un POST que el servidor
  * rechaza con 400. `tests/apiKeys.test.ts` comprueba que no divergen.
  */
 export const CLIENT_VALID_KEYS: readonly string[] = [
@@ -32,32 +47,15 @@ export const CLIENT_VALID_KEYS: readonly string[] = [
   'GITHUB_TOKEN',
 ];
 
-export function getCachedApiKey(key: string): string | undefined {
-  if (Object.prototype.hasOwnProperty.call(KEY_CACHE, key)) {
-    return KEY_CACHE[key] || undefined;
-  }
-  try {
-    const v = localStorage.getItem(key);
-    if (v) {
-      KEY_CACHE[key] = v;
-      return v;
-    }
-  } catch {}
-  return undefined;
-}
-
+/** Refresca el estado de todas las claves con una sola petición. */
 export async function loadAllApiKeysIntoCache(): Promise<void> {
-  for (const k of CLIENT_VALID_KEYS) {
-    try {
-      const v = await getApiKey(k);
-      if (v) KEY_CACHE[k] = v;
-      else if (!(k in KEY_CACHE)) KEY_CACHE[k] = '';
-    } catch {
-      // keep cache state
-    }
+  const keys = await listApiKeys();
+  for (const key of CLIENT_VALID_KEYS) {
+    setApiKeyConfigured(key, keys[key] === true);
   }
 }
 
+/** Guarda la clave en la cookie httpOnly del servidor. El valor no se cachea. */
 export async function saveApiKey(key: string, value: string): Promise<boolean> {
   try {
     const res = await fetch(API_KEYS_ENDPOINT, {
@@ -68,7 +66,7 @@ export async function saveApiKey(key: string, value: string): Promise<boolean> {
     });
     const data = await res.json();
     if (data.success === true) {
-      KEY_CACHE[key] = value;
+      setApiKeyConfigured(key, value.trim().length > 0);
       try { localStorage.removeItem(key); } catch {}
       return true;
     }
@@ -79,16 +77,22 @@ export async function saveApiKey(key: string, value: string): Promise<boolean> {
   }
 }
 
-export async function getApiKey(key: string): Promise<string> {
+/**
+ * Pregunta al servidor si la clave está configurada. Devuelve sólo el booleano:
+ * el endpoint no expone el valor.
+ */
+export async function checkApiKeyConfigured(key: string): Promise<boolean> {
   try {
     const res = await fetch(`${API_KEYS_ENDPOINT}/${encodeURIComponent(key)}`, {
       credentials: 'include',
     });
     const data = await res.json();
-    return data.success === true ? data.value || '' : '';
+    const configured = data.success === true && data.configured === true;
+    setApiKeyConfigured(key, configured);
+    return configured;
   } catch (e) {
-    console.error('Error leyendo API key:', e);
-    return '';
+    console.error('Error leyendo estado de API key:', e);
+    return false;
   }
 }
 
@@ -102,7 +106,7 @@ export async function deleteApiKey(key: string): Promise<boolean> {
     });
     const data = await res.json();
     if (data.success === true) {
-      delete KEY_CACHE[key];
+      setApiKeyConfigured(key, false);
       try { localStorage.removeItem(key); } catch {}
       return true;
     }
@@ -113,19 +117,28 @@ export async function deleteApiKey(key: string): Promise<boolean> {
   }
 }
 
+/** Estado de todas las claves según el servidor (nunca incluye valores). */
 export async function listApiKeys(): Promise<Record<string, boolean>> {
   try {
     const res = await fetch(API_KEYS_ENDPOINT, {
       credentials: 'include',
     });
     const data = await res.json();
-    return data.success === true ? data.keys || {} : {};
+    if (data.success !== true || !data.keys) return {};
+    for (const [key, configured] of Object.entries(data.keys)) {
+      setApiKeyConfigured(key, configured === true);
+    }
+    return data.keys || {};
   } catch (e) {
     console.error('Error listando API keys:', e);
     return {};
   }
 }
 
+/**
+ * Migra las claves que quedaron en localStorage a cookies httpOnly.
+ * Sólo escribe: los valores no vuelven al cliente después.
+ */
 export async function migrateLegacyKeys(): Promise<void> {
   const legacyKeys = [
     'GEMINI_API_KEY',

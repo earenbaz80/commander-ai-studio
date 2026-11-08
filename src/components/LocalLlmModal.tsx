@@ -1,4 +1,3 @@
-import { getCachedApiKey } from '../lib/apiKeys';
 import { deText } from '../i18n/de';
 /**
  * Modal "Configurar LLM local" (accesible desde el grupo Modelos del sidebar).
@@ -16,7 +15,7 @@ import { deText } from '../i18n/de';
 import React from 'react';
 import { Server, Cpu, PlugZap, CheckCircle2, AlertTriangle, Loader2, Save, Cable, Boxes, Download, Search, Trash2 } from 'lucide-react';
 import { Language } from '../i18n/translations';
-import { saveApiKey, getApiKey } from '../lib/apiKeys';
+import { saveApiKey, checkApiKeyConfigured } from '../lib/apiKeys';
 import {
   testLocalLlm,
   type LocalLlmRuntime,
@@ -52,6 +51,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
   const [detected, setDetected] = React.useState<{ ollama?: boolean; lmstudio?: boolean; vllm?: boolean } | null>(null);
 
   // Pull models UI state
+  const [customKeyConfigured, setCustomKeyConfigured] = React.useState(false);
   const [pullTab, setPullTab] = React.useState<'popular' | 'installed'>('popular');
   const [pullSearch, setPullSearch] = React.useState('');
   const [pullingModel, setPullingModel] = React.useState<string | null>(null);
@@ -64,31 +64,25 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
     if (!isOpen) return;
     let alive = true;
     try {
-      setOllamaHost(getCachedApiKey('OLLAMA_HOST') || OLLAMA_DEFAULT);
-      setLmstudioHost(getCachedApiKey('LMSTUDIO_HOST') || LMSTUDIO_DEFAULT);
-      setBaseUrl(getCachedApiKey('CUSTOM_BASE_URL') || OPENAI_DEFAULT);
-      setApiKey(getCachedApiKey('CUSTOM_API_KEY') || '');
-      setModel(getCachedApiKey('CUSTOM_MODEL') || '');
+      setOllamaHost(localStorage.getItem('OLLAMA_HOST') || OLLAMA_DEFAULT);
+      setLmstudioHost(localStorage.getItem('LMSTUDIO_HOST') || LMSTUDIO_DEFAULT);
+      setBaseUrl(localStorage.getItem('CUSTOM_BASE_URL') || OPENAI_DEFAULT);
+      setModel(localStorage.getItem('CUSTOM_MODEL') || '');
+      // La clave no se precarga: el campo queda vacío y el placeholder dice
+      // si ya hay una configurada. Escribir reemplaza la cookie.
+      setApiKey('');
     } catch {
       /* almacenamiento no disponible */
     }
     setResult(null);
     setSavedFlash(false);
     (async () => {
-      const [h, ls, b, k, m] = await Promise.all([
-        getApiKey('OLLAMA_HOST'),
-        getApiKey('LMSTUDIO_HOST'),
-        getApiKey('CUSTOM_BASE_URL'),
-        getApiKey('CUSTOM_API_KEY'),
-        getApiKey('CUSTOM_MODEL'),
-      ]);
+      // Los hosts/modelos viven en localStorage (no son secretos y el propio
+      // modal los escribe ahí). De la clave sólo se pregunta si existe.
+      const customKey = await checkApiKeyConfigured('CUSTOM_API_KEY');
       if (!alive) return;
-      if (h) setOllamaHost(h);
-      if (ls) setLmstudioHost(ls);
-      if (b) setBaseUrl(b);
-      if (k) setApiKey(k);
-      if (m) setModel(m);
-      checkOllamaHealth(h || getCachedApiKey('OLLAMA_HOST') || OLLAMA_DEFAULT).then(setHealth);
+      setCustomKeyConfigured(customKey);
+      checkOllamaHealth(localStorage.getItem('OLLAMA_HOST') || OLLAMA_DEFAULT).then(setHealth);
     })();
     // Auto-detect running local LLMs
     setAutoDetecting(true);
@@ -216,11 +210,11 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
     } else {
       const url = baseUrl.trim();
       await saveApiKey('CUSTOM_BASE_URL', url);
-      await saveApiKey('CUSTOM_API_KEY', apiKey.trim());
+      // Campo vacío = «no tocar»: guardar '' borraría la clave existente.
+      if (apiKey.trim()) await saveApiKey('CUSTOM_API_KEY', apiKey.trim());
       await saveApiKey('CUSTOM_MODEL', model.trim());
       try {
         localStorage.setItem('CUSTOM_BASE_URL', url);
-        localStorage.setItem('CUSTOM_API_KEY', apiKey.trim());
         localStorage.setItem('CUSTOM_MODEL', model.trim());
       } catch {
         /* ignorar */
@@ -549,7 +543,7 @@ export const LocalLlmModal: React.FC<LocalLlmModalProps> = ({ isOpen, onClose, l
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   type="password"
-                  placeholder=""
+                  placeholder={customKeyConfigured ? '•••• configurada — escribe para cambiarla' : ''}
                   autoComplete="off"
                   className="w-full bg-[var(--nc-bg-deep)] text-white border border-[var(--nc-border-light)]/50 px-2 py-1.5 text-[11px] font-mono outline-none focus:border-[var(--nc-border-light)] placeholder:text-[var(--nc-text)]/20"
                 />

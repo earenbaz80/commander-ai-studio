@@ -19,25 +19,24 @@ import {
   MicOff,
   Loader2,
 } from 'lucide-react';
-import { getCachedApiKey } from '../../lib/apiKeys';
+import { isApiKeyConfigured } from '../../lib/apiKeys';
 import type { Language } from '../../i18n/translations';
 import type { RunMode } from '../../types/studio';
 import { MODEL_GROUPS, isLocalModelId, providerLabel, type ModelGroup } from './modelGroups';
 import { useConfiguredProviderIds } from '../../hooks/useConfiguredProviderIds';
 import { isModelDisabledByFilter } from '../../lib/providerFilters';
-import { lmStudioHostScope } from '../../lib/lmStudio';
 import { ModelPicker } from './ModelPicker';
 
 /** `true` si hay un servidor local configurado (Ollama, LM Studio u otro). */
 const hasLocalServer = (): boolean =>
-  !!(getCachedApiKey('OLLAMA_HOST') || getCachedApiKey('LMSTUDIO_HOST') || getCachedApiKey('CUSTOM_BASE_URL'));
+  isApiKeyConfigured('OLLAMA_HOST') || isApiKeyConfigured('LMSTUDIO_HOST') || isApiKeyConfigured('CUSTOM_BASE_URL');
 
+/** Etiqueta del servidor local. La URL ya no viaja al cliente. */
 const localServerLabel = (): string => {
-  const ollama = getCachedApiKey('OLLAMA_HOST');
-  if (ollama) return ollama;
-  const lmstudio = getCachedApiKey('LMSTUDIO_HOST');
-  if (lmstudio) return `LM Studio ${lmStudioHostScope(lmstudio)}`;
-  return getCachedApiKey('CUSTOM_BASE_URL') || '';
+  if (isApiKeyConfigured('OLLAMA_HOST')) return 'Ollama';
+  if (isApiKeyConfigured('LMSTUDIO_HOST')) return 'LM Studio';
+  if (isApiKeyConfigured('CUSTOM_BASE_URL')) return 'API compatible';
+  return '';
 };
 
 interface ComposerToolbarProps {

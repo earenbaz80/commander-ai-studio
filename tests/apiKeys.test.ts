@@ -134,13 +134,16 @@ test('apiKeys: rechaza body sin value', () => {
   assert.equal(res.cookies.length, 0);
 });
 
-test('apiKeys: get lee el valor de la cookie', () => {
+test('apiKeys: get sólo dice si la cookie existe, nunca el valor', () => {
   const req = mockReq({ query: { key: 'GEMINI_API_KEY' }, cookies: { ai_studio_GEMINI_API_KEY: 'AIzaFromCookie' } });
   const res = mockRes();
   handleApiKeyGet(req, res);
 
   assert.equal(res.statusCode, 200);
-  assert.equal(res.body.value, 'AIzaFromCookie');
+  assert.equal(res.body.success, true);
+  assert.equal(res.body.configured, true);
+  assert.ok(!('value' in res.body), 'la respuesta no debe tener campo value');
+  assert.ok(!JSON.stringify(res.body).includes('AIzaFromCookie'), 'el secreto no debe salir del servidor');
 });
 
 test('apiKeys: get acepta la key como param de ruta (GET /api/keys/:key)', () => {
@@ -155,14 +158,15 @@ test('apiKeys: get acepta la key como param de ruta (GET /api/keys/:key)', () =>
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.success, true);
-  assert.equal(res.body.value, 'AIzaDesdeParam');
+  assert.equal(res.body.configured, true);
+  assert.ok(!JSON.stringify(res.body).includes('AIzaDesdeParam'));
 });
 
-test('apiKeys: get devuelve vacío si no hay cookie', () => {
+test('apiKeys: get responde configured=false si no hay cookie', () => {
   const res = mockRes();
   handleApiKeyGet(mockReq({ query: { key: 'GEMINI_API_KEY' } }), res);
   assert.equal(res.body.success, true);
-  assert.equal(res.body.value, '');
+  assert.equal(res.body.configured, false);
 });
 
 test('apiKeys: get rechaza key inválida (no enumera)', () => {
