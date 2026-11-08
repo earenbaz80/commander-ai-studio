@@ -89,7 +89,7 @@ export async function pullRequestData(
   if (!token) {
     return {
       ok: false,
-      error: 'Falta GITHUB_TOKEN: definido en el entorno del servidor para que el agente consulte GitHub',
+      error: 'GitHub no está conectado: usa Ajustes → Extensiones → Integraciones o define GITHUB_TOKEN.',
       status: 400,
     };
   }
@@ -141,7 +141,7 @@ export async function commentOnPullRequest(
   if (!token) {
     return {
       ok: false,
-      error: 'Falta GITHUB_TOKEN: definido en el entorno del servidor para comentar en GitHub',
+      error: 'GitHub no está conectado: usa Ajustes → Extensiones → Integraciones o define GITHUB_TOKEN.',
       status: 400,
     };
   }

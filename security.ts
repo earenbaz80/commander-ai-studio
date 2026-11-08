@@ -63,6 +63,7 @@ export const AGENT_TOOLS = new Set([
   'ask_user',
   'github.pr',
   'github.comment',
+  'linear',
 ]);
 
 // ── Rutas sensibles: nunca se leen ni se buscan ──

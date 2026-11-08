@@ -1,4 +1,3 @@
-import { getCachedApiKey } from '../lib/apiKeys';
 import type { ChatMessage } from '../types/studio';
 import { AGENT_FUNCTION_DECLARATIONS } from './fnTools';
 import { toolDialectForModel, toOpenAITools, toAnthropicTools } from './providers';
@@ -137,14 +136,11 @@ ${ctx.toolSchema}`;
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: model.startsWith('custom/') ? (getCachedApiKey('CUSTOM_MODEL') || model) : model,
+        model,
         contents: `${system}\n\n${user}`,
         prompt: `${system}\n\n${user}`,
         temperature: 0.2,
         maxTokens: 2048,
-        openrouterApiKey: getCachedApiKey('OPENROUTER_API_KEY') || undefined,
-        ollamaHost: getCachedApiKey('OLLAMA_HOST') || undefined,
-        ...clientCredentialsFor(model, getCachedApiKey),
       }),
     });
 
@@ -160,14 +156,11 @@ ${ctx.toolSchema}`;
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: model.startsWith('custom/') ? (getCachedApiKey('CUSTOM_MODEL') || model) : model,
+          model,
           contents: `Tu respuesta anterior no fue JSON válido. Reemite EXACTAMENTE este JSON corregido, sin markdown ni texto extra:\n${cleaned.slice(0, 4000)}`,
           prompt: `Reemite solo JSON válido: ${cleaned.slice(0, 4000)}`,
           temperature: 0,
           maxTokens: 2048,
-          openrouterApiKey: getCachedApiKey('OPENROUTER_API_KEY') || undefined,
-          ollamaHost: getCachedApiKey('OLLAMA_HOST') || undefined,
-          ...clientCredentialsFor(model, getCachedApiKey),
         }),
       });
       if (!retry.ok) throw new Error(`LLM HTTP ${retry.status}`);
@@ -194,6 +187,15 @@ export interface LLMNativeResult {
    * ausente = el proveedor no lo declara (OpenAI/Ollama, servidores antiguos).
    */
   fallback?: { from: string; to: string } | null;
+}
+
+/** Lee una credencial del panel desde el almacenamiento del cliente. */
+function readClientKey(name: string): string | undefined {
+  try {
+    return typeof localStorage === 'undefined' ? undefined : localStorage.getItem(name) || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 // Tool-use nativo (function calling) por dialecto:
@@ -227,12 +229,10 @@ export async function callAgentLLMTools(
     contents: user,
     prompt: user,
     systemInstruction,
-    model: model.startsWith('custom/') ? (getCachedApiKey('CUSTOM_MODEL') || model) : model,
+    model,
     temperature: 0.2,
     maxTokens: 2048,
-    openrouterApiKey: getCachedApiKey('OPENROUTER_API_KEY') || undefined,
-    ollamaHost: getCachedApiKey('OLLAMA_HOST') || undefined,
-    ...clientCredentialsFor(model, getCachedApiKey),
+    ...clientCredentialsFor(model, readClientKey),
   };
 
   if (dialect === 'gemini') {

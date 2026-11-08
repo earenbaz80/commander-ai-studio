@@ -23,7 +23,7 @@ export const githubPrTool: ToolDefinition<GithubPrInput, any> = {
   id: 'github.pr',
   description:
     'Lee un pull request de GitHub: título, estado, autor, cuerpo y diff por archivo (recortado). ' +
-    'Acepta `repo` ("owner/repo") + `number`, o `url` del PR.',
+    'Acepta `repo` ("owner/repo") + `number`, o `url` del PR. Usa el conector OAuth o GITHUB_TOKEN.',
   danger: false,
   requiresApproval: () => false,
   // No toca rutas del proyecto: el root no pinta nada aquí.
@@ -34,7 +34,7 @@ export const githubPrTool: ToolDefinition<GithubPrInput, any> = {
 export const githubCommentTool: ToolDefinition<GithubCommentInput, any> = {
   id: 'github.comment',
   description:
-    'Publica un comentario en un pull request de GitHub. Requiere aprobación y un GITHUB_TOKEN con permiso de escritura.',
+    'Publica un comentario en un pull request de GitHub. Requiere aprobación y un token con permiso de escritura (conector OAuth o GITHUB_TOKEN).',
   danger: true,
   requiresApproval: () => true,
   run: async (input) => callAgentTool('github.comment', input ?? {}, { withRoot: false }),

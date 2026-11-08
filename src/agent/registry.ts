@@ -12,6 +12,7 @@ import { webFetchTool, webSearchTool, codeRunTool } from './tools/web';
 import { runFileChangeHooksTool } from './tools/hooks';
 import { worktreeCreateTool } from './tools/worktreeCreate';
 import { githubPrTool, githubCommentTool } from './tools/github';
+import { linearTool } from './tools/linear';
 import { mcpCallToolDef, mcpListToolDef } from './tools/mcp';
 import {
   gitStatusTool,
@@ -61,6 +62,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition<any, any>> = {
   [gitConflictTool.id]: gitConflictTool,
   [githubPrTool.id]: githubPrTool,
   [githubCommentTool.id]: githubCommentTool,
+  [linearTool.id]: linearTool,
 };
 
 export function getTool(id: string): ToolDefinition<any, any> | undefined {
