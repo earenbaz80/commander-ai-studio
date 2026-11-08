@@ -4,7 +4,10 @@ import { execFileSync } from 'node:child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { handleAgentRunTool, executeAgentTool } from '../agentTools.js';
+import {
+  handleAgentRunTool as handleAgentRunToolRaw,
+  executeAgentTool as executeAgentToolRaw,
+} from '../agentTools.js';
 import { addRoot, removeRoot } from '../projects.js';
 import { AGENT_TOOLS } from '../security.js';
 import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from '../src/agent/fnTools.js';
@@ -29,7 +32,40 @@ function mockRes() {
   return res;
 }
 
-const TEST_DIR = path.join(process.cwd(), 'tests', 'tmp');
+/**
+ * Root propio de esta suite.
+ *
+ * Las tools sin `root` usaban el cwd del repo y, con él, los permisos
+ * persistidos en `.commander/permissions.json`: un proyecto en readonly
+ * tumbaba los tests de escritura y de shell. Aquí todo pasa por un directorio
+ * temporal cuyos permisos fija el propio test, así que el resultado no depende
+ * de la configuración local de nadie.
+ */
+const WORK_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-tools-root-'));
+
+/** Inyecta el root de pruebas; un `root` explícito (gitRoot, dir…) manda. */
+function withTestRoot(input: any): any {
+  if (!input || typeof input !== 'object') return input;
+  const { root, ...rest } = input;
+  return { ...rest, root: root ?? WORK_ROOT };
+}
+
+const executeAgentTool = (
+  toolId: string,
+  input: any,
+  opts?: { signal?: AbortSignal; sessionId?: string },
+) => executeAgentToolRaw(toolId, withTestRoot(input), opts);
+
+const handleAgentRunTool = (req: any, res: any) => {
+  const body = req?.body;
+  const next =
+    body && typeof body === 'object'
+      ? { ...body, input: withTestRoot(body.input) }
+      : body;
+  return handleAgentRunToolRaw({ ...req, body: next }, res);
+};
+
+const TEST_DIR = path.join(WORK_ROOT, 'tests', 'tmp');
 const TEST_FILE = path.join(TEST_DIR, 'test.txt');
 
 before(() => {
@@ -37,6 +73,14 @@ before(() => {
   // borrar TEST_DIR y `fs.write` (que no sobrescribe por defecto) fallaría.
   if (fs.existsSync(TEST_DIR)) fs.rmSync(TEST_DIR, { recursive: true, force: true });
   fs.mkdirSync(TEST_DIR, { recursive: true });
+  // Permisos de la suite, no del proyecto: un `.commander/permissions.json`
+  // readonly en el repo ya no cambia lo que estas tools pueden hacer.
+  setPermissions(WORK_ROOT, {
+    mode: 'build',
+    allowedTools: null,
+    deniedTools: [],
+    files: { read: [], write: [] },
+  });
 });
 
 test('fs.read lee un archivo existente', async () => {
@@ -800,6 +844,33 @@ test('git.conflict en readonly deja consultar el merge y no modificarlo', async 
   }
 });
 
+test('shell.job en readonly deja listar y leer, pero no escribir ni parar', async () => {
+  const dir = path.join(TEST_DIR, 'shell-job-modos');
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    setPermissions(dir, { mode: 'readonly' });
+
+    // El contexto de Nono pide `list` al cargar: es una consulta y no puede
+    // convertirse en un 403 que ensucie la consola del navegador.
+    const list = await executeAgentTool('shell.job', { root: dir, action: 'list' });
+    assert.equal(list.ok, true, String(list.error));
+
+    const logs = await executeAgentTool('shell.job', { root: dir, action: 'logs', id: 'no-existe' });
+    assert.doesNotMatch(String(logs.error || ''), /Modo Sólo lectura/);
+
+    for (const input of [
+      { root: dir, action: 'write', id: 'x', data: 'hola\n' },
+      { root: dir, action: 'stop', id: 'x' },
+    ]) {
+      const blocked = await executeAgentTool('shell.job', input);
+      assert.equal((blocked as any).status, 403, `${input.action} debe bloquearse`);
+      assert.match(String(blocked.error), /Sólo lectura/);
+    }
+  } finally {
+    setPermissions(dir, { mode: 'build' });
+  }
+});
+
 test('mcp.call con tools/list pasa en plan y readonly; tools/call sigue bloqueado', async () => {
   const dir = path.join(TEST_DIR, 'mcp-modos');
   fs.mkdirSync(dir, { recursive: true });
@@ -1043,8 +1114,11 @@ test('git.worktree remove rechaza un path que empieza por "-"', async () => {
 });
 
 test('git.diff con ruta que contiene metacaracteres no ejecuta nada', async () => {
-  const marker = path.join(TEST_DIR, 'diff-pwned.txt');
-  const res = await executeAgentTool('git.diff', { path: `x & echo PWNED > "${marker}"` });
+  const marker = path.join(gitRoot, 'diff-pwned.txt');
+  const res = await executeAgentTool('git.diff', {
+    root: gitRoot,
+    path: 'x & echo PWNED > "diff-pwned.txt"',
+  });
 
   // git recibe la ruta tal cual: no existe, así que el diff es vacío o falla,
   // pero en ningún caso se ejecuta el `echo`.
@@ -1375,7 +1449,7 @@ test('worktree.create existe en run-tool y valida antes de tocar git', async () 
 });
 
 after(() => {
-  if (fs.existsSync(TEST_DIR)) fs.rmSync(TEST_DIR, { recursive: true, force: true });
+  if (fs.existsSync(WORK_ROOT)) fs.rmSync(WORK_ROOT, { recursive: true, force: true });
   try { removeRoot(gitRoot); } catch { /* ignore */ }
   if (fs.existsSync(gitRoot)) fs.rmSync(gitRoot, { recursive: true, force: true });
   try { removeRoot(mergeRoot); } catch { /* ignore */ }

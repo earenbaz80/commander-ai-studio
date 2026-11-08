@@ -30,6 +30,8 @@ import { executeTask, getSession } from './agentSession';
 import { listServerTools, callServerTool } from './src/mcp/client';
 import { runBrowserAction } from './browserSession';
 import { checkPreview, listPreviews, openPreview, stopPreview } from './previewServer';
+import { executeLinearAction } from './src/integrations/linearActions';
+import { getAccessToken } from './src/integrations/oauth';
 
 const AGENT_ROOT = process.cwd();
 
@@ -575,6 +577,8 @@ async function runFileChangeHooks(absPath: string, root: string): Promise<{ ran:
  *     MCP. Es el camino del descubrimiento remoto (`src/agent/mcp.ts`), así
  *     que bloquearlo dejaba al agente de plan sin saber que esos servidores
  *     existen: el bucle capturaba el 403 como «servidor caído».
+ *   • `shell.job` con `action` `list`, `logs` o `read` consulta trabajos y su
+ *     salida; `write` (stdin) y `stop` sí actúan y siguen bloqueados.
  *
  * Las variantes que sí escriben siguen cayendo en `enforceTool`, y además
  * `git.conflict` revalida modo y globs de `files.write` dentro de su propia
@@ -595,6 +599,21 @@ function isReadOnlyCall(toolId: string, input: any): boolean {
   if (toolId === 'mcp.call') {
     // Sin `method` la rama MCP asume `tools/call`, que sigue bloqueado.
     return String(input?.method || '').trim().toLowerCase() === 'tools/list';
+  }
+  if (toolId === 'linear') {
+    // whoami/list_teams/list_issues no modifican nada; create_issue sí y sigue
+    // bloqueado en plan/readonly por `EXEC_TOOLS`.
+    return ['whoami', 'list_teams', 'list_issues'].includes(
+      String(input?.action || '').trim().toLowerCase(),
+    );
+  }
+  if (toolId === 'shell.job') {
+    // Consultar trabajos y su salida no muta nada. `write` (stdin) y `stop`
+    // siguen bloqueados en plan/readonly porque actúan sobre el proceso.
+    // Sin esto, el contexto de Nono pedía `list` al cargar y recibía un 403.
+    return ['list', 'logs', 'read'].includes(
+      String(input?.action || '').trim().toLowerCase(),
+    );
   }
   return false;
 }
@@ -1869,6 +1888,13 @@ async function executeAgentToolCore(
     }
   }
 
+  if (toolId === 'linear') {
+    // El token de Linear vive en el vault cifrado del servidor. Las acciones de
+    // lectura no piden aprobación; create_issue la pide en la definición del
+    // cliente y vuelve a pasar por el gestor de permisos en `executeAgentTool`.
+    return executeLinearAction(input ?? {});
+  }
+
   if (toolId === 'task') {
     const { goal, instructions, model, allowedTools, mode, maxSteps, template } = input || {};
     if (!goal || typeof goal !== 'string') return { ok: false, error: 'goal requerido', status: 400 };
@@ -1922,12 +1948,18 @@ async function executeAgentToolCore(
     return { ok: true, data: { results: out, spawned: capped.length, capped: agents.length > 6 } };
   }
 
-  // GitHub: lectura del PR y comentario. El token es del servidor
-  // (`GITHUB_TOKEN`) y no viaja al modelo ni al navegador.
+  // GitHub: lectura del PR y comentario. Prefiere el token OAuth del vault y
+  // cae a GITHUB_TOKEN; ninguno viaja al modelo ni al navegador.
   if (toolId === 'github.pr' || toolId === 'github.comment') {
     const ref = parsePullRequest((input ?? {}) as any);
     if (!ref) return { ok: false, error: 'Indica repo "owner/repo" + number, o la url del PR', status: 400 };
-    const token = process.env.GITHUB_TOKEN || '';
+    let token = process.env.GITHUB_TOKEN || '';
+    try {
+      const connectorToken = await getAccessToken('github');
+      if (connectorToken) token = connectorToken;
+    } catch {
+      // Sin conector: se conserva GITHUB_TOKEN si existe.
+    }
     if (toolId === 'github.pr') return pullRequestData(ref, token);
     return commentOnPullRequest(ref, String((input as any)?.body || ''), token);
   }

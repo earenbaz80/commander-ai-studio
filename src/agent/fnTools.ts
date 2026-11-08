@@ -392,13 +392,29 @@ export const AGENT_FUNCTION_DECLARATIONS = [
     },
   },
   {
+    name: 'linear',
+    description:
+      'Conector Linear (OAuth). whoami devuelve la cuenta; list_teams lista equipos con su id; list_issues lista issues (teamId opcional, limit 1-50); create_issue crea un issue (requiere teamId y title).',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', enum: ['whoami', 'list_teams', 'list_issues', 'create_issue'] },
+        teamId: { type: 'STRING', description: 'Id del equipo de Linear (para list_issues/create_issue)' },
+        title: { type: 'STRING', description: 'Título del issue (create_issue)' },
+        description: { type: 'STRING', description: 'Descripción del issue (create_issue)' },
+        limit: { type: 'NUMBER', description: 'Issues a devolver (1-50, por defecto 20)' },
+      },
+      required: ['action'],
+    },
+  },
+  {
     name: 'github_pr',
-    description: 'Lee un pull request de GitHub: título, estado, autor, cuerpo y diff por archivo. Acepta repo "owner/repo" + number, o url del PR.',
+    description: 'Lee un pull request de GitHub: título, estado, autor, cuerpo y diff por archivo. Acepta repo "owner/repo" + number, o url del PR. Usa el conector OAuth o GITHUB_TOKEN.',
     parameters: { type: 'OBJECT', properties: { repo: { type: 'STRING' }, url: { type: 'STRING' }, number: { type: 'NUMBER' } }, required: [] },
   },
   {
     name: 'github_comment',
-    description: 'Publica un comentario en un pull request de GitHub. Requiere aprobación y GITHUB_TOKEN con permiso de escritura.',
+    description: 'Publica un comentario en un pull request de GitHub. Requiere aprobación y un token con permiso de escritura (conector OAuth o GITHUB_TOKEN).',
     parameters: { type: 'OBJECT', properties: { repo: { type: 'STRING' }, url: { type: 'STRING' }, number: { type: 'NUMBER' }, body: { type: 'STRING' } }, required: ['body'] },
   },
 ];
@@ -413,6 +429,7 @@ const FN_TO_TOOL: Record<string, string> = {
   web_fetch: 'web.fetch', web_search: 'web.search', code_run: 'code.run', run_file_change_hooks: 'run_file_change_hooks', worktree_create: 'worktree.create',
   mcp_call: 'mcp.call', ask_user: 'ask_user',
   github_pr: 'github.pr', github_comment: 'github.comment',
+  linear: 'linear',
 };
 
 export function mapFunctionCall(name: string, args: any): { tool: string; input: unknown } | null {

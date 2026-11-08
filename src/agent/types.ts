@@ -33,7 +33,8 @@ export type ToolId =
   | 'worktree.create'
   | 'ask_user'
   | 'github.pr'
-  | 'github.comment';
+  | 'github.comment'
+  | 'linear';
 
 export interface ToolContext {
   cwd: string;
