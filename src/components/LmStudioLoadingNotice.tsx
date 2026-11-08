@@ -131,7 +131,7 @@ export const LmStudioLoadingNotice: FC<LmStudioLoadingNoticeProps> = ({
     <div
       role="alert"
       data-testid="lmstudio-loading-error"
-      className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-t-2 border-[var(--nc-danger)] bg-[#330000] px-3 py-1.5 font-mono text-[11px] text-[var(--nc-text)]"
+      className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-t-2 border-[var(--nc-danger)] bg-red-950 px-3 py-1.5 font-mono text-[11px] text-[var(--nc-text)]"
     >
       <AlertTriangle
         className="h-3.5 w-3.5 shrink-0 text-[var(--nc-danger)]"

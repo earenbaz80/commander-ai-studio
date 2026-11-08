@@ -710,8 +710,8 @@ export const NonoHead: React.FC<{
       {/* Mejillas */}
       {!busy && (expression === 'happy' || expression === 'love') && (
         <>
-          <circle cx="14" cy="48" r="3" fill="#ff5555" opacity="0.3" filter="drop-shadow(0 1px 2px rgba(255,0,0,0.3))" />
-          <circle cx="50" cy="48" r="3" fill="#ff5555" opacity="0.3" filter="drop-shadow(0 1px 2px rgba(255,0,0,0.3))" />
+          <circle cx="14" cy="48" r="3" style={{ fill: 'var(--nc-danger)' }} opacity="0.3" filter="drop-shadow(0 1px 2px rgba(255,0,0,0.3))" />
+          <circle cx="50" cy="48" r="3" style={{ fill: 'var(--nc-danger)' }} opacity="0.3" filter="drop-shadow(0 1px 2px rgba(255,0,0,0.3))" />
         </>
       )}
     </svg>

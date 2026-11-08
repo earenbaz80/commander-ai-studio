@@ -14,8 +14,8 @@
     "dev:legacy": "concurrently \"cross-env NODE_ENV=development npx tsx server.ts\" \"vite\"",
     "build": "tsc --noEmit && vite build",
     "build:server": "npm run build:server:cjs && npm run build:server:mjs",
-    "build:server:cjs": "npx esbuild server.ts --bundle --platform=node --format=cjs --target=node20 --external:vite --external:playwright --external:node-pty --outfile=electron/server.cjs",
-    "build:server:mjs": "npx esbuild server.ts --bundle --platform=node --format=esm --target=node20 --external:vite --external:playwright --external:node-pty --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" --outfile=electron/server.mjs",
+    "build:server:cjs": "npx esbuild server.ts --bundle --platform=node --format=cjs --target=node22 --external:vite --external:playwright --external:node-pty --outfile=electron/server.cjs",
+    "build:server:mjs": "npx esbuild server.ts --bundle --platform=node --format=esm --target=node22 --external:vite --external:playwright --external:node-pty --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" --outfile=electron/server.mjs",
     "build:electron": "electron-builder --win",
     "build:all": "npm run build && npm run build:server && npm run build:updater && npm run build:electron",
     "build:tauri": "npm run build && cargo build --release --manifest-path src-tauri/Cargo.toml",
@@ -58,7 +58,7 @@
     "skills:import": "tsx bin/commander.ts skills import",
     "tauri:info": "tauri info",
     "tauri:icon": "tauri icon",
-    "build:updater": "npx esbuild electron/updaterEntry.cjs --bundle --platform=node --format=cjs --target=node20 --external:electron --outfile=electron/updater.cjs"
+    "build:updater": "npx esbuild electron/updaterEntry.cjs --bundle --platform=node --format=cjs --target=node22 --external:electron --outfile=electron/updater.cjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
