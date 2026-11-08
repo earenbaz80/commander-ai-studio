@@ -48,9 +48,9 @@ function plainSnippet(raw: string): string {
 
 const ARCHIVED_PROJECTS_KEY = 'commander_archived_projects';
 
-/** El archivado es por carpeta; las claves `remote:` de versiones anteriores se descartan. */
+/** Claves de archivado válidas: remotas, por ruta y las antiguas por nombre. */
 function normalizeArchiveKeys(keys: string[]): string[] {
-  return keys.filter((key) => !key.startsWith('remote:'));
+  return Array.from(new Set(keys.filter((key) => typeof key === 'string' && key.length > 0)));
 }
 
 function loadArchivedProjects(): string[] {
@@ -70,6 +70,7 @@ interface HistoryRow {
   meta: string;
   project: string;
   projectPath: string;
+  gitRemote: string;
   pinned: boolean;
   local?: HistorySession;
   server?: any;
@@ -184,6 +185,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         meta: [item.timestamp, messageCount > 0 ? messageCount + ' msgs' : item.mode].filter(Boolean).join(' · '),
         project: projectOf(server?.project_path),
         projectPath: server?.project_path ? String(server.project_path) : '',
+        gitRemote: server?.git_remote ? String(server.git_remote) : '',
         pinned: !!server?.pinned,
         local: item,
         server,
@@ -201,6 +203,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           : String(thread.id).slice(0, 8),
         project: projectOf(thread.project_path),
         projectPath: thread.project_path ? String(thread.project_path) : '',
+        gitRemote: thread.git_remote ? String(thread.git_remote) : '',
         pinned: !!thread.pinned,
         server: thread,
       });
@@ -228,13 +231,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
     archivedProjectsRef.current = archivedProjects;
   }, [archivedProjects]);
 
-  // Agrupa por ruta (o por nombre si una entrada local antigua no guardó ruta).
+  // Identidad del proyecto: el remoto de Git cuando existe. Así dos clones del
+  // mismo repositorio comparten el archivado y dos carpetas homónimas de repos
+  // distintos no se mezclan. Sin remoto se cae a la ruta (o al nombre).
   const projectGroups = React.useMemo(() => {
     const groups = new Map<string, ProjectGroup>();
     for (const row of historyRows) {
       const path = row.projectPath;
-      const name = row.project || (lang === 'es' ? 'Sin proyecto' : lang === 'de' ? 'Kein Projekt' : 'No project');
-      const key = path ? `path:${path}` : `name:${name}`;
+      const remote = row.gitRemote;
+      const name =
+        row.project ||
+        (remote ? remote.split('/').filter(Boolean).pop() || '' : '') ||
+        (lang === 'es' ? 'Sin proyecto' : lang === 'de' ? 'Kein Projekt' : 'No project');
+      const key = remote ? `remote:${remote}` : path ? `path:${path}` : `name:${name}`;
       let group = groups.get(key);
       if (!group) {
         group = { key, name, path, rows: [] };
@@ -245,8 +254,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return [...groups.values()];
   }, [historyRows, lang]);
 
-  // El archivado es por carpeta: la ruta identifica el grupo, no el remoto de
-  // Git. Así dos clones del mismo repositorio se archivan por separado.
+  // El archivado sigue al proyecto, no a la carpeta: la clave remota manda y
+  // las claves antiguas por ruta o nombre siguen valiendo como alias.
   // Un archivo antiguo sólo por nombre se aplica si no hay otra carpeta
   // homónima; si la hay, no se puede saber a cuál pertenece y no oculta ninguna.
   const hasUnambiguousNameArchive = (group: ProjectGroup) =>
@@ -254,10 +263,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     projectGroups.every((other) => other.name !== group.name || other.key === group.key);
 
   const isArchivedGroup = (group: ProjectGroup) => {
-    if (group.path) {
-      return archivedProjects.includes(group.key) || hasUnambiguousNameArchive(group);
+    if (archivedProjects.includes(group.key)) return true;
+    if (group.rows.some((row) => row.projectPath && archivedProjects.includes(`path:${row.projectPath}`))) {
+      return true;
     }
-    return archivedProjects.includes(group.key) || archivedProjects.includes(`name:${group.name}`);
+    return group.path
+      ? hasUnambiguousNameArchive(group)
+      : archivedProjects.includes(`name:${group.name}`);
   };
   const visibleGroups = projectGroups.filter((group) => showArchived || !isArchivedGroup(group));
   const archivedGroupCount = projectGroups.filter(isArchivedGroup).length;
@@ -317,9 +329,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   /** Archivar sólo oculta el grupo del historial; la carpeta y sus datos siguen intactos. */
   const toggleArchivedProject = (group: ProjectGroup) => {
     const keys = [group.key];
-    const folderKeys = group.path ? [group.key, `name:${group.name}`] : [group.key];
+    // Al desarchivar se limpian también las claves antiguas de esa carpeta y
+    // de los clones que ahora comparten el mismo remoto.
+    const groupKeys = new Set([group.key, `name:${group.name}`]);
+    for (const row of group.rows) {
+      if (row.projectPath) groupKeys.add(`path:${row.projectPath}`);
+    }
     const wasArchived = isArchivedGroup(group);
-    const removalKeys = folderKeys.filter((key) => archivedProjects.includes(key));
+    const removalKeys = [...groupKeys].filter((key) => archivedProjects.includes(key));
     const next = wasArchived
       ? archivedProjects.filter((entry) => !removalKeys.includes(entry))
       : Array.from(new Set([...archivedProjects, ...keys]));
