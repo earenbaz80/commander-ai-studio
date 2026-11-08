@@ -5,13 +5,14 @@
  * La cifra es una estimación (≈4 caracteres por token): el objetivo es avisar
  * antes de llegar al límite, no dar el número exacto del proveedor. Al pulsarlo
  * se despliega el desglose; los perfiles Rápido / Equilibrado / Potente cambian
- * el máximo de tokens y el nivel de razonamiento.
+ * el máximo de tokens y el nivel de razonamiento. En LM Studio también se elige
+ * la ventana con la que se cargará el modelo.
  */
 import React, { useId, useState } from 'react';
 import { Activity, ChevronDown, ChevronUp } from 'lucide-react';
 import type { AIModel, ChatMessage, ParameterConfig } from '../../types/studio';
 import type { Language } from '../../i18n/translations';
-import { computeContextStats, formatTokens } from '../../lib/contextStats';
+import { computeContextStats, formatTokens, modelContextLimit } from '../../lib/contextStats';
 import { EFFORT_ORDER, EFFORT_PROFILES, detectEffort, type EffortLevel } from './effortProfiles';
 
 interface ContextMeterProps {
@@ -22,6 +23,8 @@ interface ContextMeterProps {
   lang?: Language;
   /** Sin callback los perfiles se muestran pero no se pueden cambiar. */
   onChangeEffort?: (level: EffortLevel) => void;
+  /** Ventana que se pedirá a LM Studio al cargar; 0 = la del modelo. */
+  onChangeContextLength?: (tokens: number) => void;
 }
 
 const effortLabels: Record<EffortLevel, { es: string; en: string; de: string }> = {
@@ -29,6 +32,11 @@ const effortLabels: Record<EffortLevel, { es: string; en: string; de: string }> 
   balanced: { es: 'Equilibrado', en: 'Balanced', de: 'Ausgeglichen' },
   powerful: { es: 'Potente', en: 'Powerful', de: 'Leistungsstark' },
 };
+
+/** Ventanas ofrecidas en el compositor; «Auto» deja la que publique el modelo. */
+const CONTEXT_PRESETS = [4096, 8192, 16384, 32768, 65536, 131072, 262144];
+const formatContextOption = (tokens: number): string =>
+  tokens >= 1024 ? `${Math.round(tokens / 1024)}K` : String(tokens);
 
 const CONTEXT_METER_COLLAPSED_KEY = 'commander_context_meter_collapsed';
 const CONTEXT_METER_TOGGLE_EVENT = 'commander:toggle-context-meter';
@@ -65,6 +73,7 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
   model,
   lang = 'es',
   onChangeEffort,
+  onChangeContextLength,
 }) => {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<boolean>(readCollapsed);
@@ -81,6 +90,16 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
     percent >= 95 ? 'var(--nc-danger)' : percent >= 80 ? 'var(--nc-text-accent)' : 'var(--nc-text)';
   const active = detectEffort(parameters);
   const activeProfile = active ? EFFORT_PROFILES[active] : null;
+  const configuredContext =
+    typeof parameters?.contextLength === 'number' && parameters.contextLength > 0
+      ? Math.floor(parameters.contextLength)
+      : 0;
+  const modelLimit = modelContextLimit(model);
+  const contextOptions = React.useMemo(() => {
+    const values = CONTEXT_PRESETS.filter((value) => !modelLimit || value <= modelLimit);
+    if (configuredContext > 0 && !values.includes(configuredContext)) values.push(configuredContext);
+    return [...new Set(values)].sort((a, b) => a - b);
+  }, [modelLimit, configuredContext]);
 
   const summary = L(
     `Contexto: ${stats.percent === null ? 'ventana desconocida' : `${percent}%`} · ${formatTokens(stats.totalTokens)} tokens estimados de ${stats.messages} mensaje(s)`,
@@ -143,7 +162,13 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
     { label: L('Instrucciones y ejemplos', 'Instructions & examples', 'Anweisungen & Beispiele'), value: formatTokens(stats.systemTokens) },
     { label: L('Conversación', 'Conversation', 'Unterhaltung'), value: formatTokens(stats.conversationTokens) },
     { label: L('Total estimado', 'Estimated total', 'Geschätzt gesamt'), value: formatTokens(stats.totalTokens) },
-    { label: L('Ventana del modelo', 'Model window', 'Modellfenster'), value: stats.limit ? formatTokens(stats.limit) : '—' },
+    {
+      label:
+        configuredContext > 0
+          ? L('Ventana configurada', 'Configured window', 'Konfiguriertes Fenster')
+          : L('Ventana del modelo', 'Model window', 'Modellfenster'),
+      value: stats.limit ? formatTokens(stats.limit) : '—',
+    },
     { label: L('Reservado a la respuesta', 'Reserved for reply', 'Für Antwort reserviert'), value: formatTokens(stats.reservedTokens) },
     {
       label: L('Libre', 'Free', 'Frei'),
@@ -189,6 +214,37 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
             aria-hidden
           />
         </button>
+
+        {model?.provider === 'lmstudio' && (
+          <label
+            className="flex items-center gap-1 text-[10px]"
+            title={L(
+              'Ventana que se pide a LM Studio al cargar el modelo. Auto usa la del modelo; se aplica al cargar.',
+              'Window requested from LM Studio when loading the model. Auto uses the model window; it applies on load.',
+              'Fenster, das LM Studio beim Laden des Modells anfordert. Auto nutzt das Modellfenster; gilt beim Laden.'
+            )}
+          >
+            <span className="opacity-70">{L('Contexto', 'Context', 'Kontext')}</span>
+            <select
+              value={configuredContext}
+              onChange={(event) => onChangeContextLength?.(Number(event.target.value))}
+              disabled={!onChangeContextLength}
+              aria-label={L(
+                'Contexto al cargar el modelo',
+                'Context when loading the model',
+                'Kontext beim Laden des Modells'
+              )}
+              className="min-h-7 rounded-sm border border-[var(--nc-border-mid)]/60 bg-[var(--nc-bg-main)] px-1 py-1 text-[10px] tabular-nums text-[var(--nc-text)] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-[var(--nc-text-accent)]"
+            >
+              <option value={0}>{L('Auto', 'Auto', 'Auto')}</option>
+              {contextOptions.map((value) => (
+                <option key={value} value={value}>
+                  {formatContextOption(value)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <div
           role="group"

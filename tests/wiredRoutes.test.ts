@@ -241,19 +241,28 @@ test('/api/lmstudio/generate reenvía las tools y traduce las tool_calls', async
   // `lmstudio/<modelo>` recibe texto sin toolCalls y se detiene en el primer
   // paso: la auditoría «gratis» no leería ni un fichero.
   const recibido: any[] = [];
+  const cargas: any[] = [];
   const fake = http.createServer((req, res) => {
     let raw = '';
     req.on('data', (chunk) => { raw += chunk; });
     req.on('end', () => {
-      // El servidor también recibe la sonda GET /models que elige el host: no
-      // es una petición de chat y no debe ocupar el primer hueco de `recibido`.
+      // El servidor también recibe la sonda GET /models que elige el host y la
+      // consulta de estado previa al chat: ninguna es una petición de chat.
+      res.setHeader('Content-Type', 'application/json');
       if (req.method !== 'POST') {
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ data: [{ id: 'qwen2.5-7b' }] }));
+        res.end(JSON.stringify(
+          req.url === '/api/v0/models'
+            ? { data: [{ id: 'qwen2.5-7b', state: 'loaded' }] }
+            : { data: [{ id: 'qwen2.5-7b' }] }
+        ));
+        return;
+      }
+      if (req.url === '/api/v1/models/load') {
+        cargas.push(JSON.parse(raw || '{}'));
+        res.end(JSON.stringify({ type: 'llm', instance_id: 'qwen2.5-7b', status: 'loaded' }));
         return;
       }
       recibido.push(JSON.parse(raw || '{}'));
-      res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify({
         choices: [{
           message: {
@@ -282,6 +291,279 @@ test('/api/lmstudio/generate reenvía las tools y traduce las tool_calls', async
     assert.equal(recibido[0].model, 'qwen2.5-7b');
     assert.equal(recibido[0].tools?.length, 1, 'sin tools el modelo no puede pedir fs.read');
     assert.equal(recibido[0].tool_choice, 'auto');
+    assert.deepEqual(cargas, [], 'un modelo ya cargado no se vuelve a cargar');
+  } finally {
+    fake.close();
+  }
+});
+
+test('/api/lmstudio/generate carga el modelo antes de generar si aún no está cargado', async () => {
+  const cargas: any[] = [];
+  const chats: any[] = [];
+  const fake = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (chunk) => { raw += chunk; });
+    req.on('end', () => {
+      res.setHeader('Content-Type', 'application/json');
+      if (req.method === 'GET') {
+        res.end(JSON.stringify(
+          req.url === '/api/v0/models'
+            ? { data: [{ id: 'qwen2.5-7b', state: 'not-loaded', max_context_length: 32_768 }] }
+            : { data: [{ id: 'qwen2.5-7b' }] }
+        ));
+        return;
+      }
+      if (req.url === '/api/v1/models/load') {
+        cargas.push(JSON.parse(raw || '{}'));
+        res.end(JSON.stringify({ type: 'llm', instance_id: 'qwen2.5-7b', status: 'loaded' }));
+        return;
+      }
+      chats.push(JSON.parse(raw || '{}'));
+      res.end(JSON.stringify({ choices: [{ message: { content: 'Modelo listo' } }] }));
+    });
+  });
+  await new Promise<void>((resolve) => fake.listen(0, '127.0.0.1', () => resolve()));
+  const { port } = fake.address() as any;
+
+  try {
+    const res = await srv.request('POST', '/api/lmstudio/generate', {
+      prompt: 'hola',
+      model: 'lmstudio/qwen2.5-7b',
+      host: `http://127.0.0.1:${port}`,
+    });
+
+    assert.equal(res.status, 200, res.raw);
+    assert.equal(res.body.success, true);
+    assert.equal(res.body.text, 'Modelo listo');
+    assert.deepEqual(cargas, [{ model: 'qwen2.5-7b', context_length: 32_768 }], 'debe cargar con el contexto real del modelo');
+    assert.equal(chats.length, 1);
+    assert.equal(chats[0].model, 'qwen2.5-7b');
+  } finally {
+    fake.close();
+  }
+});
+
+test('/api/lmstudio/generate devuelve el error de carga y no genera si el modelo no cabe', async () => {
+  let chats = 0;
+  const fake = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (chunk) => { raw += chunk; });
+    req.on('end', () => {
+      res.setHeader('Content-Type', 'application/json');
+      if (req.method === 'GET') {
+        res.end(JSON.stringify({ data: [{ id: 'qwen2.5-7b', state: 'not-loaded' }] }));
+        return;
+      }
+      if (req.url === '/api/v1/models/load') {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: { message: 'not enough VRAM' } }));
+        return;
+      }
+      chats += 1;
+      res.end(JSON.stringify({ choices: [{ message: { content: 'no debería llegar' } }] }));
+    });
+  });
+  await new Promise<void>((resolve) => fake.listen(0, '127.0.0.1', () => resolve()));
+  const { port } = fake.address() as any;
+
+  try {
+    const res = await srv.request('POST', '/api/lmstudio/generate', {
+      prompt: 'hola',
+      model: 'lmstudio/qwen2.5-7b',
+      host: `http://127.0.0.1:${port}`,
+    });
+
+    assert.equal(res.status, 200, res.raw);
+    assert.equal(res.body.ok, false);
+    assert.match(String(res.body.error), /qwen2\.5-7b/);
+    assert.match(String(res.body.error), /not enough VRAM/);
+    assert.equal(chats, 0, 'sin modelo cargado no tiene sentido llamar al chat');
+  } finally {
+    fake.close();
+  }
+});
+
+test('/api/lmstudio/generate sigue con el chat si LM Studio no tiene carga explícita', async () => {
+  // 0.3.x sólo tiene v0: no existe /api/v1/models/load. El chat puede cargar
+  // por JIT, así que un 404 no debe romper la generación.
+  let chats = 0;
+  const fake = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (chunk) => { raw += chunk; });
+    req.on('end', () => {
+      res.setHeader('Content-Type', 'application/json');
+      if (req.method === 'GET') {
+        res.end(JSON.stringify(
+          req.url === '/api/v0/models'
+            ? { data: [{ id: 'qwen2.5-7b', state: 'not-loaded', max_context_length: 32_768 }] }
+            : { data: [{ id: 'qwen2.5-7b' }] }
+        ));
+        return;
+      }
+      if (req.url === '/api/v1/models/load') {
+        res.statusCode = 404;
+        res.end(JSON.stringify({ error: { message: 'not found' } }));
+        return;
+      }
+      chats += 1;
+      res.end(JSON.stringify({ choices: [{ message: { content: 'Cargado por JIT' } }] }));
+    });
+  });
+  await new Promise<void>((resolve) => fake.listen(0, '127.0.0.1', () => resolve()));
+  const { port } = fake.address() as any;
+
+  try {
+    const res = await srv.request('POST', '/api/lmstudio/generate', {
+      prompt: 'hola',
+      model: 'lmstudio/qwen2.5-7b',
+      host: `http://127.0.0.1:${port}`,
+    });
+
+    assert.equal(res.status, 200, res.raw);
+    assert.equal(res.body.success, true, res.raw);
+    assert.equal(res.body.text, 'Cargado por JIT');
+    assert.equal(chats, 1);
+  } finally {
+    fake.close();
+  }
+});
+
+test('/api/lmstudio/loading informa el error del último intento fallido y lo limpia al reintentar', async () => {
+  let loadFails = true;
+  const fake = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (chunk) => { raw += chunk; });
+    req.on('end', () => {
+      res.setHeader('Content-Type', 'application/json');
+      if (req.method === 'GET') {
+        res.end(JSON.stringify(
+          req.url === '/api/v0/models'
+            ? { data: [{ id: 'qwen2.5-7b', state: 'not-loaded', max_context_length: 32_768 }] }
+            : { data: [{ id: 'qwen2.5-7b' }] }
+        ));
+        return;
+      }
+      if (req.url === '/api/v1/models/load') {
+        if (loadFails) {
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: { message: 'not enough VRAM' } }));
+          return;
+        }
+        res.end(JSON.stringify({ type: 'llm', instance_id: 'qwen2.5-7b', status: 'loaded' }));
+        return;
+      }
+      res.end(JSON.stringify({ choices: [{ message: { content: 'listo' } }] }));
+    });
+  });
+  await new Promise<void>((resolve) => fake.listen(0, '127.0.0.1', () => resolve()));
+  const { port } = fake.address() as any;
+
+  try {
+    const failed = await srv.request('POST', '/api/lmstudio/generate', {
+      prompt: 'hola',
+      model: 'lmstudio/qwen2.5-7b',
+      host: `http://127.0.0.1:${port}`,
+    });
+    assert.equal(failed.body.ok, false, failed.raw);
+
+    const afterFailure = await srv.request(
+      'GET',
+      `/api/lmstudio/loading?model=${encodeURIComponent('qwen2.5-7b')}`
+    );
+    assert.equal(afterFailure.body.loading, false);
+    assert.equal(afterFailure.body.model, 'qwen2.5-7b', 'la UI necesita saber a qué modelo culpar');
+    assert.match(String(afterFailure.body.error), /not enough VRAM/);
+    assert.equal(typeof afterFailure.body.failedAt, 'number');
+
+    // Reintento correcto: el aviso no debe resucitar el fallo viejo.
+    loadFails = false;
+    const retried = await srv.request('POST', '/api/lmstudio/generate', {
+      prompt: 'hola',
+      model: 'lmstudio/qwen2.5-7b',
+      host: `http://127.0.0.1:${port}`,
+    });
+    assert.equal(retried.body.success, true, retried.raw);
+
+    const afterRetry = await srv.request(
+      'GET',
+      `/api/lmstudio/loading?model=${encodeURIComponent('qwen2.5-7b')}`
+    );
+    assert.equal(afterRetry.body.loading, false);
+    assert.equal(afterRetry.body.error, undefined, 'un intento correcto limpia el error anterior');
+  } finally {
+    fake.close();
+  }
+});
+
+test('/api/lmstudio/loading refleja la carga en curso y se apaga al terminar', async () => {
+  let releaseLoad!: () => void;
+  let markLoadStarted!: () => void;
+  let loadRequest: any;
+  const loadStarted = new Promise<void>((resolve) => { markLoadStarted = resolve; });
+
+  const fake = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (chunk) => { raw += chunk; });
+    req.on('end', () => {
+      res.setHeader('Content-Type', 'application/json');
+      if (req.method === 'GET') {
+        res.end(JSON.stringify(
+          req.url === '/api/v0/models'
+            ? { data: [{ id: 'qwen2.5-7b', state: 'not-loaded', max_context_length: 32_768 }] }
+            : { data: [{ id: 'qwen2.5-7b' }] }
+        ));
+        return;
+      }
+      if (req.url === '/api/v1/models/load') {
+        loadRequest = JSON.parse(raw || '{}');
+        markLoadStarted();
+        releaseLoad = () => {
+          res.end(JSON.stringify({ type: 'llm', instance_id: 'qwen2.5-7b', status: 'loaded' }));
+        };
+        return;
+      }
+      res.end(JSON.stringify({ choices: [{ message: { content: 'listo' } }] }));
+    });
+  });
+  await new Promise<void>((resolve) => fake.listen(0, '127.0.0.1', () => resolve()));
+  const { port } = fake.address() as any;
+
+  try {
+    const generate = srv.request('POST', '/api/lmstudio/generate', {
+      prompt: 'hola',
+      model: 'lmstudio/qwen2.5-7b',
+      host: `http://127.0.0.1:${port}`,
+      contextLength: 8192,
+    });
+
+    await loadStarted;
+    assert.equal(
+      loadRequest?.context_length,
+      8192,
+      'la carga debe pedir el contexto solicitado, no el máximo del modelo'
+    );
+    const during = await srv.request(
+      'GET',
+      `/api/lmstudio/loading?model=${encodeURIComponent('qwen2.5-7b')}`
+    );
+    assert.equal(during.status, 200, during.raw);
+    assert.equal(during.body.loading, true, 'la UI necesita saber que la carga sigue en curso');
+    assert.equal(during.body.model, 'qwen2.5-7b');
+    assert.equal(
+      during.body.contextLength,
+      8192,
+      'el aviso necesita el contexto que se está cargando'
+    );
+
+    releaseLoad();
+    const done = await generate;
+    assert.equal(done.body.success, true, done.raw);
+
+    const after = await srv.request(
+      'GET',
+      `/api/lmstudio/loading?model=${encodeURIComponent('qwen2.5-7b')}`
+    );
+    assert.equal(after.body.loading, false, 'al terminar la carga el aviso debe apagarse');
   } finally {
     fake.close();
   }

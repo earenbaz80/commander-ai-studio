@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { lmStudioHostScope, normalizeLmStudioHost, parseLmStudioModels } from '../../src/lib/lmStudio';
+import { lmStudioContextLength, lmStudioHostScope, normalizeLmStudioHost, parseLmStudioContextLengths, parseLmStudioModels } from '../../src/lib/lmStudio';
 
 describe('normalizeLmStudioHost', () => {
   test('añade /v1 cuando el host remoto se escribe sin la base de la API', () => {
@@ -36,5 +36,20 @@ describe('parseLmStudioModels', () => {
   test('descarta entradas vacías y duplicados', () => {
     expect(parseLmStudioModels({ data: [{ id: 'a' }, { id: 'a' }, {}, null] })).toEqual(['a']);
     expect(parseLmStudioModels(null)).toEqual([]);
+  });
+});
+
+describe('contexto de LM Studio', () => {
+  test('prefiere el contexto cargado y usa el máximo si no lo está', () => {
+    expect(lmStudioContextLength({ loaded_context_length: 32_768, max_context_length: 262_144 })).toBe(32_768);
+    expect(lmStudioContextLength({ state: 'not-loaded', max_context_length: 262_144 })).toBe(262_144);
+    expect(lmStudioContextLength({ loaded_instances: [{ config: { context_length: 16_384 } }], max_context_length: 262_144 })).toBe(16_384);
+  });
+
+  test('mapea ids y variantes de v0 y v1', () => {
+    expect(parseLmStudioContextLengths({ data: [{ id: 'a', max_context_length: 262_144 }] })).toEqual({ a: 262_144 });
+    expect(
+      parseLmStudioContextLengths({ models: [{ key: 'b', max_context_length: 262_144, variants: ['b@q4'] }] })
+    ).toEqual({ b: 262_144, 'b@q4': 262_144 });
   });
 });
