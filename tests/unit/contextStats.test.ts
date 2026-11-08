@@ -86,6 +86,16 @@ describe('contextStats', () => {
     expect(stats.remainingTokens).toBeNull();
   });
 
+  test('la ventana configurada en el compositor manda sobre la del modelo', () => {
+    const stats = computeContextStats({
+      messages: [message('a'.repeat(3600))],
+      parameters: parameters({ contextLength: 8192, maxTokens: 1000 }),
+      model: model('32K tokens'),
+    });
+    expect(stats.limit).toBe(8192);
+    expect(stats.percent).toBe(11);
+  });
+
   test('avisa cuando la respuesta reservada ya no cabe', () => {
     const stats = computeContextStats({
       messages: [message('a'.repeat(3700))],

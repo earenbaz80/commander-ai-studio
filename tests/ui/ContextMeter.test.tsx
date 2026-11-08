@@ -79,6 +79,35 @@ describe('ContextMeter', () => {
     expect(onChangeEffort).toHaveBeenCalledWith('powerful');
   });
 
+  test('en LM Studio se elige la ventana con la que se carga el modelo', () => {
+    const onChangeContextLength = vi.fn();
+    const localModel: AIModel = {
+      ...model,
+      id: 'lmstudio/qwen',
+      provider: 'lmstudio',
+      contextWindow: '32K tokens',
+      contextLength: 32768,
+    };
+    render(
+      <ContextMeter
+        messages={messages}
+        parameters={{ ...params, contextLength: 8192 }}
+        model={localModel}
+        lang="es"
+        onChangeContextLength={onChangeContextLength}
+      />
+    );
+
+    const select = screen.getByLabelText('Contexto al cargar el modelo') as HTMLSelectElement;
+    expect(select.value).toBe('8192');
+    // La ventana configurada manda en el indicador: 1004 / 8192 ≈ 12 %.
+    expect(screen.getByTestId('context-percent').textContent).toBe('12%');
+    expect(screen.getByTestId('context-meter').textContent).toContain('1K/8.2K');
+
+    fireEvent.change(select, { target: { value: '4096' } });
+    expect(onChangeContextLength).toHaveBeenCalledWith(4096);
+  });
+
   test('se pliega y recuerda el estado al volver a montar', () => {
     const { unmount } = render(<ContextMeter messages={messages} parameters={params} model={model} lang="es" />);
 

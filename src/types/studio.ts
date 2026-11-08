@@ -108,6 +108,8 @@ export interface ParameterConfig {
   topP: number;
   topK: number;
   maxTokens: number;
+  /** Ventana que se pide al servidor local al cargar el modelo; 0 = auto. */
+  contextLength?: number;
   thinkingLevel?: 'MINIMAL' | 'LOW' | 'HIGH';
   stopSequences?: string[];
   responseFormat: 'text' | 'json';

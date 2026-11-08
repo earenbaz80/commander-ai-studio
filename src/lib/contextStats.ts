@@ -19,7 +19,7 @@ export interface ContextStats {
   /** Lo que ya ocupa la conversación. */
   conversationTokens: number;
   totalTokens: number;
-  /** Ventana del modelo, si se conoce. */
+  /** Ventana efectiva: la configurada o la del modelo, si se conoce. */
   limit: number | null;
   /** Porcentaje usado (puede pasar de 100 si ya no cabe). */
   percent: number | null;
@@ -72,7 +72,13 @@ export function computeContextStats(opts: {
   );
 
   const totalTokens = systemTokens + conversationTokens;
-  const limit = modelContextLimit(model);
+  // La ventana configurada en el compositor es la que se pide al cargar el
+  // modelo local; sin ella se usa la que publica el catálogo.
+  const configured = parameters?.contextLength;
+  const limit =
+    typeof configured === 'number' && Number.isFinite(configured) && configured > 0
+      ? Math.floor(configured)
+      : modelContextLimit(model);
   const reservedTokens = Math.max(0, parameters?.maxTokens ?? 0);
   const percent = limit ? Math.round((totalTokens / limit) * 100) : null;
   const remainingTokens = limit === null ? null : Math.max(0, limit - totalTokens - reservedTokens);
