@@ -1,8 +1,8 @@
 # Hoja de ruta de plataforma — Commander AI Studio
 
-> **Estado:** propuesta inicial, 2026-11-05. Complementa [ROADMAP_UX.md](ROADMAP_UX.md); no lo sustituye.
+> **Estado:** revisado contra el árbol, 2026-11-07. Complementa [ROADMAP_UX.md](ROADMAP_UX.md) y [ROADMAP_PARITY.md](ROADMAP_PARITY.md); no los sustituye.
 >
-> **Objetivo:** cerrar los huecos de plataforma frente a un entorno como Freebuff sin dejar de ser local-first por defecto. Cada fase debe poder entregarse y probarse por separado.
+> **Objetivo:** cerrar los huecos de plataforma frente a un entorno como Freebuff sin dejar de ser local-first por defecto. Cada fase debe poder entregarse y probarse por separado. Las fases 0–2 y el agente de GitHub Actions ya están implementadas en código; Linear y GitHub están implementados pero pendientes de verificación real. El estado distingue código de verificación real.
 
 ## Principios
 
@@ -20,36 +20,41 @@
 | Releases locales inmutables | **Hecho** | `publisher.ts`: copia a `.commander/publish/<slug>/releases/<id>/`, punteros `preview`/`production`, promoción y rollback |
 | Publicación local | **Hecho** | `server.ts` sirve `/published/<slug>/<entorno>/`; `PublishView.tsx` ya tiene la pestaña **Publicar** |
 | Build antes de publicar | **Hecho** | `createRelease({ build: true })` ejecuta `npm run build` con timeout y límites de archivos/tamaño |
-| Navegador del agente | **Hecho, pero sin UI compartida** | `browserSession.ts` y `src/agent/tools/browser.ts` usan Playwright; guardan consola y red por sesión |
-| Panel Navegador | **Parcial** | `BrowserView.tsx` es un iframe; `WorkbenchPreview.tsx` simula la consola y las peticiones de red |
-| Hosting público | **Falta** | No hay adaptador remoto; todo se sirve desde el proceso local |
-| Backend para apps publicadas | **Falta** | Firebase/SQLite son datos de Commander, no bindings de la app desplegada |
+| Contrato de despliegue | **Hecho** | `deploy/types.ts` incluye `configured`; `deploy/adapter.ts`, `deploy/stateStore.ts` y `commander.app.json`; el estado local conserva `remote` con migración tolerante |
+| Hosting público | **Implementado; E2E local, falta Vercel real** | `deploy/vercelAdapter.ts` sube la release ya construida, con preview, promoción, rollback y logs. `tests/unit/vercelAdapter.e2e.test.ts` recorre el ciclo contra un servidor HTTP local que implementa el contrato; no es una cuenta Vercel |
+| Navegador del agente | **Hecho** | `browserSession.ts` y `src/agent/tools/browser.ts` usan Playwright; la misma sesión alimenta frames, consola y red |
+| Panel Navegador | **Hecho** | `BrowserView.tsx` pinta frames JPEG por SSE (700 ms), envía entrada real, selecciona sesión, captura screenshots y graba; `LiveConsole`/`NetworkMonitor` leen eventos reales |
+| Grabaciones y artifacts | **Hecho local** | `useBrowserRecording.ts` captura frames; `ArtifactsView.tsx` reproduce, guarda en IndexedDB y permite comentarios inline. Límite: 120 s/180 frames, sin MP4, export ni visor remoto |
+| Hosting SSR/Workers | **Falta** | El adaptador Vercel sólo acepta `static`/`spa`; `detectProject` identifica `worker`/`ssr` pero no hay adaptador que los despliegue |
+| Backend para apps publicadas | **Falta** | No hay `BackendAdapter` ni bindings de la app desplegada. Existe `/api/backend` local multiinquilino (auth, registros, archivos) como base, pero no aprovisiona ni despliega ese backend |
 | Realtime para apps publicadas | **Falta** | El SSE/WebSocket existente es del agente/terminal, no de las apps del usuario |
-| Conectores nativos | **Parcial** | MCP con OAuth y GitHub; los tokens OAuth de MCP están en memoria (`src/mcp/oauth.ts`) |
+| Conectores nativos | **Parcial: Linear + GitHub** | `src/integrations/` tiene OAuth PKCE, vault AES-256-GCM, refresh, revocación remota y UI para Linear y GitHub; `linear` expone `whoami`, `list_teams`, `list_issues`, `create_issue`; `github.pr`/`github.comment` usan OAuth o `GITHUB_TOKEN`. Falta validación OAuth real |
+| Automatización CI | **Implementado; no ejecutado en GitHub** | `.github/workflows/commander-agent.yml` y `scripts/github-agent.ts` reutilizan el CLI headless; hay tests de parser y stream, pero no una corrida real en GitHub |
 | Skills de cuenta | **Parcial** | `skills/loader.ts` carga skills locales; hay catálogo público y marketplace de plugins, pero no sync de cuenta |
 | Plantillas | **Parcial** | `src/data/composerTemplates.ts` tiene 5 plantillas; no hay galería curada equivalente |
 | Ejecución en nube | **Falta** | El agente corre en el servidor Node/Electron local |
 
-## Orden recomendado
+## Orden recomendado (repriorizado 2026-11-07)
 
-1. **Contrato de despliegue** (base para todo lo remoto).
-2. **Hosting remoto de estáticos** (mayor retorno visible).
-3. **Navegador real en el Workbench** (victoria contenida y muy visible).
-4. **Backend gestionado para apps** (auth, base de datos, storage).
-5. **Realtime para apps**.
-6. **Conectores nativos**.
-7. **Skills de cuenta y plantillas**.
-8. **Workspaces remotos** (sólo si se decide dejar de ser local-first).
+0. **Cerrar la verificación real de lo ya construido** (Vercel, Linear y GitHub Actions). No es una fase nueva: una capacidad no pasa a “hecho” sólo porque compile y tenga tests con mocks.
+1. **Backend gestionado para apps publicadas** (auth, base de datos, storage). Es el hueco de producto más grande que queda.
+2. **SSR/Workers y dominios personalizados** para que el hosting no se limite a builds estáticas/SPA.
+3. **Realtime para apps**, una vez exista el backend y el modelo de auth por app.
+4. **Conectores**: verificar Linear y GitHub con cuentas reales; el segundo conector ya existe.
+5. **Skills de cuenta y plantillas curadas**.
+6. **Workspaces remotos** (sólo si se decide dejar de ser local-first; no arrancar por imitación).
 
-El hosting remoto y el navegador real pueden ir en paralelo: no comparten dependencias técnicas.
+El navegador real y los artifacts locales ya no están en la cola: están implementados en la Fase 2. Lo que queda del navegador es pulido (fps/fallback y exportación), no la base.
 
 ---
 
-## Fase 0 — Contrato de despliegue y modelo de entornos
+## Fase 0 — Contrato de despliegue y modelo de entornos — HECHO
 
-**Duración estimada:** 2–3 días.
+**Estado:** implementado (2026-11-07). **Esfuerzo:** 2–3 días.
 
 **Objetivo:** separar “release” de “destino” antes de escribir un adaptador concreto.
+
+**Evidencia:** `deploy/types.ts` define `DeploymentAdapter` (con `configured`) y los tipos del manifiesto; `deploy/adapter.ts` describe el proyecto; `deploy/fakeAdapter.ts` es sólo un test double del contrato y no se selecciona en producción; `deploy/stateStore.ts` persiste el bloque remoto; `publisher.ts` migra estados antiguos con `normalizeRemoteState` sin romper el publicador local.
 
 ### Alcance
 
@@ -70,36 +75,35 @@ El hosting remoto y el navegador real pueden ir en paralelo: no comparten depend
   - carpeta de salida,
   - variables públicas,
   - bindings requeridos (`database`, `storage`, `auth`, `realtime`).
-- Crear un adaptador `fake` para pruebas: guarda deployments en memoria y permite probar preview, promoción y rollback sin red.
+- Crear un test double en memoria para pruebas: guarda deployments y permite probar preview, promoción y rollback sin red. No es un backend de producción.
 
-### Archivos previstos
+### Archivos implementados
 
-- `deploy/types.ts`, `deploy/adapter.ts`, `deploy/fakeAdapter.ts`.
-- `publisher.ts`: ampliar `PublishState` sin cambiar el comportamiento local.
-- `tests/unit/deployAdapter.test.ts`.
+- `deploy/types.ts`, `deploy/adapter.ts`, `deploy/fakeAdapter.ts`, `deploy/preflight.ts`, `deploy/stateStore.ts`.
+- `deploy/vercelAdapter.ts`: primer adaptador real (detalle en Fase 1).
+- `publisher.ts`: `PublishState.remote` y migración `normalizeRemoteState`.
+- `tests/unit/deployAdapter.test.ts`, `tests/unit/vercelAdapter.test.ts`, `tests/deployEndpoints.test.ts`.
 
 ### Criterios de aceptación
 
-- [ ] El publicador local actual sigue pasando sus pruebas sin cambios de comportamiento.
-- [ ] Un estado antiguo sin `remote` se lee y se guarda con migración.
-- [ ] El adaptador `fake` completa preview → producción → rollback.
-- [ ] Ninguna interfaz nueva exige credenciales para publicar en local.
-- [ ] `tsc --noEmit` y `vite build` en verde.
+- [x] El publicador local actual sigue pasando sus pruebas sin cambios de comportamiento.
+- [x] Un estado antiguo sin `remote` se lee y se guarda con migración.
+- [x] El test double en memoria completa preview → producción → rollback.
+- [x] Ninguna interfaz nueva exige credenciales para publicar en local.
+- [x] `tsc --noEmit` y `vite build` en verde.
 
-### Puerta de decisión
+### Decisión tomada
 
-Elegir el primer proveedor de hosting. No se implementa hasta cerrar:
-
-- ¿estáticos primero o Workers/SSR desde el inicio?
-- ¿el proveedor permite previews por rama o sólo entornos fijos?
-- ¿cómo se autentica el CLI/API: token de cuenta, token de proyecto o OAuth?
-- ¿los dominios personalizados son parte del primer corte o de una fase posterior?
+- **Proveedor:** Vercel para el primer corte.
+- **Alcance:** builds `static`/`spa`; `worker`/`ssr` se detectan y se rechazan con un mensaje claro.
+- **Auth:** `VERCEL_TOKEN` + `VERCEL_PROJECT_ID` (y `VERCEL_TEAM_ID` opcional) en el servidor; el token nunca llega al renderer.
+- **Entornos:** preview y producción fijos, con promoción y rollback por deployment. **Sin dominios personalizados ni previews por rama** en este corte.
 
 ---
 
-## Fase 1 — Hosting remoto de estáticos
+## Fase 1 — Hosting remoto de estáticos — IMPLEMENTADO; FALTA VERIFICACIÓN REAL
 
-**Duración estimada:** 1–2 semanas.
+**Estado:** adaptador, rutas y UI implementados (2026-11-07). La cobertura es con `fetch` simulado: **no hay evidencia de un despliegue real contra Vercel**.
 
 **Objetivo:** que una release local se pueda abrir en una URL pública, con preview, producción y rollback.
 
@@ -128,22 +132,29 @@ Elegir el primer proveedor de hosting. No se implementa hasta cerrar:
   - un deployment `running` no se reintenta a ciegas,
   - un fallo de red no marca la release como publicada.
 
-### Archivos previstos
+### Archivos implementados
 
-- `deploy/<provider>Adapter.ts`.
+- `deploy/vercelAdapter.ts`, `deploy/routes.ts`, `deploy/preflight.ts`, `deploy/stateStore.ts`.
 - `server.ts`: rutas `/api/deploy/*` y guardas de escritura.
-- `src/components/panel/PublishView.tsx`: destino remoto y logs.
-- `tests/unit/deployRemote.test.ts`, `tests/ui/PublishView.remote.test.tsx`, `tests/deployEndpoints.test.ts`.
+- `src/components/panel/PublishView.tsx`: destino remoto, estado, URL y logs.
+- `tests/unit/vercelAdapter.test.ts`, `tests/deployEndpoints.test.ts`, `tests/ui/PublishView.test.tsx`.
 
 ### Criterios de aceptación
 
-- [ ] Una app Vite de ejemplo se publica en preview y devuelve una URL pública que carga HTML, JS y CSS con los content types correctos.
-- [ ] Promover preview a producción no vuelve a compilar ni a copiar la release.
-- [ ] Rollback vuelve a la release anterior en menos de 30 segundos.
-- [ ] El estado sobrevive a reiniciar Commander.
-- [ ] Un fallo del proveedor deja el estado local en un estado recuperable, no en “publicado”.
-- [ ] El token del proveedor no aparece en la respuesta HTTP, en el renderer ni en los logs.
-- [ ] La release no contiene `.env*`, `.npmrc`, `.netrc` ni symlinks.
+- [ ] Una app Vite de ejemplo se publica en preview y devuelve una URL pública que carga HTML, JS y CSS con los content types correctos. **Pendiente de verificación real:** los tests usan un `fetch` simulado.
+- [x] Promover preview a producción no vuelve a compilar ni a copiar la release (cubierto en `vercelAdapter.test.ts`).
+- [ ] Rollback vuelve a la release anterior en menos de 30 segundos. **Pendiente de medición real:** el camino está implementado y probado, pero no cronometrado contra Vercel.
+- [ ] El estado sobrevive a reiniciar Commander. **Pendiente de prueba real:** `PublisherRemoteStateStore` está implementado, pero no se probó un reinicio.
+- [x] Un fallo del proveedor deja el estado local en un estado recuperable, no en “publicado”.
+- [x] El token del proveedor no aparece en la respuesta HTTP, en el renderer ni en los logs.
+- [x] La release no contiene `.env*`, `.npmrc`, `.netrc` ni symlinks.
+
+### Pendiente real y deuda conocida
+
+- Desplegar una app Vite de ejemplo con una cuenta real y comprobar HTML, JS, CSS y content types.
+- Medir el rollback real; el objetivo de <30 s sigue sin evidencia.
+- El E2E local ya recorre subida, HTML, JS, content types, promoción y rollback contra un servidor de contrato; no sustituye la verificación contra Vercel.
+- Sin dominios personalizados, previews por rama, SSR/Workers ni CI/CD externo. Eso queda en las fases posteriores.
 
 ### Fuera de alcance
 
@@ -152,9 +163,9 @@ Elegir el primer proveedor de hosting. No se implementa hasta cerrar:
 
 ---
 
-## Fase 2 — Navegador real en el Workbench
+## Fase 2 — Navegador real en el Workbench — HECHO CON LÍMITES
 
-**Duración estimada:** 1 semana.
+**Estado:** implementado (2026-11-07). Incluye el visor de frames, consola/red reales, entrada, reconexión y grabación local con artifacts. La captura se cubre con un fixture SSE y la vista de artifacts con tests de UI; no se verificó visualmente en Electron.
 
 **Objetivo:** que el panel **Navegador** y las pestañas **Consola/Red** muestren la misma sesión de Playwright que ya usa el agente.
 
@@ -170,36 +181,50 @@ Elegir el primer proveedor de hosting. No se implementa hasta cerrar:
 - Añadir:
   - selector de sesión,
   - botón de captura,
-  - grabación opcional,
+  - grabación local implementada,
   - indicador de “agente controlando” / “usuario controlando”.
 - Mantener la tool `browser` intacta: el agente sigue usando `open`, `navigate`, `snapshot`, `click`, `type`, `press`, `scroll`, `screenshot`, `logs`, `close`.
 - Respetar la guardia SSRF y la aprobación para navegar fuera de loopback.
 
-### Archivos previstos
+### Archivos implementados
 
 - `browserSession.ts`: eventos de frame, entrada y suscripción.
-- `server.ts`: rutas `/api/browser/session/*`.
-- `src/components/panel/BrowserView.tsx`: visor y controles.
+- `server.ts` y `browserRoutes.ts`: rutas `/api/browser/session/*`.
+- `src/components/panel/BrowserView.tsx`: visor, controles y REC.
 - `src/components/WorkbenchPreview.tsx`: consola/red reales.
-- `tests/unit/browserSession.test.ts`, `tests/ui/BrowserView.test.tsx`.
+- `src/hooks/useBrowserRecording.ts`, `src/artifacts/`, `src/components/panel/ArtifactsView.tsx`: grabación, persistencia y revisión.
+- `tests/browserEndpoints.test.ts`, `tests/browserSse.test.ts`, `tests/ui/BrowserView.test.tsx`, `tests/ui/ArtifactsView.test.tsx`.
 
 ### Criterios de aceptación
 
-- [ ] Un dev server local se ve en el panel y el agente puede hacer clic en un elemento visible.
-- [ ] La consola muestra un `console.error` real de la página.
-- [ ] El monitor de red muestra una petición 404 real, con método, URL, estado y duración.
-- [ ] Usuario y agente comparten la misma sesión; un clic del agente se refleja en el panel.
-- [ ] Al cerrar y reabrir el panel, la sesión se reconecta o se explica que expiró.
-- [ ] No queda ningún texto de “demo” ni de “simulate” en la ruta de preview.
-- [ ] Navegar fuera de loopback sigue pidiendo aprobación.
+- [x] Un dev server local se ve en el panel y el agente puede hacer clic en un elemento visible (fixture local en `browserSse.test.ts`; sin verificación visual en Electron).
+- [x] La consola muestra un `console.error` real de la página.
+- [x] El monitor de red muestra una petición 404 real, con método, URL, estado y duración.
+- [x] Usuario y agente comparten la misma sesión; un clic del agente se refleja en el panel.
+- [x] Al cerrar y reabrir el panel, la sesión se reconecta o se explica que expiró.
+- [x] No queda ningún texto de “demo” ni de “simulate” en la ruta de preview.
+- [x] Navegar fuera de loopback sigue pidiendo aprobación.
+- [x] Grabar una sesión, guardar frames y comentarios, y revisarlos (tests de UI y persistencia en IndexedDB; sin verificación visual en Electron).
 
-### Riesgo principal
+### Implementado además: grabaciones y artifacts
 
-El streaming de frames y la entrada remota pueden añadir latencia. Si el consumidor no puede mantener 10–15 fps, se degrada a captura bajo demanda (botón o acción del agente) y se documenta; no se finge un stream continuo.
+- Grabación de frames JPEG desde el mismo SSE, con botón **REC** en `BrowserView`.
+- Persistencia en IndexedDB; límite de **120 s** y **180 frames**.
+- Reproductor con timeline, marcadores y comentarios inline anclados a `atMs` y a coordenadas normalizadas `x/y` del fotograma.
+- Resolver, reabrir y eliminar comentarios; filtro por proyecto.
+- Auto-apertura de **Artifacts** al detener la grabación y guardado al cambiar de pestaña.
+
+### Límites y riesgo materializado
+
+- El stream emite un frame cada **700 ms (~1.4 fps)**, no 10–15 fps. Sirve para ver la sesión y comentar, no para vídeo fluido. **No existe fallback de captura bajo demanda**; si se necesita, es trabajo pendiente.
+- La grabación es una secuencia de frames, **no un MP4**; no hay exportación, descarga ni visor remoto de artifacts.
+- La captura se cubre con un fixture SSE y la vista de artifacts con tests de UI; no se verificó visualmente en Electron.
 
 ---
 
-## Fase 3 — Backend gestionado para apps publicadas
+## Fase 3 — Backend gestionado para apps publicadas — PENDIENTE
+
+**Estado:** no iniciado como backend gestionado. Ya existe una base local multiinquilino en `/api/backend` (registro/login bearer, registros y archivos aislados; ver [docs/API.md](docs/API.md#backend-multiinquilino)), pero no hay `BackendAdapter`, aprovisionamiento desde la UI ni inyección de bindings en una app publicada. Es el hueco de producto más grande y la siguiente prioridad después de cerrar la verificación real de la Fase 1.
 
 **Duración estimada:** 2–3 semanas.
 
@@ -258,7 +283,9 @@ El streaming de frames y la entrada remota pueden añadir latencia. Si el consum
 
 ---
 
-## Fase 4 — Realtime para apps publicadas
+## Fase 4 — Realtime para apps publicadas — PENDIENTE
+
+**Estado:** no iniciado; depende de la Fase 3 (auth y persistencia por app).
 
 **Duración estimada:** 1 semana.
 
@@ -292,9 +319,9 @@ El streaming de frames y la entrada remota pueden añadir latencia. Si el consum
 
 ---
 
-## Fase 5 — Conectores nativos
+## Fase 5 — Conectores nativos — PARCIAL: LINEAR + GITHUB IMPLEMENTADOS
 
-**Duración estimada:** 1–2 semanas para el primer conector; el marco queda listo para más.
+**Estado:** Linear y GitHub están implementados en código (2026-11-07); ningún flujo OAuth real se validó con una cuenta. **Duración restante:** verificación real; el marco ya admite más conectores.
 
 **Objetivo:** pasar de “MCP genérico” a conectores OAuth de un clic, con tokens persistentes y herramientas tipadas.
 
@@ -309,34 +336,41 @@ El streaming de frames y la entrada remota pueden añadir latencia. Si el consum
   - fallback a archivo cifrado con clave del sistema; nunca `localStorage`.
 - Flujo OAuth con PKCE, state y callback loopback.
 - Refresco automático y revocación.
-- Primer conector vertical: elegir uno por uso real (Slack, Linear o Gmail). No generalizar hasta que ese flujo completo funcione.
+- Conectores verticales: **Linear** (`whoami`, `list_teams`, `list_issues`, `create_issue`) y **GitHub** (OAuth para `github.pr`/`github.comment`, con fallback a `GITHUB_TOKEN`).
 - Mostrar en UI:
   - conectado/desconectado,
   - cuenta y scopes,
   - botón de revocar,
   - última vez que se usó.
 
-### Archivos previstos
+### Archivos implementados
 
-- `src/integrations/registry.ts`, `src/integrations/oauth.ts`, `src/integrations/tokenVault.ts`.
-- `src/components/settings/ExtensionsSettings.tsx`: sección de conectores.
-- Adaptadores de herramientas en `src/agent/tools/integrations/*.ts`.
-- `tests/unit/tokenVault.test.ts`, `tests/integrations/oauth.test.ts`.
+- `src/integrations/oauth.ts`, `linear.ts`, `github.ts`, `linearActions.ts`, `tokenVault.ts`, `router.ts`, `providers.ts`.
+- `src/components/settings/IntegrationsSettings.tsx`: conexión, estado y revocación.
+- `src/agent/tools/linear.ts`, `src/agent/tools/github.ts`.
+- `tests/unit/integrations.test.ts`, `tests/integrationsEndpoints.test.ts`.
 
 ### Criterios de aceptación
 
-- [ ] Conectar, usar una herramienta y desconectar el primer conector sin reiniciar Commander.
-- [ ] El token sobrevive a un reinicio y se refresca si expira.
-- [ ] Revocar elimina el token local y no deja copias en logs.
-- [ ] Los scopes son mínimos y visibles antes de autorizar.
-- [ ] Un fallo de OAuth no bloquea el resto de la app.
-- [ ] `src/mcp/oauth.ts` deja de ser la única vía de tokens persistentes.
+- [ ] Conectar, usar una herramienta y desconectar Linear o GitHub con una cuenta real. **Pendiente:** no se ejecutó el OAuth completo contra ninguno de los dos; los tests no cubren la autorización real.
+- [ ] El token sobrevive a un reinicio y se refresca si expira. **Implementado** con vault AES-256-GCM y refresh de un solo vuelo; GitHub también admite tokens sin expiración, pero **no verificado contra proveedores reales**.
+- [x] Revocar elimina el token local y no deja copias en logs.
+- [x] Los scopes son visibles antes de autorizar (`read,write` en Linear; `repo,read:user` en GitHub).
+- [x] Un fallo de OAuth no bloquea el resto de la app.
+- [x] `src/mcp/oauth.ts` deja de ser la única vía de tokens persistentes.
+- [x] Dos conectores comparten vault, callback y flujo PKCE; GitHub añade refresh opcional y tokens sin expiración.
+
+### Pendiente real
+
+- Configurar credenciales de Linear y GitHub y probar autorización, callback, uso de herramientas, refresh y revocación con cuentas reales.
+- Revisar los scopes de GitHub (`repo` es amplio) y decidir si se ofrece una variante `public_repo` para repos públicos.
+- Documentar en la UI el estado exacto de cada conector (implementado, no verificado) sin presentarlo como integración lista para producción.
 
 ---
 
-## Fase 6 — Skills de cuenta y plantillas
+## Fase 6 — Skills de cuenta y plantillas — PARCIAL
 
-**Duración estimada:** 1–2 semanas.
+**Estado:** existen catálogo/marketplace y 5 plantillas locales; no hay sincronización de skills con la cuenta ni galería curada. **Duración restante:** 1–2 semanas.
 
 **Objetivo:** que las skills y las plantillas viajen con la cuenta, no sólo con el checkout local.
 
@@ -376,9 +410,9 @@ El streaming de frames y la entrada remota pueden añadir latencia. Si el consum
 
 ---
 
-## Fase 7 — Workspaces remotos (opcional)
+## Fase 7 — Workspaces remotos (opcional) — NO INICIADO
 
-**Duración estimada:** 4–6 semanas. **No empezar sin decisión de producto.**
+**Estado:** no iniciado y fuera de la prioridad actual. **Duración estimada:** 4–6 semanas. **No empezar sin decisión de producto.**
 
 **Objetivo:** ejecutar el agente y el workspace fuera de la máquina local, con continuidad entre dispositivos.
 
@@ -389,7 +423,7 @@ El streaming de frames y la entrada remota pueden añadir latencia. Si el consum
 - Cola de trabajos y reconexión.
 - Auth de usuario y aislamiento por workspace.
 - Límites de CPU, memoria, disco y tiempo.
-- Visor de logs y artefactos.
+- Visor de logs y artefactos **remotos**. Los artifacts locales del navegador (Fase 2) no cubren este caso.
 
 ### Criterios de aceptación
 
@@ -405,40 +439,57 @@ Esto cambia el modelo del producto. Si Commander sigue siendo una app personal l
 
 ---
 
-## Matriz de prioridad
+## Implementado fuera de las fases originales
 
-| Fase | Valor para el usuario | Esfuerzo | Dependencias | Riesgo |
-| --- | --- | --- | --- | --- |
-| 0. Contrato | Alto (base) | Bajo | Ninguna | Bajo |
-| 1. Hosting estático | Muy alto | Medio | Proveedor elegido | Medio |
-| 2. Navegador real | Alto | Medio | Ninguna | Bajo |
-| 3. Backend | Muy alto | Alto | Proveedor y modelo de auth | Alto |
-| 4. Realtime | Medio | Medio | Fase 3 | Medio |
-| 5. Conectores | Alto | Medio | OAuth y vault | Medio |
-| 6. Skills/cuenta | Medio | Medio | Auth de cuenta | Bajo |
-| 7. Workspaces remotos | Muy alto | Muy alto | Infraestructura y producto | Muy alto |
+### Agente de GitHub Actions
+
+- `.github/workflows/commander-agent.yml` permite lanzar el agente desde un issue o manualmente.
+- `scripts/github-agent.ts` y `src/github/agentCommand.ts` reutilizan el CLI headless; no hay un segundo agente.
+- Se corrigió `fs_read` en `agentClient.ts` para que el flujo headless pueda leer archivos.
+- **Estado:** implementado y con tests de parser/stream (`tests/unit/githubAgent.test.ts`), pero **no ejecutado en GitHub ni con un modelo real**. Falta configurar la clave, hacer push y completar una corrida.
+
+---
+
+## Matriz de prioridad (revisada 2026-11-07)
+
+| Fase | Estado | Valor | Esfuerzo restante | Dependencias | Prioridad |
+| --- | --- | --- | --- | --- | --- |
+| 0. Contrato | Hecho | Alto (base) | — | Ninguna | — |
+| 1. Hosting estático | Implementado; verificación real pendiente | Muy alto | Bajo/medio | Cuenta Vercel | P0 verificar |
+| 2. Navegador + artifacts | Hecho con límites | Alto | Bajo (fps/export) | Ninguna | P2 pulir |
+| 3. Backend | Pendiente | Muy alto | Alto | Proveedor y auth por app | **P0** |
+| 4. Realtime | Pendiente | Medio | Medio | Fase 3 | P1 |
+| 5. Conectores | Linear + GitHub implementados; falta verificación real | Alto | Bajo verificar | OAuth y vault | P1 |
+| 6. Skills/cuenta | Parcial | Medio | Medio | Auth de cuenta | P2 |
+| 7. Workspaces remotos | No iniciado | Muy alto | Muy alto | Infraestructura y producto | P3/opcional |
 
 ## Métricas de éxito
 
-- **Tiempo a URL pública:** menos de 3 minutos para una app estática ya construida.
-- **Éxito de despliegue:** ≥ 95% en la app de ejemplo y en 3 proyectos reales.
-- **Rollback:** menos de 30 segundos y sin rebuild.
-- **Fugas de secretos:** 0 en artefactos, logs y respuestas.
-- **Navegador:** consola y red reales en el 100% de las sesiones del panel; 0 datos simulados.
-- **Backend:** dos cuentas aisladas en la app de ejemplo; 401/403 correctos.
-- **Conectores:** conectar/usar/revocar completo sin reiniciar.
-- **Skills:** misma skill disponible en dos máquinas tras login.
+- **Hosting real:** una app estática publicada, abierta y promovida con una cuenta real de Vercel. Hoy hay evidencia con `fetch` simulado y con un E2E local contra el contrato de Vercel, pero no con una cuenta real.
+- **Tiempo a URL pública:** objetivo < 3 minutos; **no medido contra Vercel**.
+- **Éxito de despliegue:** objetivo ≥ 95% en la app de ejemplo y 3 proyectos reales; pendiente de la primera corrida real.
+- **Rollback:** objetivo < 30 segundos y sin rebuild; el camino existe, falta medirlo.
+- **Fugas de secretos:** 0 en artefactos, logs y respuestas; cubierto por preflight y tests del adaptador.
+- **Navegador:** consola y red reales; stream a ~1.4 fps, no 10–15 fps. 0 datos simulados en la ruta de preview.
+- **Artifacts:** grabar, recargar y comentar sin pérdida; tests de UI en verde, sin verificación visual en Electron.
+- **Backend:** dos cuentas aisladas en la app de ejemplo; 401/403 correctos. Pendiente.
+- **Conectores:** Linear y GitHub conectar/usar/revocar con cuentas reales; refresh y scopes pendientes de validación.
+- **Skills:** misma skill disponible en dos máquinas tras login. Pendiente.
 
 ## Riesgos y mitigaciones
 
 | Riesgo | Mitigación |
 | --- | --- |
+| El adaptador Vercel se probó con `fetch` simulado y un contrato local, no con Vercel | Desplegar una app real antes de presentar el hosting como verificado |
 | El proveedor de hosting cambia límites o precios | Adaptador desacoplado; el estado local sigue siendo la fuente de verdad |
 | Se sube un secreto por accidente | Preflight de `.env*`, source maps y patrones de claves; denegar por defecto |
-| SSR/Workers no cabe en el modelo estático | `detectProject` devuelve `unsupported` con mensaje claro; no publicar una SPA rota |
+| El servidor de contrato local se confunde con Vercel | El E2E y la documentación lo declaran explícitamente; la verificación real sigue pendiente |
+| SSR/Workers no cabe en el modelo estático | `detectProject` rechaza `worker`/`ssr` con mensaje claro; no publicar una SPA rota |
 | El backend filtra datos entre usuarios | Aislamiento por tenant, filtros server-side por `user.id`, pruebas con dos cuentas |
-| Los tokens OAuth se pierden o se filtran | Vault cifrado, refresh, revocación y prohibición de logs |
-| El stream del navegador va lento | Captura bajo demanda como fallback documentado |
+| Linear no se probó con OAuth real | Configurar credenciales y probar autorización, refresco y revocación antes de añadir el segundo conector |
+| GitHub Actions nunca corrió en GitHub | Hacer una corrida real con modelo y clave; no presentarlo como automatización validada |
+| Los artifacts locales se confunden con el visor remoto de Fase 7 | Mantener la distinción en la UI y en la documentación; no prometer artifacts remotos |
+| El stream del navegador va a ~1.4 fps | Documentado; falta un fallback de captura bajo demanda |
 | La fase 7 convierte el proyecto en otra cosa | Puerta de decisión explícita; no arrancar sin aprobación |
 | Windows: rutas, symlinks y locks | Pruebas en Windows; el publicador ya ignora symlinks y normaliza rutas |
 
@@ -451,26 +502,33 @@ Esto cambia el modelo del producto. Si Commander sigue siendo una app personal l
 - Reemplazar Firebase como auth de Commander.
 - Cambiar la paleta, la tipografía o el rol de Nono.
 
-## Primer corte recomendado
+## Siguiente corte recomendado (2026-11-07)
 
-**Semanas 1–2**
+**Ahora — P0: verificar lo construido**
 
-- Fase 0 completa.
-- Inicio de Fase 1: adaptador real y despliegue de una app Vite de ejemplo.
+- Desplegar una app Vite real en Vercel: preview, URL pública, content types, promoción y rollback cronometrado.
+- Configurar Linear y completar OAuth, uso, refresco y revocación con una cuenta real.
+- Ejecutar el workflow de GitHub Actions con un modelo real.
+- Publicar una app Vite real en Vercel y medir el rollback; el E2E local ya no sustituye esa comprobación.
 
-**Semanas 3–4**
+**Semanas 1–3 — P0: Fase 3**
 
-- Fase 1 completa con preview, producción y rollback.
-- Fase 2 en paralelo: navegador real con consola y red.
+- Elegir proveedor de backend y modelo de auth por app.
+- Implementar `BackendAdapter`, migraciones, storage y la app de ejemplo con aislamiento entre cuentas.
 
-**Semana 5**
+**Semanas 4–5 — P1: Fase 4**
 
-- Demo interna: publicar, abrir la URL, ver la app en el panel, hacer un clic con el agente y mostrar un error real de consola.
-- Revisar métricas y decidir si se sigue con backend o se ajusta el proveedor.
+- Realtime sobre el backend y la auth ya existentes; dos clientes, permisos y reconexión.
 
-**Semana 6**
+**Después — P1/P2**
 
-- Congelar alcance de Fase 3 y elegir el modelo de auth de apps publicadas.
+- SSR/Workers y dominios personalizados.
+- Verificación real de Linear y GitHub; revisar scopes de GitHub.
+- Skills de cuenta, plantillas curadas y exportación de artifacts.
+
+**No arrancar**
+
+- Fase 7 hasta que exista una decisión de producto explícita. No se empieza “porque Freebuff lo tiene”.
 
 ## Definición de terminado por fase
 
@@ -479,7 +537,9 @@ Una fase no está terminada hasta que:
 - [ ] El código compila con `tsc --noEmit`.
 - [ ] `vite build` pasa.
 - [ ] Las pruebas focalizadas de la fase pasan.
+- [ ] Si depende de un proveedor externo, se probó contra ese proveedor; los mocks no cuentan como verificación real.
 - [ ] La UI se probó en el Workbench, no sólo con tests.
 - [ ] Los errores muestran una causa accionable y no filtran secretos.
 - [ ] La documentación de usuario explica el nuevo flujo y sus límites.
 - [ ] El comportamiento local sigue funcionando sin el proveedor nuevo.
+- [ ] El estado del roadmap no marca “hecho” una capacidad cuyo único respaldo es código sin ejecutar.

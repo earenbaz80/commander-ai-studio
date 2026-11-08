@@ -2,7 +2,15 @@
 
 Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos Gemini/HF y exportador nativo (Electron/Tauri).
 
+## Documentación
+
+- [Referencia de API](docs/API.md): endpoints de IA, agente, plugins y seguridad.
+- [LM Studio](docs/API.md#lm-studio): generación, carga automática del modelo y aviso de contexto en la UI.
+- [Plan de paridad](ROADMAP_PARITY.md): comparación con OpenCode, Antigravity y Freebuff, fases y criterios de aceptación.
+
 ## Run Locally
+
+Requiere Node.js 22.13+ (el backend usa `node:sqlite`).
 
 1. `npm install`
 2. Copia `.env.example` a `.env` y define `GEMINI_API_KEY`
@@ -11,10 +19,17 @@ Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos
 
 ## Hosting estático (Vercel)
 
-El panel **Publicar** crea releases locales inmutables y las publica en un host
-real sin volver a compilar. Sin `VERCEL_TOKEN` y `VERCEL_PROJECT_ID` conserva el
-adaptador fake para trabajar sin red; con ambas variables activa Vercel. El token
-vive sólo en el servidor: nunca se envía al renderer ni se imprime en errores.
+El panel **Publicar** crea releases locales inmutables y las publica en Vercel
+sin volver a compilar. Vercel es el único backend remoto: si faltan
+`VERCEL_TOKEN` o `VERCEL_PROJECT_ID`, el destino aparece como **no configurado**
+y las acciones remotas se desactivan; el publicador local sigue funcionando. No
+hay fallback fake en producción. El token vive sólo en el servidor: nunca se
+envía al renderer ni se imprime en errores.
+
+La suite cubre el adaptador con un `fetch` simulado y un E2E contra un servidor
+HTTP local que implementa el contrato de Vercel (subida por SHA, preview,
+promoción, rollback y descarga del HTML/asset). Ese E2E **no es una cuenta
+Vercel**: la primera publicación real sigue pendiente de credenciales.
 
 - **Preflight:** `GET /api/deploy/preflight?root=…&releaseId=…` revisa la
   release sin subir nada. Si hay problemas, el preview responde `400` antes de
@@ -41,7 +56,8 @@ Vercel Hobby sólo permite volver a la producción inmediatamente anterior.
   - Reglas de permisos por patrón para `shell.run` y las tools de escritura (`allow`/`ask`/`deny`, `*` como comodín, gana la última que coincide); se guardan en la máquina, no en el repo.
   - Deshacer y rehacer el último paso que escribió en disco (`PASO ATRÁS` / `REHACER`): cada escritura guarda el contenido previo y, antes de revertir, se captura el estado actual para poder rehacerlo.
   - Comandos y agentes del proyecto en `.commander/commands/*.md` y `.commander/agents/*.md` (front-matter opcional `name`/`description`). Escribir `/nombre args` expande el cuerpo con `$ARGUMENTS` o `$1..$9` (y añade los args al final si la plantilla no tiene marcadores); el agente elegido prefija sus instrucciones al objetivo. `GET /api/agent/prompts?root=…` los lista.
-  - GitHub: `github.pr` lee un PR (metadatos, cuerpo y diff por archivo) y `github.comment` publica un comentario con aprobación previa. El token vive en el servidor (`GITHUB_TOKEN`) y no viaja al modelo.
+  - GitHub: `github.pr` lee un PR (metadatos, cuerpo y diff por archivo) y `github.comment` publica un comentario con aprobación previa. Conéctalo en **Ajustes → Extensiones → Integraciones** (OAuth 2.0 + PKCE, scopes `repo` y `read:user`) o define `GITHUB_TOKEN`; el conector tiene prioridad y el token nunca viaja al modelo.
+  - Linear: `linear` con `whoami`, `list_teams`, `list_issues` y `create_issue` (esta última pide aprobación). Conéctalo en **Ajustes → Extensiones → Integraciones**; el flujo es OAuth 2.0 + PKCE y el token se guarda cifrado con AES-256-GCM en `~/.commander/vault` (nunca en `commander.json` ni en `localStorage`). Configura `LINEAR_CLIENT_ID` y registra en Linear el callback que muestra la UI; `LINEAR_CLIENT_SECRET` sólo hace falta para apps confidenciales.
   - `code.analyze` / `code.refactor` / `code.fix`: análisis, renombrado y formateo **sin modelo** (ver [Análisis nativo](#análisis-nativo-sin-modelo)).
 - `danger=true` pide aprobación con diff preview (`fs.edit/write`).
 - Reglas repo: `AGENTS.md`, `.cursorrules`, `CLAUDE.md` se inyectan al prompt.
@@ -50,11 +66,6 @@ Vercel Hobby sólo permite volver a la producción inmediatamente anterior.
 - Freebuff: proveedor propio (`freebuff/…` → `POST /api/freebuff/generate`, proxy OpenAI-compatible a `freebuff.com/api/v1/paid`). Sus modelos **no** vienen en el catálogo por defecto porque sin `FREEBUFF_API_KEY` fallarían al elegirlos: `npm run models:freebuff` mete los que declaran tool-calling (hoy 9 de 280; el resto sólo hace chat) y se repite cuando el proveedor añada modelos. Los ids viven en `src/config/freebuff-models.json`, que leen a la vez el agente (`toolDialectForModel`), el proxy y el propio script.
 - MCP: panel lateral (add/list/toggle, persiste `localStorage`). Schemas MCP se anexan al `toolSchema`.
 - Sesiones: auto-guardado en `localStorage` (20), restore/fork/delete. Métricas por tool en panel.
-
-## API agente
-
-- `POST /api/agent/run-tool {toolId, input}` — sandbox a `process.cwd()`, validación y allowlist shell.
-- `GET /api/health` — smoke.
 
 ### Adjuntarse a una corrida del escritorio
 
@@ -81,6 +92,62 @@ las escrituras) y permite decidir sin volver al escritorio:
   se envía a `POST /api/agent/sessions/:id/approvals/:approvalId`, así que la
   semántica (timeout, idempotencia, 409) es la misma que en la UI. Con `--json`
   o sin TTY no se pregunta: la decisión sigue siendo del escritorio.
+
+### Agente de GitHub Actions
+
+`.github/workflows/commander-agent.yml` reutiliza el CLI headless: arranca el
+servidor embebido, espera `/api/health` y ejecuta `commander agent --json`
+contra el checkout del evento (en comentarios de PR, `refs/pull/N/head`). No
+duplica el bucle del agente.
+
+- `/commander <tarea>` en un issue o PR: modo plan (sólo lectura), publica la
+  respuesta como comentario. Sólo owner, miembros y colaboradores pueden
+  invocarlo; los comentarios de bots se ignoran.
+- `/commander --write <tarea>` en un issue: modo build, commitea los cambios en
+  una rama y abre un PR con `Refs #N` (no lo cierra). En pull requests se
+  rechaza: no se puede actualizar de forma segura la rama de un fork.
+- `workflow_dispatch` acepta `task`, `issue_number` opcional y `write`.
+
+Configura en **Settings → Secrets and variables → Actions** la clave del
+proveedor (por ejemplo `GEMINI_API_KEY`) y, si quieres fijar el modelo, la
+variable `COMMANDER_MODEL`. También puedes ajustar `COMMANDER_MAX_STEPS` y
+`COMMANDER_AGENT_TIMEOUT_MS` como variables. El workflow no le pasa el token de
+GitHub al servidor: los comentarios y el PR los crea el script, nunca el modelo.
+
+## API agente
+
+- `POST /api/agent/run-tool {toolId, input}` — sandbox a `process.cwd()`, validación y allowlist shell.
+- `GET /api/integrations` — catálogo de conectores con estado y callback.
+- `POST /api/integrations/:provider/authorize` — inicia OAuth y devuelve la URL.
+- `GET /api/integrations/:provider/status` — estado sin exponer el token.
+- `POST /api/integrations/:provider/disconnect` — revoca el token en el proveedor y borra el local; si el proveedor falla, borra igualmente el local y devuelve un aviso.
+- `GET /api/health` — smoke.
+
+## Backend multiinquilino (local)
+
+`/api/backend` da a Commander una superficie de datos con cuentas aisladas sin
+dependencias ni servicios externos. Cada registro crea un inquilino y su usuario
+propietario; el resto de rutas exige `Authorization: Bearer <token>`.
+
+- `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`.
+- `GET/POST /records`, `GET/PATCH/DELETE /records/:id`.
+- `GET/POST /files`, `GET/DELETE /files/:id`. El binario se manda en el cuerpo,
+  con `Content-Type` y, opcionalmente, `X-Commander-File-Name`; máximo 10 MiB.
+
+El `tenant_id` sale siempre de la sesión, nunca del body ni de la query. Un
+recurso de otro inquilino responde 403, uno inexistente 404 y una petición sin
+sesión 401. La base es SQLite (`.commander/tenants.db`) y los bytes viven en
+`.commander/tenant-storage/<tenant>/<uuid>`; ambas rutas se pueden mover con
+`COMMANDER_TENANT_DB_PATH` y `COMMANDER_TENANT_STORAGE_DIR`. Las contraseñas usan
+scrypt + salt, los tokens se guardan sólo como SHA-256 y las respuestas llevan
+`Cache-Control: no-store`. Contrato completo en
+[docs/API.md](docs/API.md#backend-multiinquilino).
+
+Es el backend local de Commander: no aprovisiona bindings para apps publicadas
+(eso sigue en la Fase 3 de [ROADMAP_PLATFORM.md](ROADMAP_PLATFORM.md)). La vista
+**Workbench → Backend** permite crear o iniciar sesión, gestionar registros y
+subir, descargar y borrar archivos contra `/api/backend`; el token vive en
+`sessionStorage` y se borra al cerrar sesión.
 
 ## Sesiones PTY
 
@@ -146,7 +213,7 @@ La instalación sí usa la API de GitHub para listar el árbol del repo: sin tok
 
 ## Seguridad
 
-- Headers base + CORS allowlist (`CORS_ORIGINS`) + rate global 300/min.
+- Headers base + CORS allowlist (`CORS_ORIGINS`) + rate global por IP: 1.200 lecturas y 300 escrituras por minuto, con `/api/health` exento.
 - Debug `listModels` 403 en prod. Export ZIP con escape HTML y filename sanitizado.
 - `firestore.rules`: `/users` self-only, `likesCount` solo ±1, likes no públicos.
 
@@ -171,8 +238,8 @@ El CI exige **cero vulnerabilidades en producción**: `npm audit --omit=dev --au
 
 `npm test` corre los dos proyectos de `vitest.config.ts`, y cada uno se puede lanzar solo:
 
-- **`ui`** — `tests/ui/**` (28 ficheros) con jsdom y `tests/ui/setup.ts`: los polyfills que jsdom no trae (ResizeObserver, IntersectionObserver, `matchMedia`, `scrollIntoView`, Web Speech) y los matchers de `@testing-library/jest-dom`.
-- **`node`** — `tests/unit/**` y `tests/mcp/**` (11 ficheros) con entorno `node` y `tests/unit/setup.ts`, que **no** carga nada de DOM: esta suite es lógica pura y no lo necesita. Ese setup sólo blinda el estado que comparten por correr en un proceso real: devuelve el cwd a la raíz si un test que hizo `process.chdir` falla antes de restaurarlo, y desactiva fake timers que hayan quedado activos.
+- **`ui`** — `tests/ui/**` (47 ficheros) con jsdom y `tests/ui/setup.ts`: los polyfills que jsdom no trae (ResizeObserver, IntersectionObserver, `matchMedia`, `scrollIntoView`, Web Speech) y los matchers de `@testing-library/jest-dom`.
+- **`node`** — `tests/unit/**` y `tests/mcp/**` (39 ficheros) con entorno `node` y `tests/unit/setup.ts`, que **no** carga nada de DOM: esta suite es lógica pura y no lo necesita. Ese setup sólo blinda el estado que comparten por correr en un proceso real: devuelve el cwd a la raíz si un test que hizo `process.chdir` falla antes de restaurarlo, y desactiva fake timers que hayan quedado activos.
 
   La separación la vigila `tests/unit/noDom.test.ts`: comprueba que en esa suite no existe `window` ni `document`, escanea las dos carpetas buscando APIs del DOM o imports de `@testing-library`/`jsdom`, y sigue los imports de forma transitiva (relativos y `@/`) hasta lo que cada test carga de `src/`, porque el caso realista es que el test esté limpio y el DOM entre por un helper. Ignora comentarios, imports de sólo tipo (se borran al compilar) y los usos ya cubiertos por una guarda de entorno: `typeof window !== 'undefined' && …` en la misma línea, y el `if (typeof window === 'undefined') return;` o `if (typeof window !== 'undefined') { … }` de más arriba (también con la condición partida en varias líneas), pero **sólo dentro de su bloque** (todo el fichero si está en el nivel superior). Una guarda en otra función no exime, una guarda guardada en una variable (`const enNode = typeof window === 'undefined'`) tampoco —no se puede saber si luego se comprueba—, y un `if (...) { … }` deja de cubrir al cerrar su bloque. Cuando falla dice fichero, línea, API y la cadena de imports que llevó hasta ahí, así que la respuesta es mover el test a `tests/ui` o partir el módulo, no añadir polyfills.
 
@@ -190,12 +257,13 @@ npx vitest run tests/unit/config.test.ts   # un fichero
 
 ## Suite de tests (node)
 
-La de arriba va aparte: `npm run test:node` corre los `tests/*.test.ts` de la raíz con el runner de Node. Un solo archivo también: `npm run test:node -- tests/persistence.test.ts`.
+La de arriba va aparte: `npm run test:node` corre los `tests/*.test.ts` de la raíz y los `tests/cli/*.test.ts` con el runner de Node. Un solo archivo también: `npm run test:node -- tests/persistence.test.ts`.
 
 `node --test` abre **cada archivo en su propio proceso**, así que un server compartido en memoria no serviría de nada. Lo resuelve `scripts/test-node.ts`: abre un canal de control en loopback y compila `server.ts` **la primera vez que algún archivo pide la URL**, nunca antes. Un archivo que no toca HTTP no paga el arranque (`ningún archivo usó HTTP: no se arrancó el server`); los que sí, reutilizan el mismo y no lo matan, porque no es suyo. Al acabar la suite se para el server y se borra la base temporal.
 
 - **Modo**: `NODE_ENV=production` y una SQLite en un directorio temporal. No es «desplegar»: con Vite montado como middleware el primer re-optimizado bloqueaba el proceso y una petición de test moría por timeout. La superficie `/api/*` es la misma; los endpoints exclusivos de desarrollo no están.
 - **Sin padre**: `startServer()` del arnés arranca y para su propio server, así que `tsx --test tests/serverEndpoints.test.ts` sigue funcionando solo.
+- **CLI E2E (F1-14)**: `tests/cli/e2e.test.ts` lanza `bin/commander.ts agent --json` contra `tests/helpers/fakeAgentServer.ts`, un HTTP local que imita `/api/health`, `/api/gemini/generate`, `/api/gemini/stream` y `/api/agent/run-tool`. No usa clave ni red; cada caso deja un recibo en `os.tmpdir()` con stdout/stderr/peticiones y la última línea NDJSON.
 - **Peticiones**: `node:http` con `agent: false`. `fetch` reutiliza sockets que el server cierra a los 5 s y un POST moría con `ECONNRESET`.
 - **Si el server muere**: el test falla diciéndolo; no se arranca otro por detrás, que escondería el fallo tras una instancia distinta de la que se cree.
 
