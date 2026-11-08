@@ -29,7 +29,7 @@ export const NonoHead: React.FC<{
    * Estilo visual. `classic` es la cabeza retro-Norton de siempre; `orb` es la
    * variante extra: esfera con degradado turquesa→verde y ojos de barra.
    */
-  variant?: 'classic' | 'orb';
+  variant?: 'classic' | 'orb' | 'eyes';
   /** Colores del cuerpo y los ojos del orbe (por defecto, los del GIF). */
   orbColors?: Partial<NonoOrbColors>;
   /** Color de contorno, ojos y boca de la variante clásica. */
@@ -54,8 +54,10 @@ export const NonoHead: React.FC<{
   // reposo, actividad) lo sigue avisando sólo el LED de la antena.
   const headStroke = classicAccent;
 
-  const pupilOffsetX = Math.max(-3, Math.min(3, eyeOffset.x * 0.5));
-  const pupilOffsetY = Math.max(-2, Math.min(2, eyeOffset.y * 0.5));
+  // Los ojos clásicos son cuadrados y no tienen pupila: el bloque entero se
+  // desplaza un poco para conservar el gesto de mirar al puntero.
+  const eyeShiftX = Math.max(-3, Math.min(3, eyeOffset.x * 0.5));
+  const eyeShiftY = Math.max(-2, Math.min(2, eyeOffset.y * 0.5));
 
   // LED de la antena: es el único indicador que parpadea en Nono.
   // · Activo → amarillo Norton. · Reposo (dormido) → verde. · Alerta/error → rojo.
@@ -72,17 +74,33 @@ export const NonoHead: React.FC<{
     // heredado (cian/rojo) queda sólo para la antena, que sigue avisando del
     // estado con su LED.
     const strokeColor = classicAccent;
-    // 3D eye whites with gradient
-    const eyeHighlight = show3D ? (
-      <>
-        <ellipse cx="17" cy="35" rx="1.5" ry="1" fill="#ffffff" opacity="0.3" />
-        <ellipse cx="41" cy="35" rx="1.5" ry="1" fill="#ffffff" opacity="0.3" />
-        <ellipse cx="16" cy="34" rx="0.8" ry="0.6" fill="#ffffff" opacity="0.5" />
-        <ellipse cx="40" cy="34" rx="0.8" ry="0.6" fill="#ffffff" opacity="0.5" />
-      </>
-    ) : null;
+    // Ojos cuadrados, sin pupila: un bloque de luz por ojo. El bloque entero
+    // se desplaza con el puntero para no perder el gesto de mirada.
+    const squareEye = (cx: number, cy: number, side: number) => (
+      <rect
+        className={blink ? 'nono-eye-square nono-eye-shutter' : 'nono-eye-square'}
+        x={cx + eyeShiftX - side / 2}
+        y={cy + eyeShiftY - side / 2}
+        width={side}
+        height={side}
+        rx="1"
+        fill={show3D ? 'url(#nonoEyeWhite)' : 'none'}
+        stroke={strokeColor}
+        strokeWidth="2"
+        filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))"
+      />
+    );
 
-    if (blink) {
+    // Los ojos cuadrados no se sustituyen por líneas: se recogen con la
+    // animación de persiana. Las expresiones de trazo conservan su cierre rápido.
+    const usesSquareEyes =
+      expression === 'neutral' ||
+      expression === 'surprised' ||
+      expression === 'thinking' ||
+      expression === 'watch' ||
+      expression === 'curious';
+
+    if (blink && !usesSquareEyes) {
       return (
         <>
           <line x1="14" y1="38" x2="26" y2="38" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.5))" />
@@ -95,7 +113,6 @@ export const NonoHead: React.FC<{
       case 'happy':
         return (
           <>
-            {eyeHighlight}
             <path d="M14 38 Q20 32 26 38" fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
             <path d="M38 38 Q44 32 50 38" fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
           </>
@@ -114,7 +131,6 @@ export const NonoHead: React.FC<{
       case 'sad':
         return (
           <>
-            {eyeHighlight}
             <path d="M14 42 Q20 46 26 42" fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
             <path d="M38 42 Q44 46 50 42" fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
           </>
@@ -122,13 +138,8 @@ export const NonoHead: React.FC<{
       case 'surprised':
         return (
           <>
-            {eyeHighlight}
-            <circle cx="20" cy="38" r="6" fill={show3D ? 'url(#nonoEyeWhite)' : 'none'} stroke={strokeColor} strokeWidth="2" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <circle cx="44" cy="38" r="6" fill={show3D ? 'url(#nonoEyeWhite)' : 'none'} stroke={strokeColor} strokeWidth="2" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <circle cx={20 + pupilOffsetX} cy={38 + pupilOffsetY} r="3" fill="#000000" filter="drop-shadow(0 1px 1px rgba(0,0,0,0.5))" />
-            <circle cx={44 + pupilOffsetX} cy={38 + pupilOffsetY} r="3" fill="#000000" filter="drop-shadow(0 1px 1px rgba(0,0,0,0.5))" />
-            <circle cx={18 + pupilOffsetX} cy={36 + pupilOffsetY} r="0.8" fill="#ffffff" opacity="0.6" />
-            <circle cx={42 + pupilOffsetX} cy={36 + pupilOffsetY} r="0.8" fill="#ffffff" opacity="0.6" />
+            {squareEye(20, 38, 10)}
+            {squareEye(44, 38, 10)}
           </>
         );
       case 'angry':
@@ -141,7 +152,6 @@ export const NonoHead: React.FC<{
       case 'wink':
         return (
           <>
-            {eyeHighlight}
             <line x1="14" y1="38" x2="26" y2="38" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
             <path d="M38 38 Q44 34 50 38" fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
           </>
@@ -156,40 +166,25 @@ export const NonoHead: React.FC<{
       case 'thinking':
         return (
           <>
-            {eyeHighlight}
-            <circle cx="20" cy="38" r="5" fill={show3D ? 'url(#nonoEyeWhite)' : 'none'} stroke={strokeColor} strokeWidth="2" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <circle cx="44" cy="38" r="5" fill={show3D ? 'url(#nonoEyeWhite)' : 'none'} stroke={strokeColor} strokeWidth="2" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <circle cx={20 + pupilOffsetX} cy={38 + pupilOffsetY} r="3" fill="#000000" filter="drop-shadow(0 1px 1px rgba(0,0,0,0.5))" />
-            <circle cx={44 + pupilOffsetX} cy={38 + pupilOffsetY} r="3" fill="#000000" filter="drop-shadow(0 1px 1px rgba(0,0,0,0.5))" />
-            <circle cx={18 + pupilOffsetX} cy={36 + pupilOffsetY} r="0.8" fill="#ffffff" opacity="0.6" />
-            <circle cx={42 + pupilOffsetX} cy={36 + pupilOffsetY} r="0.8" fill="#ffffff" opacity="0.6" />
+            {squareEye(20, 38, 8)}
+            {squareEye(44, 38, 8)}
           </>
         );
       case 'watch':
-        // Ojos muy abiertos y cejas altas: está pendiente de lo que escribes.
+        // Ojos cuadrados grandes: está pendiente de lo que escribes.
         return (
           <>
             <g className="nono-watch-eyes">
-              {eyeHighlight}
-              <circle cx="20" cy="38" r="6.5" fill={show3D ? 'url(#nonoEyeWhite)' : 'none'} stroke={strokeColor} strokeWidth="2" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-              <circle cx="44" cy="38" r="6.5" fill={show3D ? 'url(#nonoEyeWhite)' : 'none'} stroke={strokeColor} strokeWidth="2" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-              <circle cx={18.5 + pupilOffsetX} cy={38 + pupilOffsetY} r="3" fill="#000000" filter="drop-shadow(0 1px 1px rgba(0,0,0,0.5))" />
-              <circle cx={42.5 + pupilOffsetX} cy={38 + pupilOffsetY} r="3" fill="#000000" filter="drop-shadow(0 1px 1px rgba(0,0,0,0.5))" />
+              {squareEye(20, 38, 10)}
+              {squareEye(44, 38, 10)}
             </g>
-            <path d="M14 29 Q20 26.5 26 29" fill="none" stroke={strokeColor} strokeWidth="1.5" strokeLinecap="round" opacity="0.85" />
-            <path d="M38 29 Q44 26.5 50 29" fill="none" stroke={strokeColor} strokeWidth="1.5" strokeLinecap="round" opacity="0.85" />
           </>
         );
       case 'curious':
         return (
           <>
-            {eyeHighlight}
-            <circle cx={20 + pupilOffsetX * 1.5} cy={38 + pupilOffsetY * 1.5} r="7" fill={show3D ? 'url(#nonoEyeWhite)' : 'none'} stroke={strokeColor} strokeWidth="2" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <circle cx={44 + pupilOffsetX * 1.5} cy={38 + pupilOffsetY * 1.5} r="7" fill={show3D ? 'url(#nonoEyeWhite)' : 'none'} stroke={strokeColor} strokeWidth="2" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <circle cx={20 + pupilOffsetX * 2} cy={38 + pupilOffsetY * 2} r="3.5" fill="#000000" filter="drop-shadow(0 1px 1px rgba(0,0,0,0.5))" />
-            <circle cx={44 + pupilOffsetX * 2} cy={38 + pupilOffsetY * 2} r="3.5" fill="#000000" filter="drop-shadow(0 1px 1px rgba(0,0,0,0.5))" />
-            <circle cx={17 + pupilOffsetX * 2} cy={35 + pupilOffsetY * 2} r="1" fill="#ffffff" opacity="0.8" />
-            <circle cx={41 + pupilOffsetX * 2} cy={35 + pupilOffsetY * 2} r="1" fill="#ffffff" opacity="0.8" />
+            {squareEye(20, 38, 11)}
+            {squareEye(44, 38, 8)}
           </>
         );
       case 'error':
@@ -209,16 +204,11 @@ export const NonoHead: React.FC<{
             <line x1="28" y1="38" x2="36" y2="38" stroke={strokeColor} strokeWidth="1.5" />
           </>
         );
-      default: // neutral - ojos que miran al puntero
+      default: // neutral - ojos cuadrados que siguen al puntero
         return (
           <>
-            {eyeHighlight}
-            <circle cx="20" cy="38" r="6" fill={show3D ? 'url(#nonoEyeWhite)' : 'none'} stroke={strokeColor} strokeWidth="2" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <circle cx="44" cy="38" r="6" fill={show3D ? 'url(#nonoEyeWhite)' : 'none'} stroke={strokeColor} strokeWidth="2" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <circle cx={20 + pupilOffsetX} cy={38 + pupilOffsetY} r="3" fill="#000000" filter="drop-shadow(0 1px 1px rgba(0,0,0,0.5))" />
-            <circle cx={44 + pupilOffsetX} cy={38 + pupilOffsetY} r="3" fill="#000000" filter="drop-shadow(0 1px 1px rgba(0,0,0,0.5))" />
-            <circle cx={18 + pupilOffsetX} cy={36 + pupilOffsetY} r="0.8" fill="#ffffff" opacity="0.6" />
-            <circle cx={42 + pupilOffsetX} cy={36 + pupilOffsetY} r="0.8" fill="#ffffff" opacity="0.6" />
+            {squareEye(20, 38, 9)}
+            {squareEye(44, 38, 9)}
           </>
         );
     }
@@ -256,11 +246,165 @@ export const NonoHead: React.FC<{
     }
   };
 
+  if (variant === 'eyes') {
+    // Variante «solo ojos»: dos rectángulos redondeados, sin cabeza, boca ni
+    // antena. Cada expresión se resuelve con la geometría del rectángulo
+    // (ancho, alto, inclinación y separación), sin curvas ni corazones.
+    // Sin cabeza que ancle la mirada, el recorrido se amplía: ±7/±5 sobre el
+    // viewBox de 64 se nota de verdad y sigue dejando los ojos dentro del lienzo.
+    const dx = Math.max(-7, Math.min(7, eyeOffset.x * 7));
+    const dy = Math.max(-5, Math.min(5, eyeOffset.y * 5));
+    // El error es el único estado que cambia de color: rojo de alerta, el mismo
+    // del LED de la antena clásica, para que se lea de un vistazo.
+    const ink = expression === 'error' ? '#ff5555' : classicAccent;
+    const centerX = { left: 22, right: 42 } as const;
+
+    interface EyeRect {
+      side: 'left' | 'right';
+      w: number;
+      h: number;
+      y: number;
+      tilt?: number;
+      r?: number;
+      className?: string;
+    }
+
+    // `tilt` positivo sube los extremos interiores (alegría); negativo los
+    // hunde (enfado, pena).
+    const eye = (side: EyeRect['side'], spec: Omit<EyeRect, 'side'>): EyeRect => ({ side, ...spec });
+
+    const paint = (spec: EyeRect, key: string) => {
+      const x = centerX[spec.side];
+      return (
+        <rect
+          key={key}
+          data-eye={spec.side}
+          x={x - spec.w / 2 + dx}
+          y={spec.y + dy}
+          width={spec.w}
+          height={spec.h}
+          rx={spec.r ?? Math.min(3, spec.w / 3)}
+          fill={ink}
+          className={spec.className}
+          transform={
+            spec.tilt
+              ? `rotate(${spec.side === 'left' ? -spec.tilt : spec.tilt} ${x + dx} ${spec.y + spec.h / 2 + dy})`
+              : undefined
+          }
+        />
+      );
+    };
+
+    const both = (spec: Omit<EyeRect, 'side'>) => (
+      <>
+        {paint(eye('left', spec), 'left')}
+        {paint(eye('right', spec), 'right')}
+      </>
+    );
+
+    const renderEyeRects = () => {
+      if (blink) return both({ w: 12, h: 3, y: 30.5 });
+      if (busy) return both({ w: 14, h: 4, y: 30 });
+      switch (expression) {
+        case 'happy':
+          return both({ w: 14, h: 7, y: 27, tilt: 10 });
+        case 'love':
+          return (
+            <>
+              {paint(eye('left', { w: 12, h: 16, y: 24, className: 'nono-heart' }), 'left')}
+              {paint(eye('right', { w: 12, h: 16, y: 24, className: 'nono-heart nono-heart-right' }), 'right')}
+            </>
+          );
+        case 'sad':
+          return both({ w: 14, h: 7, y: 34, tilt: -10 });
+        case 'surprised':
+          return both({ w: 13, h: 24, y: 20 });
+        case 'angry':
+          return both({ w: 13, h: 9, y: 27, tilt: -18 });
+        case 'wink':
+          return (
+            <>
+              {paint(eye('left', { w: 12, h: 4, y: 30 }), 'left')}
+              {paint(eye('right', { w: 12, h: 18, y: 23 }), 'right')}
+            </>
+          );
+        case 'sleepy':
+          return both({ w: 12, h: 4, y: 30 });
+        case 'thinking':
+          return (
+            <>
+              {paint(eye('left', { w: 11, h: 12, y: 25 }), 'left')}
+              {paint(eye('right', { w: 10, h: 8, y: 28 }), 'right')}
+            </>
+          );
+        case 'watch':
+          return <g className="nono-watch-eyes">{both({ w: 13, h: 16, y: 24 })}</g>;
+        case 'curious':
+          return (
+            <>
+              {paint(eye('left', { w: 12, h: 20, y: 21 }), 'left')}
+              {paint(eye('right', { w: 12, h: 12, y: 27 }), 'right')}
+            </>
+          );
+        case 'error':
+          return (
+            <>
+              {(['left', 'right'] as const).flatMap((side) =>
+                [45, -45].map((angle) => (
+                  <rect
+                    key={`${side}-${angle}`}
+                    data-eye={side}
+                    x={centerX[side] - 2 + dx}
+                    y={23 + dy}
+                    width={4}
+                    height={18}
+                    rx={1.5}
+                    fill={ink}
+                    transform={`rotate(${angle} ${centerX[side] + dx} ${32 + dy})`}
+                  />
+                )),
+              )}
+            </>
+          );
+        case 'cool':
+          return (
+            <>
+              {both({ w: 16, h: 6, y: 28, r: 1.5 })}
+              <rect data-eye="bridge" x={30 + dx} y={30.5 + dy} width={4} height={2} rx={1} fill={ink} />
+            </>
+          );
+        default:
+          return both({ w: 12, h: 18, y: 23 });
+      }
+    };
+
+    return (
+      <svg
+        viewBox="0 0 64 64"
+        width={size}
+        height={size}
+        data-variant="eyes"
+        data-expression={expression}
+        data-blink={blink ? 'true' : 'false'}
+      >
+        <g data-testid="nono-eyes" className={!busy && idleGaze ? 'nono-orb-gaze' : undefined}>
+          {renderEyeRects()}
+        </g>
+      </svg>
+    );
+  }
+
   if (variant === 'orb') {
     // Ojos de barra blanca como el GIF: se desplazan con el puntero, parpadean
     // y conservan las expresiones que ya usa el resto de la app.
-    const dx = Math.max(-2, Math.min(2, eyeOffset.x * 2));
-    const dy = Math.max(-1.5, Math.min(1.5, eyeOffset.y * 1.5));
+    // Procesando, el orbe levanta la mirada hacia el chat y asiente; ya no
+    // gira sobre su eje. Si algo falla, la expresión de error manda y se
+    // recuperan los ojos normales (la cara feliz no tapa el fallo).
+    const busyLookingUp = busy && expression !== 'error';
+    // El orbe se dibuja a 36–48 px sobre un viewBox de 64: se amplía el
+    // desplazamiento para que el seguimiento del puntero se note.
+    const dx = busyLookingUp ? 0 : Math.max(-4, Math.min(4, eyeOffset.x * 4));
+    const dy = busyLookingUp ? -3 : Math.max(-3, Math.min(3, eyeOffset.y * 3));
     const eye = orbPalette.eyes;
     const bar = (x: number) => (
       <rect x={x + dx} y={27.5 + dy} width="5" height="9" rx="2.5" fill={eye} />
@@ -345,15 +489,13 @@ export const NonoHead: React.FC<{
             </>
           );
         case 'watch':
-          // Círculos con cejas altas: sigue lo que escribes, no sólo piensa.
+          // Círculos abiertos: sigue lo que escribes, no sólo piensa.
           return (
             <>
               <g className="nono-watch-eyes">
                 <circle cx={24 + dx} cy={32 + dy} r="3.1" fill={eye} />
                 <circle cx={38 + dx} cy={32 + dy} r="3.1" fill={eye} />
               </g>
-              <path d="M20.5 26.5 Q24 24.5 27.5 26.5" fill="none" stroke={eye} strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
-              <path d="M34.5 26.5 Q38 24.5 41.5 26.5" fill="none" stroke={eye} strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
             </>
           );
         case 'thinking':
@@ -365,19 +507,11 @@ export const NonoHead: React.FC<{
             </>
           );
         case 'curious':
-          // Un ojo más abierto que el otro y una ceja: se nota que pregunta.
+          // Un ojo más abierto que el otro: se nota que pregunta.
           return (
             <>
               <rect x={21.5 + dx} y={25.5 + dy} width="6" height="12" rx="3" fill={eye} />
               <rect x={37 + dx} y={28.5 + dy} width="5" height="8" rx="2.5" fill={eye} />
-              <path
-                d="M34.5 22.5 Q38 20.5 42 21.5"
-                fill="none"
-                stroke={eye}
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                opacity="0.9"
-              />
             </>
           );
         default:
@@ -389,6 +523,39 @@ export const NonoHead: React.FC<{
           );
       }
     };
+
+    /**
+     * Cara de procesamiento: los ojos de barra miran arriba (hacia el chat) y
+     * una sonrisa pequeña los acompaña. `nono-orb-affirm` deja que el ajuste
+     * de Configuración decida si asiente; el componente no anima nada.
+     */
+    const renderBusyFace = () => (
+      <g
+        data-testid="nono-orb-busy-face"
+        data-look="up"
+        className="nono-orb-affirm"
+        aria-hidden="true"
+      >
+        {blink ? (
+          <>
+            <rect x={22.5 + dx} y={28 + dy} width="5" height="2.5" rx="1.25" fill={eye} />
+            <rect x={36.5 + dx} y={28 + dy} width="5" height="2.5" rx="1.25" fill={eye} />
+          </>
+        ) : (
+          <>
+            {bar(22.5)}
+            {bar(36.5)}
+            <path
+              d="M27 39 Q32 43 37 39"
+              fill="none"
+              stroke={eye}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </>
+        )}
+      </g>
+    );
 
     return (
       <svg
@@ -417,12 +584,16 @@ export const NonoHead: React.FC<{
         <circle cx="32" cy="32" r="21" fill={`url(#nonoOrbBody-${uid})`} />
         <ellipse cx="25.5" cy="20.5" rx="10.5" ry="6" fill={`url(#nonoOrbGloss-${uid})`} />
         <circle cx="32" cy="32" r="21" fill="none" stroke={orbPalette.eyes} strokeOpacity="0.22" strokeWidth="0.8" />
-        <g
-          data-testid="nono-orb-eyes"
-          className={idleGaze ? 'nono-orb-gaze' : undefined}
-        >
-          {renderOrbEyes()}
-        </g>
+        {busyLookingUp ? (
+          renderBusyFace()
+        ) : (
+          <g
+            data-testid="nono-orb-eyes"
+            className={!busy && idleGaze ? 'nono-orb-gaze' : undefined}
+          >
+            {renderOrbEyes()}
+          </g>
+        )}
       </svg>
     );
   }
@@ -471,6 +642,13 @@ export const NonoHead: React.FC<{
       </defs>
       {/* Cabeza con sombra vectorial 3D */}
       <g filter="url(#nonoShadow)">
+        {/* Tapones laterales: dos remates cortos, centrados en la carcasa. */}
+        <g className="nono-side-caps" data-testid="nono-side-caps" aria-hidden="true">
+          <rect className="nono-side-cap" x="3" y="29.5" width="7" height="9" rx="2" fill="url(#nonoBody)" stroke={headStroke} strokeWidth={strokeWidth} />
+          <rect className="nono-side-cap" x="54" y="29.5" width="7" height="9" rx="2" fill="url(#nonoBody)" stroke={headStroke} strokeWidth={strokeWidth} />
+          <line x1="5.5" y1="32" x2="5.5" y2="37" stroke={headStroke} strokeWidth="0.8" opacity="0.6" />
+          <line x1="58.5" y1="32" x2="58.5" y2="37" stroke={headStroke} strokeWidth="0.8" opacity="0.6" />
+        </g>
         <rect x="8" y="12" width="48" height="44" rx="12" fill="url(#nonoBody)" stroke={headStroke} strokeWidth={strokeWidth} />
         {/* Inner highlight for 3D depth */}
         <rect x="10" y="14" width="44" height="18" rx="10" fill="url(#nonoHighlight)" stroke="none" opacity="0.3" />

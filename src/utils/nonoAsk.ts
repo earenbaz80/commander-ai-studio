@@ -12,6 +12,7 @@ import type { ParameterConfig } from '../types/studio';
 import type { Language } from '../i18n/translations';
 import { detectCodePatterns, type CodePatternResult } from './codePatternDetector';
 import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
+import { LMSTUDIO_LOAD_TIMEOUT_MS } from '../lib/lmStudio';
 
 export interface AskNonoHistoryTurn {
   fromUser: boolean;
@@ -60,6 +61,19 @@ const NONO_SYSTEM_EN =
   'Answer briefly (2-3 sentences), with friendly personality and light humor. ' +
   'Use emojis sparingly. If asked for app help, give short guidance about modes, ' +
   'the Workbench, search, compiling or exporting.';
+
+/**
+ * Presupuesto normal de una respuesta de Nono. 25 s cubre el arranque de los
+ * proveedores locales habituales.
+ */
+const NONO_TIMEOUT_MS = 25_000;
+
+/**
+ * LM Studio carga el modelo antes de responder. El servidor corta esa carga en
+ * LMSTUDIO_LOAD_TIMEOUT_MS; el cliente espera el doble para que la generación
+ * posterior también quepa, sin cortar a los 25 s de Nono.
+ */
+const LMSTUDIO_TIMEOUT_MS = LMSTUDIO_LOAD_TIMEOUT_MS * 2;
 
 /** Endpoint del servidor para cada proveedor (`google` es el id del registro). */
 const PROVIDER_ENDPOINTS: Record<string, string> = {
@@ -141,6 +155,7 @@ export async function askNonoDetailed(text: string, opts: AskNonoOptions = {}): 
   const lang = opts.lang ?? 'es';
   const provider = providerOf(opts.selectedProvider);
   const endpoint = PROVIDER_ENDPOINTS[provider] ?? '/api/gemini/generate';
+  const timeoutMs = provider === 'lmstudio' ? LMSTUDIO_TIMEOUT_MS : NONO_TIMEOUT_MS;
   const prompt = buildPrompt(String(text), opts);
   const systemInstruction = buildSystemInstruction(text, opts, lang);
 
@@ -166,8 +181,8 @@ export async function askNonoDetailed(text: string, opts: AskNonoOptions = {}): 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      // Los modelos locales pueden tardar en cargar; 25 s cubre ese arranque.
-      signal: AbortSignal.timeout(25_000),
+      // LM Studio puede tardar minutos en cargar el modelo antes de generar.
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     const data: any = await res.json().catch(() => ({}));

@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { askNonoDetailed } from '../../src/utils/nonoAsk';
 import { resetApiKeyConfigured } from '../../src/lib/apiKeyFlags';
+import { LMSTUDIO_LOAD_TIMEOUT_MS } from '../../src/lib/lmStudio';
 
 const json = (payload: unknown) =>
   ({ ok: true, status: 200, json: async () => payload }) as unknown as Response;
@@ -45,6 +46,25 @@ describe('askNonoDetailed', () => {
     expect(calls[0].url).toBe('/api/lmstudio/generate');
     expect(calls[0].body.model).toBe('qwen2.5-coder-7b');
     expect(calls[0].body.apiKey).toBeUndefined();
+  });
+
+  it('espera una carga larga de LM Studio sin cortar a los 25 s', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    try {
+      await askNonoDetailed('hola', {
+        selectedProvider: 'lmstudio',
+        selectedModel: 'lmstudio/qwen',
+      });
+      await askNonoDetailed('hola', {
+        selectedProvider: 'ollama',
+        selectedModel: 'llama3.2',
+      });
+
+      expect(timeout.mock.calls[0]?.[0]).toBe(LMSTUDIO_LOAD_TIMEOUT_MS * 2);
+      expect(timeout.mock.calls[1]?.[0]).toBe(25_000);
+    } finally {
+      timeout.mockRestore();
+    }
   });
 
   it('manda los turnos anteriores dentro del prompt', async () => {

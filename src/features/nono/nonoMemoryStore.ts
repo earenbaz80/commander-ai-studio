@@ -23,6 +23,10 @@ export interface NonoMemory {
     instantGaze: boolean;
     /** Variante extra de Nono: esfera turquesa→verde en vez de la cabeza clásica. */
     orbSkin: boolean;
+    /** Variante «solo ojos»: dos rectángulos sin cabeza, boca ni antena. */
+    eyesOnly: boolean;
+    /** Asiente al procesar; manda sobre prefers-reduced-motion. */
+    orbRotate: boolean;
     /** Colores del cuerpo del orbe. */
     orbColors: NonoOrbColors;
     /** Color de contorno, ojos y boca del Nono clásico. */
@@ -56,6 +60,8 @@ export const DEFAULT_MEMORY: NonoMemory = {
     forceMotion: false,
     instantGaze: false,
     orbSkin: false,
+    eyesOnly: false,
+    orbRotate: true,
     orbColors: DEFAULT_ORB_COLORS,
     classicAccent: '#ffffff',
   },
@@ -86,6 +92,16 @@ export function readNonoMemory(): NonoMemory {
   } catch {
     return DEFAULT_MEMORY;
   }
+}
+
+export type NonoSkin = 'classic' | 'orb' | 'eyes';
+
+/** La variante de ojos manda sobre el orbe, y el orbe sobre el clásico. */
+export function resolveNonoSkin(
+  ui: Pick<NonoMemory['ui'], 'orbSkin' | 'eyesOnly'>,
+): NonoSkin {
+  if (ui.eyesOnly) return 'eyes';
+  return ui.orbSkin ? 'orb' : 'classic';
 }
 
 export function persistNonoMemory(memory: NonoMemory): void {

@@ -41,7 +41,7 @@ export function useNonoContext(enabled: boolean, projectId: string | null = null
       const errs = Array.isArray(d?.errors) ? d.errors : (Array.isArray(d) ? d : []);
       if (errs.length > 0) {
         out.push({
-          id: 'diag-' + Date.now(),
+          id: 'diag',
           kind: 'diagnostics',
           text: `Hay ${errs.length} error(es) de TypeScript. ¿Revisamos el primero?`,
           severity: 'error',
@@ -55,7 +55,7 @@ export function useNonoContext(enabled: boolean, projectId: string | null = null
       const dirty = Array.isArray(g?.files) ? g.files.length : (g?.dirty ? 1 : 0);
       if (dirty > 0) {
         out.push({
-          id: 'git-' + Date.now(),
+          id: 'git',
           kind: 'git',
           text: `${dirty} archivo(s) modificado(s) en ${branch || 'la rama actual'}. ¿Hacemos commit?`,
           severity: 'info',
@@ -68,7 +68,7 @@ export function useNonoContext(enabled: boolean, projectId: string | null = null
       const todoMatches = Array.isArray(t?.matches) ? t.matches : (Array.isArray(t) ? t : []);
       if (todoMatches.length > 0) {
         out.push({
-          id: 'todo-' + Date.now(),
+          id: 'todo',
           kind: 'todo',
           text: `${todoMatches.length} TODO/FIXME/HACK en el código. ¿Los revisamos?`,
           severity: 'info',
@@ -82,7 +82,7 @@ export function useNonoContext(enabled: boolean, projectId: string | null = null
       const failed = jobList.filter((x: any) => x?.status === 'failed' || x?.exitCode !== 0 && x?.exitCode != null);
       if (failed.length > 0) {
         out.push({
-          id: 'term-' + Date.now(),
+          id: 'term',
           kind: 'terminal',
           text: `${failed.length} trabajo(s) de terminal fallaron. ¿Revisamos el log?`,
           severity: 'warning',

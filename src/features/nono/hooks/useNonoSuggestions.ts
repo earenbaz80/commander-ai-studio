@@ -70,6 +70,15 @@ export function useNonoSuggestions({
   const chatTypingRef = useRef(false);
   const chatTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /**
+   * La limpieza necesita el temporizador vigente, no el que había al montar:
+   * se delega aquí para no leer los refs dentro del propio cleanup.
+   */
+  const clearGreetingTimers = useCallback(() => {
+    if (greetingTypeRef.current) { clearInterval(greetingTypeRef.current); greetingTypeRef.current = null; }
+    if (greetingHideRef.current) { clearTimeout(greetingHideRef.current); greetingHideRef.current = null; }
+  }, []);
+
   // Observa el chat: la expresión `curious` se activa SOLO cuando el usuario
   // escribe en el textarea del chat (`[data-chat-input]`); si deja de escribir
   // durante 1 s, Nono abandona `curious` (vuelve a `watch` si sigue enfocado).
@@ -205,13 +214,12 @@ export function useNonoSuggestions({
   // Cleanup
   useEffect(() => {
     return () => {
-      if (greetingTypeRef.current) clearInterval(greetingTypeRef.current);
-      if (greetingHideRef.current) clearTimeout(greetingHideRef.current);
+      clearGreetingTimers();
       if (contextPhraseTimerRef.current) clearTimeout(contextPhraseTimerRef.current);
       if (suggestionTimerRef.current) clearTimeout(suggestionTimerRef.current);
       if (suggestionIntervalRef.current) clearInterval(suggestionIntervalRef.current);
     };
-  }, []);
+  }, [clearGreetingTimers]);
 
   return {
     hoverPhrase,
