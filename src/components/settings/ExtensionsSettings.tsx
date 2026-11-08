@@ -10,8 +10,10 @@ import {
   Loader2,
   FolderInput,
   Globe,
+  Link2,
 } from 'lucide-react';
 import type { Language } from '../../i18n/translations';
+import { IntegrationsSettings } from './IntegrationsSettings';
 
 /**
  * Sección «Extensiones» de Configuración: MCP, skills y plugins en un solo
@@ -20,10 +22,13 @@ import type { Language } from '../../i18n/translations';
  * paralelas en localStorage, que era lo que hacía el gestor antiguo.
  */
 
-type Tab = 'mcp' | 'skills' | 'plugins';
+export type ExtensionsTab = 'mcp' | 'integrations' | 'skills' | 'plugins';
+type Tab = ExtensionsTab;
 
 interface ExtensionsSettingsProps {
   lang?: Language;
+  /** Permite abrir directamente una pestaña (p. ej. Integraciones desde GitHub). */
+  initialTab?: ExtensionsTab;
   /** Abre el gestor completo (pestaña MCP con OAuth, tools y health). */
   onOpenManager?: () => void;
 }
@@ -33,6 +38,15 @@ const inputClass =
 
 const rowClass =
   'flex items-center gap-2 border border-[var(--nc-border-dark)] bg-[var(--nc-bg-main)] px-1.5 py-1';
+
+const matchesQuery = (
+  item: { name?: unknown; id?: unknown; command?: unknown; description?: unknown; title?: unknown },
+  q: string,
+): boolean =>
+  !q ||
+  [item.name, item.id, item.command, item.description, item.title]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(q));
 
 /**
  * Sugerencias de servidores MCP conocidos. No hay catálogo remoto en la app:
@@ -51,10 +65,16 @@ const MCP_SUGGESTIONS: { name: string; command: string; args: string }[] = [
 const btnClass =
   'nc-button !px-2 !py-0.5 !mx-0 text-[10px] font-bold flex items-center gap-1 shrink-0 disabled:opacity-40';
 
-export const ExtensionsSettings: React.FC<ExtensionsSettingsProps> = ({ lang = 'es', onOpenManager }) => {
+export const ExtensionsSettings: React.FC<ExtensionsSettingsProps> = ({ lang = 'es', initialTab, onOpenManager }) => {
   const t = (es: string, en: string, de: string) => (lang === 'es' ? es : lang === 'de' ? de : en);
 
-  const [tab, setTab] = useState<Tab>('mcp');
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'mcp');
+
+  // El modal se remonta al abrirse, pero si ya estaba montado la pestaña
+  // inicial debe seguir el destino pedido (Integraciones desde el historial).
+  useEffect(() => {
+    if (initialTab) setTab(initialTab);
+  }, [initialTab]);
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -289,15 +309,9 @@ export const ExtensionsSettings: React.FC<ExtensionsSettingsProps> = ({ lang = '
   };
 
   const q = query.trim().toLowerCase();
-  const match = (item: any) =>
-    !q ||
-    [item.name, item.id, item.command, item.description, item.title]
-      .filter(Boolean)
-      .some((value: string) => String(value).toLowerCase().includes(q));
-
-  const filteredServers = useMemo(() => servers.filter(match), [servers, q]);
-  const filteredSkills = useMemo(() => skills.filter(match), [skills, q]);
-  const filteredPlugins = useMemo(() => plugins.filter(match), [plugins, q]);
+  const filteredServers = useMemo(() => servers.filter((item) => matchesQuery(item, q)), [servers, q]);
+  const filteredSkills = useMemo(() => skills.filter((item) => matchesQuery(item, q)), [skills, q]);
+  const filteredPlugins = useMemo(() => plugins.filter((item) => matchesQuery(item, q)), [plugins, q]);
 
   const addMcp = async () => {
     const name = mcpName.trim();
@@ -382,6 +396,12 @@ export const ExtensionsSettings: React.FC<ExtensionsSettingsProps> = ({ lang = '
       label: t('MCP', 'MCP', 'MCP'),
       icon: <Server className="w-3 h-3" />,
       count: servers.length,
+    },
+    {
+      id: 'integrations',
+      label: t('Integraciones', 'Integrations', 'Integrationen'),
+      icon: <Link2 className="w-3 h-3" />,
+      count: 1,
     },
     {
       id: 'skills',
@@ -619,6 +639,8 @@ export const ExtensionsSettings: React.FC<ExtensionsSettingsProps> = ({ lang = '
           )}
         </div>
       )}
+
+      {tab === 'integrations' && <IntegrationsSettings lang={lang} />}
 
       {tab === 'skills' && (
         <div className="space-y-2">

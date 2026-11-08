@@ -65,6 +65,7 @@ import {
 import { createConfiguredDeploymentAdapter } from './deploy/configuredAdapter';
 import { createDeployRouter } from './deploy/routes';
 import { createBrowserRouter } from './browserRoutes';
+import { createIntegrationsRouter } from './src/integrations/router';
 
 dotenv.config();
 
@@ -1888,6 +1889,7 @@ app.use(
 
 // La misma sesión de Playwright que usan las tools del agente, expuesta al panel.
 app.use('/api/browser', createBrowserRouter());
+app.use('/api/integrations', createIntegrationsRouter());
 
 // Sirve una release bajo `/published/<slug>/<entorno>/`. Va antes de Vite y del
 // estático de Commander: si no, el fallback SPA de la app se comería la URL.
