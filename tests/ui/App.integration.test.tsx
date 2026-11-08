@@ -421,6 +421,75 @@ describe('App (integración)', { timeout: 20_000 }, () => {
     }
   });
 
+  test('usa execCommand al copiar la ruta desde App sin Clipboard API', async () => {
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const execCommandDescriptor = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: undefined,
+    });
+    const execCommand = vi.fn((command: string) => {
+      expect(command).toBe('copy');
+      expect(
+        Array.from(document.querySelectorAll('textarea')).some((textarea) => textarea.value === 'C:/proj')
+      ).toBe(true);
+      return true;
+    });
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: execCommand,
+      writable: true,
+    });
+
+    const thread = {
+      id: 'th-exec-command-ruta',
+      title: 'Proyecto abierto',
+      project_path: 'C:/proj',
+      status: 'active',
+      model: 'gemini-3.5-flash',
+      agent_mode: 'chat',
+      execution_mode: 'build',
+      turn_state: 'idle',
+      created_at: 1,
+      updated_at: 2,
+      pinned: 0,
+      project_id: null,
+      state_json: null,
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url) === '/api/threads') {
+        return Promise.resolve({ ok: true, json: async () => ({ threads: [thread] }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ roots: [] }) });
+    });
+    global.fetch = fetchMock as any;
+
+    try {
+      await bootApp();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Opciones del proyecto proj' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copiar ruta' }));
+
+      expect(await screen.findByText('Ruta copiada: C:/proj')).toBeInTheDocument();
+      expect(execCommand).toHaveBeenCalledWith('copy');
+      expect(
+        Array.from(document.querySelectorAll('textarea')).some((textarea) => textarea.value === 'C:/proj')
+      ).toBe(false);
+      expect(screen.queryByText(/No se pudo copiar la ruta/)).toBeNull();
+    } finally {
+      if (execCommandDescriptor) {
+        Object.defineProperty(document, 'execCommand', execCommandDescriptor);
+      } else {
+        Reflect.deleteProperty(document, 'execCommand');
+      }
+      if (clipboardDescriptor) {
+        Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+      } else {
+        Reflect.deleteProperty(navigator, 'clipboard');
+      }
+    }
+  });
+
   test('el atajo Ctrl+K abre la paleta y Escape la cierra', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ roots: [] }) });
     await bootApp();
