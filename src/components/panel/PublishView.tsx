@@ -107,7 +107,7 @@ const ENV_LABEL = {
 } as const;
 
 export function PublishView({ projectPath, lang = 'es' }: PublishViewProps) {
-  const t = (es: string, en: string, de: string) => (lang === 'es' ? es : lang === 'de' ? de : en);
+  const t = useCallback((es: string, en: string, de: string) => (lang === 'es' ? es : lang === 'de' ? de : en), [lang]);
   const [status, setStatus] = useState<Status | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -117,6 +117,9 @@ export function PublishView({ projectPath, lang = 'es' }: PublishViewProps) {
   const [outputDir, setOutputDir] = useState('');
   const [buildFirst, setBuildFirst] = useState(true);
   const [remoteStatus, setRemoteStatus] = useState<RemoteStatus | null>(null);
+  const [remoteConfigured, setRemoteConfigured] = useState(false);
+  const [remoteProvider, setRemoteProvider] = useState('vercel');
+  const [remoteError, setRemoteError] = useState('');
   const [remoteLog, setRemoteLog] = useState('');
   const [preflight, setPreflight] = useState<PreflightResult | null>(null);
   const [preflightLoading, setPreflightLoading] = useState(false);
@@ -134,6 +137,7 @@ export function PublishView({ projectPath, lang = 'es' }: PublishViewProps) {
     }
     if (!silent) setLoading(true);
     setError('');
+    setRemoteError('');
     setRemoteLog('');
     try {
       const res = await fetch(`/api/publish/status?root=${encodeURIComponent(projectPath)}`, {
@@ -153,20 +157,55 @@ export function PublishView({ projectPath, lang = 'es' }: PublishViewProps) {
           credentials: 'include',
         });
         const remoteData = await remoteRes.json().catch(() => ({}));
-        if (remoteRes.ok && remoteData.success !== false && remoteData.status?.provider) {
-          setRemoteStatus(remoteData.status as RemoteStatus);
+        const provider =
+          typeof remoteData.provider === 'string' && remoteData.provider
+            ? remoteData.provider
+            : 'vercel';
+        setRemoteProvider(provider);
+        if (remoteRes.ok && remoteData.success !== false) {
+          if (remoteData.configured === false) {
+            setRemoteConfigured(false);
+            setRemoteStatus(null);
+            setRemoteError('');
+          } else if (remoteData.status?.provider) {
+            setRemoteConfigured(true);
+            setRemoteStatus(remoteData.status as RemoteStatus);
+            setRemoteError('');
+          } else {
+            setRemoteConfigured(false);
+            setRemoteStatus(null);
+            setRemoteError('');
+          }
         } else {
+          setRemoteConfigured(false);
           setRemoteStatus(null);
+          setRemoteError(
+            typeof remoteData.error === 'string' && remoteData.error
+              ? remoteData.error
+              : t(
+                  'No se pudo leer el estado remoto',
+                  'Could not read remote status',
+                  'Remote-Status konnte nicht gelesen werden',
+                ),
+          );
         }
       } catch {
+        setRemoteConfigured(false);
         setRemoteStatus(null);
+        setRemoteError(
+          t(
+            'No se pudo leer el estado remoto',
+            'Could not read remote status',
+            'Remote-Status konnte nicht gelesen werden',
+          ),
+        );
       }
     } catch (e: any) {
       setError(e?.message || t('Error cargando publicación', 'Error loading publishing', 'Fehler beim Laden'));
     } finally {
       setLoading(false);
     }
-  }, [projectPath, lang]);
+  }, [projectPath, t]);
 
   useEffect(() => {
     void load();
@@ -272,6 +311,7 @@ export function PublishView({ projectPath, lang = 'es' }: PublishViewProps) {
     setBusy(`remote-${kind}`);
     setError('');
     setNotice('');
+    setRemoteError('');
     setRemoteLog('');
     try {
       const res = await fetch(`/api/deploy/${kind}`, {
@@ -287,7 +327,11 @@ export function PublishView({ projectPath, lang = 'es' }: PublishViewProps) {
       if (data.status) setRemoteStatus(data.status as RemoteStatus);
       setNotice(
         kind === 'preview'
-          ? t('Preview desplegada en el adaptador fake', 'Preview deployed to the fake adapter', 'Preview im Fake-Adapter bereitgestellt')
+          ? t(
+              `Preview desplegada en ${remoteStatus?.provider || remoteProvider}`,
+              `Preview deployed to ${remoteStatus?.provider || remoteProvider}`,
+              `Preview in ${remoteStatus?.provider || remoteProvider} bereitgestellt`,
+            )
           : kind === 'production'
             ? t('Producción remota actualizada', 'Remote production updated', 'Remote-Produktion aktualisiert')
             : t('Rollback remoto completado', 'Remote rollback complete', 'Remote-Rollback abgeschlossen')
@@ -331,7 +375,6 @@ export function PublishView({ projectPath, lang = 'es' }: PublishViewProps) {
   const production = status?.production || null;
   const remotePreview = remoteStatus?.preview || null;
   const remoteProduction = remoteStatus?.production || null;
-  const remoteIsFake = remoteStatus?.provider !== 'vercel';
 
   const envCard = (kind: 'preview' | 'production', item: EnvironmentRelease | null) => {
     const isProd = kind === 'production';
@@ -428,7 +471,7 @@ export function PublishView({ projectPath, lang = 'es' }: PublishViewProps) {
                 <button
                   type="button"
                   onClick={() => void promoteRemote(item.id)}
-                  disabled={!canUse || item.status !== 'ready'}
+                  disabled={!canUse || !remoteConfigured || item.status !== 'ready'}
                   className="nc-button !px-1.5 !py-0.5 text-[9px] disabled:opacity-50"
                 >
                   {t('Promover remoto', 'Promote remote', 'Remote befördern')}
@@ -438,7 +481,7 @@ export function PublishView({ projectPath, lang = 'es' }: PublishViewProps) {
                 <button
                   type="button"
                   onClick={() => void rollbackRemote()}
-                  disabled={!canUse || !remoteStatus?.canRollback || item.status !== 'ready'}
+                  disabled={!canUse || !remoteConfigured || !remoteStatus?.canRollback || item.status !== 'ready'}
                   className="nc-button !px-1.5 !py-0.5 text-[9px] disabled:opacity-50"
                 >
                   {t('Rollback remoto', 'Remote rollback', 'Remote-Rollback')}
@@ -447,7 +490,7 @@ export function PublishView({ projectPath, lang = 'es' }: PublishViewProps) {
               <button
                 type="button"
                 onClick={() => void showRemoteLog(item.id)}
-                disabled={!canUse}
+                disabled={!canUse || !remoteConfigured}
                 className="nc-button !px-1.5 !py-0.5 text-[9px] disabled:opacity-50"
               >
                 {t('Log', 'Log', 'Log')}
@@ -527,27 +570,29 @@ export function PublishView({ projectPath, lang = 'es' }: PublishViewProps) {
               <UploadCloud className="w-4 h-4" />
               {t('Destino remoto', 'Remote target', 'Remote-Ziel')}
               <span className="text-[9px] px-1 bg-[var(--nc-active-bg)] text-black font-bold">
-                {remoteStatus?.provider || 'fake'}
+                {remoteStatus?.provider || remoteProvider}
               </span>
             </div>
             <div className="text-[9px] text-[var(--nc-text-dim)]">
-              {remoteIsFake
-                ? t(
-                    'Adaptador fake en memoria. Configura VERCEL_TOKEN y VERCEL_PROJECT_ID para publicar en Vercel.',
-                    'In-memory fake adapter. Set VERCEL_TOKEN and VERCEL_PROJECT_ID to publish to Vercel.',
-                    'Fake-Adapter im Speicher. Setze VERCEL_TOKEN und VERCEL_PROJECT_ID, um auf Vercel zu veröffentlichen.'
-                  )
-                : t(
-                    'Vercel: la release se sube ya construida y el token vive sólo en el servidor.',
-                    'Vercel: the prebuilt release is uploaded and the token stays on the server.',
-                    'Vercel: Die fertige Release wird hochgeladen und das Token bleibt auf dem Server.'
-                  )}
+              {remoteError
+                ? remoteError
+                : !remoteConfigured
+                  ? t(
+                      'Vercel no está configurado. Define VERCEL_TOKEN y VERCEL_PROJECT_ID en .env y reinicia Commander.',
+                      'Vercel is not configured. Set VERCEL_TOKEN and VERCEL_PROJECT_ID in .env and restart Commander.',
+                      'Vercel ist nicht konfiguriert. Setze VERCEL_TOKEN und VERCEL_PROJECT_ID in .env und starte Commander neu.'
+                    )
+                  : t(
+                      'Vercel: la release se sube ya construida y el token vive sólo en el servidor.',
+                      'Vercel: the prebuilt release is uploaded and the token stays on the server.',
+                      'Vercel: Die fertige Release wird hochgeladen und das Token bleibt auf dem Server.'
+                    )}
             </div>
           </div>
           <button
             type="button"
             onClick={() => void deployRemotePreview()}
-            disabled={!canUse || !status?.preview || !preflight?.ok || preflightLoading}
+            disabled={!canUse || !remoteConfigured || !status?.preview || !preflight?.ok || preflightLoading}
             className="nc-button !px-2 !py-1 text-[9px] flex items-center gap-1 disabled:opacity-50"
             title={t('Desplegar la release local de preview', 'Deploy the local preview release', 'Lokale Preview-Release bereitstellen')}
           >

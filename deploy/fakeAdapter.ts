@@ -1,9 +1,9 @@
 /**
  * Adaptador de despliegue en memoria.
  *
- * Sirve para cerrar el contrato antes de elegir un proveedor: no hace red, no
- * guarda credenciales y sus URLs usan el dominio reservado `.invalid`. Reproduce
- * el mismo ciclo que el publicador local: preview, promoción y rollback.
+ * Sólo se usa como test double del contrato: no se selecciona en producción.
+ * No hace red, no guarda credenciales y sus URLs usan el dominio reservado
+ * `.invalid`. Reproduce el mismo ciclo que el publicador local.
  */
 import { describeProject, isDeployEnvironment } from './adapter';
 import { preflightRelease } from './preflight';
@@ -36,6 +36,7 @@ export interface FakeDeploymentAdapterOptions {
 
 export class FakeDeploymentAdapter implements DeploymentAdapter {
   readonly id = 'fake';
+  readonly configured = true;
 
   private readonly projects = new Map<string, ProjectState>();
   private sequence = 0;

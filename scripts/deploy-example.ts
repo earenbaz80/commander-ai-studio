@@ -32,7 +32,7 @@ async function waitUntilReady(
 
 async function main() {
   const adapter = createConfiguredDeploymentAdapter();
-  if (adapter.id !== 'vercel') {
+  if (!adapter.configured) {
     throw new Error(
       'Faltan VERCEL_TOKEN y VERCEL_PROJECT_ID. Configúralos en .env y vuelve a ejecutar el comando.'
     );

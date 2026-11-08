@@ -29,11 +29,14 @@ after(async () => {
   await srv?.stop();
 });
 
-test('expone preview, promoción, rollback y logs del adaptador fake', async () => {
+test('sin Vercel configurado publica localmente y desactiva el deploy remoto', async () => {
   const initial = await srv.request('GET', `/api/deploy/status?root=${encodeURIComponent(project)}`);
   assert.equal(initial.status, 200, initial.raw);
-  assert.equal(initial.body.status.provider, 'fake');
-  assert.equal(initial.body.status.preview, null);
+  assert.equal(initial.body.provider, 'vercel');
+  assert.equal(initial.body.configured, false);
+  assert.equal(initial.body.status, null);
+  assert.deepEqual(initial.body.missingConfig, ['VERCEL_TOKEN', 'VERCEL_PROJECT_ID']);
+  assert.doesNotMatch(initial.raw, /fake/i);
 
   const first = await srv.request('POST', '/api/publish/preview', {
     root: project,
@@ -42,81 +45,30 @@ test('expone preview, promoción, rollback y logs del adaptador fake', async () 
   });
   assert.equal(first.status, 200, first.raw);
   const firstRelease = first.body.status.preview.id;
-
-  const firstDeploy = await srv.request('POST', '/api/deploy/preview', {
-    root: project,
-    releaseId: firstRelease,
-  });
-  assert.equal(firstDeploy.status, 200, firstDeploy.raw);
-  const firstRemote = firstDeploy.body.deployment;
-  assert.equal(firstRemote.releaseId, firstRelease);
-  assert.equal(firstRemote.environment, 'preview');
-  assert.match(firstRemote.url, /^https:\/\/deploy\.invalid\/.+\/preview\/$/);
-
-  const firstPromote = await srv.request('POST', '/api/deploy/production', {
-    root: project,
-    deploymentId: firstRemote.id,
-  });
-  assert.equal(firstPromote.status, 200, firstPromote.raw);
-  assert.equal(firstPromote.body.status.production.id, firstRemote.id);
-  assert.match(firstPromote.body.status.production.url, /\/production\/$/);
-  assert.equal(firstPromote.body.status.canRollback, false);
-
   const slug = first.body.status.project.slug;
+
   const published = await srv.request('GET', `/published/${slug}/preview/`);
   assert.equal(published.status, 200, published.raw);
   assert.match(published.raw, /<h1>primera<\/h1>/);
 
-  fs.writeFileSync(
-    path.join(project, 'dist', 'index.html'),
-    '<!doctype html><html><body><h1>segunda</h1></body></html>',
-    'utf8'
-  );
-  const second = await srv.request('POST', '/api/publish/preview', {
+  const remote = await srv.request('POST', '/api/deploy/preview', {
     root: project,
-    outputDir: 'dist',
-    build: false,
+    releaseId: firstRelease,
   });
-  assert.equal(second.status, 200, second.raw);
-  const secondRelease = second.body.status.preview.id;
+  assert.equal(remote.status, 400, remote.raw);
+  assert.equal(remote.body.success, false);
+  assert.match(String(remote.body.error), /VERCEL_TOKEN/);
 
-  const secondDeploy = await srv.request('POST', '/api/deploy/preview', {
-    root: project,
-    releaseId: secondRelease,
-  });
-  assert.equal(secondDeploy.status, 200, secondDeploy.raw);
-  const secondRemote = secondDeploy.body.deployment;
-
-  const secondPromote = await srv.request('POST', '/api/deploy/production', {
-    root: project,
-    deploymentId: secondRemote.id,
-  });
-  assert.equal(secondPromote.status, 200, secondPromote.raw);
-  assert.equal(secondPromote.body.status.production.id, secondRemote.id);
-  assert.equal(secondPromote.body.status.canRollback, true);
-
-  const rollback = await srv.request('POST', '/api/deploy/rollback', { root: project });
-  assert.equal(rollback.status, 200, rollback.raw);
-  assert.equal(rollback.body.status.production.id, firstRemote.id);
-  assert.equal(rollback.body.status.canRollback, false);
-
-  const log = await srv.request(
+  const afterRemote = await srv.request(
     'GET',
-    `/api/deploy/logs?root=${encodeURIComponent(project)}&deploymentId=${encodeURIComponent(firstRemote.id)}`
+    `/api/deploy/status?root=${encodeURIComponent(project)}`
   );
-  assert.equal(log.status, 200, log.raw);
-  assert.match(log.body.log, /fake/);
-  assert.match(log.body.log, new RegExp(firstRemote.id));
-
-  const missing = await srv.request('POST', '/api/deploy/production', {
-    root: project,
-    deploymentId: 'dep-no-existe',
-  });
-  assert.equal(missing.status, 400);
-  assert.match(String(missing.body.error), /no existe/i);
+  assert.equal(afterRemote.status, 200, afterRemote.raw);
+  assert.equal(afterRemote.body.configured, false);
+  assert.equal(afterRemote.body.status, null);
 });
 
-test('rechaza con 400 una release con source map sin crear deployment', async () => {
+test('preflight revisa la release sin necesitar credenciales', async () => {
   const unsafeProject = fs.mkdtempSync(
     path.join(process.cwd(), 'tests', 'tmp', 'preflight-')
   );
@@ -143,26 +95,19 @@ test('rechaza con 400 una release con source map sin crear deployment', async ()
     );
     assert.equal(checked.status, 200, checked.raw);
     assert.equal(checked.body.success, true);
-    assert.equal(checked.body.provider, 'fake');
+    assert.equal(checked.body.provider, 'vercel');
     assert.equal(checked.body.releaseId, releaseId);
     assert.equal(checked.body.preflight.ok, false);
     assert.equal(checked.body.preflight.issues[0].code, 'source-map');
     assert.match(String(checked.body.preflight.issues[0].message), /source map/i);
-
-    const rejected = await srv.request('POST', '/api/deploy/preview', {
-      root: unsafeProject,
-      releaseId,
-    });
-    assert.equal(rejected.status, 400, rejected.raw);
-    assert.match(String(rejected.body.error), /source map/i);
 
     const status = await srv.request(
       'GET',
       `/api/deploy/status?root=${encodeURIComponent(unsafeProject)}`
     );
     assert.equal(status.status, 200, status.raw);
-    assert.equal(status.body.status.preview, null);
-    assert.equal(status.body.status.deployments.length, 0);
+    assert.equal(status.body.configured, false);
+    assert.equal(status.body.status, null);
   } finally {
     fs.rmSync(unsafeProject, { recursive: true, force: true });
   }

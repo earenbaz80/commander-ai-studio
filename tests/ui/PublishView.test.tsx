@@ -32,14 +32,14 @@ const remotePreview = {
   id: 'dep-preview-1',
   releaseId: release.id,
   environment: 'preview',
-  url: 'https://deploy.invalid/mi-app/dep-preview-1/preview/',
+  url: 'https://mi-app.vercel.app',
   createdAt: '2026-11-05T21:30:00.000Z',
   status: 'ready',
-  provider: 'fake',
+  provider: 'vercel',
 };
 
 const remoteStatus = {
-  provider: 'fake',
+  provider: 'vercel',
   projectId: 'mi-app-1234abcd',
   preview: remotePreview,
   production: null,
@@ -119,13 +119,13 @@ describe('PublishView', () => {
     });
   });
 
-  test('despliega, promueve y hace rollback en el adaptador fake', async () => {
+  test('despliega, promueve y hace rollback en Vercel', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (String(url).includes('/api/publish/status')) {
         return jsonResponse({ success: true, status });
       }
       if (String(url).includes('/api/deploy/status')) {
-        return jsonResponse({ success: true, status: remoteStatus });
+        return jsonResponse({ success: true, configured: true, status: remoteStatus });
       }
       if (String(url).includes('/api/deploy/preflight')) {
         return jsonResponse({ success: true, preflight: preflightOk });
@@ -138,7 +138,7 @@ describe('PublishView', () => {
           success: true,
           status: {
             ...remoteStatus,
-            production: { ...remotePreview, environment: 'production', url: 'https://deploy.invalid/mi-app/dep-preview-1/production/' },
+            production: { ...remotePreview, environment: 'production', url: 'https://mi-app.vercel.app' },
             canRollback: true,
           },
         });
@@ -147,7 +147,7 @@ describe('PublishView', () => {
         return jsonResponse({ success: true, status: remoteStatus });
       }
       if (String(url).includes('/api/deploy/logs')) {
-        return jsonResponse({ success: true, log: 'fake dep-preview-1 ready' });
+        return jsonResponse({ success: true, log: 'vercel dep-preview-1 ready' });
       }
       return jsonResponse({ success: true });
     });
@@ -178,7 +178,7 @@ describe('PublishView', () => {
     });
 
     fireEvent.click(screen.getAllByText('Log')[0]);
-    await waitFor(() => expect(screen.getByText('fake dep-preview-1 ready')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('vercel dep-preview-1 ready')).toBeInTheDocument());
 
     fireEvent.click(screen.getByText('Rollback remoto'));
     await waitFor(() => {
@@ -186,6 +186,36 @@ describe('PublishView', () => {
       expect(call).toBeTruthy();
       expect(JSON.parse(call![1].body)).toMatchObject({ root: 'C:/tmp/mi-app' });
     });
+  });
+
+  test('sin Vercel configurado explica qué falta y no permite desplegar', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/api/publish/status')) {
+        return jsonResponse({ success: true, status });
+      }
+      if (String(url).includes('/api/deploy/status')) {
+        return jsonResponse({
+          success: true,
+          provider: 'vercel',
+          configured: false,
+          status: null,
+          missingConfig: ['VERCEL_TOKEN', 'VERCEL_PROJECT_ID'],
+        });
+      }
+      if (String(url).includes('/api/deploy/preflight')) {
+        return jsonResponse({ success: true, preflight: preflightOk });
+      }
+      return jsonResponse({ success: true });
+    });
+    global.fetch = fetchMock as any;
+
+    render(<PublishView projectPath="C:/tmp/mi-app" />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/Vercel no está configurado/)).toBeInTheDocument()
+    );
+    expect(screen.getByRole('button', { name: /Desplegar preview/ })).toBeDisabled();
+    expect(screen.queryByText(/fake/i)).not.toBeInTheDocument();
   });
 
   test('muestra los problemas del preflight y bloquea el despliegue', async () => {
@@ -206,7 +236,7 @@ describe('PublishView', () => {
         return jsonResponse({ success: true, status });
       }
       if (String(url).includes('/api/deploy/status')) {
-        return jsonResponse({ success: true, status: remoteStatus });
+        return jsonResponse({ success: true, configured: true, status: remoteStatus });
       }
       if (String(url).includes('/api/deploy/preflight')) {
         return jsonResponse({ success: true, preflight: unsafe });
