@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SHELL_BLOCKED, SHELL_OPERATORS, SHELL_ALLOW_PREFIX, isSensitivePath, sanitizeGitMessage } from '../security.js';
+import { SHELL_BLOCKED, SHELL_OPERATORS, SHELL_ALLOW_PREFIX, CONTENT_SECURITY_POLICY, isSensitivePath, sanitizeGitMessage } from '../security.js';
 
 test('SHELL_BLOCKED contiene patrones destructivos críticos', () => {
   assert.ok(SHELL_BLOCKED.includes('rm -rf /'));
@@ -150,4 +150,35 @@ test('sanitizeGitMessage conserva mensajes convencionales', () => {
 
 test('sanitizeGitMessage acota a 500 caracteres', () => {
   assert.equal(sanitizeGitMessage('x'.repeat(600)).length, 500);
+});
+
+test('CSP: cierra los vectores que no dependen del sandbox', () => {
+  for (const directive of [
+    "default-src 'self'",
+    "script-src 'self'",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self'",
+  ]) {
+    assert.ok(
+      CONTENT_SECURITY_POLICY.includes(directive),
+      `la CSP debe incluir ${directive}`
+    );
+  }
+});
+
+test('CSP: no abre orígenes comodín de scripts', () => {
+  const scriptSrc = CONTENT_SECURITY_POLICY.split('; ').find((d) => d.startsWith('script-src')) || '';
+  assert.ok(!scriptSrc.includes('*'), 'script-src no debe usar *');
+  assert.ok(!scriptSrc.includes('http://'), 'script-src no debe permitir http://');
+});
+
+test('CSP: permite lo que la app realmente carga', () => {
+  assert.ok(CONTENT_SECURITY_POLICY.includes('https://fonts.googleapis.com'), 'Google Fonts (CSS)');
+  assert.ok(CONTENT_SECURITY_POLICY.includes('https://fonts.gstatic.com'), 'Google Fonts (archivos)');
+  assert.ok(CONTENT_SECURITY_POLICY.includes('https://models.dev'), 'catálogo de proveedores');
+  assert.ok(CONTENT_SECURITY_POLICY.includes('https://*.googleapis.com'), 'Firebase');
+  assert.ok(CONTENT_SECURITY_POLICY.includes('http://localhost:*'), 'proveedores locales');
 });

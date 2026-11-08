@@ -98,6 +98,35 @@ export const SENSITIVE_READ_MESSAGE =
   'Pide al usuario que copie el valor que necesites, o lee una plantilla .env.example.';
 
 /**
+ * CSP del HTML servido en producción. En desarrollo no se aplica a propósito:
+ * Vite inyecta scripts inline y el WebSocket de HMR en el documento, y una
+ * política estricta los bloquearía (lo vigila `scripts/smoke-agent.cjs`).
+ *
+ * `script-src` conserva `'unsafe-inline'` y `'unsafe-eval'` porque el sandbox
+ * del Composer compila JSX con Babel dentro de un iframe `srcdoc`, y ese
+ * documento hereda esta misma política. Los CDN listados son los que usa el
+ * sandbox. `connect-src` sí queda acotado a los orígenes que la app necesita
+ * (Firebase, catálogo de modelos, proveedores locales): un script inyectado no
+ * puede enviar datos a un host arbitrario. `object-src`, `base-uri`,
+ * `form-action` y `frame-ancestors` cierran el resto de vectores clásicos.
+ */
+export const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://cdnjs.cloudflare.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:",
+  "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://securetoken.googleapis.com https://models.dev http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*",
+  "media-src 'self' blob: data:",
+  "frame-src 'self' http: https: blob: data:",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'self'",
+].join('; ');
+
+/**
  * Sanea un mensaje de commit antes de interpolarlo en `git commit -m "..."`.
  * El comando se ejecuta vía shell (execSync), así que hay que eliminar
  * sustitución de comandos, encadenamiento, redirecciones y saltos de línea.

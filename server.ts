@@ -38,6 +38,7 @@ import { handleAnthropicGenerate, handleAnthropicStream } from './anthropic';
 import { executeLocalHfModel } from './localModels';
 import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList, apiKeyMiddleware, getApiKey as getRequestApiKey } from './apiKeys';
 import { isAllowedHost, allowedHostsFromEnv } from './hostGuard';
+import { CONTENT_SECURITY_POLICY } from './security';
 import { getConfig, getConfigPath, getEnvProviderIds, getGlobalConfigPath, getProviderSecret, loadConfig, removeOpenAiCompatibleProvider, removeProviderConfig } from './src/config/index';
 import { PROVIDER_SPECS, buildProviderList, customProviderSpecs, describeProvider, getAllProviderCatalog, getProviderCatalog } from './src/providers/registry';
 import { parseCompatibleModelId, slugifyProviderId } from './src/lib/openaiCompatibleProviders';
@@ -100,22 +101,44 @@ app.use((_req, _res, next) => {
   }
   if (_req.method === 'OPTIONS') {
     _res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
-    _res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    _res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Commander-File-Name');
     _res.setHeader('Access-Control-Allow-Credentials', 'true');
     return _res.sendStatus(204);
   }
   next();
 });
-const globalRate = new Map<string, { count: number; reset: number }>();
+// Límite global por IP. La propia UI sondea claves, hilos y salud todo el
+// rato, así que lectura y escritura llevan presupuestos separados y
+// /api/health queda exento: un pico de sondeo no puede dejar sin margen a
+// una mutación, ni una ráfaga de acciones bloquear el health del agente.
+const RATE_WINDOW_MS = 60_000;
+const RATE_READ_MAX = 1200;
+const RATE_WRITE_MAX = 300;
+const RATE_EXEMPT = new Set(['/api/health']);
+const globalRate = new Map<string, { read: number; write: number; reset: number }>();
 app.use((_req, _res, next) => {
-  if (_req.path.startsWith('/api/')) {
+  if (_req.path.startsWith('/api/') && !RATE_EXEMPT.has(_req.path)) {
     const ip = (_req.ip || _req.socket?.remoteAddress || 'local').toString();
     const now = Date.now();
-    const e = globalRate.get(ip);
-    if (!e || now > e.reset) globalRate.set(ip, { count: 1, reset: now + 60_000 });
-    else {
-      e.count++;
-      if (e.count > 300) return _res.status(429).json({ success: false, ok: false, error: 'Rate limit global (300/min)' });
+    const isWrite = _req.method !== 'GET' && _req.method !== 'HEAD' && _req.method !== 'OPTIONS';
+    let e = globalRate.get(ip);
+    if (!e || now > e.reset) {
+      e = { read: 0, write: 0, reset: now + RATE_WINDOW_MS };
+      globalRate.set(ip, e);
+    }
+    const used = isWrite ? ++e.write : ++e.read;
+    const max = isWrite ? RATE_WRITE_MAX : RATE_READ_MAX;
+    if (used > max) {
+      const scopes = isWrite ? 'escrituras' : 'lecturas';
+      return _res.status(429).json({
+        success: false,
+        ok: false,
+        error: `Rate limit global (${max}/${scopes} por minuto)`,
+      });
+    }
+    // Purga perezosa: sin esto el mapa crece con cada IP vista.
+    if (globalRate.size > 512) {
+      for (const [k, v] of globalRate) if (now > v.reset) globalRate.delete(k);
     }
   }
   next();
@@ -3824,6 +3847,13 @@ async function bootstrap() {
     if (!fs.existsSync(path.join(distPath, 'index.html'))) {
       console.warn(`[server] no se encontró dist/index.html (probado en ${distPath})`);
     }
+    // Sólo el HTML/estático de Commander: `/published` se sirve antes y no
+    // debe heredar esta política, que es del Studio y no del proyecto del
+    // usuario. En dev no se aplica porque Vite necesita inline + HMR.
+    app.use((_req, res, next) => {
+      res.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICY);
+      next();
+    });
     app.use(express.static(distPath));
     // @ts-ignore
     app.get(/.*/, (req, res) => {
