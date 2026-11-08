@@ -3,11 +3,33 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { handleAgentRunTool } from '../agentTools.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { setPermissions } from '../permissions.js';
+
+/**
+ * Root temporal con permisos de build.
+ *
+ * Sin `root`, `mcp.call` y `web.fetch` heredan los permisos del repo: con el
+ * proyecto en readonly (o con un `allowedTools` guardado) los casos de éxito
+ * fallaban por configuración local y no por el contrato de la tool.
+ */
+const WORK_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-web-root-'));
+setPermissions(WORK_ROOT, {
+  mode: 'build',
+  allowedTools: null,
+  deniedTools: [],
+  files: { read: [], write: [] },
+});
 
 // code.run estÃ¡ deshabilitado por defecto (opt-in); estos tests validan el
 
 function mockReq(body: any) {
-  return { body, ip: '127.0.0.1', headers: {} } as any;
+  const input = body?.input && typeof body.input === 'object'
+    ? { ...body.input, root: body.input.root ?? WORK_ROOT }
+    : body?.input;
+  return { body: { ...body, input }, ip: '127.0.0.1', headers: {} } as any;
 }
 
 function mockRes() {

@@ -1,9 +1,25 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { assertSafeOutboundUrl, safeFetch } from '../ssrf.js';
 import { handleAgentRunTool } from '../agentTools.js';
+import { setPermissions } from '../permissions.js';
+
+/**
+ * Root temporal con permisos de build: el 403 de `code.run` debe venir del
+ * opt-in, no de un proyecto en readonly ni de un `allowedTools` guardado.
+ */
+const WORK_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'ssrf-code-run-root-'));
+setPermissions(WORK_ROOT, {
+  mode: 'build',
+  allowedTools: null,
+  deniedTools: [],
+  files: { read: [], write: [] },
+});
 
 test('safeFetch rechaza una redirección hacia metadata cloud', async () => {
   const srv = http.createServer((_req, res) => {
@@ -95,9 +111,10 @@ test('code.run denegado por defecto (sin opt-in)', async () => {
   delete process.env.AGENT_ALLOW_CODE_RUN;
   try {
     const res = mockRes();
-    await handleAgentRunTool(mockReq({ toolId: 'code.run', input: { code: '1+1' } }), res);
+    await handleAgentRunTool(mockReq({ toolId: 'code.run', input: { code: '1+1', root: WORK_ROOT } }), res);
     assert.equal(res.statusCode, 403);
     assert.equal(res.body.ok, false);
+    assert.match(String(res.body.error), /code\.run deshabilitado/, 'el 403 debe ser el del opt-in, no el del modo');
   } finally {
     if (prev !== undefined) process.env.AGENT_ALLOW_CODE_RUN = prev;
   }

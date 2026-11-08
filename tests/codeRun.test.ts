@@ -5,9 +5,28 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { handleAgentRunTool } from '../agentTools.js';
+import { setPermissions } from '../permissions.js';
 
 process.env.AGENT_ALLOW_CODE_RUN = '1';
+
+/**
+ * Root temporal de la suite.
+ *
+ * Sin `root`, `code.run` toma los permisos del cwd del repo: un proyecto en
+ * readonly bloquea la tool con 403 por el modo y estos tests, que prueban el
+ * sandbox con el opt-in activo, fallarían por una configuración local.
+ */
+const WORK_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'code-run-root-'));
+setPermissions(WORK_ROOT, {
+  mode: 'build',
+  allowedTools: null,
+  deniedTools: [],
+  files: { read: [], write: [] },
+});
 
 function mockReq(body: any) {
   return { body, ip: '127.0.0.1', headers: {} } as any;
@@ -25,7 +44,7 @@ function mockRes() {
 
 const run = async (input: Record<string, unknown>) => {
   const res = mockRes();
-  await handleAgentRunTool(mockReq({ toolId: 'code.run', input }), res);
+  await handleAgentRunTool(mockReq({ toolId: 'code.run', input: { root: WORK_ROOT, ...input } }), res);
   return res;
 };
 

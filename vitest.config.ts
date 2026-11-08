@@ -4,7 +4,20 @@
  * Separada de la suite de Node pura: los `tests/*.test.ts` de la raíz usan
  * `node:test` y se ejecutan con `npm run test:node`.
  */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { defineConfig } from 'vitest/config';
+
+// La config global de Commander vive bajo HOME. Los tests de config y MCP
+// cambian el cwd a un temporal, pero `src/config/index.ts` sigue leyendo
+// `$HOME/.config/commander`: sin aislar HOME, la config real del usuario pisa
+// los defaults y los servidores MCP de los tests. El runner de node ya lo hace
+// en `scripts/test-node.ts`; aquí se aplica a los workers de Vitest.
+const isolatedHome = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-vitest-home-'));
+process.once('exit', () => {
+  try { fs.rmSync(isolatedHome, { recursive: true, force: true }); } catch { /* archivos aún abiertos */ }
+});
 
 // Nota: react() requiere Vite plugin compatible. Usamos un alias directo a las funciones nativas
 // para evitar conflictos entre rolldown (Vite 8) y rollup (Vitest).
@@ -22,6 +35,10 @@ const comun = {
   globals: false,
   restoreMocks: true,
   pool: 'vmForks' as const,
+  env: {
+    HOME: isolatedHome,
+    USERPROFILE: isolatedHome,
+  },
 };
 
 export default defineConfig({
