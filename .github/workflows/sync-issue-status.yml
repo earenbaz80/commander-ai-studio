@@ -1,0 +1,60 @@
+name: Sync issue status
+
+# Mantiene al día la columna `Estado` de docs/parity cuando un issue se cierra
+# o se reabre. El script sólo toca esas dos tablas; el resto del backlog no se
+# reescribe.
+on:
+  issues:
+    types: [closed, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: read
+
+concurrency:
+  group: sync-issue-status
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      # Hasta que docs/parity esté versionado no hay tablas en el checkout.
+      - name: Comprobar que existen las tablas
+        id: tables
+        run: |
+          if [ -f docs/parity/issues/README.md ] && [ -f docs/parity/backlog-f1.md ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "docs/parity no está versionado; no hay nada que sincronizar."
+          fi
+
+      - name: Sincronizar estado
+        if: steps.tables.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run sync:issue-status
+
+      - name: Commit de cambios
+        if: steps.tables.outputs.present == 'true'
+        run: |
+          if git diff --quiet -- docs/parity/issues/README.md docs/parity/backlog-f1.md; then
+            echo "Las tablas ya estaban al día."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/parity/issues/README.md docs/parity/backlog-f1.md
+          git commit -m "chore(parity): sincroniza el estado de los issues"
+          git push
