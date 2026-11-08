@@ -52,6 +52,12 @@ jobs:
       - name: Tipos (tsc --noEmit)
         run: npm run typecheck
 
+      # `npm ci` instala el paquete de Playwright pero no sus navegadores. Los
+      # tests de browser del servidor lanzan Chromium, así que hay que bajarlo
+      # antes de la suite de node:test.
+      - name: Instala Chromium para los tests de browser
+        run: npx playwright install chromium
+
       # node:test va antes de Vitest para que esta suite no se salte: en Actions
       # un paso que falla aborta los siguientes.
       - name: Tests (node:test)
