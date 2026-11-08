@@ -519,6 +519,8 @@ export const DE_STRINGS: Record<string, string> = {
   'Save the current prompt version': 'Aktuelle Prompt-Version speichern',
   'Save as a new project file (editor)': 'Als neue Projektdatei speichern (Editor)',
   'Send the chat message (Shift+Enter = newline)': 'Chat-Nachricht senden (Umschalt+Eingabe = neue Zeile)',
+  'Interrupt the current action and send the message now': 'Aktuelle Aktion unterbrechen und die Nachricht jetzt senden',
+  'Send the first queued message now': 'Erste Nachricht in der Warteschlange jetzt senden',
   'Close any modal or menu': 'Jedes Modal oder Menü schließen',
   'Close manual': 'Handbuch schließen',
   'What is Commander AI Studio?': 'Was ist Commander AI Studio?',

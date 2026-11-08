@@ -1,5 +1,5 @@
 export interface ThreadSummary {
-  id: string; project_id: string | null; project_path: string | null; title: string | null;
+  id: string; project_id: string | null; project_path: string | null; git_remote?: string | null; title: string | null;
   status: string; model: string | null; agent_mode: string; execution_mode: string; turn_state: string;
   created_at: number; updated_at: number; pinned?: number | null; state_json?: string | null;
 }

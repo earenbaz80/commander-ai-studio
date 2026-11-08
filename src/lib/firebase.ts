@@ -2,7 +2,12 @@ import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
   GoogleAuthProvider, 
+  GithubAuthProvider,
   signInWithPopup, 
+  linkWithPopup,
+  linkWithCredential,
+  EmailAuthProvider,
+  unlink,
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   signOut,
@@ -24,7 +29,10 @@ import {
   orderBy, 
   deleteDoc, 
   increment, 
-  updateDoc 
+  updateDoc,
+  onSnapshot,
+  arrayUnion,
+  arrayRemove,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { ParameterConfig, PromptVersion } from '../types/studio';
@@ -94,6 +102,11 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 // Authentication Functions
 export const googleProvider = new GoogleAuthProvider();
 
+// GitHub como método de acceso (distinto del conector OAuth del agente).
+export const githubProvider = new GithubAuthProvider();
+githubProvider.addScope('read:user');
+githubProvider.addScope('user:email');
+
 export async function signInWithGoogle() {
   try {
     // Request Workspace scopes
@@ -109,6 +122,52 @@ export async function signInWithGoogle() {
     console.error("Error logging in with Google:", error);
     throw error;
   }
+}
+
+export async function signInWithGitHub() {
+  try {
+    const result = await signInWithPopup(auth, githubProvider);
+    if (result.user) {
+      await syncUserProfile(result.user);
+    }
+    return result.user;
+  } catch (error) {
+    console.error("Error logging in with GitHub:", error);
+    throw error;
+  }
+}
+
+/** Vincula Google a la cuenta actual sin pedir los scopes de Workspace. */
+export async function linkGoogleAccount() {
+  if (!auth.currentUser) throw new Error('No hay una sesión iniciada.');
+  const provider = new GoogleAuthProvider();
+  const result = await linkWithPopup(auth.currentUser, provider);
+  await syncUserProfile(result.user);
+  return result.user;
+}
+
+/** Vincula GitHub a la cuenta actual (requiere el proveedor en Firebase). */
+export async function linkGitHubAccount() {
+  if (!auth.currentUser) throw new Error('No hay una sesión iniciada.');
+  const result = await linkWithPopup(auth.currentUser, githubProvider);
+  await syncUserProfile(result.user);
+  return result.user;
+}
+
+/** Añade correo/contraseña a una cuenta creada con Google o GitHub. */
+export async function linkEmailPasswordAccount(email: string, password: string) {
+  if (!auth.currentUser) throw new Error('No hay una sesión iniciada.');
+  const credential = EmailAuthProvider.credential(email.trim(), password);
+  const result = await linkWithCredential(auth.currentUser, credential);
+  await syncUserProfile(result.user);
+  return result.user;
+}
+
+export async function unlinkAccountProvider(providerId: string) {
+  if (!auth.currentUser) throw new Error('No hay una sesión iniciada.');
+  const user = await unlink(auth.currentUser, providerId);
+  await syncUserProfile(user);
+  return user;
 }
 
 // Helper to allow username-only authentication
@@ -167,6 +226,66 @@ async function syncUserProfile(user: User, customName?: string) {
   } catch (err) {
     console.warn("User profile sync warning:", err);
   }
+}
+
+/**
+ * Archiva o desarchiva un proyecto en el documento del usuario. Se usan
+ * transformaciones de array para que dos equipos no se pisen al mismo tiempo.
+ */
+export async function setProjectArchivedRemote(
+  userId: string,
+  projectKeys: string[],
+  archived: boolean,
+): Promise<void> {
+  const keys = Array.from(
+    new Set(projectKeys.filter((key) => typeof key === 'string' && key.length > 0)),
+  );
+  if (!keys.length) return;
+  const userRef = doc(db, 'users', userId);
+  await setDoc(
+    userRef,
+    {
+      archivedProjects: archived ? arrayUnion(...keys) : arrayRemove(...keys),
+      archivedProjectsUpdatedAt: new Date().toISOString(),
+    },
+    { merge: true },
+  );
+}
+
+/** Migra la lista local completa cuando la cuenta todavía no tiene el campo. */
+export async function saveArchivedProjects(userId: string, projectKeys: string[]): Promise<void> {
+  const keys = Array.from(
+    new Set(projectKeys.filter((key) => typeof key === 'string' && key.length > 0)),
+  );
+  const userRef = doc(db, 'users', userId);
+  await setDoc(
+    userRef,
+    {
+      archivedProjects: keys,
+      archivedProjectsUpdatedAt: new Date().toISOString(),
+    },
+    { merge: true },
+  );
+}
+
+/** Escucha el archivo del usuario para compartirlo en tiempo real entre equipos. */
+export function subscribeArchivedProjects(
+  userId: string,
+  onData: (projectKeys: string[] | null) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  return onSnapshot(
+    doc(db, 'users', userId),
+    (snapshot) => {
+      const value = snapshot.data()?.archivedProjects;
+      if (!Array.isArray(value)) {
+        onData(null);
+        return;
+      }
+      onData(value.filter((key): key is string => typeof key === 'string'));
+    },
+    (error) => onError?.(error),
+  );
 }
 
 // Project Gallery Interfaces

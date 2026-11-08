@@ -42,13 +42,22 @@ export function useAppPrompts(opts: AppPromptsOptions) {
     onAuditStart(buildAuditPrompt(activeTab.projectPath, lang as 'es' | 'en'));
   }, [activeTab, setProjectToast, lang, onAuditStart]);
 
-  const handleNewChat = useCallback(() => {
+  const openNewChat = useCallback((projectPath: string) => {
     const sessionId = `sess-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     currentSessionId.current = sessionId;
     setPromptTitle('Nuevo Proyecto Prompt');
-    tabs.newTab({ mode: 'chat', projectPath: activeTab?.projectPath || '', sessionId, promptTitle: 'Nuevo Proyecto Prompt' });
+    tabs.newTab({ mode: 'chat', projectPath, sessionId, promptTitle: 'Nuevo Proyecto Prompt' });
     setNonoStatus({ type: 'new_prompt' });
-  }, [currentSessionId, setPromptTitle, tabs, activeTab, setNonoStatus]);
+  }, [currentSessionId, setPromptTitle, tabs, setNonoStatus]);
 
-  return { handleGeneralAudit, handleNewChat };
+  const handleNewChat = useCallback(() => {
+    openNewChat(activeTab?.projectPath || '');
+  }, [openNewChat, activeTab]);
+
+  /** Chat limpio en el proyecto elegido desde el historial. */
+  const handleNewChatInProject = useCallback((projectPath: string) => {
+    openNewChat(projectPath || '');
+  }, [openNewChat]);
+
+  return { handleGeneralAudit, handleNewChat, handleNewChatInProject };
 }

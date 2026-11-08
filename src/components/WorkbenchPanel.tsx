@@ -9,7 +9,7 @@ import type { Language } from '../i18n/translations';
  *   • Terminal   → shell real vía la tool `shell.run` (la misma de los modelos)
  *   • Navegador  → iframe de URLs o vista previa de HTML local
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   X,
   Files,
@@ -23,6 +23,8 @@ import {
   AlertCircle,
   Activity,
   UploadCloud,
+  Film,
+  Database,
 } from 'lucide-react';
 import { FileTreeView } from './panel/FileTreeView';
 import { LivePreview, LiveConsole, NetworkMonitor } from './WorkbenchPreview';
@@ -31,10 +33,12 @@ import { ProviderHealthView } from './panel/ProviderHealthView';
 import { TabsView } from './panel/TabsView';
 import { TerminalView } from './panel/TerminalView';
 import { BrowserView } from './panel/BrowserView';
+import { ArtifactsView } from './panel/ArtifactsView';
 import { CheckpointsView } from './panel/CheckpointsView';
 import { CodeSearchView } from './panel/CodeSearchView';
 import { ProblemsView } from './panel/ProblemsView';
 import { PublishView } from './panel/PublishView';
+import { BackendView } from './panel/BackendView';
 import { useLspProblemCounts } from '../utils/lspProblems';
 import type { WorkspaceTab } from '../hooks/useTabs';
 import { ParameterConfig } from '../types/studio';
@@ -50,11 +54,13 @@ export type WorkbenchTab =
   | 'tabs'
   | 'terminal'
   | 'browser'
+  | 'artifacts'
   | 'checkpoints'
   | 'search'
   | 'problems'
   | 'preview'
   | 'publish'
+  | 'backend'
   | 'providers';
 
 interface WorkbenchPanelProps {
@@ -108,6 +114,11 @@ const TABS: Array<{
     tip: 'Navegador integrado', tipEn: 'Integrated browser', tipDe: 'Integrierter Browser',
   },
   {
+    id: 'artifacts', icon: <Film className="w-4 h-4" />,
+    label: 'Artifacts', labelEn: 'Artifacts', labelDe: 'Artefakte',
+    tip: 'Grabaciones de navegador y comentarios inline', tipEn: 'Browser recordings and inline comments', tipDe: 'Browser-Aufnahmen und Inline-Kommentare',
+  },
+  {
     id: 'checkpoints', icon: <History className="w-4 h-4" />,
     label: 'Checkpoints', labelEn: 'Checkpoints', labelDe: 'Checkpoints',
     tip: 'Puntos de control del workspace (undo)', tipEn: 'Workspace checkpoints (undo)', tipDe: 'Workspace-Checkpoints (Rückgängig)',
@@ -133,6 +144,11 @@ const TABS: Array<{
     tip: 'Publicar en preview/producción', tipEn: 'Publish to preview/production', tipDe: 'In Preview/Produktion veröffentlichen',
   },
   {
+    id: 'backend', icon: <Database className="w-4 h-4" />,
+    label: 'Backend', labelEn: 'Backend', labelDe: 'Backend',
+    tip: 'Cuentas, registros y archivos del backend local', tipEn: 'Local backend accounts, records and files', tipDe: 'Konten, Datensätze und Dateien des lokalen Backends',
+  },
+  {
     id: 'providers', icon: <Activity className="w-4 h-4" />,
     label: 'Proveedores', labelEn: 'Providers', labelDe: 'Anbieter',
     tip: 'Salud y métricas de proveedores', tipEn: 'Provider health & metrics', tipDe: 'Anbieter-Gesundheit & Metriken',
@@ -154,6 +170,7 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
   parameters,
 }) => {
     const [active, setActive] = useState<WorkbenchTab>('files');
+  const tabsRowRef = useRef<HTMLDivElement>(null);
   const [previewTab, setPreviewTab] = useState<'preview' | 'console' | 'network'>('preview');
   // Modo de la terminal: 'pty' (shell persistente real vía WebSocket) o
   // 'simple' (comando por comando vía shell.run, siempre disponible).
@@ -193,6 +210,49 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
     return () => window.removeEventListener('commander:open-workbench-tab', handler);
   }, []);
 
+  // Al detener una grabación, el artifact recién creado se abre solo. Si el
+  // guardado viene del desmontaje del navegador (cambio de pestaña), se guarda
+  // sin robar la navegación que eligió el usuario.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ open?: boolean }>).detail;
+      if (detail?.open !== false) setActive('artifacts');
+    };
+    window.addEventListener('commander:artifact-created', handler);
+    return () => window.removeEventListener('commander:artifact-created', handler);
+  }, []);
+
+  // La fila de vistas no cabe en el panel. La rueda vertical no desplaza un
+  // contenedor horizontal por sí sola, y React registra `wheel` como pasivo:
+  // el listener nativo es el que puede llamar a preventDefault y convertir
+  // deltaY en scrollLeft. La rueda horizontal del trackpad se respeta.
+  useEffect(() => {
+    const row = tabsRowRef.current;
+    if (!isOpen || !row) return;
+
+    const onWheel = (event: WheelEvent) => {
+      // Ctrl/Cmd + rueda es zoom del navegador: no se intercepta.
+      if (event.ctrlKey || event.metaKey) return;
+
+      const maxScroll = row.scrollWidth - row.clientWidth;
+      if (maxScroll <= 0) return;
+
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      if (!delta) return;
+
+      // En modo línea/página el delta no viene en píxeles.
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? row.clientWidth : 1;
+      const next = Math.max(0, Math.min(maxScroll, row.scrollLeft + delta * unit));
+      if (next === row.scrollLeft) return;
+
+      event.preventDefault();
+      row.scrollLeft = next;
+    };
+
+    row.addEventListener('wheel', onWheel, { passive: false });
+    return () => row.removeEventListener('wheel', onWheel);
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   
@@ -205,7 +265,7 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
     >
       {/* Menú de selección: con el panel estrecho las vistas no caben, así que
           la fila se desplaza en horizontal en vez de quedar recortada. */}
-      <div className="flex items-center gap-0.5 px-1 py-1 bg-[var(--nc-header-bg)] border-b-2 border-[var(--nc-border-dark)] shrink-0 min-w-0 overflow-x-auto nc-x-scroll">
+      <div ref={tabsRowRef} className="flex items-center gap-0.5 px-1 py-1 bg-[var(--nc-header-bg)] border-b-2 border-[var(--nc-border-dark)] shrink-0 min-w-0 overflow-x-auto nc-x-scroll">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -282,6 +342,9 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
           </div>
         )}
         {active === 'browser' && <BrowserView projectPath={projectPath} lang={lang} />}
+        {active === 'artifacts' && (
+          <ArtifactsView projectPath={projectPath} lang={lang} onOpenBrowser={() => setActive('browser')} />
+        )}
         {active === 'checkpoints' && <CheckpointsView projectPath={projectPath} />}
         {active === 'search' && <CodeSearchView projectPath={projectPath} />}
         {active === 'problems' && <ProblemsView projectPath={projectPath} lang={lang} />}
@@ -306,6 +369,7 @@ export const WorkbenchPanel: React.FC<WorkbenchPanelProps> = ({
           </div>
         )}
         {active === 'publish' && <PublishView projectPath={projectPath} lang={lang} />}
+        {active === 'backend' && <BackendView lang={lang} />}
         {active === 'providers' && <ProviderHealthView lang={lang} />}
       </div>
     </aside>

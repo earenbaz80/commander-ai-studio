@@ -1,4 +1,3 @@
-import { getCachedApiKey } from '../lib/apiKeys';
 import React, { useState, useEffect } from 'react';
 import { X, Hammer, Binary, CheckCircle2, Download, Play, Terminal, FileCode } from 'lucide-react';
 import { ParameterConfig } from '../types/studio';
@@ -556,7 +555,6 @@ cargo tauri build
     setIsTesting(true);
     setTestResult('');
     try {
-      const apiKey = getCachedApiKey('GEMINI_API_KEY') || undefined;
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -567,7 +565,6 @@ cargo tauri build
           temperature: parameters.temperature,
           topP: parameters.topP,
           maxTokens: parameters.maxTokens,
-          apiKey,
         }),
       });
       const data = await response.json();

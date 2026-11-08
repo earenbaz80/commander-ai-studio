@@ -10,15 +10,6 @@ import { isApiKeyConfigured, setApiKeyConfigured } from './apiKeyFlags';
 
 export { isApiKeyConfigured };
 
-/**
- * Compatibilidad temporal para llamadas que todavía no se migraron.
- * No lee localStorage ni devuelve valores: el servidor resuelve la cookie.
- * @deprecated Usa `isApiKeyConfigured` o deja que el servidor lea la cookie.
- */
-export function getCachedApiKey(_key: string): string | undefined {
-  return undefined;
-}
-
 const API_KEYS_ENDPOINT = '/api/keys';
 
 /**

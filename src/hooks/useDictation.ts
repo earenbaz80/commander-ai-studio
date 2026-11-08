@@ -6,7 +6,6 @@
  * el usuario revisa y pulsa Enviar, igual que si lo hubiera escrito.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getCachedApiKey } from '../lib/apiKeys';
 import { pickRecorderMimeType } from '../lib/dictation';
 import type { Language } from '../i18n/translations';
 
@@ -116,7 +115,6 @@ export function useDictation({ lang, onText }: UseDictationOptions): DictationCo
           body: JSON.stringify({
             audioData: dataUrl.split(',')[1] || '',
             mimeType,
-            apiKey: getCachedApiKey('GEMINI_API_KEY') || undefined,
             lang: langKey,
           }),
         });

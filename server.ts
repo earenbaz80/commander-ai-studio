@@ -11,6 +11,7 @@ import JSZip from 'jszip';
 import { executeAgentTool, handleAgentRunTool } from './agentTools';
 import * as persistence from './persistence';
 import * as worktrees from './worktrees';
+import { readProjectGitRemote } from './projectRemote';
 import { runAutonomousCampaign, planCampaign } from './autonomousRun';
 import { setServerBaseUrl } from './serverRuntime';
 import { addRoot, listRoots, removeRoot, removableRoots, resolveProjectPath } from './projects';
@@ -51,7 +52,7 @@ import { isDeprecatedGeminiModel } from './src/config/geminiModels';
 import { TRANSCRIPTION_MODELS, isRetryableTranscriptionError } from './src/lib/transcription';
 import { handleFreebuffGenerate } from './freebuff';
 import { listProjectPrompts } from './promptsApi';
-import { normalizeLmStudioHost, parseLmStudioModels } from './src/lib/lmStudio';
+import { LMSTUDIO_LOAD_TIMEOUT_MS, lmStudioContextLength, normalizeLmStudioHost, parseLmStudioContextLengths, parseLmStudioModels, toLmStudioContextLength } from './src/lib/lmStudio';
 import { cachedLocalModels, rememberLocalModels } from './src/lib/localModelCache';
 import {
   createRelease,
@@ -66,6 +67,7 @@ import { createConfiguredDeploymentAdapter } from './deploy/configuredAdapter';
 import { createDeployRouter } from './deploy/routes';
 import { createBrowserRouter } from './browserRoutes';
 import { createIntegrationsRouter } from './src/integrations/router';
+import { createTenantBackendRouter } from './backend/routes';
 
 dotenv.config();
 
@@ -827,7 +829,17 @@ app.get('/api/threads', (req, res) => {
   try {
     const projectId = req.query.projectId ? String(req.query.projectId) : undefined;
     const projectPath = req.query.projectPath ? String(req.query.projectPath) : undefined;
-    res.json({ success: true, threads: persistence.listThreads(projectId, projectPath) });
+    const threads = persistence.listThreads(projectId, projectPath);
+    // El sidebar usa el remoto de Git como identidad estable del proyecto: dos
+    // carpetas homónimas de repos distintos no deben compartir el archivado.
+    const remotes = new Map<string, string | null>();
+    const enriched = threads.map((thread) => {
+      const threadPath = thread.project_path || '';
+      if (!threadPath) return { ...thread, git_remote: null };
+      if (!remotes.has(threadPath)) remotes.set(threadPath, readProjectGitRemote(threadPath));
+      return { ...thread, git_remote: remotes.get(threadPath) ?? null };
+    });
+    res.json({ success: true, threads: enriched });
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
 });
 app.post('/api/threads', (req, res) => {
@@ -1881,7 +1893,7 @@ app.post('/api/publish/rollback', async (req, res) => {
 });
 
 // El adaptador remoto trabaja con releases locales ya creadas: no vuelve a
-// compilar ni copia archivos. Sin credenciales se usa el fake como fallback.
+// compilar ni copia archivos. Sin credenciales queda desactivado; no hay fake.
 app.use(
   '/api/deploy',
   createDeployRouter(publishProjectRoot, createConfiguredDeploymentAdapter())
@@ -1890,6 +1902,11 @@ app.use(
 // La misma sesión de Playwright que usan las tools del agente, expuesta al panel.
 app.use('/api/browser', createBrowserRouter());
 app.use('/api/integrations', createIntegrationsRouter());
+
+// Backend de datos multiinquilino: auth bearer, registros y archivos aislados
+// por inquilino. Se monta antes del estático/Vite para que ninguna ruta SPA
+// capture `/api/backend`.
+app.use('/api/backend', createTenantBackendRouter());
 
 // Sirve una release bajo `/published/<slug>/<entorno>/`. Va antes de Vite y del
 // estático de Commander: si no, el fallback SPA de la app se comería la URL.
@@ -2941,7 +2958,25 @@ async function resolveLmstudioHost(req: any, bodyHost?: unknown): Promise<string
  * Devuelve también si el servidor respondió, porque «conectado sin modelos»
  * no es un error de conexión: es LM Studio abierto sin modelo cargado.
  */
-async function fetchLmstudioModels(host: string): Promise<{ models: string[]; host: string }> {
+function lmStudioCatalogContext(id: string, contexts: Record<string, number>): { context_window: number; contextLength: number; contextWindow: string } {
+  const tokens = contexts[id] || 32_768;
+  return {
+    context_window: tokens,
+    contextLength: tokens,
+    contextWindow: tokens >= 1000 ? `${Math.floor(tokens / 1000)}K tokens` : `${tokens} tokens`,
+  };
+}
+
+function lmStudioLoadedContext(models: any[], model: string, variantBase: string): number | undefined {
+  const entry = models.find((item: any) =>
+    (Array.isArray(item?.loaded_instances) ? item.loaded_instances : []).some(
+      (instance: any) => instance?.id === model || instance?.id === variantBase
+    )
+  );
+  return lmStudioContextLength(entry);
+}
+
+async function fetchLmstudioModels(host: string): Promise<{ models: string[]; host: string; contextLengths: Record<string, number> }> {
   const base = normalizeLmStudioHost(host);
   const root = base.replace(/\/v\d+$/i, '');
   const candidates = [...new Set([`${base}/models`, `${root}/api/v0/models`])];
@@ -2957,6 +2992,7 @@ async function fetchLmstudioModels(host: string): Promise<{ models: string[]; ho
   );
 
   const models = new Set<string>();
+  const contextLengths: Record<string, number> = {};
   const errors: string[] = [];
   let answered = false;
   for (const result of settled) {
@@ -2965,6 +3001,7 @@ async function fetchLmstudioModels(host: string): Promise<{ models: string[]; ho
       continue;
     }
     answered = true;
+    Object.assign(contextLengths, parseLmStudioContextLengths(result.value));
     for (const id of parseLmStudioModels(result.value)) models.add(id);
   }
 
@@ -2977,7 +3014,155 @@ async function fetchLmstudioModels(host: string): Promise<{ models: string[]; ho
   // Igual que OpenCode: la lista queda guardada por host aunque el servidor se
   // apague después. El LM Studio remoto y el local son claves distintas.
   if (ids.length > 0) rememberLocalModels('lmstudio', base, ids);
-  return { models: ids, host: base };
+  return { models: ids, host: base, contextLengths };
+}
+
+/**
+ * Estado del modelo elegido en LM Studio.
+ *
+ * v0 da el id exacto (incluye variantes como `@q8_0`) y su `state`; v1 no
+ * siempre distingue variantes, así que se consulta primero v0. v1 queda como
+ * respaldo por si una versión futura retira la API antigua. `unknown` no
+ * dispara una carga: el chat puede resolverla por JIT y no se rompe un flujo
+ * que ya funcionaba.
+ */
+type LmStudioModelState = 'loaded' | 'not-loaded' | 'unknown';
+interface LmStudioModelInfo { state: LmStudioModelState; contextLength?: number; }
+
+/** Cargas explícitas en curso, para que la UI pueda mostrar el aviso. */
+const lmStudioLoads = new Map<
+  string,
+  { model: string; startedAt: number; contextLength?: number }
+>();
+
+/**
+ * Último fallo de carga por modelo. La generación devuelve el error, pero el
+ * aviso global lo consulta después: se recuerda un rato para que la UI no se
+ * apague en silencio. Caduca para no resucitar fallos viejos al cambiar de
+ * modelo o reintentar más tarde.
+ */
+const lmStudioLoadErrors = new Map<string, { model: string; error: string; failedAt: number }>();
+const LMSTUDIO_LOAD_ERROR_TTL_MS = 2 * 60 * 1000;
+
+function recentLmStudioLoadError(model: string) {
+  const entry = lmStudioLoadErrors.get(model);
+  if (!entry) return undefined;
+  if (Date.now() - entry.failedAt > LMSTUDIO_LOAD_ERROR_TTL_MS) {
+    lmStudioLoadErrors.delete(model);
+    return undefined;
+  }
+  return entry;
+}
+
+async function getLmStudioModelInfo(host: string, model: string): Promise<LmStudioModelInfo> {
+  const base = normalizeLmStudioHost(host);
+  const root = base.replace(/\/v\d+$/i, '');
+
+  try {
+    const response = await fetch(`${root}/api/v0/models`, {
+      headers: { 'User-Agent': 'CommanderAIStudio/2.5' },
+      signal: AbortSignal.timeout(7000),
+    });
+    if (response.ok) {
+      const payload: any = await response.json().catch(() => null);
+      const entry = Array.isArray(payload?.data)
+        ? payload.data.find((item: any) => item?.id === model)
+        : undefined;
+      if (entry) {
+        // «loading» ya está en marcha: no lanzar una segunda carga.
+        if (entry.state === 'loaded' || entry.state === 'loading') return { state: 'loaded', contextLength: lmStudioContextLength(entry) };
+        if (entry.state === 'not-loaded') return { state: 'not-loaded', contextLength: lmStudioContextLength(entry) };
+      }
+    }
+  } catch {
+    // v0 puede no existir en versiones futuras; se prueba v1 abajo.
+  }
+
+  try {
+    const response = await fetch(`${root}/api/v1/models`, {
+      headers: { 'User-Agent': 'CommanderAIStudio/2.5' },
+      signal: AbortSignal.timeout(7000),
+    });
+    if (response.ok) {
+      const payload: any = await response.json().catch(() => null);
+      const models: any[] = Array.isArray(payload?.models) ? payload.models : [];
+      const variantBase = model.replace(/@[^@]+$/, '');
+      const exactInstance = models.some((item: any) =>
+        (Array.isArray(item?.loaded_instances) ? item.loaded_instances : []).some(
+          (instance: any) => instance?.id === model || instance?.id === variantBase
+        )
+      );
+      if (exactInstance) return { state: 'loaded', contextLength: lmStudioLoadedContext(models, model, variantBase) };
+      const entry = models.find(
+        (item: any) => item?.key === model || item?.id === model || item?.key === variantBase || item?.id === variantBase
+      );
+      if (entry) {
+        return {
+          state: Array.isArray(entry.loaded_instances) && entry.loaded_instances.length > 0 ? 'loaded' : 'not-loaded',
+          contextLength: lmStudioContextLength(entry),
+        };
+      }
+    }
+  } catch {
+    // Sin listado no se puede saber el estado: el chat decide (JIT).
+  }
+
+  return { state: 'unknown' };
+}
+
+/**
+ * Carga el modelo antes de generar, como OpenCode. Se hace por HTTP y no con
+ * `lms` porque el host puede ser otro equipo de la LAN, donde ese CLI no
+ * existe. v0 no tiene endpoint de carga; la carga explícita llegó con v1.
+ */
+async function ensureLmStudioModelLoaded(host: string, model: string, requestedContextLength?: unknown): Promise<void> {
+  // Un intento nuevo invalida el fallo anterior: si el modelo ya está cargado
+  // o esta vez funciona, el aviso no debe seguir mostrando el error viejo.
+  lmStudioLoadErrors.delete(model);
+  const info = await getLmStudioModelInfo(host, model);
+  if (info.state !== 'not-loaded') return;
+  const contextLength = toLmStudioContextLength(requestedContextLength) ?? info.contextLength;
+
+  const base = normalizeLmStudioHost(host);
+  const root = base.replace(/\/v\d+$/i, '');
+  const loadKey = `${base}\n${model}`;
+  // El contexto forma parte de la petición de carga: la UI lo enseña junto al
+  // tiempo para que se sepa qué ventana se está esperando.
+  const load = {
+    model,
+    startedAt: Date.now(),
+    ...(contextLength ? { contextLength } : {}),
+  };
+  lmStudioLoads.set(loadKey, load);
+
+  try {
+    let response: Response;
+    try {
+      response = await fetch(`${root}/api/v1/models/load`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, ...(contextLength ? { context_length: contextLength } : {}) }),
+        // Un modelo grande puede tardar minutos; el chat tampoco tiene timeout.
+        signal: AbortSignal.timeout(LMSTUDIO_LOAD_TIMEOUT_MS),
+      });
+    } catch (error: any) {
+      if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+        throw new Error(`LM Studio tardó más de ${Math.round(LMSTUDIO_LOAD_TIMEOUT_MS / 60_000)} minutos en cargar el modelo "${model}"`);
+      }
+      throw new Error(`No se pudo cargar el modelo "${model}" en LM Studio: ${error?.message || 'sin conexión'}`);
+    }
+
+    if (response.ok) return;
+    // Versión antigua sin endpoint de carga: el chat puede cargarlo por JIT.
+    if (response.status === 404) return;
+
+    const payload: any = await response.json().catch(() => ({}));
+    const detail = payload?.error?.message || (typeof payload?.error === 'string' ? payload.error : '') || payload?.message || `HTTP ${response.status}`;
+    if (response.status === 409 || /already loaded|already in memory/i.test(String(detail))) return;
+    throw new Error(`No se pudo cargar el modelo "${model}" en LM Studio: ${detail}`);
+  } finally {
+    if (lmStudioLoads.get(loadKey) === load) lmStudioLoads.delete(loadKey);
+  }
 }
 
 app.get('/api/lmstudio/models', async (req, res) => {
@@ -3027,14 +3212,53 @@ app.post('/api/lmstudio/models', async (req, res) => {
   }
 });
 
+app.get('/api/lmstudio/loading', (req, res) => {
+  // Sondeo de la UI: no cachear, o el aviso se quedaría encendido.
+  res.setHeader('Cache-Control', 'no-store');
+  const requested = typeof req.query.model === 'string'
+    ? req.query.model.trim().replace(/^lmstudio\//, '')
+    : '';
+  const load = [...lmStudioLoads.values()].find((item) => !requested || item.model === requested);
+  // Sin carga en curso, un fallo reciente explica por qué el aviso se apaga.
+  const failed = load ? undefined : recentLmStudioLoadError(requested);
+  return res.json({
+    success: true,
+    loading: Boolean(load),
+    ...(load
+      ? {
+          model: load.model,
+          startedAt: load.startedAt,
+          ...(load.contextLength ? { contextLength: load.contextLength } : {}),
+        }
+      : {}),
+    ...(!load && failed ? { model: failed.model, error: failed.error, failedAt: failed.failedAt } : {}),
+  });
+});
+
 app.post('/api/lmstudio/generate', async (req, res) => {
   try {
-    const { prompt, model, systemInstruction = '', temperature = 0.7, maxTokens = 2048, host: bodyHost, tools, toolChoice } = req.body || {};
+    const { prompt, model, systemInstruction = '', temperature = 0.7, maxTokens = 2048, host: bodyHost, tools, toolChoice, contextLength } = req.body || {};
     const host = await resolveLmstudioHost(req, bodyHost);
     const target = model
       ? String(model).replace(/^lmstudio\//, '')
       : getProviderSecret('lmstudio', 'defaultModel') || '';
     if (!target) return res.json({ ok: false, error: 'Modelo requerido' });
+
+    // OpenCode carga el modelo elegido si aún no está en memoria. Hacerlo aquí
+    // cubre también el host remoto y cualquier caller del endpoint (agente,
+    // Nono, generación directa).
+    try {
+      await ensureLmStudioModelLoaded(host, target, contextLength);
+    } catch (error: any) {
+      // El aviso de la UI sondea este estado cuando la generación termina; sin
+      // esto solo vería `loading: false` y no podría explicar el fallo.
+      lmStudioLoadErrors.set(target, {
+        model: target,
+        error: error instanceof Error ? error.message : String(error || 'Error desconocido'),
+        failedAt: Date.now(),
+      });
+      throw error;
+    }
 
     const response = await fetch(`${host}/chat/completions`, {
       method: 'POST',
@@ -3313,9 +3537,11 @@ app.get('/api/models/live', async (req, res) => {
       })(),
       (async () => {
         let liveIds: string[] = [];
+        let liveContexts: Record<string, number> = {};
         try {
           const probe = await fetchLmstudioModels(await resolveLmstudioHost(req));
           liveIds = probe.models;
+          liveContexts = probe.contextLengths;
         } catch {
           // LM Studio puede estar apagado: el catálogo guardado en la última
           // detección sigue siendo suyo y no debe desaparecer del selector.
@@ -3329,7 +3555,7 @@ app.get('/api/models/live', async (req, res) => {
             id: `lmstudio/${id}`,
             name: id,
             provider: 'lmstudio' as const,
-            context_window: 32_768,
+            ...lmStudioCatalogContext(id, liveContexts),
             tags: liveIds.length > 0 ? ['local'] : ['local', 'guardado'],
           })),
         };

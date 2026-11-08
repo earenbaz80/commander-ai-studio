@@ -4,8 +4,16 @@
  * (equipo + servidor en la misma lista).
  */
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { Sidebar } from '../../src/components/Sidebar';
+
+const archiveSyncMocks = vi.hoisted(() => ({
+  subscribeArchivedProjects: vi.fn(),
+  saveArchivedProjects: vi.fn(),
+  setProjectArchivedRemote: vi.fn(),
+}));
+
+vi.mock('../../src/lib/firebase', () => archiveSyncMocks);
 
 const baseProps = () => ({
   mode: 'chat' as const,
@@ -24,6 +32,10 @@ const chatButton = (container: HTMLElement) =>
 
 describe('Sidebar (panel lateral agrupado)', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    archiveSyncMocks.subscribeArchivedProjects.mockReturnValue(() => {});
+    archiveSyncMocks.saveArchivedProjects.mockResolvedValue(undefined);
+    archiveSyncMocks.setProjectArchivedRemote.mockResolvedValue(undefined);
     localStorage.clear();
   });
 
@@ -175,8 +187,9 @@ describe('Sidebar (panel lateral agrupado)', () => {
       />
     );
 
-    // Ya no hay cabeceras por proyecto: el nombre de la carpeta vive en la fila.
-    expect(screen.queryByRole('button', { name: 'Proyecto uno' })).toBeNull();
+    // Cada proyecto encabeza su grupo; las filas conservan su proyecto.
+    expect(screen.getByTestId('project-group-uno')).toHaveTextContent('uno');
+    expect(screen.getByTestId('project-group-dos')).toHaveTextContent('dos');
     expect(screen.getAllByTestId('session-row-th-uno')).toHaveLength(1);
     expect(screen.getByTestId('session-row-th-uno')).toHaveTextContent('uno');
     expect(screen.getByTestId('session-row-th-dos')).toHaveTextContent('dos');
@@ -253,6 +266,219 @@ describe('Sidebar (panel lateral agrupado)', () => {
     fireEvent.change(screen.getByPlaceholderText('Buscar historial...'), { target: { value: 'arreglo' } });
     expect(screen.queryByText('Refactor')).toBeNull();
     expect(screen.getByText('Arreglo')).toBeInTheDocument();
+  });
+
+  test('cada proyecto ofrece GitHub, nuevo chat y archivar reversible', () => {
+    const onConnectGitHub = vi.fn();
+    const onNewChatForProject = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps()}
+        serverSessions={[
+          { id: 'th-uno', title: 'Refactor', project_path: 'C:/repo/uno' },
+          { id: 'th-dos', title: 'Arreglo', project_path: 'C:/repo/dos' },
+        ]}
+        onConnectGitHub={onConnectGitHub}
+        onNewChatForProject={onNewChatForProject}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Opciones del proyecto uno' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Conectar con GitHub' }));
+    expect(onConnectGitHub).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Opciones del proyecto uno' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Nuevo chat' }));
+    expect(onNewChatForProject).toHaveBeenCalledWith('C:/repo/uno');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Opciones del proyecto uno' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Archivar' }));
+    expect(screen.queryByTestId('session-row-th-uno')).toBeNull();
+    expect(screen.getByTestId('session-row-th-dos')).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem('commander_archived_projects') || '[]')).toContain('path:C:/repo/uno');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar archivados' }));
+    expect(screen.getByTestId('session-row-th-uno')).toBeInTheDocument();
+    expect(screen.getByTestId('project-group-uno')).toHaveTextContent('ARCHIVADO');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Opciones del proyecto uno' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Desarchivar' }));
+    expect(JSON.parse(localStorage.getItem('commander_archived_projects') || '[]')).not.toContain('path:C:/repo/uno');
+    expect(screen.getByTestId('session-row-th-uno')).toBeInTheDocument();
+  });
+
+  test('aplica el archivo de la cuenta y reconoce un proyecto por nombre', () => {
+    render(
+      <Sidebar
+        {...baseProps()}
+        currentUserUid="uid-1"
+        serverSessions={[{ id: 'th-uno', title: 'Refactor', project_path: 'D:/otro/uno' }]}
+      />
+    );
+
+    expect(archiveSyncMocks.subscribeArchivedProjects).toHaveBeenCalledWith(
+      'uid-1',
+      expect.any(Function),
+      expect.any(Function)
+    );
+    const onChange = archiveSyncMocks.subscribeArchivedProjects.mock.calls[0][1] as (
+      keys: string[] | null
+    ) => void;
+    act(() => onChange(['name:uno']));
+
+    expect(screen.queryByTestId('session-row-th-uno')).toBeNull();
+    expect(JSON.parse(localStorage.getItem('commander_archived_projects') || '[]')).toContain('name:uno');
+  });
+
+  test('archiva cada carpeta por su ruta aunque compartan el mismo remoto', () => {
+    render(
+      <Sidebar
+        {...baseProps()}
+        serverSessions={[
+          {
+            id: 'th-alpha',
+            title: 'Alpha',
+            project_path: 'C:/repo/a/uno',
+            git_remote: 'github.com/org/alpha',
+          },
+          {
+            id: 'th-beta',
+            title: 'Beta',
+            project_path: 'C:/repo/b/uno',
+            git_remote: 'github.com/org/alpha',
+          },
+        ]}
+      />
+    );
+
+    const groups = screen.getAllByTestId('project-group-uno');
+    expect(groups).toHaveLength(2);
+    fireEvent.click(within(groups[0]).getByRole('button', { name: 'Opciones del proyecto uno' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Archivar' }));
+
+    expect(screen.queryByTestId('session-row-th-alpha')).toBeNull();
+    expect(screen.getByTestId('session-row-th-beta')).toBeInTheDocument();
+    const archived = JSON.parse(localStorage.getItem('commander_archived_projects') || '[]');
+    expect(archived).toContain('path:C:/repo/a/uno');
+    expect(archived).not.toContain('path:C:/repo/b/uno');
+    expect(archived).not.toContain('remote:github.com/org/alpha');
+    expect(archived).not.toContain('name:uno');
+  });
+
+  test('ignora un archivado antiguo por remoto', () => {
+    localStorage.setItem(
+      'commander_archived_projects',
+      JSON.stringify(['remote:github.com/org/alpha'])
+    );
+    render(
+      <Sidebar
+        {...baseProps()}
+        serverSessions={[
+          {
+            id: 'th-remoto',
+            title: 'Refactor',
+            project_path: 'D:/otro/uno',
+            git_remote: 'github.com/org/alpha',
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByTestId('session-row-th-remoto')).toBeInTheDocument();
+  });
+
+  test('aplica un archivado antiguo por nombre si el proyecto es inequívoco', () => {
+    localStorage.setItem('commander_archived_projects', JSON.stringify(['name:uno']));
+    render(
+      <Sidebar
+        {...baseProps()}
+        serverSessions={[
+          {
+            id: 'th-viejo',
+            title: 'Refactor',
+            project_path: 'D:/otro/uno',
+            git_remote: 'github.com/org/alpha',
+          },
+        ]}
+      />
+    );
+
+    expect(screen.queryByTestId('session-row-th-viejo')).toBeNull();
+    const archived = JSON.parse(localStorage.getItem('commander_archived_projects') || '[]');
+    expect(archived).toContain('name:uno');
+    expect(archived).not.toContain('remote:github.com/org/alpha');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar archivados' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Opciones del proyecto uno' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Desarchivar' }));
+    expect(
+      JSON.parse(localStorage.getItem('commander_archived_projects') || '[]')
+    ).not.toContain('name:uno');
+  });
+
+  test('no aplica un archivado por nombre a dos carpetas homónimas', () => {
+    localStorage.setItem('commander_archived_projects', JSON.stringify(['name:uno']));
+    render(
+      <Sidebar
+        {...baseProps()}
+        serverSessions={[
+          {
+            id: 'th-alpha',
+            title: 'Alpha',
+            project_path: 'C:/repo/a/uno',
+            git_remote: 'github.com/org/alpha',
+          },
+          {
+            id: 'th-beta',
+            title: 'Beta',
+            project_path: 'C:/repo/b/uno',
+            git_remote: 'github.com/org/alpha',
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByTestId('session-row-th-alpha')).toBeInTheDocument();
+    expect(screen.getByTestId('session-row-th-beta')).toBeInTheDocument();
+  });
+
+  test('archivar y desarchivar se escribe en la cuenta', () => {
+    render(
+      <Sidebar
+        {...baseProps()}
+        currentUserUid="uid-1"
+        serverSessions={[{ id: 'th-uno', title: 'Refactor', project_path: 'C:/repo/uno' }]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Opciones del proyecto uno' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Archivar' }));
+    expect(archiveSyncMocks.setProjectArchivedRemote).toHaveBeenCalledWith(
+      'uid-1',
+      ['path:C:/repo/uno'],
+      true
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar archivados' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Opciones del proyecto uno' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Desarchivar' }));
+    expect(archiveSyncMocks.setProjectArchivedRemote).toHaveBeenLastCalledWith(
+      'uid-1',
+      ['path:C:/repo/uno'],
+      false
+    );
+  });
+
+  test('la primera sincronización sube el archivo local si el servidor no tiene lista', () => {
+    localStorage.setItem('commander_archived_projects', JSON.stringify(['path:C:/repo/uno']));
+    render(<Sidebar {...baseProps()} currentUserUid="uid-1" />);
+
+    const onChange = archiveSyncMocks.subscribeArchivedProjects.mock.calls[0][1] as (
+      keys: string[] | null
+    ) => void;
+    act(() => onChange(null));
+
+    expect(archiveSyncMocks.saveArchivedProjects).toHaveBeenCalledWith('uid-1', ['path:C:/repo/uno']);
   });
 
 });

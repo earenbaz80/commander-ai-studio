@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { X, User, Lock, LogIn, UserPlus, LogOut, ShieldCheck } from 'lucide-react';
+import { X, User, Lock, LogIn, UserPlus, LogOut, ShieldCheck, GitBranch } from 'lucide-react';
 import { 
   loginWithEmailPassword, 
   registerWithEmailPassword, 
   signInWithGoogle, 
+  signInWithGitHub,
   logoutUser
 } from '../lib/firebase';
 import { User as FirebaseUser } from 'firebase/auth';
@@ -69,6 +70,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, currentUs
       onClose();
     } catch (_err: any) {
       setError('Error al iniciar sesión con Google.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGitHubLogin = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      await signInWithGitHub();
+      onClose();
+    } catch (err: any) {
+      if (err?.code === 'auth/operation-not-allowed') {
+        setError('GitHub no está habilitado en Firebase. Actívalo en Authentication → Sign-in method.');
+      } else if (err?.code === 'auth/popup-closed-by-user') {
+        setError('Cerraste la ventana de GitHub.');
+      } else if (err?.code === 'auth/account-exists-with-different-credential') {
+        setError(
+          'Ese correo ya tiene una cuenta con otro método. Inicia sesión y conéctalo desde Configuración → Cuenta.'
+        );
+      } else {
+        setError('Error al iniciar sesión con GitHub.');
+      }
     } finally {
       setLoading(false);
     }
@@ -216,6 +240,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, currentUs
                 <path d="M12.24 10.285V13.4h6.887c-.58 2.319-2.72 4.041-5.647 4.041-3.393 0-6.142-2.749-6.142-6.142s2.749-6.142 6.142-6.142c1.55 0 2.96.577 4.04 1.528l2.42-2.42C18.45 2.82 15.52 2 12.24 2 6.58 2 2 6.58 2 12.24s4.58 10.24 10.24 10.24c6.14 0 10.12-4.32 10.12-10.3 0-.69-.07-1.37-.19-2.022H12.24z"/>
               </svg>
               <span>INICIAR SESIÓN CON GOOGLE</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleGitHubLogin}
+              disabled={loading}
+              className="nc-button py-2 text-xs flex items-center justify-center gap-2 bg-[var(--nc-bg-main)] hover:bg-[var(--nc-header-bg)]"
+            >
+              <GitBranch className="w-4 h-4 text-[var(--nc-text-accent)]" />
+              <span>INICIAR SESIÓN CON GITHUB</span>
             </button>
           </div>
         )}

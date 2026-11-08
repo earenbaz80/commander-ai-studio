@@ -155,6 +155,10 @@ export interface ChatMessage {
   thinkingProcess?: string;
   providerUsed?: ProviderType;
   modelUsed?: string;
+  /** La generación falló y la respuesta se puede reintentar. */
+  failed?: boolean;
+  /** Modo de ejecución original de la petición fallida. */
+  retryRunMode?: RunMode;
   // AI Studio Advanced Capabilities
   variants?: string[];
   activeVariantIndex?: number;

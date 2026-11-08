@@ -94,7 +94,34 @@ describe('WorkbenchPanel', () => {
     expect(screen.getByTitle('Sesiones del workspace')).toBeInTheDocument();
     expect(screen.getByTitle('Terminal integrada (comandos reales)')).toBeInTheDocument();
     expect(screen.getByTitle('Navegador integrado')).toBeInTheDocument();
+    expect(screen.getByTitle('Grabaciones de navegador y comentarios inline')).toBeInTheDocument();
     expect(screen.getByTitle('Publicar en preview/producción')).toBeInTheDocument();
+  });
+
+  test('la rueda vertical desplaza la fila de vistas en horizontal', () => {
+    render(<WorkbenchPanel {...baseProps()} />);
+    const row = screen.getByTitle('Árbol de archivos del proyecto').parentElement as HTMLDivElement;
+    expect(row).toBeTruthy();
+
+    // jsdom no calcula layout: se fijan las medidas que tendría una fila con
+    // más pestañas de las que caben en el panel.
+    Object.defineProperty(row, 'scrollWidth', { configurable: true, value: 600 });
+    Object.defineProperty(row, 'clientWidth', { configurable: true, value: 300 });
+    let scrollLeft = 0;
+    Object.defineProperty(row, 'scrollLeft', {
+      configurable: true,
+      get: () => scrollLeft,
+      set: (value: number) => { scrollLeft = value; },
+    });
+
+    expect(fireEvent.wheel(row, { deltaY: 80 })).toBe(false);
+    expect(scrollLeft).toBe(80);
+
+    // Sin overflow la rueda no se consume: el panel puede seguir scrolleando.
+    Object.defineProperty(row, 'scrollWidth', { configurable: true, value: 300 });
+    scrollLeft = 0;
+    expect(fireEvent.wheel(row, { deltaY: 80 })).toBe(true);
+    expect(scrollLeft).toBe(0);
   });
 
   test('el botón cerrar llama onClose', () => {
@@ -116,12 +143,19 @@ describe('WorkbenchPanel', () => {
     expect(screen.getByPlaceholderText('https://…')).toBeInTheDocument();
   });
 
+  test('cambiar a la vista de artifacts', async () => {
+    render(<WorkbenchPanel {...baseProps()} />);
+    fireEvent.click(screen.getByTitle('Grabaciones de navegador y comentarios inline'));
+    expect(await screen.findByText('Todavía no hay artifacts')).toBeInTheDocument();
+  });
+
   test('etiquetas en inglés con lang="en"', () => {
     render(<WorkbenchPanel {...baseProps()} lang="en" />);
     expect(screen.getByTitle('Project file tree')).toBeInTheDocument();
     expect(screen.getByTitle('Workspace sessions')).toBeInTheDocument();
     expect(screen.getByTitle('Integrated terminal (real commands)')).toBeInTheDocument();
     expect(screen.getByTitle('Integrated browser')).toBeInTheDocument();
+    expect(screen.getByTitle('Browser recordings and inline comments')).toBeInTheDocument();
     expect(screen.getByTitle('Publish to preview/production')).toBeInTheDocument();
   });
 });
