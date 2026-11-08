@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { askNonoDetailed } from '../../src/utils/nonoAsk';
+import { resetApiKeyConfigured } from '../../src/lib/apiKeyFlags';
 
 const json = (payload: unknown) =>
   ({ ok: true, status: 200, json: async () => payload }) as unknown as Response;
@@ -15,6 +16,7 @@ let geminiKey = '';
 beforeEach(() => {
   calls = [];
   geminiKey = '';
+  resetApiKeyConfigured();
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: any, init?: any) => {

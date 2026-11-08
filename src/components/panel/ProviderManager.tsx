@@ -189,7 +189,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
     }
   }, [available.length]);
 
-  const useAvailable = (provider: AvailableProvider) => {
+  const applyAvailableProvider = (provider: AvailableProvider) => {
     setAddCheck(null);
     setNewProvider({
       id: slugifyProviderId(provider.id),
@@ -781,7 +781,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                     <button
                       key={provider.id}
                       type="button"
-                      onClick={() => useAvailable(provider)}
+                      onClick={() => applyAvailableProvider(provider)}
                       className="flex w-full items-center gap-2 px-2 py-1 text-left text-[10px] text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)]"
                     >
                       <span className="truncate font-bold">{provider.name}</span>
