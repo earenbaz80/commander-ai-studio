@@ -2,6 +2,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
 import { BrowserView } from '../../src/components/panel/BrowserView';
 import { LiveConsole, NetworkMonitor } from '../../src/components/WorkbenchPreview';
+import { clearArtifacts, listArtifacts } from '../../src/artifacts/store';
 import type { BrowserFrame, BrowserSessionInfo } from '../../src/utils/browserSessionApi';
 
 class FakeEventSource {
@@ -291,6 +292,38 @@ describe('BrowserView real', () => {
     expect(screenshotCall).toBeTruthy();
     expect(JSON.parse(String(screenshotCall![1]?.body))).toEqual({ fullPage: true });
     expect(downloads[0]).toMatch(/-completa\.png$/);
+  });
+
+  test('graba los frames reales y los guarda como artifact', async () => {
+    await clearArtifacts();
+    installFetch();
+    render(<BrowserView projectPath="C:/tmp/x" />);
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    act(() => {
+      FakeEventSource.instances[0].emit('snapshot', { session });
+      FakeEventSource.instances[0].emit('frame', { type: 'frame', seq: 1, frame });
+    });
+
+    fireEvent.click(await screen.findByTestId('browser-record'));
+    act(() => {
+      FakeEventSource.instances[0].emit('frame', {
+        type: 'frame',
+        seq: 2,
+        frame: { ...frame, seq: 2, ts: 701 },
+      });
+    });
+
+    expect(await screen.findByTestId('browser-recording-status')).toHaveTextContent(/REC/);
+    fireEvent.click(screen.getByLabelText('Detener grabación'));
+
+    await waitFor(async () => {
+      const artifacts = await listArtifacts('C:/tmp/x');
+      expect(artifacts).toHaveLength(1);
+      expect(artifacts[0]?.frames.map((item) => item.seq)).toEqual([1, 2]);
+      expect(artifacts[0]?.title).toBe('App');
+    });
+    expect(await screen.findByText(/Grabación guardada/)).toBeInTheDocument();
   });
 
   test('el botón de frame descarga el JPEG que ya muestra el panel', async () => {
