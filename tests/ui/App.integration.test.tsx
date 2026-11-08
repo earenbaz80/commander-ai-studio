@@ -490,6 +490,65 @@ describe('App (integración)', { timeout: 20_000 }, () => {
     }
   });
 
+  test('oculta el aviso de ruta copiada a los 4 segundos', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    const thread = {
+      id: 'th-toast-ruta',
+      title: 'Proyecto abierto',
+      project_path: 'C:/proj',
+      status: 'active',
+      model: 'gemini-3.5-flash',
+      agent_mode: 'chat',
+      execution_mode: 'build',
+      turn_state: 'idle',
+      created_at: 1,
+      updated_at: 2,
+      pinned: 0,
+      project_id: null,
+      state_json: null,
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url) === '/api/threads') {
+        return Promise.resolve({ ok: true, json: async () => ({ threads: [thread] }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ roots: [] }) });
+    });
+    global.fetch = fetchMock as any;
+
+    try {
+      await bootApp();
+      const projectMenu = await screen.findByRole('button', { name: 'Opciones del proyecto proj' });
+
+      // Los timers falsos entran después del arranque: findByRole necesita timers
+      // reales para esperar la carga de hilos, pero el aviso se controla aquí.
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      fireEvent.click(projectMenu);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Copiar ruta' }));
+      });
+
+      expect(screen.getByText('Ruta copiada: C:/proj')).toBeInTheDocument();
+
+      act(() => { vi.advanceTimersByTime(3999); });
+      expect(screen.getByText('Ruta copiada: C:/proj')).toBeInTheDocument();
+
+      act(() => { vi.advanceTimersByTime(1); });
+      expect(screen.queryByText('Ruta copiada: C:/proj')).toBeNull();
+    } finally {
+      if (clipboardDescriptor) {
+        Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+      } else {
+        Reflect.deleteProperty(navigator, 'clipboard');
+      }
+    }
+  });
+
   test('el atajo Ctrl+K abre la paleta y Escape la cierra', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ roots: [] }) });
     await bootApp();
