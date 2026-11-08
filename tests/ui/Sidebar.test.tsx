@@ -4,7 +4,7 @@
  * (equipo + servidor en la misma lista).
  */
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act, within } from '@testing-library/react';
+import { render, screen, fireEvent, act, within, waitFor } from '@testing-library/react';
 import { Sidebar } from '../../src/components/Sidebar';
 
 const archiveSyncMocks = vi.hoisted(() => ({
@@ -307,12 +307,14 @@ describe('Sidebar (panel lateral agrupado)', () => {
     expect(screen.getByTestId('session-row-th-uno')).toBeInTheDocument();
   });
 
-  test('copia la ruta local del proyecto desde su menú', () => {
+  test('copia la ruta local del proyecto desde su menú', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
+    const onProjectPathCopied = vi.fn();
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, writable: true });
     render(
       <Sidebar
         {...baseProps()}
+        onProjectPathCopied={onProjectPathCopied}
         serverSessions={[{ id: 'th-uno', title: 'Refactor', project_path: 'C:/repo/uno' }]}
       />
     );
@@ -320,6 +322,8 @@ describe('Sidebar (panel lateral agrupado)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Opciones del proyecto uno' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Copiar ruta' }));
     expect(writeText).toHaveBeenCalledWith('C:/repo/uno');
+    // La confirmación se avisa sólo cuando el portapapeles acepta la escritura.
+    await waitFor(() => expect(onProjectPathCopied).toHaveBeenCalledWith('C:/repo/uno'));
     expect(screen.queryByRole('menu')).toBeNull();
   });
 

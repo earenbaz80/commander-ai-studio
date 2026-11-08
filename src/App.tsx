@@ -1423,6 +1423,12 @@ export default function App() {
               onOpenGallery={() => setIsGalleryModalOpen(true)}
               onConnectGitHub={() => openSettings('extensiones', 'integrations')}
               onNewChatForProject={handleNewChatInProject}
+              onProjectPathCopied={(path) =>
+                setProjectToast({
+                  kind: 'ok',
+                  text: `${lang === 'es' ? 'Ruta copiada' : lang === 'de' ? 'Pfad kopiert' : 'Path copied'}: ${path}`,
+                })
+              }
               onOpenCompile={() => setIsCompilerModalOpen(true)}
               lang={lang as any}
               currentUserUid={currentUser?.uid ?? null}
