@@ -7,7 +7,7 @@
  * anteriores) y distingue «no hay modelo» de «el modelo falló», que es lo que
  * permite a Nono poner cara de pena en vez de fingir que todo va bien.
  */
-import { getApiKey } from '../lib/apiKeys';
+import { isApiKeyConfigured } from '../lib/apiKeyFlags';
 import type { ParameterConfig } from '../types/studio';
 import type { Language } from '../i18n/translations';
 import { detectCodePatterns, type CodePatternResult } from './codePatternDetector';
@@ -154,11 +154,9 @@ export async function askNonoDetailed(text: string, opts: AskNonoOptions = {}): 
     };
 
     if (provider === 'google') {
-      const apiKey = await getApiKey('GEMINI_API_KEY');
-      // Sin clave no es un fallo: el llamador usa sus plantillas y Nono no se
-      // pone triste por algo que el usuario no ha configurado.
-      if (!apiKey) return { text: null };
-      body.apiKey = apiKey;
+      // Sin clave no es un fallo: el llamador usa sus plantillas. El valor no
+      // hace falta aquí: el servidor lo lee de la cookie httpOnly.
+      if (!isApiKeyConfigured('GEMINI_API_KEY')) return { text: null };
       // El historial ya va dentro del prompt, así que `contents` sigue siendo
       // una cadena (mismo contrato que usaba antes este cliente).
       body.contents = prompt;
