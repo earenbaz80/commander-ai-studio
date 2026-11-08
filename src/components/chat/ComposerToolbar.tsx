@@ -423,7 +423,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
               onClick={onStop}
               aria-label={lang === 'es' ? 'Detener generación' : lang === 'de' ? 'Generierung stoppen' : 'Stop generation'}
               title={lang === 'es' ? 'Detener la generación en curso' : lang === 'de' ? 'Laufende Generierung stoppen' : 'Stop the current generation'}
-              className="flex min-h-10 items-center gap-2 px-4 py-2 border-2 border-[var(--nc-danger)] bg-[#330000] text-[var(--nc-danger)] font-bold hover:bg-[var(--nc-danger)] hover:text-black transition-colors"
+              className="flex min-h-10 items-center gap-2 px-4 py-2 border-2 border-[var(--nc-danger)] bg-red-950 text-[var(--nc-danger)] font-bold hover:bg-[var(--nc-danger)] hover:text-black transition-colors"
             >
               <Square className="w-3.5 h-3.5" />
               {lang === 'es' ? 'Detener' : lang === 'de' ? 'Stopp' : 'Stop'}

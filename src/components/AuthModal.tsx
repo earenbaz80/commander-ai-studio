@@ -8,14 +8,18 @@ import {
   logoutUser
 } from '../lib/firebase';
 import { User as FirebaseUser } from 'firebase/auth';
+import type { Language } from '../i18n/translations';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: FirebaseUser | null;
+  lang?: Language;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, currentUser }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, currentUser, lang = 'es' }) => {
+  const t = (es: string, en: string, de: string) =>
+    lang === 'es' ? es : lang === 'de' ? de : en;
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -249,7 +253,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, currentUs
               className="nc-button py-2 text-xs flex items-center justify-center gap-2 bg-[var(--nc-bg-main)] hover:bg-[var(--nc-header-bg)]"
             >
               <GitBranch className="w-4 h-4 text-[var(--nc-text-accent)]" />
-              <span>INICIAR SESIÓN CON GITHUB</span>
+              <span>{t('INICIAR SESIÓN CON GITHUB', 'SIGN IN WITH GITHUB', 'MIT GITHUB ANMELDEN')}</span>
             </button>
           </div>
         )}

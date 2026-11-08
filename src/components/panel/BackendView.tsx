@@ -439,12 +439,12 @@ export function BackendView({ lang = 'es' }: BackendViewProps) {
       </div>
 
       {error && (
-        <div role="alert" className="px-2 py-1 text-[10px] text-red-300 border-b border-[var(--nc-border-dark)] bg-[#220000]/50 shrink-0">
+        <div role="alert" className="px-2 py-1 text-[10px] text-red-300 border-b border-[var(--nc-border-dark)] bg-red-950/40 shrink-0">
           {error}
         </div>
       )}
       {notice && !error && (
-        <div className="px-2 py-1 text-[10px] text-green-300 border-b border-[var(--nc-border-dark)] bg-[#002200]/50 shrink-0">
+        <div className="px-2 py-1 text-[10px] text-green-300 border-b border-[var(--nc-border-dark)] bg-green-950/40 shrink-0">
           {notice}
         </div>
       )}

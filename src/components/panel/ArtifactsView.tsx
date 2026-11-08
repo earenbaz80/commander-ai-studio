@@ -528,7 +528,7 @@ export function ArtifactsView({
                           seek(comment.atMs);
                           setFocusedCommentId(comment.id);
                         }}
-                        className="absolute z-10 -translate-x-1/2 -translate-y-1/2 min-w-[20px] h-5 px-1 rounded-full bg-[var(--nc-text-accent)] text-black text-[9px] font-bold border border-black shadow-[0_0_0_1px_#ffff55]"
+                        className="absolute z-10 -translate-x-1/2 -translate-y-1/2 min-w-[20px] h-5 px-1 rounded-full bg-[var(--nc-text-accent)] text-black text-[9px] font-bold border border-black shadow-[0_0_0_1px_var(--nc-text-accent)]"
                         style={{ left: `${comment.x * 100}%`, top: `${comment.y * 100}%` }}
                         title={`${index + 1} · ${formatMediaTime(comment.atMs, true)} — ${comment.body}`}
                         aria-label={`${tr(lang, 'Comentario', 'Comment')} ${index + 1}: ${comment.body}`}
@@ -750,7 +750,7 @@ export function ArtifactsView({
                               </button>
                             </div>
                           </div>
-                          <p className={`mt-1 whitespace-pre-wrap break-words text-[11px] ${comment.resolved ? 'line-through text-white/60' : 'text-[#d8d8d8]'}`}>
+                          <p className={`mt-1 whitespace-pre-wrap break-words text-[11px] ${comment.resolved ? 'line-through text-white/60' : 'text-[var(--nc-text)]'}`}>
                             {comment.body}
                           </p>
                         </div>
