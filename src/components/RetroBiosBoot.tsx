@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Cpu, Terminal } from 'lucide-react';
 import { Language } from '../i18n/translations';
 
@@ -13,6 +13,12 @@ export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
   lang = 'es',
   theme = 'norton',
 }) => {
+  // `onComplete` suele llegar como flecha inline: su identidad cambia en
+  // cada render del padre. Guardarlo en una ref y depender sólo de `lang`
+  // evita que cada re-render reinicie la secuencia (y el failsafe) a cero.
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
   const [logs, setLogs] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
   const [bootFinished, setBootFinished] = useState(false);
@@ -37,6 +43,7 @@ export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
     },
   }[theme] || { bg: 'bg-black', text: 'text-white', primary: 'text-[var(--nc-text)]', border: 'border-[var(--nc-border-light)]' };
 
+  const stepsToUse = useMemo(() => {
   const bootSteps = [
     { text: 'COMMANDER AI BIOS V1.09.26 (C) 1986-2026 COMMANDER CORP', wait: 200 },
     { text: 'CPU: INTEL DUAL-STREAM COPROCESSOR AT 4.77MHz ... OK', wait: 350 },
@@ -63,7 +70,8 @@ export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
     { text: 'COMMANDER AI STUDIO KERNEL LOADED SUCCESSFULLY. READY.', wait: 150 },
   ];
 
-  const stepsToUse = lang === 'es' ? bootSteps : bootStepsEn;
+  return lang === 'es' ? bootSteps : bootStepsEn;
+  }, [lang]);
 
   // Los 10 pasos suman 2.750 ms y, con los 200 ms de entrada y los 600 ms de
   // salida, la secuencia completa dura ~3,55 s: el failsafe de 3.200 ms la
@@ -99,7 +107,7 @@ export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
         
         // Auto transition into the studio
         setTimeout(() => {
-          onComplete();
+          onCompleteRef.current();
         }, 600);
       }
     };
@@ -120,12 +128,12 @@ export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
 
     // Safety failsafe: never block the user for more than 3.2 seconds
     const safetyTimer = setTimeout(() => {
-      onComplete();
+      onCompleteRef.current();
     }, 3200);
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
-        onComplete();
+        onCompleteRef.current();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -136,8 +144,7 @@ export const RetroBiosBoot: React.FC<RetroBiosBootProps> = ({
       clearTimeout(safetyTimer);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onComplete]);
+  }, [stepsToUse]);
 
   return (
     <div 

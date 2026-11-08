@@ -5,7 +5,7 @@ import {
   closeSubAgentsSession,
   setSubAgentsSession,
 } from '../../src/agent/subAgentsStream';
-import { ATASCO_KEY, PREFERENCIAS_EVENT } from '../../src/components/ServerSubAgents';
+import { ATASCO_KEY, PREFERENCIAS_EVENT } from '../../src/components/subAgentSettings';
 
 /**
  * El panel ya no sondea: pinta lo que llega por el stream de la sesión padre.

@@ -1,7 +1,7 @@
 import { describe, test, expect, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { PreferencesModal } from '../../src/components/PreferencesModal';
-import { ATASCO_KEY, PREFERENCIAS_EVENT } from '../../src/components/ServerSubAgents';
+import { ATASCO_KEY, PREFERENCIAS_EVENT } from '../../src/components/subAgentSettings';
 import { NONO_MEMORY_KEY } from '../../src/features/nono/nonoMemoryStore';
 
 /**

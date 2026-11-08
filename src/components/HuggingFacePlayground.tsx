@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 import { 
 
@@ -102,12 +102,12 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
    * programación son `text-generation` y se reconocen por el nombre, así que
    * la categoría «code» busca ese término. El resto son pipeline_tag reales.
    */
-  const resolveCategory = (pipeline: string): { pipeline: string; extraQuery: string } => {
+  const resolveCategory = useCallback((pipeline: string): { pipeline: string; extraQuery: string } => {
     if (pipeline === 'code') return { pipeline: 'text-generation', extraQuery: 'code' };
     return { pipeline: pipeline === 'all' ? '' : pipeline, extraQuery: '' };
-  };
+  }, []);
 
-  const fetchHfHubModels = async (query = '', pipeline = 'all') => {
+  const fetchHfHubModels = useCallback(async (query = '', pipeline = 'all') => {
 
     setIsSearching(true);
 
@@ -137,7 +137,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
     }
 
-  };
+  }, [resolveCategory]);
 
 
 
@@ -214,7 +214,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
     return () => clearTimeout(timer);
 
-  }, [searchQuery, selectedPipeline]);
+  }, [searchQuery, selectedPipeline, fetchHfHubModels]);
 
 
 

@@ -51,7 +51,6 @@ export const GlobalTooltip: React.FC = () => {
     }
     // No depende de `shift` a propósito: con la corrección aplicada no hace
     // falta volver a medir, y añadirlo provocaría un bucle.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tooltip.visible, tooltip.text, tooltip.x, tooltip.y]);
 
   useEffect(() => {

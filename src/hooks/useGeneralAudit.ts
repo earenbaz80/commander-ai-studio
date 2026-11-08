@@ -138,7 +138,9 @@ export function useGeneralAudit(opts: GeneralAuditOptions) {
 
     if (state.running) return;
     run.current = null;
-    setIsGenerating(false);
+    // Detener ya apaga el indicador; si el usuario interrumpe y envía de
+    // inmediato, el cierre de esta auditoría no debe apagar la nueva acción.
+    if (!stopped.current) setIsGenerating(false);
 
     if (stopped.current) {
       stopped.current = false;

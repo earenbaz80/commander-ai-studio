@@ -91,6 +91,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
 
   const text = {
     button: lang === 'es' ? 'Modelo que se usará para responder' : lang === 'de' ? 'Modell für die Antwort' : 'Model used to answer',
@@ -98,6 +99,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
     search: lang === 'es' ? 'Buscar modelo o proveedor' : lang === 'de' ? 'Modell oder Anbieter suchen' : 'Search model or provider',
     placeholder: lang === 'es' ? 'Proveedor o modelo…' : lang === 'de' ? 'Anbieter oder Modell…' : 'Provider or model…',
     all: lang === 'es' ? 'Todos' : lang === 'de' ? 'Alle' : 'All',
+    tabs: lang === 'es' ? 'Proveedores' : lang === 'de' ? 'Anbieter' : 'Providers',
     empty: lang === 'es' ? 'Sin coincidencias' : lang === 'de' ? 'Keine Treffer' : 'No matches',
     noProvider: lang === 'es' ? 'Configura un proveedor…' : lang === 'de' ? 'Anbieter konfigurieren…' : 'Configure a provider…',
     noModels: lang === 'es' ? 'Sin modelos detectados' : lang === 'de' ? 'Keine Modelle erkannt' : 'No models detected',
@@ -110,6 +112,14 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
     results: (n: number) =>
       lang === 'es' ? `${n} modelos` : lang === 'de' ? `${n} Modelle` : `${n} models`,
   };
+
+  const providerTabs = useMemo(
+    () => [
+      { id: null as string | null, label: text.all },
+      ...groups.map((group) => ({ id: group.id as string | null, label: group.label })),
+    ],
+    [groups, text.all]
+  );
 
   const filtered = useMemo(() => filterModelGroups(groups, query, providerId), [groups, query, providerId]);
   const visible = useMemo(
@@ -144,11 +154,45 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
     return () => document.removeEventListener('mousedown', onPointerDown);
   }, [open]);
 
+  // La rueda vertical sobre las pestañas se traduce en scroll horizontal. Se
+  // usa un listener nativo porque React registra `onWheel` como pasivo y
+  // `preventDefault()` no tendría efecto. Si la tira ya está en el extremo en
+  // esa dirección, no se intercepta: la página puede seguir scrolleando.
+  useEffect(() => {
+    if (!open) return;
+    const el = tabsRef.current;
+    if (!el) return;
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey) return; // deja pasar el zoom
+      const max = el.scrollWidth - el.clientWidth;
+      if (max <= 0) return;
+      const raw = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      if (!raw) return;
+      // deltaMode 1 = líneas, 2 = páginas; el resto ya viene en píxeles.
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? el.clientWidth : 1;
+      const next = Math.max(0, Math.min(max, el.scrollLeft + raw * unit));
+      if (next === el.scrollLeft) return;
+      event.preventDefault();
+      el.scrollLeft = next;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [open]);
+
   useEffect(() => {
     if (active < 0) return;
     // jsdom no implementa scrollIntoView; el guardado evita romper los tests.
     document.getElementById(`${OPTION_ID}-${active}`)?.scrollIntoView?.({ block: 'nearest' });
   }, [active]);
+
+  // La pestaña activa no puede quedar fuera de la tira horizontal al cambiar
+  // con el teclado o al abrir el selector.
+  useEffect(() => {
+    if (!open) return;
+    const index = providerId === null ? 0 : groups.findIndex((group) => group.id === providerId) + 1;
+    const button = tabsRef.current?.querySelectorAll<HTMLButtonElement>('[data-provider-tab]')[index];
+    button?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [open, providerId, groups]);
 
   const close = () => {
     setOpen(false);
@@ -161,6 +205,37 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
     if (disabledIds.has(modelId)) return;
     onSelectModel(modelId);
     close();
+  };
+
+  const providerTabAt = (index: number): HTMLButtonElement | null =>
+    tabsRef.current?.querySelectorAll<HTMLButtonElement>('[data-provider-tab]')[index] ?? null;
+
+  const focusProviderTab = (index: number) => {
+    const chip = providerTabs[index];
+    if (!chip) return;
+    setProviderId(chip.id);
+    const button = providerTabAt(index);
+    button?.focus();
+    button?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  };
+
+  const onProviderTabsKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    const buttons = tabsRef.current
+      ? Array.from(tabsRef.current.querySelectorAll<HTMLButtonElement>('[data-provider-tab]'))
+      : [];
+    if (buttons.length === 0) return;
+    event.preventDefault();
+    const current = Math.max(0, buttons.indexOf(event.target as HTMLButtonElement));
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? buttons.length - 1
+          : event.key === 'ArrowRight'
+            ? (current + 1) % buttons.length
+            : (current - 1 + buttons.length) % buttons.length;
+    focusProviderTab(next);
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -235,28 +310,40 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
             />
           </div>
 
-          <div className="flex flex-wrap gap-1 border-b border-[var(--nc-border-dark)] px-2 py-1.5">
-            {[{ id: null as string | null, label: text.all }, ...groups.map((group) => ({ id: group.id, label: group.label }))].map(
-              (chip) => (
-                <button
-                  key={chip.id ?? 'all'}
-                  type="button"
-                  onClick={() => setProviderId(chip.id)}
-                  aria-pressed={providerId === chip.id}
-                  className={`px-2 py-0.5 text-[11px] font-mono border rounded transition-colors ${
-                    providerId === chip.id
-                      ? 'border-[var(--nc-text-accent)] bg-[var(--nc-active-bg)] text-[var(--nc-active-text)]'
-                      : 'border-cyan-400/40 text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)]'
-                  }`}
-                >
-                  {chip.label}
-                </button>
-              )
-            )}
+          <div className="flex items-center gap-1 border-b border-[var(--nc-border-dark)] px-2 py-1">
+            <div
+              ref={tabsRef}
+              data-testid="model-provider-tabs"
+              role="group"
+              aria-label={text.tabs}
+              style={{ touchAction: 'pan-x' }}
+              className="flex min-w-0 flex-1 flex-nowrap gap-1 overflow-x-auto nc-x-scroll py-0.5"
+              onKeyDown={onProviderTabsKeyDown}
+            >
+            {providerTabs.map((chip) => (
+              <button
+                key={chip.id ?? 'all'}
+                type="button"
+                data-provider-tab
+                onClick={() => setProviderId(chip.id)}
+                aria-pressed={providerId === chip.id}
+                className={`shrink-0 whitespace-nowrap px-1.5 py-0.5 text-[10px] font-mono border rounded transition-colors ${
+                  providerId === chip.id
+                    ? 'border-[var(--nc-text-accent)] bg-[var(--nc-active-bg)] text-[var(--nc-active-text)]'
+                    : 'border-cyan-400/40 text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)]'
+                }`}
+              >
+                {chip.label}
+              </button>
+            ))}
+            </div>
+            {/* Sólo icono: el texto robaba ancho a las pestañas. El nombre
+                accesible y el tooltip siguen explicando qué hace. */}
             <button
               type="button"
               onClick={() => setShowDisabled((value) => !value)}
               aria-pressed={showDisabled}
+              aria-label={showDisabled ? text.hideDisabled : text.showDisabled}
               title={
                 lang === 'es'
                   ? 'Ver también los modelos apagados, para volver a activarlos'
@@ -264,7 +351,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                     ? 'Auch deaktivierte Modelle zeigen, um sie wieder zu aktivieren'
                     : 'Also show disabled models so they can be enabled again'
               }
-              className={`ml-auto flex items-center gap-1 px-2 py-0.5 text-[11px] font-mono border rounded transition-colors ${
+              className={`flex h-5 w-5 shrink-0 items-center justify-center border rounded p-0 transition-colors ${
                 showDisabled
                   ? 'border-amber-400/70 text-amber-300 bg-amber-500/10'
                   : 'border-cyan-400/40 text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)]'
@@ -275,7 +362,6 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               ) : (
                 <EyeOff className="h-3 w-3" aria-hidden="true" />
               )}
-              {showDisabled ? text.hideDisabled : text.showDisabled}
             </button>
           </div>
 

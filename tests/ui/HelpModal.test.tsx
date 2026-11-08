@@ -16,6 +16,10 @@ describe('HelpModal', () => {
     expect(screen.getByText('Ctrl + `')).toBeTruthy();
     expect(screen.getByText('Abrir la Paleta de Comandos (alternativo)')).toBeTruthy();
     expect(screen.getByText('Alt + M')).toBeTruthy();
+    expect(screen.getByText('Ctrl + Enter')).toBeTruthy();
+    expect(screen.getByText('Interrumpir la acción actual y enviar el mensaje ya')).toBeTruthy();
+    expect(screen.getByText('Ctrl + Shift + Enter')).toBeTruthy();
+    expect(screen.getByText('Enviar ahora el primer mensaje de la cola')).toBeTruthy();
   });
 
   test('la búsqueda encuentra contenido de otras secciones', () => {
