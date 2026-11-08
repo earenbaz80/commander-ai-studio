@@ -14,6 +14,7 @@ import {
   Cpu
 } from 'lucide-react';
 import { Language } from '../i18n/translations';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 interface AgentStepViewerProps {
   steps?: AgentStep[];
@@ -36,8 +37,8 @@ export const AgentStepViewer: React.FC<AgentStepViewerProps> = ({
     setOpenStepIds((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const handleCopy = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
+  const handleCopy = async (id: string, text: string) => {
+    if (!(await copyTextToClipboard(text))) return;
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };

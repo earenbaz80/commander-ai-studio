@@ -13,6 +13,7 @@ import {
 import { Language } from '../i18n/translations';
 import { DeviceSelect } from './preview/DeviceSelect';
 import { DEFAULT_DEVICE_ID, findDevice } from '../data/previewDevices';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 export interface ChatCodeSnippet {
   id: string;
@@ -395,9 +396,9 @@ export const ChatLiveAppViewerModal: React.FC<ChatLiveAppViewerModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleCopyCode = () => {
+  const handleCopyCode = async () => {
     if (!activeSnippet) return;
-    navigator.clipboard.writeText(activeSnippet.code);
+    if (!(await copyTextToClipboard(activeSnippet.code))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

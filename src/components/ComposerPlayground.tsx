@@ -30,6 +30,7 @@ import {
 import type { ParameterConfig } from '../types/studio';
 import { ALL_MODELS } from '../data/models';
 import { computeLineDiff } from '../utils/diffUtils';
+import { copyTextToClipboard } from '../utils/clipboard';
 import { MentionAutocomplete } from './MentionAutocomplete';
 import { CodeEditor } from './panel/CodeEditor';
 import { ComposerFileList } from './composer/ComposerFileList';
@@ -249,13 +250,12 @@ export const ComposerPlayground: React.FC<ComposerPlaygroundProps> = ({ paramete
   const copyCode = async () => {
     if (!selectedFile) return;
     const code = selectedFile.proposedContent !== undefined ? selectedFile.proposedContent : selectedFile.originalContent;
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
+    if (!(await copyTextToClipboard(code))) {
       setStatus({ kind: 'error', text: t('No se pudo copiar al portapapeles.', 'Could not copy to clipboard.') });
+      return;
     }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
   };
 
   const exportZip = async () => {

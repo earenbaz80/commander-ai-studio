@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StructuredExample, ParameterConfig, ProviderType } from '../types/studio';
 import { Language } from '../i18n/translations';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 export interface StructuredPlaygroundProps {
   parameters: ParameterConfig;
@@ -50,8 +51,8 @@ export const StructuredPlayground: React.FC<StructuredPlaygroundProps> = ({
     if (res) setResultOutput(res);
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(resultOutput);
+  const handleCopy = async () => {
+    if (!(await copyTextToClipboard(resultOutput))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

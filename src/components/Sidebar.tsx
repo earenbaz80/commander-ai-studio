@@ -4,6 +4,7 @@ import { StudioMode, HistorySession } from '../types/studio';
 import { Language, TRANSLATIONS } from '../i18n/translations';
 import type { ConversationHit } from '../agent/persistence';
 import { saveArchivedProjects, setProjectArchivedRemote, subscribeArchivedProjects } from '../lib/firebase';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 /** Sección colapsable del panel lateral (cabecera + items). */
 const NavGroup: React.FC<{
@@ -51,36 +52,6 @@ const ARCHIVED_PROJECTS_KEY = 'commander_archived_projects';
 /** Claves de archivado válidas: remotas, por ruta y las antiguas por nombre. */
 function normalizeArchiveKeys(keys: string[]): string[] {
   return Array.from(new Set(keys.filter((key) => typeof key === 'string' && key.length > 0)));
-}
-
-/**
- * Respaldo para navegadores sin Clipboard API. `execCommand` está obsoleto,
- * pero sigue siendo la única vía en contextos no seguros y navegadores antiguos.
- */
-function copyTextFallback(text: string): boolean {
-  if (typeof document === 'undefined' || typeof document.execCommand !== 'function' || !document.body) {
-    return false;
-  }
-  const textarea = document.createElement('textarea');
-  textarea.value = text;
-  textarea.setAttribute('readonly', '');
-  textarea.setAttribute('aria-hidden', 'true');
-  textarea.style.position = 'fixed';
-  textarea.style.left = '-9999px';
-  textarea.style.opacity = '0';
-  const activeElement = document.activeElement;
-  document.body.appendChild(textarea);
-  try {
-    textarea.focus();
-    textarea.select();
-    textarea.setSelectionRange(0, text.length);
-    return document.execCommand('copy');
-  } catch {
-    return false;
-  } finally {
-    textarea.remove();
-    if (activeElement instanceof HTMLElement) activeElement.focus();
-  }
 }
 
 function loadArchivedProjects(): string[] {
@@ -437,9 +408,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (!projectPath) return;
     setOpenProjectMenu(null);
     try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(projectPath);
-      } else if (!copyTextFallback(projectPath)) {
+      if (!(await copyTextToClipboard(projectPath))) {
         throw new Error('El portapapeles no está disponible');
       }
       onProjectPathCopied?.(projectPath);

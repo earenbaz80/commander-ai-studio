@@ -3,6 +3,7 @@ import type { Message, FloatingAssistantHandle, FloatingAssistantProps, Language
 import { askNonoDetailed, type AskNonoResult } from '../../../utils/nonoAsk';
 import { GREETINGS_ES, GREETINGS_EN, GREETINGS_DE, getExpressionForText, getResponse } from '../../../components/nono/content';
 import { loadNonoChat, saveNonoChat, clearNonoChat } from '../nonoChatPersistence';
+import { copyTextToClipboard } from '../../../utils/clipboard';
 
 interface UseNonoChatOptions {
   lang: Language;
@@ -275,14 +276,13 @@ export function useNonoChat({
       showActionFeedback(lang === 'es' ? 'Nada que copiar' : lang === 'de' ? 'Nichts zum Kopieren' : 'Nothing to copy');
       return;
     }
-    try {
-      await navigator.clipboard.writeText(last.text);
-      setExpression('wink');
-      setTimeout(() => setExpression('neutral'), 1500);
-      showActionFeedback(lang === 'es' ? '📋 ¡Copiado!' : lang === 'de' ? '📋 Kopiert!' : '📋 Copied!');
-    } catch {
+    if (!(await copyTextToClipboard(last.text))) {
       showActionFeedback(lang === 'es' ? 'Error al copiar' : lang === 'de' ? 'Kopieren fehlgeschlagen' : 'Copy failed');
+      return;
     }
+    setExpression('wink');
+    setTimeout(() => setExpression('neutral'), 1500);
+    showActionFeedback(lang === 'es' ? '📋 ¡Copiado!' : lang === 'de' ? '📋 Kopiert!' : '📋 Copied!');
   }, [messages, lang, showActionFeedback]);
 
   const handleNewPromptClick = useCallback(() => {

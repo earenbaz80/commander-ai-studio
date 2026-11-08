@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { ParameterConfig, ProviderType } from '../types/studio';
 import { Language } from '../i18n/translations';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 export interface FreeformPlaygroundProps {
   parameters: ParameterConfig;
@@ -92,8 +93,8 @@ export const FreeformPlayground: React.FC<FreeformPlaygroundProps> = ({
     if (res) setOutputResult(res);
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(outputResult);
+  const handleCopy = async () => {
+    if (!(await copyTextToClipboard(outputResult))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
