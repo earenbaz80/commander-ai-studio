@@ -98,6 +98,8 @@ interface SidebarProps {
   onConnectGitHub?: () => void;
   /** Crea una pestaña de chat nueva apuntando a ese proyecto. */
   onNewChatForProject?: (projectPath: string) => void;
+  /** Confirma que la ruta local quedó en el portapapeles. */
+  onProjectPathCopied?: (projectPath: string) => void;
   /** Abre el compilador/exportador nativo (movido desde el menú del header). */
   onOpenCompile?: () => void;
   lang?: Language;
@@ -130,6 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenGallery,
   onConnectGitHub,
   onNewChatForProject,
+  onProjectPathCopied,
   onOpenCompile,
   lang = 'es',
   currentUserUid,
@@ -397,10 +400,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   /** Copia la ruta local; sin portapapeles disponible el menú no se rompe. */
   const copyProjectPath = async (group: ProjectGroup) => {
-    if (!group.path) return;
+    const projectPath = group.path;
+    if (!projectPath) return;
     setOpenProjectMenu(null);
     try {
-      await navigator.clipboard.writeText(group.path);
+      await navigator.clipboard.writeText(projectPath);
+      onProjectPathCopied?.(projectPath);
     } catch (error) {
       console.warn('No se pudo copiar la ruta del proyecto:', error);
     }
