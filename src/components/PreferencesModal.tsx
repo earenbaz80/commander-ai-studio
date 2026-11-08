@@ -10,6 +10,7 @@ import {
   BatteryCharging,
   Bot,
   Eye,
+  Check,
   Timer,
   Settings2,
   SlidersHorizontal,
@@ -22,6 +23,7 @@ import {
   Puzzle,
   HelpCircle,
   Info,
+  User,
 } from 'lucide-react';
 import { ConsoleTheme } from './Header';
 import { Language } from '../i18n/translations';
@@ -29,13 +31,19 @@ import { Language } from '../i18n/translations';
 // para que no haya dos copias del nombre que se puedan desincronizar.
 import { ATASCO_KEY, PREFERENCIAS_EVENT, normalizarUmbralAtasco } from './subAgentSettings';
 import { ProviderManager } from './panel/ProviderManager';
-import { ExtensionsSettings } from './settings/ExtensionsSettings';
+import { ExtensionsSettings, type ExtensionsTab } from './settings/ExtensionsSettings';
+import {
+  AccountSettings,
+  type AccountUser,
+  type LinkableProvider,
+} from './settings/AccountSettings';
 import { ParameterConfig, StructuredExample } from '../types/studio';
 import { SYSTEM_PRESETS } from '../data/systemPresets';
 import { GEMINI_FALLBACK_MODELS, MAX_FALLBACK_MODELS } from '../config/geminiModels';
 import { probeFirstResponder, probeModel, type ChainProbeResult } from '../lib/modelProbe';
 import { useNonoMemory } from '../features/nono/hooks/useNonoMemory';
 import { ORB_COLOR_PRESETS } from '../features/nono/orbPalette';
+import { resolveNonoSkin } from '../features/nono/nonoMemoryStore';
 import { NonoHead } from './nono/NonoHead';
 import type { NonoExpression } from './nono/content';
 
@@ -50,6 +58,7 @@ const AboutModalInline = React.lazy(() =>
 
 /** Secciones del único panel de configuración. */
 export type SettingsSection =
+  | 'cuenta'
   | 'general'
   | 'nono'
   | 'modelo'
@@ -83,6 +92,17 @@ export interface PreferencesModalProps {
   setParameters?: React.Dispatch<React.SetStateAction<ParameterConfig>>;
   /** Sección que se muestra al abrir (útil para accesos contextuales). */
   initialSection?: SettingsSection;
+  /** Pestaña de Extensiones que se abre (Integraciones para «Conectar con GitHub»). */
+  initialExtensionsTab?: ExtensionsTab;
+  /** Cuenta de usuario: sesión, métodos de acceso y conexión de GitHub. */
+  currentUser?: AccountUser | null;
+  guestName?: string;
+  onOpenAuth?: () => void;
+  onLogout?: () => void | Promise<void>;
+  onLinkProvider?: (providerId: LinkableProvider) => Promise<AccountUser>;
+  onLinkPassword?: (email: string, password: string) => Promise<AccountUser>;
+  onUnlinkProvider?: (providerId: string) => Promise<AccountUser>;
+  onOpenIntegrations?: () => void;
   /** Abre el gestor completo de extensiones (pestaña MCP con OAuth y tools). */
   onOpenExtensions?: () => void;
 
@@ -194,7 +214,16 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
   parameters,
   setParameters,
   initialSection = 'general',
+  initialExtensionsTab = 'mcp',
   onOpenExtensions,
+  currentUser = null,
+  guestName,
+  onOpenAuth,
+  onLogout,
+  onLinkProvider,
+  onLinkPassword,
+  onUnlinkProvider,
+  onOpenIntegrations,
 }) => {
   const t = React.useCallback(
     (es: string, en: string, de: string) => (lang === 'es' ? es : lang === 'de' ? de : en),
@@ -245,6 +274,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
   }, [active]);
 
   const secciones: { id: SettingsSection; label: string; icon: React.ReactNode }[] = [
+    { id: 'cuenta', label: t('Cuenta', 'Account', 'Konto'), icon: <User className="w-3.5 h-3.5" /> },
     { id: 'general', label: t('General', 'General', 'Allgemein'), icon: <Settings2 className="w-3.5 h-3.5" /> },
     { id: 'nono', label: t('Nono', 'Nono', 'Nono'), icon: <Bot className="w-3.5 h-3.5" /> },
     { id: 'modelo', label: t('Modelo', 'Model', 'Modell'), icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
@@ -302,7 +332,12 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
   } | null>(null);
 
   // Nono: preferencias compartidas con la cabeza flotante.
-  const { memory: nonoMemory, updateUI: updateNonoUI, updateOrbColors } = useNonoMemory();
+  const {
+    memory: nonoMemory,
+    updateUI: updateNonoUI,
+    updateUIPatch,
+    updateOrbColors,
+  } = useNonoMemory();
   const [nonoPreview, setNonoPreview] = React.useState<NonoExpression>('neutral');
 
   React.useEffect(() => {
@@ -634,9 +669,9 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
               </div>
               <div className="text-[10px] text-[var(--nc-header-text)] opacity-70 truncate">
                 {t(
-                  'Modelo, proveedores, apariencia, agente, extensiones, ayuda y rutas en un solo lugar',
-                  'Model, providers, appearance, agent, extensions, help and paths in one place',
-                  'Modell, Anbieter, Darstellung, Agent, Erweiterungen, Hilfe und Pfade an einem Ort'
+                  'Cuenta, modelo, proveedores, apariencia, agente, extensiones, ayuda y rutas en un solo lugar',
+                  'Account, model, providers, appearance, agent, extensions, help and paths in one place',
+                  'Konto, Modell, Anbieter, Darstellung, Agent, Erweiterungen, Hilfe und Pfade an einem Ort'
                 )}
               </div>
             </div>
@@ -677,6 +712,38 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
             </nav>
 
             <div ref={contentRef} className="flex-1 min-w-0 h-full overflow-y-auto p-3 space-y-5 bg-[var(--nc-bg-panel)] text-[var(--nc-text)]">
+              {active === 'cuenta' && (
+              <section data-settings-section="cuenta" className="space-y-3 scroll-mt-2">
+                {groupTitle(t('Cuenta de usuario', 'User account', 'Benutzerkonto'))}
+                <AccountSettings
+                  lang={lang}
+                  currentUser={currentUser ?? null}
+                  guestName={guestName}
+                  onOpenAuth={onOpenAuth ?? (() => {})}
+                  onLogout={onLogout ?? (() => {})}
+                  onLinkProvider={
+                    onLinkProvider ??
+                    (async () => {
+                      throw new Error('La conexión de cuentas no está disponible.');
+                    })
+                  }
+                  onLinkPassword={
+                    onLinkPassword ??
+                    (async () => {
+                      throw new Error('La conexión de cuentas no está disponible.');
+                    })
+                  }
+                  onUnlinkProvider={
+                    onUnlinkProvider ??
+                    (async () => {
+                      throw new Error('La conexión de cuentas no está disponible.');
+                    })
+                  }
+                  onOpenIntegrations={onOpenIntegrations ?? (() => setActive('extensiones'))}
+                />
+              </section>
+              )}
+
               {active === 'general' && (
               <section data-settings-section="general" className="space-y-3 scroll-mt-2">
                 {groupTitle(t('General', 'General', 'Allgemein'))}
@@ -814,29 +881,38 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                       icon={<Bot className="w-4 h-4 text-[var(--nc-text)]" />}
                       label={t('Variante', 'Variant', 'Variante')}
                       hint={t(
-                        'El clásico es la cabeza retro; el orbe es la esfera del GIF.',
+                        'El clásico es la cabeza retro; el orbe es la esfera del GIF; los ojos son dos rectángulos sin cabeza.',
                         'Classic is the retro head; orb is the sphere from the GIF.',
                         'Klassisch ist der Retro-Kopf; Kugel ist die Sphäre aus dem GIF.'
                       )}
                     >
-                      <div className="flex gap-1">
+                      <div className="flex flex-wrap gap-1">
                         <button
                           type="button"
-                          aria-pressed={!nonoMemory.ui.orbSkin}
+                          aria-pressed={!nonoMemory.ui.orbSkin && !nonoMemory.ui.eyesOnly}
                           data-testid="nono-variant-classic"
-                          onClick={() => updateNonoUI('orbSkin', false)}
-                          className={chipClass(!nonoMemory.ui.orbSkin)}
+                          onClick={() => updateUIPatch({ orbSkin: false, eyesOnly: false })}
+                          className={chipClass(!nonoMemory.ui.orbSkin && !nonoMemory.ui.eyesOnly)}
                         >
                           {t('Clásico', 'Classic', 'Klassisch')}
                         </button>
                         <button
                           type="button"
-                          aria-pressed={nonoMemory.ui.orbSkin}
+                          aria-pressed={nonoMemory.ui.orbSkin && !nonoMemory.ui.eyesOnly}
                           data-testid="nono-variant-orb"
-                          onClick={() => updateNonoUI('orbSkin', true)}
-                          className={chipClass(nonoMemory.ui.orbSkin)}
+                          onClick={() => updateUIPatch({ orbSkin: true, eyesOnly: false })}
+                          className={chipClass(nonoMemory.ui.orbSkin && !nonoMemory.ui.eyesOnly)}
                         >
                           {t('Orbe', 'Orb', 'Kugel')}
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={nonoMemory.ui.eyesOnly}
+                          data-testid="nono-variant-eyes"
+                          onClick={() => updateUIPatch({ eyesOnly: true, orbSkin: false })}
+                          className={chipClass(nonoMemory.ui.eyesOnly)}
+                        >
+                          {t('Ojos', 'Eyes', 'Augen')}
                         </button>
                       </div>
                     </MenuRow>
@@ -850,7 +926,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                           eyeOffset={{ x: 0, y: 0 }}
                           blink={false}
                           size={96}
-                          variant={nonoMemory.ui.orbSkin ? 'orb' : 'classic'}
+                          variant={resolveNonoSkin(nonoMemory.ui)}
                           orbColors={nonoMemory.ui.orbColors}
                           classicAccent={nonoMemory.ui.classicAccent}
                         />
@@ -1017,6 +1093,32 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                         className="accent-[var(--nc-text)]"
                         data-testid="nono-instant-gaze"
                         aria-label={t('Mirada instantánea', 'Instant gaze', 'Sofortiger Blick')}
+                      />
+                    </MenuRow>
+                    <MenuRow
+                      icon={<Check className="w-4 h-4 text-[var(--nc-text)]" />}
+                      label={t(
+                        'Asentir al procesar',
+                        'Nod while processing',
+                        'Beim Verarbeiten nicken'
+                      )}
+                      hint={t(
+                        'Controla el gesto de asentimiento con independencia de la preferencia del sistema y de «Animar siempre».',
+                        'Controls the nod independently of the system preference and of “Always animate”.',
+                        'Steuert das Nicken unabhängig von der Systemeinstellung und von „Immer animieren“.'
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={nonoMemory.ui.orbRotate}
+                        onChange={(e) => updateNonoUI('orbRotate', e.target.checked)}
+                        className="accent-[var(--nc-text)]"
+                        data-testid="nono-orb-rotate"
+                        aria-label={t(
+                          'Asentir al procesar',
+                          'Nod while processing',
+                          'Beim Verarbeiten nicken'
+                        )}
                       />
                     </MenuRow>
                     <MenuRow
@@ -1752,7 +1854,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                 {groupTitle(t('Extensiones', 'Extensions', 'Erweiterungen'))}
                 {sectionBlock(
                   t('MCP, skills y plugins', 'MCP, skills and plugins', 'MCP, Skills und Plugins'),
-                  <ExtensionsSettings lang={lang} onOpenManager={onOpenExtensions} />
+                  <ExtensionsSettings lang={lang} initialTab={initialExtensionsTab} onOpenManager={onOpenExtensions} />
                 )}
               </section>
               )}

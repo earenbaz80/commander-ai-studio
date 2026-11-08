@@ -1,7 +1,7 @@
-import { getCachedApiKey } from './lib/apiKeys';
-import { logoutUser } from './lib/firebase';
+import { linkEmailPasswordAccount, linkGitHubAccount, linkGoogleAccount, logoutUser, unlinkAccountProvider } from './lib/firebase';
 
 import { resolveChatRoute } from './lib/aiRouting';
+import { toLmStudioContextLength } from './lib/lmStudio';
 import { detectProvider } from './lib/aiProviders';
 import { formatErrorMessage } from './utils/errorFormatter';
 import { useAppExecutors } from './hooks/useAppExecutors';
@@ -18,6 +18,7 @@ import { useCommandPaletteShortcut } from './hooks/useCommandPaletteShortcut';
 import { useTabProjectHandlers } from './hooks/useTabProjectHandlers';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useResizableWidth } from './hooks/useResizableWidth';
+import { useAutoScrollText } from './hooks/useAutoScrollText';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Header } from './components/Header';
 import { FloatingAssistant, type FloatingAssistantHandle } from './components/FloatingAssistant';
@@ -33,6 +34,7 @@ const PreferencesModal = React.lazy(() =>
   import('./components/PreferencesModal').then((m) => ({ default: m.PreferencesModal }))
 );
 import type { SettingsSection } from './components/PreferencesModal';
+import type { ExtensionsTab } from './components/settings/ExtensionsSettings';
 const LibraryModal = React.lazy(() =>
   import('./components/LibraryModal').then((m) => ({ default: m.LibraryModal }))
 );
@@ -69,6 +71,7 @@ const AgentQuestionModal = React.lazy(() =>
 import { CommandPalette } from './components/CommandPalette';
 import { NonoDock } from './features/nono/NonoDock';
 import { StatusBar } from './components/StatusBar';
+import { LmStudioLoadingNotice } from './components/LmStudioLoadingNotice';
 import { buildPaletteCommands } from './components/paletteCommands';
 import { listProjectFiles } from './utils/agentToolsApi';
 import { AGENT_FUNCTION_DECLARATIONS } from './agent/fnTools';
@@ -119,6 +122,8 @@ import { hasProjectPath } from './data/auditPrompts';
 export default function App() {
   const chat = useChatStore();
   const ui = useUIStore();
+  // Los textos que no caben se revelan con scroll lateral al hover o foco.
+  useAutoScrollText();
   const { mode, promptTitle, selectedModel, selectedProvider, isGenerating, parameters, messages, history, downloadedModels } = chat.state;
   const [savedCodeContext, setSavedCodeContext] = useState<string>('');
 
@@ -147,6 +152,7 @@ export default function App() {
   const [isSymbolSearchOpen, setIsSymbolSearchOpen] = useState(false);
   /** Sección que debe mostrar el único panel de Configuración. */
   const [preferencesSection, setPreferencesSection] = useState<SettingsSection>('general');
+  const [preferencesExtensionsTab, setPreferencesExtensionsTab] = useState<ExtensionsTab>('mcp');
   const agent = useAgent('.', selectedModel);
   /** Campaña autónoma del servidor: corre fuera del orquestador local. */
   const [autonomousRunning, setAutonomousRunning] = useState(false);
@@ -202,8 +208,9 @@ export default function App() {
   // Un solo punto de entrada: cada botón contextual abre la sección que le
   // corresponde, sin abrir un segundo menú de configuración.
   const openSettings = useCallback(
-    (section: SettingsSection = 'general') => {
+    (section: SettingsSection = 'general', extensionsTab: ExtensionsTab = 'mcp') => {
       setPreferencesSection(section);
+      setPreferencesExtensionsTab(extensionsTab);
       setIsPreferencesModalOpen(true);
     },
     [setIsPreferencesModalOpen]
@@ -240,7 +247,7 @@ export default function App() {
     setIsLiveViewerOpen,
     setDownloadedModels,
   });
-  const { currentUser, identity, displayName } = useAppAuth({});
+  const { currentUser, setCurrentUser, identity, displayName } = useAppAuth({});
 
 
   // Sincronización automática de selectedProvider según el modelo elegido.
@@ -687,7 +694,13 @@ export default function App() {
   const chatAbortRef = useRef<AbortController | null>(null);
 
   // Execution Handler for Chat
-  const handleSendMessage = async (userText: string, attachments?: File[], modelOverride?: string, runMode: RunMode = 'build') => {
+  const handleSendMessage = async (
+    userText: string,
+    attachments?: File[],
+    modelOverride?: string,
+    runMode: RunMode = 'build',
+    retry?: { failedMessageId: string; history: ChatMessage[] }
+  ) => {
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
@@ -701,7 +714,11 @@ export default function App() {
       })),
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    if (retry) {
+      setMessages((prev) => prev.filter((message) => message.id !== retry.failedMessageId));
+    } else {
+      setMessages((prev) => [...prev, userMsg]);
+    }
     setIsGenerating(true);
     // El botón Detener corta esta petición de verdad: el signal viaja a todos
     // los fetch de la respuesta (Antigravity, streaming y no-stream).
@@ -732,6 +749,9 @@ export default function App() {
         : '';
     const effectiveSystemInstruction = `${parameters.systemInstruction || ''}${planSuffix}`;
     let currentBotMsgId: string | null = null;
+    // En un reintento el mensaje del usuario ya está en el historial: se usa
+    // como contexto previo y no se vuelve a insertar otro globo igual.
+    const sourceMessages = retry ? retry.history : messages;
 
     try {
       const {
@@ -747,8 +767,13 @@ export default function App() {
         provider: selectedProvider,
         downloadedModels,
       });
-      const anthropicApiKey = parameters.anthropicApiKey || getCachedApiKey('ANTHROPIC_API_KEY') || undefined;
-      const geminiApiKey = getCachedApiKey('GEMINI_API_KEY') || undefined;
+
+      // El compositor fija la ventana con la que se carga LM Studio. Sin valor,
+      // el servidor usa el contexto publicado por el modelo.
+      const lmStudioContextLength =
+        endpoint === '/api/lmstudio/generate'
+          ? toLmStudioContextLength(parameters.contextLength)
+          : undefined;
 
       // Convert files to base64 parts
       const fileParts = attachments ? await Promise.all(attachments.map(async (file) => {
@@ -765,14 +790,13 @@ export default function App() {
         };
       })) : [];
 
-      const historyForProvider = messages.map(m => ({ role: m.role, content: m.content })).concat([{ role: 'user', content: userText }]);
+      const historyForProvider = sourceMessages.map(m => ({ role: m.role, content: m.content })).concat([{ role: 'user', content: userText }]);
 
       const payload = isAnthropic
         ? {
             prompt: userText,
             messages: historyForProvider,
             model: activeModel,
-            anthropicApiKey,
             systemInstruction: effectiveSystemInstruction,
             temperature: parameters.temperature,
             maxTokens: parameters.maxTokens,
@@ -782,11 +806,9 @@ export default function App() {
             prompt: userText,
             messages: historyForProvider,
             model: activeModel,
-            hfApiToken: parameters.hfApiToken || getCachedApiKey('HF_API_TOKEN') || undefined,
             systemInstruction: effectiveSystemInstruction,
             temperature: parameters.temperature,
             maxTokens: parameters.maxTokens,
-            geminiApiKey: geminiApiKey || getCachedApiKey('GEMINI_API_KEY') || undefined,
           }
         : isFreeProvider || isLocal
         ? {
@@ -796,22 +818,18 @@ export default function App() {
             systemInstruction: effectiveSystemInstruction,
             temperature: parameters.temperature,
             maxTokens: parameters.maxTokens,
-            openrouterApiKey: getCachedApiKey('OPENROUTER_API_KEY') || undefined,
-            ollamaHost: getCachedApiKey('OLLAMA_HOST') || undefined,
+            ...(lmStudioContextLength ? { contextLength: lmStudioContextLength } : {}),
           }
         : isCustom
         ? {
             prompt: userText,
             messages: historyForProvider,
-            model: getCachedApiKey('CUSTOM_MODEL') || activeModel,
+            model: activeModel,
             systemInstruction: effectiveSystemInstruction,
             temperature: parameters.temperature,
             maxTokens: parameters.maxTokens,
-            baseURL: getCachedApiKey('CUSTOM_BASE_URL') || undefined,
-            apiKey: getCachedApiKey('CUSTOM_API_KEY') || getCachedApiKey('OPENCODE_API_KEY') || undefined,
           }
         : {
-            apiKey: geminiApiKey,
             contents: [
               ...fileParts,
               { text: parameters.examples.length > 0 
@@ -856,13 +874,12 @@ export default function App() {
         if (parameters.tools?.urlContext !== false) antigravityTools.push({ type: 'url_context' });
 
         // Find previous interaction & environment from the conversation history
-        const lastAgentMsg = [...messages].reverse().find(
+        const lastAgentMsg = [...sourceMessages].reverse().find(
           (m) => m.role === 'model' && m.modelUsed === 'antigravity-preview-09-2026' && m.interactionId && m.environmentId
         );
 
         const previous_interaction_id = lastAgentMsg?.interactionId;
         const environment = lastAgentMsg?.environmentId || 'remote';
-        const geminiApiKey = getCachedApiKey('GEMINI_API_KEY') || undefined;
 
         const response = await chatFetch('/api/gemini/interactions/create', {
           method: 'POST',
@@ -873,7 +890,6 @@ export default function App() {
             environment,
             previous_interaction_id,
             tools: antigravityTools,
-            apiKey: geminiApiKey,
           }),
         });
 
@@ -937,8 +953,13 @@ export default function App() {
             msg.id === botMsgId ? finalAgentMsg : msg
           )
         );
-        setIsGenerating(false);
-        addToHistory(userText.slice(0, 30) + '...', 'chat', [...messages, userMsg, finalAgentMsg]);
+        // Si ya hay otra generación en marcha (interrumpir y enviar), esta
+        // terminación no debe apagar su estado.
+        if (chatAbortRef.current === abortCtrl) {
+          chatAbortRef.current = null;
+          setIsGenerating(false);
+        }
+        addToHistory(userText.slice(0, 30) + '...', 'chat', [...sourceMessages, userMsg, finalAgentMsg]);
         sendBrowserNotification(
           lang === 'es' ? '🤖 Tarea de Agente Completada' : lang === 'de' ? '🤖 Agentenaufgabe abgeschlossen' : '🤖 Agent Task Completed',
           lang === 'es' 
@@ -1038,7 +1059,7 @@ export default function App() {
           prev.map((m) => (m.id === botMsgId ? finalStreamBotMsg : m))
         );
 
-        addToHistory(userText.slice(0, 30) + '...', 'chat', [...messages, userMsg, finalStreamBotMsg]);
+        addToHistory(userText.slice(0, 30) + '...', 'chat', [...sourceMessages, userMsg, finalStreamBotMsg]);
         logTelemetry({
           modelUsed: activeModel,
           latencyMs: finalMetrics?.latencyMs || 0,
@@ -1086,7 +1107,7 @@ export default function App() {
           };
 
           setMessages((prev) => [...prev, botMsg]);
-          addToHistory(userText.slice(0, 30) + '...', 'chat', [...messages, userMsg, botMsg]);
+          addToHistory(userText.slice(0, 30) + '...', 'chat', [...sourceMessages, userMsg, botMsg]);
           logTelemetry({
             modelUsed: activeModel,
             latencyMs: data.metrics?.latencyMs || 0,
@@ -1109,25 +1130,70 @@ export default function App() {
       });
       console.error('Error al generar respuesta:', error);
       const errorText = `⚠️ Error al procesar consulta: ${formatErrorMessage(error, activeModel)}`;
+      const failedFields = {
+        content: errorText,
+        failed: true,
+        modelUsed: activeModel,
+        retryRunMode: runMode,
+      };
       if (currentBotMsgId) {
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === currentBotMsgId ? { ...m, content: errorText } : m
+            m.id === currentBotMsgId ? { ...m, ...failedFields } : m
           )
         );
       } else {
         const errorMsg: ChatMessage = {
           id: (Date.now() + 1).toString(),
           role: 'model',
-          content: errorText,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          providerUsed: selectedProvider,
+          ...failedFields,
         };
         setMessages((prev) => [...prev, errorMsg]);
       }
     } finally {
-      if (chatAbortRef.current === abortCtrl) chatAbortRef.current = null;
-      setIsGenerating(false);
+      // Sólo apaga la generación actual: al interrumpir y enviar, la petición
+      // abortada termina después y no debe tocar el estado de la nueva.
+      if (chatAbortRef.current === abortCtrl) {
+        chatAbortRef.current = null;
+        setIsGenerating(false);
+      }
     }
+  };
+
+  /**
+   * Reintenta la última respuesta fallida con el mismo prompt, modelo y modo.
+   *
+   * Se elimina la tarjeta de error y se vuelve a pedir la respuesta, pero no se
+   * duplica el mensaje del usuario: `history` contiene sólo lo anterior a ese
+   * turno. Reintentar errores antiguos queda fuera porque la respuesta nueva
+   * quedaría detrás de mensajes de turnos posteriores.
+   */
+  const handleRetryMessage = (failedMessageId: string) => {
+    if (isGenerating) return;
+    const failedIndex = messages.findIndex((message) => message.id === failedMessageId);
+    if (failedIndex < 0) return;
+    const failedMessage = messages[failedIndex];
+    if (!failedMessage.failed || failedIndex !== messages.length - 1) return;
+
+    let userIndex = -1;
+    for (let i = failedIndex - 1; i >= 0; i -= 1) {
+      if (messages[i].role === 'user') {
+        userIndex = i;
+        break;
+      }
+    }
+    if (userIndex < 0) return;
+
+    const userMessage = messages[userIndex];
+    void handleSendMessage(
+      userMessage.content,
+      undefined,
+      failedMessage.modelUsed || selectedModel,
+      failedMessage.retryRunMode || 'build',
+      { failedMessageId, history: messages.slice(0, userIndex) }
+    );
   };
 
   /**
@@ -1157,10 +1223,10 @@ export default function App() {
     chatAbortRef.current = null;
     if (agent.state.running) generalAudit.stop();
     setIsGenerating(false);
-  }, [agent.state.running, generalAudit.stop]);
+  }, [agent.state.running, generalAudit, setIsGenerating]);
 
   // handleGeneralAudit and handleNewChat
-  const { handleGeneralAudit, handleNewChat } = useAppPrompts({
+  const { handleGeneralAudit, handleNewChat, handleNewChatInProject } = useAppPrompts({
     activeTab,
     setProjectToast,
     lang,
@@ -1355,8 +1421,11 @@ export default function App() {
               onClearHistory={handleClearHistory}
               onNewPrompt={handleNewChat}
               onOpenGallery={() => setIsGalleryModalOpen(true)}
+              onConnectGitHub={() => openSettings('extensiones', 'integrations')}
+              onNewChatForProject={handleNewChatInProject}
               onOpenCompile={() => setIsCompilerModalOpen(true)}
               lang={lang as any}
+              currentUserUid={currentUser?.uid ?? null}
               width={sidebarResize.width}
               serverSessions={serverSessions}
               onSelectServerSession={handleSelectServerSession}
@@ -1399,6 +1468,8 @@ export default function App() {
               onResume: generalAudit.resume,
               resumable: generalAudit.canResume,
               onSendMessage: handleSendMessage,
+              onRetryMessage: handleRetryMessage,
+              queueKey: activeTab?.sessionId || 'default',
               onClearChat: () => setMessages([]),
               lang: lang as any,
               setMode,
@@ -1601,12 +1672,42 @@ export default function App() {
             parameters={parameters}
             setParameters={setParameters}
             initialSection={preferencesSection}
+            initialExtensionsTab={preferencesExtensionsTab}
             onOpenExtensions={() => {
               // El gestor completo vive en otro modal: se cierra Configuración
               // para que no quede uno detrás del otro.
               setIsPreferencesModalOpen(false);
               setIsExtensionsOpen(true);
             }}
+            currentUser={currentUser}
+            guestName={identity.guestName}
+            onOpenAuth={() => {
+              setIsPreferencesModalOpen(false);
+              setIsAuthModalOpen(true);
+            }}
+            onLogout={async () => {
+              await logoutUser();
+              setCurrentUser(null);
+            }}
+            onLinkProvider={async (providerId) => {
+              const user =
+                providerId === 'github.com'
+                  ? await linkGitHubAccount()
+                  : await linkGoogleAccount();
+              setCurrentUser(user);
+              return user;
+            }}
+            onLinkPassword={async (email, password) => {
+              const user = await linkEmailPasswordAccount(email, password);
+              setCurrentUser(user);
+              return user;
+            }}
+            onUnlinkProvider={async (providerId) => {
+              const user = await unlinkAccountProvider(providerId);
+              setCurrentUser(user);
+              return user;
+            }}
+            onOpenIntegrations={() => openSettings('extensiones', 'integrations')}
           />
         </React.Suspense>
       )}
@@ -1772,6 +1873,12 @@ export default function App() {
         onClose={() => setIsPaletteOpen(false)}
         commands={paletteCommands}
         lang={lang as any}
+      />
+      <LmStudioLoadingNotice
+        selectedModel={selectedModel}
+        busy={isGenerating || agent.state.running || autonomousRunning}
+        lang={lang as Language}
+        onOpenProviderSettings={() => openSettings('proveedores')}
       />
       {/* Status bar Norton */}
       <StatusBar lang={lang as any} model={selectedModel} isGenerating={isGenerating || agent.state.running || autonomousRunning} />

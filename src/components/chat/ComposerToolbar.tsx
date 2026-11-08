@@ -18,6 +18,7 @@ import {
   Mic,
   MicOff,
   Loader2,
+  Zap,
 } from 'lucide-react';
 import { isApiKeyConfigured } from '../../lib/apiKeys';
 import type { Language } from '../../i18n/translations';
@@ -52,6 +53,9 @@ interface ComposerToolbarProps {
   isGenerating: boolean;
   /** Detiene la generación en curso. */
   onStop: () => void;
+  /** Enviar corta la acción en curso en vez de encolar el mensaje. */
+  interruptOnSend: boolean;
+  onToggleInterruptOnSend: () => void;
   /** Retoma una corrida detenida, si la hay. */
   onResume?: () => void;
   resumable?: boolean;
@@ -80,6 +84,8 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   onChangeRunMode,
   isGenerating,
   onStop,
+  interruptOnSend,
+  onToggleInterruptOnSend,
   onResume,
   resumable = false,
   canSend,
@@ -175,20 +181,20 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           : lang === 'de' ? 'Hilfe: @nono = öffnet Nono · @archivo = Dateien · @ayuda = Info' : 'Help: @nono = opens Nono · @archivo = files · @ayuda = info'
         }
         aria-label={lang === 'es' ? 'Ayuda de menciones' : lang === 'de' ? 'Erwähnungshilfe' : 'Mention help'}
-        className="shrink-0 p-1.5 bg-[var(--nc-bg-panel)] border border-cyan-400/40 rounded hover:bg-[var(--nc-bg-hover)] transition-colors cursor-help"
+        className="shrink-0 cursor-help nc-icon-btn text-cyan-400 transition-colors hover:text-[var(--nc-text-accent)] !min-h-0 !min-w-0"
       >
-        <HelpCircle className="w-3.5 h-3.5 text-cyan-400" />
+        <HelpCircle className="w-3.5 h-3.5" />
       </button>
 
       {/* Botón adjuntar: antes de la elección de modelo */}
       <button
         type="button"
         onClick={() => fileInputRef.current?.click()}
-        className="cursor-pointer shrink-0 p-2 bg-[var(--nc-bg-main)] border border-cyan-400/40 rounded hover:bg-[var(--nc-bg-hover)] transition-colors"
+        className="shrink-0 cursor-pointer nc-icon-btn text-cyan-400 transition-colors hover:text-[var(--nc-text-accent)] !min-h-0 !min-w-0"
         title={lang === 'es' ? 'Adjuntar archivos' : lang === 'de' ? 'Dateien anhängen' : 'Attach files'}
         aria-label={lang === 'es' ? 'Adjuntar archivos' : lang === 'de' ? 'Dateien anhängen' : 'Attach files'}
       >
-        <Paperclip className="w-3.5 h-3.5 text-cyan-400" />
+        <Paperclip className="w-3.5 h-3.5" />
       </button>
         <input
           ref={fileInputRef}
@@ -205,7 +211,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
         <button
           type="button"
           onClick={onToggleDictation}
-          disabled={isGenerating || dictationState === 'transcribing'}
+          disabled={dictationState === 'transcribing'}
           aria-label={
             dictationState === 'recording'
               ? lang === 'es' ? 'Detener dictado' : lang === 'de' ? 'Diktat stoppen' : 'Stop dictation'
@@ -227,10 +233,10 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                     ? 'Nachricht per Mikrofon diktieren'
                     : 'Dictate into the message with the microphone'
           }
-          className={`shrink-0 p-2 border rounded transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+          className={`shrink-0 cursor-pointer nc-icon-btn transition-colors disabled:cursor-not-allowed disabled:opacity-50 !min-h-0 !min-w-0 ${
             dictationState === 'recording'
-              ? 'bg-red-600 border-red-400 text-white animate-pulse'
-              : 'bg-[var(--nc-bg-panel)] border-cyan-400/40 text-cyan-400 hover:bg-[var(--nc-bg-hover)]'
+              ? 'text-red-400 animate-pulse'
+              : 'text-cyan-400 hover:text-[var(--nc-text-accent)]'
           }`}
         >
           {dictationState === 'recording' ? (
@@ -373,18 +379,56 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
             </button>
           </div>
         </details>
-        {/* Mientras corre algo el botón deja de ser Enviar y pasa a Detener: el
-            usuario puede cortar una respuesta o una corrida del agente. */}
+        {/* Mientras corre algo, el campo sigue activo. Por defecto el mensaje
+            espera en la cola; con «Interrumpir» activo se corta y se envía ya. */}
         {isGenerating ? (
-          <button
-            onClick={onStop}
-            aria-label={lang === 'es' ? 'Detener generación' : lang === 'de' ? 'Generierung stoppen' : 'Stop generation'}
-            title={lang === 'es' ? 'Detener la generación en curso' : lang === 'de' ? 'Laufende Generierung stoppen' : 'Stop the current generation'}
-            className="flex min-h-10 items-center gap-2 px-4 py-2 border-2 border-[var(--nc-danger)] bg-[#330000] text-[var(--nc-danger)] font-bold hover:bg-[var(--nc-danger)] hover:text-black transition-colors"
-          >
-            <Square className="w-3.5 h-3.5" />
-            {lang === 'es' ? 'Detener' : lang === 'de' ? 'Stopp' : 'Stop'}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={onToggleInterruptOnSend}
+              aria-label={lang === 'es' ? 'Interrumpir la acción al enviar' : lang === 'de' ? 'Aktion beim Senden unterbrechen' : 'Interrupt the current action on send'}
+              aria-pressed={interruptOnSend}
+              title={interruptOnSend
+                ? (lang === 'es' ? 'Al enviar se corta la acción actual' : lang === 'de' ? 'Beim Senden wird die aktuelle Aktion abgebrochen' : 'Sending stops the current action')
+                : (lang === 'es' ? 'Enviar interrumpe en vez de esperar en la cola' : lang === 'de' ? 'Senden unterbricht statt einzureihen' : 'Send interrupts instead of queueing')}
+              className={`flex min-h-10 items-center gap-1 px-2 py-2 border font-bold transition-colors ${interruptOnSend
+                ? 'border-[var(--nc-text-accent)] bg-[var(--nc-active-bg)] text-[var(--nc-active-text)]'
+                : 'border-cyan-400/40 text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)]'
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5" />
+              {lang === 'es' ? 'Interrumpir' : lang === 'de' ? 'Unterbrechen' : 'Interrupt'}
+            </button>
+            {canSend && (
+              <button
+                onClick={onSend}
+                aria-label={interruptOnSend
+                  ? (lang === 'es' ? 'Interrumpir y enviar' : lang === 'de' ? 'Unterbrechen und senden' : 'Interrupt and send')
+                  : (lang === 'es' ? 'Encolar mensaje' : lang === 'de' ? 'Nachricht einreihen' : 'Queue message')}
+                title={interruptOnSend
+                  ? (lang === 'es' ? 'Detener la acción actual y enviar este mensaje ahora (Ctrl/⌘+Enter)' : lang === 'de' ? 'Aktuelle Aktion stoppen und diese Nachricht jetzt senden (Strg/⌘+Enter)' : 'Stop the current action and send this message now (Ctrl/⌘+Enter)')
+                  : (lang === 'es' ? 'Enviar al terminar la acción actual; Ctrl/⌘+Enter interrumpe y envía ya' : lang === 'de' ? 'Nach der aktuellen Aktion senden; Strg/⌘+Enter unterbricht und sendet sofort' : 'Send when the current action finishes; Ctrl/⌘+Enter interrupts and sends now')}
+                className={`flex min-h-10 items-center gap-2 px-3 py-2 border-2 font-bold transition-colors ${interruptOnSend
+                  ? 'border-[var(--nc-danger)] bg-[#330000] text-[var(--nc-danger)] hover:bg-[var(--nc-danger)] hover:text-black'
+                  : 'border-[var(--nc-text-accent)] bg-[var(--nc-active-bg)] text-[var(--nc-active-text)] hover:bg-white hover:border-white'
+                }`}
+              >
+                <Send className="w-3.5 h-3.5" />
+                {interruptOnSend
+                  ? (lang === 'es' ? 'Interrumpir y enviar' : lang === 'de' ? 'Unterbrechen & senden' : 'Interrupt & send')
+                  : (lang === 'es' ? 'Encolar' : lang === 'de' ? 'Einreihen' : 'Queue')}
+              </button>
+            )}
+            <button
+              onClick={onStop}
+              aria-label={lang === 'es' ? 'Detener generación' : lang === 'de' ? 'Generierung stoppen' : 'Stop generation'}
+              title={lang === 'es' ? 'Detener la generación en curso' : lang === 'de' ? 'Laufende Generierung stoppen' : 'Stop the current generation'}
+              className="flex min-h-10 items-center gap-2 px-4 py-2 border-2 border-[var(--nc-danger)] bg-[#330000] text-[var(--nc-danger)] font-bold hover:bg-[var(--nc-danger)] hover:text-black transition-colors"
+            >
+              <Square className="w-3.5 h-3.5" />
+              {lang === 'es' ? 'Detener' : lang === 'de' ? 'Stopp' : 'Stop'}
+            </button>
+          </>
         ) : (
           <>
             {resumable && (

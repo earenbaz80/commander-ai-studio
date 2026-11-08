@@ -7,7 +7,7 @@
  * de App (endpoint, payload, estado, notificaciones), no los servicios reales.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react';
 
 // --- Mocks (hoisted por vitest) ---
 
@@ -23,6 +23,14 @@ vi.mock('../../src/lib/firebase', () => ({
   fetchUserProjects: vi.fn().mockResolvedValue([]),
   toggleProjectLike: vi.fn().mockResolvedValue(undefined),
   checkIsLiked: vi.fn().mockResolvedValue(false),
+  logoutUser: vi.fn().mockResolvedValue(undefined),
+  linkGitHubAccount: vi.fn().mockResolvedValue(null),
+  linkGoogleAccount: vi.fn().mockResolvedValue(null),
+  linkEmailPasswordAccount: vi.fn().mockResolvedValue(null),
+  unlinkAccountProvider: vi.fn().mockResolvedValue(null),
+  subscribeArchivedProjects: vi.fn(() => () => {}),
+  saveArchivedProjects: vi.fn().mockResolvedValue(undefined),
+  setProjectArchivedRemote: vi.fn().mockResolvedValue(undefined),
 }));
 
 // App usa onAuthStateChanged directamente de firebase/auth
@@ -222,6 +230,44 @@ describe('App (integración)', { timeout: 20_000 }, () => {
       expect.anything()
     );
     expect(notificationSpies.playRetroSuccessSound).not.toHaveBeenCalled();
+  });
+
+  test('reintenta el último mensaje fallido sin duplicar el prompt', async () => {
+    let streamCalls = 0;
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/api/agent/')) {
+        return Promise.resolve({ ok: true, json: async () => ({ roots: [] }) });
+      }
+      if (String(url) === '/api/gemini/stream') {
+        streamCalls += 1;
+        return streamCalls === 1
+          ? Promise.reject(new Error('Network down'))
+          : Promise.resolve(makeStreamResponse(CHUNKS_OK));
+      }
+      return Promise.reject(new Error('Network down'));
+    });
+    global.fetch = fetchMock as any;
+
+    await bootApp();
+
+    fireEvent.change(getChatInput(), { target: { value: 'Hola IA' } });
+    fireEvent.keyDown(getChatInput(), { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Error al procesar consulta/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Hola mundo')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Error al procesar consulta/)).toBeNull();
+    expect(
+      within(screen.getByTestId('chat-messages')).getAllByText('Hola IA')
+    ).toHaveLength(1);
+    expect(streamCalls).toBe(2);
   });
 
   test('un chunk de error en el stream cancela con mensaje de error', async () => {

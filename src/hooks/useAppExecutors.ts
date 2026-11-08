@@ -1,6 +1,5 @@
 import { useCallback } from 'react';
 import { resolveChatRoute } from '../lib/aiRouting';
-import { getCachedApiKey } from '../lib/apiKeys';
 import { formatErrorMessage } from '../utils/errorFormatter';
 import { sendBrowserNotification, playRetroSuccessSound } from '../utils/browserNotifications';
 import type { ChatMessage, StructuredExample, StudioMode } from '../types/studio';
@@ -36,8 +35,6 @@ export function useAppExecutors(ctx: AppExecutorContext) {
         provider: selectedProvider,
         downloadedModels,
       });
-      const anthropicApiKey = parameters.anthropicApiKey || getCachedApiKey('ANTHROPIC_API_KEY') || undefined;
-      const geminiApiKey = getCachedApiKey('GEMINI_API_KEY') || undefined;
 
       const historyForProvider = messages.map(m => ({ role: m.role, content: m.content })).concat([{ role: 'user', content: promptText }]);
 
@@ -46,7 +43,6 @@ export function useAppExecutors(ctx: AppExecutorContext) {
             prompt: promptText,
             messages: historyForProvider,
             model: selectedModel,
-            anthropicApiKey,
             systemInstruction: parameters.systemInstruction,
             temperature: parameters.temperature,
             maxTokens: parameters.maxTokens,
@@ -56,11 +52,9 @@ export function useAppExecutors(ctx: AppExecutorContext) {
             prompt: promptText,
             messages: historyForProvider,
             model: selectedModel,
-            hfApiToken: parameters.hfApiToken || getCachedApiKey('HF_API_TOKEN') || undefined,
             systemInstruction: parameters.systemInstruction,
             temperature: parameters.temperature,
             maxTokens: parameters.maxTokens,
-            geminiApiKey: geminiApiKey || getCachedApiKey('GEMINI_API_KEY') || undefined,
           }
         : isFreeProvider || isLocal
         ? {
@@ -70,22 +64,17 @@ export function useAppExecutors(ctx: AppExecutorContext) {
             systemInstruction: parameters.systemInstruction,
             temperature: parameters.temperature,
             maxTokens: parameters.maxTokens,
-            openrouterApiKey: getCachedApiKey('OPENROUTER_API_KEY') || undefined,
-            ollamaHost: getCachedApiKey('OLLAMA_HOST') || undefined,
           }
         : isCustom
         ? {
             prompt: promptText,
             messages: historyForProvider,
-            model: getCachedApiKey('CUSTOM_MODEL') || selectedModel,
+            model: selectedModel,
             systemInstruction: parameters.systemInstruction,
             temperature: parameters.temperature,
             maxTokens: parameters.maxTokens,
-            baseURL: getCachedApiKey('CUSTOM_BASE_URL') || undefined,
-            apiKey: getCachedApiKey('CUSTOM_API_KEY') || getCachedApiKey('OPENCODE_API_KEY') || undefined,
           }
         : {
-            apiKey: geminiApiKey,
             contents: promptText,
             systemInstruction: parameters.systemInstruction,
             model: selectedModel,
@@ -133,8 +122,6 @@ export function useAppExecutors(ctx: AppExecutorContext) {
         provider: selectedProvider,
         downloadedModels,
       });
-      const anthropicApiKey = parameters.anthropicApiKey || getCachedApiKey('ANTHROPIC_API_KEY') || undefined;
-      const geminiApiKey = getCachedApiKey('GEMINI_API_KEY') || undefined;
 
       const formattedPrompt = `${examples.map((ex) => `Entrada: ${ex.input}\nSalida: ${ex.output}`).join('\n\n')}\n\nEntrada: ${testInput}\nSalida:`;
       const historyForProvider = messages.map(m => ({ role: m.role, content: m.content })).concat([{ role: 'user', content: formattedPrompt }]);
@@ -143,7 +130,6 @@ export function useAppExecutors(ctx: AppExecutorContext) {
             prompt: formattedPrompt,
             messages: historyForProvider,
             model: selectedModel,
-            anthropicApiKey,
             systemInstruction: parameters.systemInstruction || 'Responde manteniendo exactamente la estructura de los ejemplos anteriores.',
             temperature: parameters.temperature,
           }
@@ -152,8 +138,6 @@ export function useAppExecutors(ctx: AppExecutorContext) {
             prompt: formattedPrompt,
             messages: historyForProvider,
             model: selectedModel,
-            hfApiToken: parameters.hfApiToken || getCachedApiKey('HF_API_TOKEN') || undefined,
-            geminiApiKey: geminiApiKey || getCachedApiKey('GEMINI_API_KEY') || undefined,
             systemInstruction: parameters.systemInstruction || 'Responde manteniendo exactamente la estructura de los ejemplos anteriores.',
             temperature: parameters.temperature,
           }
@@ -164,21 +148,16 @@ export function useAppExecutors(ctx: AppExecutorContext) {
             model: isLocal ? selectedModel.replace(/^local\\/, '') : selectedModel,
             systemInstruction: parameters.systemInstruction || 'Responde manteniendo exactamente la estructura de los ejemplos anteriores.',
             temperature: parameters.temperature,
-            openrouterApiKey: getCachedApiKey('OPENROUTER_API_KEY') || undefined,
-            ollamaHost: getCachedApiKey('OLLAMA_HOST') || undefined,
           }
         : isCustom
         ? {
             prompt: formattedPrompt,
             messages: historyForProvider,
-            model: getCachedApiKey('CUSTOM_MODEL') || selectedModel,
+            model: selectedModel,
             systemInstruction: parameters.systemInstruction || 'Responde manteniendo exactamente la estructura de los ejemplos anteriores.',
             temperature: parameters.temperature,
-            baseURL: getCachedApiKey('CUSTOM_BASE_URL') || undefined,
-            apiKey: getCachedApiKey('CUSTOM_API_KEY') || getCachedApiKey('OPENCODE_API_KEY') || undefined,
           }
         : {
-            apiKey: geminiApiKey,
             contents: formattedPrompt,
             prompt: formattedPrompt,
             systemInstruction: parameters.systemInstruction || 'Responde manteniendo exactamente la estructura de los ejemplos anteriores.',
@@ -222,10 +201,8 @@ export function useAppExecutors(ctx: AppExecutorContext) {
         body: JSON.stringify({
           prompt,
           model: hfModel,
-          hfApiToken: parameters.hfApiToken || getCachedApiKey('HF_API_TOKEN') || undefined,
           systemInstruction: parameters.systemInstruction,
           temperature: parameters.temperature,
-          geminiApiKey: getCachedApiKey('GEMINI_API_KEY') || undefined,
         }),
       });
 

@@ -1,8 +1,9 @@
 import React from 'react';
-import { MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, Columns, Code2, Bot, ChevronDown, ChevronRight, Hammer, Play, RefreshCw, Pin, Pencil } from 'lucide-react';
+import { MessageSquare, FileText, Code, Cpu, Trash2, Clock, Library, BarChart3, Columns, Code2, Bot, ChevronDown, ChevronRight, Hammer, Play, RefreshCw, Pin, Pencil, Archive, ArchiveRestore, FolderOpen, GitBranch, MoreHorizontal } from 'lucide-react';
 import { StudioMode, HistorySession } from '../types/studio';
 import { Language, TRANSLATIONS } from '../i18n/translations';
 import type { ConversationHit } from '../agent/persistence';
+import { saveArchivedProjects, setProjectArchivedRemote, subscribeArchivedProjects } from '../lib/firebase';
 
 /** Sección colapsable del panel lateral (cabecera + items). */
 const NavGroup: React.FC<{
@@ -45,6 +46,42 @@ function plainSnippet(raw: string): string {
   return String(text).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 }
 
+const ARCHIVED_PROJECTS_KEY = 'commander_archived_projects';
+
+/** El archivado es por carpeta; las claves `remote:` de versiones anteriores se descartan. */
+function normalizeArchiveKeys(keys: string[]): string[] {
+  return keys.filter((key) => !key.startsWith('remote:'));
+}
+
+function loadArchivedProjects(): string[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ARCHIVED_PROJECTS_KEY) || '[]');
+    return Array.isArray(parsed)
+      ? normalizeArchiveKeys(parsed.filter((key): key is string => typeof key === 'string'))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+interface HistoryRow {
+  key: string;
+  title: string;
+  meta: string;
+  project: string;
+  projectPath: string;
+  pinned: boolean;
+  local?: HistorySession;
+  server?: any;
+}
+
+interface ProjectGroup {
+  key: string;
+  name: string;
+  path: string;
+  rows: HistoryRow[];
+}
+
 interface SidebarProps {
   mode: StudioMode;
   setMode: (mode: StudioMode) => void;
@@ -55,9 +92,15 @@ interface SidebarProps {
   onClearHistory: () => void;
   onNewPrompt: () => void;
   onOpenGallery: () => void;
+  /** Abre Ajustes → Extensiones → Integraciones (GitHub). */
+  onConnectGitHub?: () => void;
+  /** Crea una pestaña de chat nueva apuntando a ese proyecto. */
+  onNewChatForProject?: (projectPath: string) => void;
   /** Abre el compilador/exportador nativo (movido desde el menú del header). */
   onOpenCompile?: () => void;
   lang?: Language;
+  /** Con cuenta, el archivo se comparte entre equipos vía Firestore. */
+  currentUserUid?: string | null;
   isSidebarOpen?: boolean;
   width?: number;
   serverSessions?: any[];
@@ -83,8 +126,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onClearHistory,
   onNewPrompt,
   onOpenGallery,
+  onConnectGitHub,
+  onNewChatForProject,
   onOpenCompile,
   lang = 'es',
+  currentUserUid,
   isSidebarOpen = false,
   width,
   serverSessions = [],
@@ -118,15 +164,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
    * conversación con etiquetas que dicen dónde vive.
    */
   const historyRows = React.useMemo(() => {
-    type Row = {
-      key: string;
-      title: string;
-      meta: string;
-      project: string;
-      pinned: boolean;
-      local?: HistorySession;
-      server?: any;
-    };
     const term = searchTerm.trim().toLowerCase();
     const byId = new Map<string, any>();
     for (const thread of serverSessions) byId.set(String(thread.id), thread);
@@ -134,7 +171,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const projectOf = (path: unknown): string =>
       path ? String(path).split(/[\\/]/).filter(Boolean).pop() || String(path) : '';
 
-    const rows: Row[] = [];
+    const rows: HistoryRow[] = [];
     const taken = new Set<string>();
 
     for (const item of recentHistory) {
@@ -146,6 +183,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         title: item.promptTitle || item.title || item.id,
         meta: [item.timestamp, messageCount > 0 ? messageCount + ' msgs' : item.mode].filter(Boolean).join(' · '),
         project: projectOf(server?.project_path),
+        projectPath: server?.project_path ? String(server.project_path) : '',
         pinned: !!server?.pinned,
         local: item,
         server,
@@ -162,6 +200,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ? updated.toLocaleString()
           : String(thread.id).slice(0, 8),
         project: projectOf(thread.project_path),
+        projectPath: thread.project_path ? String(thread.project_path) : '',
         pinned: !!thread.pinned,
         server: thread,
       });
@@ -177,6 +216,240 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, [recentHistory, serverSessions, searchTerm]);
 
   const hasHistory = recentHistory.length > 0 || serverSessions.length > 0;
+
+  const [archivedProjects, setArchivedProjects] = React.useState<string[]>(loadArchivedProjects);
+  const [showArchived, setShowArchived] = React.useState(false);
+  const [openProjectMenu, setOpenProjectMenu] = React.useState<string | null>(null);
+  const [archiveSyncError, setArchiveSyncError] = React.useState(false);
+  const archivedProjectsRef = React.useRef(archivedProjects);
+  const archivedMigrationRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    archivedProjectsRef.current = archivedProjects;
+  }, [archivedProjects]);
+
+  // Agrupa por ruta (o por nombre si una entrada local antigua no guardó ruta).
+  const projectGroups = React.useMemo(() => {
+    const groups = new Map<string, ProjectGroup>();
+    for (const row of historyRows) {
+      const path = row.projectPath;
+      const name = row.project || (lang === 'es' ? 'Sin proyecto' : lang === 'de' ? 'Kein Projekt' : 'No project');
+      const key = path ? `path:${path}` : `name:${name}`;
+      let group = groups.get(key);
+      if (!group) {
+        group = { key, name, path, rows: [] };
+        groups.set(key, group);
+      }
+      group.rows.push(row);
+    }
+    return [...groups.values()];
+  }, [historyRows, lang]);
+
+  // El archivado es por carpeta: la ruta identifica el grupo, no el remoto de
+  // Git. Así dos clones del mismo repositorio se archivan por separado.
+  // Un archivo antiguo sólo por nombre se aplica si no hay otra carpeta
+  // homónima; si la hay, no se puede saber a cuál pertenece y no oculta ninguna.
+  const hasUnambiguousNameArchive = (group: ProjectGroup) =>
+    archivedProjects.includes(`name:${group.name}`) &&
+    projectGroups.every((other) => other.name !== group.name || other.key === group.key);
+
+  const isArchivedGroup = (group: ProjectGroup) => {
+    if (group.path) {
+      return archivedProjects.includes(group.key) || hasUnambiguousNameArchive(group);
+    }
+    return archivedProjects.includes(group.key) || archivedProjects.includes(`name:${group.name}`);
+  };
+  const visibleGroups = projectGroups.filter((group) => showArchived || !isArchivedGroup(group));
+  const archivedGroupCount = projectGroups.filter(isArchivedGroup).length;
+  // Si sólo quedan claves de proyectos que ya no están en el historial, el
+  // contador no debe desaparecer: se usa el número de claves como respaldo.
+  const archivedBadgeCount = archivedGroupCount || archivedProjects.length;
+  const visibleRows = visibleGroups.flatMap((group) =>
+    group.rows.map((row, index) => ({ row, group, first: index === 0 }))
+  );
+
+  React.useEffect(() => {
+    if (!currentUserUid) {
+      archivedMigrationRef.current = null;
+      setArchiveSyncError(false);
+      return;
+    }
+    let active = true;
+    const unsubscribe = subscribeArchivedProjects(
+      currentUserUid,
+      (projectKeys) => {
+        if (!active) return;
+        if (projectKeys === null) {
+          if (archivedMigrationRef.current === currentUserUid) return;
+          archivedMigrationRef.current = currentUserUid;
+          void saveArchivedProjects(currentUserUid, archivedProjectsRef.current)
+            .then(() => {
+              if (active) setArchiveSyncError(false);
+            })
+            .catch((error) => {
+              console.warn('No se pudo migrar el archivo de proyectos:', error);
+              if (active) setArchiveSyncError(true);
+            });
+          return;
+        }
+        const keys = normalizeArchiveKeys(projectKeys);
+        archivedProjectsRef.current = keys;
+        setArchivedProjects(keys);
+        setArchiveSyncError(false);
+        try {
+          localStorage.setItem(ARCHIVED_PROJECTS_KEY, JSON.stringify(keys));
+        } catch {
+          /* sin almacenamiento */
+        }
+      },
+      (error) => {
+        if (!active) return;
+        console.warn('No se pudo sincronizar el archivo de proyectos:', error);
+        setArchiveSyncError(true);
+      }
+    );
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, [currentUserUid]);
+
+  /** Archivar sólo oculta el grupo del historial; la carpeta y sus datos siguen intactos. */
+  const toggleArchivedProject = (group: ProjectGroup) => {
+    const keys = [group.key];
+    const folderKeys = group.path ? [group.key, `name:${group.name}`] : [group.key];
+    const wasArchived = isArchivedGroup(group);
+    const removalKeys = folderKeys.filter((key) => archivedProjects.includes(key));
+    const next = wasArchived
+      ? archivedProjects.filter((entry) => !removalKeys.includes(entry))
+      : Array.from(new Set([...archivedProjects, ...keys]));
+    archivedProjectsRef.current = next;
+    setArchivedProjects(next);
+    try {
+      localStorage.setItem(ARCHIVED_PROJECTS_KEY, JSON.stringify(next));
+    } catch {
+      /* sin almacenamiento */
+    }
+    if (currentUserUid) {
+      void setProjectArchivedRemote(currentUserUid, wasArchived ? removalKeys : keys, !wasArchived)
+        .then(() => setArchiveSyncError(false))
+        .catch((error) => {
+          console.warn('No se pudo guardar el archivo del proyecto:', error);
+          setArchiveSyncError(true);
+        });
+    }
+    setOpenProjectMenu(null);
+  };
+
+  const archiveSyncTitle = !currentUserUid
+    ? lang === 'es'
+      ? 'Sólo en este equipo. Inicia sesión para sincronizar.'
+      : lang === 'de'
+        ? 'Nur auf diesem Gerät. Melde dich an, um zu synchronisieren.'
+        : 'This device only. Sign in to sync.'
+    : archiveSyncError
+      ? lang === 'es'
+        ? 'No se pudo sincronizar; el cambio se guardó en este equipo.'
+        : lang === 'de'
+          ? 'Sincronisierung fehlgeschlagen; die Änderung wurde auf diesem Gerät gespeichert.'
+          : 'Could not sync; the change was saved on this device.'
+      : lang === 'es'
+        ? 'Archivados sincronizados con tu cuenta.'
+        : lang === 'de'
+          ? 'Archivierte Projekte sind mit deinem Konto synchronisiert.'
+          : 'Archived projects are synced with your account.';
+
+  React.useEffect(() => {
+    if (!openProjectMenu) return;
+    const closeOnOutside = (event: MouseEvent) => {
+      if (!(event.target as HTMLElement | null)?.closest('[data-project-menu]')) {
+        setOpenProjectMenu(null);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenProjectMenu(null);
+    };
+    document.addEventListener('mousedown', closeOnOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [openProjectMenu]);
+
+  const renderProjectHeader = (group: ProjectGroup) => {
+    const archived = isArchivedGroup(group);
+    const menuOpen = openProjectMenu === group.key;
+    return (
+      <div
+        data-testid={`project-group-${group.name}`}
+        className={`relative flex items-center gap-1 px-1 pt-2 pb-0.5 text-[10px] font-mono ${archived ? 'opacity-60' : ''}`}
+      >
+        <FolderOpen className="w-3 h-3 shrink-0 text-[var(--nc-text-accent)]" aria-hidden />
+        <span className="flex-1 truncate font-bold text-[var(--nc-text-accent)]" title={group.path || group.name}>
+          {group.name}
+        </span>
+        {archived && (
+          <span className="border border-[var(--nc-text)]/40 px-1 text-[8px] text-[var(--nc-text)]">
+            {lang === 'es' ? 'ARCHIVADO' : lang === 'de' ? 'ARCHIVIERT' : 'ARCHIVED'}
+          </span>
+        )}
+        <span className="text-[9px] text-[var(--nc-text)]/60">{group.rows.length}</span>
+        <div className="relative" data-project-menu>
+          <button
+            type="button"
+            onClick={() => setOpenProjectMenu(menuOpen ? null : group.key)}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label={`${lang === 'es' ? 'Opciones del proyecto' : lang === 'de' ? 'Projektoptionen' : 'Project options'} ${group.name}`}
+            title={lang === 'es' ? 'Opciones del proyecto' : lang === 'de' ? 'Projektoptionen' : 'Project options'}
+            className="p-0.5 text-[var(--nc-text)]/70 hover:text-white"
+          >
+            <MoreHorizontal className="w-3.5 h-3.5" />
+          </button>
+          {menuOpen && (
+            <div
+              role="menu"
+              aria-label={`${lang === 'es' ? 'Acciones de' : lang === 'de' ? 'Aktionen für' : 'Actions for'} ${group.name}`}
+              className="absolute right-0 top-full z-50 mt-1 w-48 border-2 border-[var(--nc-border-light)] bg-[var(--nc-bg-deep)] p-1 shadow-[4px_4px_0_var(--nc-shadow)]"
+            >
+              {onConnectGitHub && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { setOpenProjectMenu(null); onConnectGitHub(); }}
+                  className="flex w-full items-center gap-2 px-1.5 py-1 text-left text-[10px] text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] hover:text-white"
+                >
+                  <GitBranch className="w-3 h-3" /> {lang === 'es' ? 'Conectar con GitHub' : lang === 'de' ? 'GitHub verbinden' : 'Connect GitHub'}
+                </button>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => toggleArchivedProject(group)}
+                className="flex w-full items-center gap-2 px-1.5 py-1 text-left text-[10px] text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] hover:text-white"
+              >
+                {archived ? <ArchiveRestore className="w-3 h-3" /> : <Archive className="w-3 h-3" />}
+                {archived
+                  ? (lang === 'es' ? 'Desarchivar' : lang === 'de' ? 'Wiederherstellen' : 'Unarchive')
+                  : (lang === 'es' ? 'Archivar' : lang === 'de' ? 'Archivieren' : 'Archive')}
+              </button>
+              {onNewChatForProject && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { setOpenProjectMenu(null); onNewChatForProject(group.path); }}
+                  className="flex w-full items-center gap-2 px-1.5 py-1 text-left text-[10px] text-[var(--nc-text)] hover:bg-[var(--nc-bg-hover)] hover:text-white"
+                >
+                  <MessageSquare className="w-3 h-3" /> {lang === 'es' ? 'Nuevo chat' : lang === 'de' ? 'Neuer Chat' : 'New chat'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   // Renombrar en sitio: una fila a la vez, Enter guarda y Escape sale sin tocar el hilo.
   const [editingSessionId, setEditingSessionId] = React.useState<string | null>(null);
@@ -333,6 +606,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <RefreshCw className="w-3.5 h-3.5" />
               </button>
             )}
+            {archivedProjects.length > 0 && (
+              <button
+                onClick={() => setShowArchived((value) => !value)}
+                className="flex items-center gap-0.5 text-[var(--nc-text)] hover:text-white p-1"
+                aria-label={
+                  showArchived
+                    ? (lang === 'es' ? 'Ocultar archivados' : lang === 'de' ? 'Archivierte ausblenden' : 'Hide archived')
+                    : (lang === 'es' ? 'Mostrar archivados' : lang === 'de' ? 'Archivierte anzeigen' : 'Show archived')
+                }
+                title={
+                  (showArchived
+                    ? (lang === 'es' ? 'Ocultar archivados' : lang === 'de' ? 'Archivierte ausblenden' : 'Hide archived')
+                    : (lang === 'es' ? 'Mostrar archivados' : lang === 'de' ? 'Archivierte anzeigen' : 'Show archived')) +
+                  ` · ${archiveSyncTitle}`
+                }
+              >
+                {showArchived ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
+                <span className="text-[9px] font-mono">{archivedBadgeCount}</span>
+              </button>
+            )}
             {recentHistory.length > 0 && (
               <button
                 onClick={onClearHistory}
@@ -394,20 +687,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
 
         <div className="space-y-1">
-          {historyRows.length === 0 ? (
+          {visibleRows.length === 0 ? (
             <div className="text-[11px] text-[var(--nc-text-dim)] italic p-2 text-center">
-              {hasHistory
-                ? (lang === 'es' ? 'Sin coincidencias' : lang === 'de' ? 'Keine Treffer gefunden' : 'No matches found')
-                : (lang === 'es' ? 'Sin conversaciones guardadas' : lang === 'de' ? 'Noch keine Unterhaltungen' : 'No conversations yet')}
+              {historyRows.length > 0
+                ? (lang === 'es' ? 'Todo el historial está archivado' : lang === 'de' ? 'Der gesamte Verlauf ist archiviert' : 'All history is archived')
+                : hasHistory
+                  ? (lang === 'es' ? 'Sin coincidencias' : lang === 'de' ? 'Keine Treffer gefunden' : 'No matches found')
+                  : (lang === 'es' ? 'Sin conversaciones guardadas' : lang === 'de' ? 'Noch keine Unterhaltungen' : 'No conversations yet')}
             </div>
           ) : (
-            historyRows.map((row) => {
+            visibleRows.map(({ row, group, first }) => {
               const item = row.local;
               const thread = row.server;
               const rowTitle = row.title;
               return (
+                <React.Fragment key={row.key}>
+                  {first && renderProjectHeader(group)}
                 <div
-                  key={row.key}
                   data-testid={thread ? 'session-row-' + thread.id : undefined}
                   className="bg-[var(--nc-bg-main)] border border-[var(--nc-border-light)]/40 hover:border-[var(--nc-border-light)] rounded p-1.5 text-[10px] transition-colors"
                 >
@@ -541,6 +837,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     </>
                   )}
                 </div>
+                </React.Fragment>
               );
             })
           )}

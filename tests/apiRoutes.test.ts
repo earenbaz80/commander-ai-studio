@@ -38,7 +38,16 @@ const SKIP_DIRS = ['node_modules', 'dist', '.git', 'release', 'release-packager'
 const NOT_CALLS_DIRS = ['src/data'];
 
 /** Archivos donde el servidor declara sus rutas. */
-const SERVER_FILES = ['server.ts', 'src/mcp/index.ts', 'skills/api.ts', 'previewServer.ts', 'deploy/routes.ts', 'browserRoutes.ts'];
+const SERVER_FILES = [
+  'server.ts',
+  'src/mcp/index.ts',
+  'skills/api.ts',
+  'previewServer.ts',
+  'deploy/routes.ts',
+  'browserRoutes.ts',
+  'src/integrations/router.ts',
+  'backend/routes.ts',
+];
 
 /**
  * Rutas que el cliente llama y el servidor no monta **hoy**.
@@ -159,6 +168,11 @@ export function serverApiRoutes(): string[] {
   }
 
   const routes = new Set<string>();
+  // Un prefijo montado también atiende: el cliente usa bases como
+  // `/api/backend`, y Express entrega esa ruta al router (que responde su 404).
+  for (const mount of mounts) {
+    if (mount.file && mount.routerVar) routes.add(mount.prefix);
+  }
   for (const file of SERVER_FILES) {
     const text = read(file);
     if (!text) continue;

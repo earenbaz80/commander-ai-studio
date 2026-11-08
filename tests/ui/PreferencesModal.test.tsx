@@ -45,6 +45,38 @@ describe('PreferencesModal · sección Nono', () => {
     expect(JSON.parse(localStorage.getItem(NONO_MEMORY_KEY) || '{}').ui.orbSkin).toBe(true);
   });
 
+  test('cambia a la variante de solo ojos y la guarda al momento', () => {
+    render(<PreferencesModal isOpen onClose={() => {}} />);
+    irASeccion('Nono');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ojos' }));
+
+    expect(preview().querySelector('svg[data-variant="eyes"]')).toBeTruthy();
+    const guardado = JSON.parse(localStorage.getItem(NONO_MEMORY_KEY) || '{}').ui;
+    expect(guardado.eyesOnly).toBe(true);
+    expect(guardado.orbSkin).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clásico' }));
+
+    expect(preview().querySelector('svg[data-variant="classic"]')).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem(NONO_MEMORY_KEY) || '{}').ui.eyesOnly).toBe(false);
+  });
+
+  test('guarda si el orbe gira al procesar', () => {
+    render(<PreferencesModal isOpen onClose={() => {}} />);
+    irASeccion('Nono');
+
+    const giro = screen.getByTestId('nono-orb-rotate') as HTMLInputElement;
+    expect(giro.checked).toBe(true);
+
+    fireEvent.click(giro);
+    expect(giro.checked).toBe(false);
+    expect(JSON.parse(localStorage.getItem(NONO_MEMORY_KEY) || '{}').ui.orbRotate).toBe(false);
+
+    fireEvent.click(screen.getByTestId('nono-orb-rotate'));
+    expect(JSON.parse(localStorage.getItem(NONO_MEMORY_KEY) || '{}').ui.orbRotate).toBe(true);
+  });
+
   test('permite desactivar la interpolación de la mirada', () => {
     render(<PreferencesModal isOpen onClose={() => {}} />);
     irASeccion('Nono');
@@ -187,7 +219,8 @@ describe('PreferencesModal · umbral de atasco', () => {
     render(<PreferencesModal isOpen onClose={() => {}} />);
 
     const nav = screen.getByRole('navigation', { name: 'Secciones de configuración' });
-    expect(within(nav).getAllByRole('button')).toHaveLength(8);
+    expect(within(nav).getAllByRole('button')).toHaveLength(9);
+    expect(within(nav).getByRole('button', { name: 'Cuenta' })).toBeInTheDocument();
     expect(within(nav).getByRole('button', { name: 'Nono' })).toBeInTheDocument();
     expect(within(nav).getByRole('button', { name: 'Extensiones' })).toBeInTheDocument();
     expect(within(nav).getByRole('button', { name: 'Ayuda' })).toBeInTheDocument();
@@ -199,6 +232,15 @@ describe('PreferencesModal · umbral de atasco', () => {
     fireEvent.click(within(nav).getByRole('button', { name: 'Modelo' }));
     expect(screen.getByRole('heading', { name: 'Modelo' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'General' })).toBeNull();
+  });
+
+  test('la sección Cuenta muestra la sesión de invitado y ofrece entrar', () => {
+    render(<PreferencesModal isOpen onClose={() => {}} initialSection="cuenta" />);
+
+    expect(screen.getByRole('heading', { name: 'Cuenta de usuario' })).toBeInTheDocument();
+    expect(screen.getByText('Invitado')).toBeInTheDocument();
+    expect(screen.getByTestId('account-open-auth')).toBeInTheDocument();
+    expect(screen.getByTestId('account-open-integrations')).toBeInTheDocument();
   });
 
   test('Ayuda y Acerca de se leen dentro del panel, sin ventana aparte', async () => {

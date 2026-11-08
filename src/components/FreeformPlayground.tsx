@@ -1,4 +1,3 @@
-import { getCachedApiKey } from '../lib/apiKeys';
 import React, { useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { ParameterConfig, ProviderType } from '../types/studio';
@@ -32,7 +31,6 @@ export const FreeformPlayground: React.FC<FreeformPlaygroundProps> = ({
     setIsEnhancing(true);
     try {
       const systemInstruction = `Eres un Ingeniero Principal de Prompts. Toma el prompt del usuario y transfórmalo en un prompt optimizado, claro y estructurado para modelos de lenguaje. Devuelve ÚNICAMENTE el prompt mejorado final.`;
-      const apiKey = getCachedApiKey('GEMINI_API_KEY') || undefined;
       
       const response = await fetch('/api/gemini/stream', {
         method: 'POST',
@@ -42,7 +40,6 @@ export const FreeformPlayground: React.FC<FreeformPlaygroundProps> = ({
           systemInstruction,
           model: selectedModel,
           parameters: { temperature: 0.4, topP: 0.9, maxTokens: 1024 },
-          apiKey,
         }),
       });
 

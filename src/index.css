@@ -159,6 +159,7 @@
   }
   :root:not(.nono-force-motion) .nono-heart,
   :root:not(.nono-force-motion) .nono-watch-eyes,
+  :root:not(.nono-force-motion) .nono-eye-shutter,
   :root:not(.nono-force-motion) .nono-orb-gaze,
   :root:not(.nono-force-motion) .nono-orb-greet {
     animation: none;
@@ -252,6 +253,19 @@
   animation: nono-watch-blink 4.6s ease-in-out infinite;
 }
 
+/* Parpadeo de persiana para los ojos cuadrados: el bloque se recoge hacia el
+   párpado inferior y vuelve a subir. La duración coincide con el estado blink
+   de FloatingAssistant (180 ms). */
+@keyframes nono-eye-shutter {
+  0%, 100% { transform: scaleY(1); }
+  45%, 55% { transform: scaleY(0.08); }
+}
+.nono-eye-shutter {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: nono-eye-shutter 180ms ease-in-out;
+}
+
 /* Mirada en reposo del orbe: barrido corto de lado a lado. */
 @keyframes nono-orb-gaze {
   0%, 10%, 100% { transform: translateX(0); }
@@ -259,6 +273,46 @@
   60%, 74%      { transform: translateX(2.5px); }
   90%           { transform: translateX(0); }
 }
+/* ===== Orbe procesando: mira arriba y asiente ===== */
+/* Sustituye al antiguo giro de la superficie: la cara se queda visible, con
+   los ojos levantados hacia el chat y una sonrisa. El ajuste de Configuración
+   controla el asentimiento (las clases del root conservan su nombre histórico
+   para no invalidar la preferencia guardada). */
+@keyframes nono-orb-affirm {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(1.5px); }
+}
+
+.nono-busy svg[data-variant="orb"] {
+  /* El rebote de entrada del SVG aplasta la esfera justo al empezar a
+     procesar. Durante el gesto se conserva sólo el flote suave, para que la
+     silueta siga siendo circular. */
+  animation: nono-float 3.4s ease-in-out infinite;
+  filter:
+    drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4))
+    drop-shadow(0 0 8px rgba(0, 255, 255, 0.55));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* El flote del orbe se suaviza; el asentimiento lo decide el ajuste de
+     Configuración, no la preferencia del sistema. */
+  :root:not(.nono-force-motion) .nono-busy svg[data-variant="orb"] {
+    animation: nono-float-soft 4.5s ease-in-out infinite;
+  }
+}
+
+/*
+ * El ajuste de Configuración decide el asentimiento en ambos sentidos. Las
+ * clases del root ganan a `prefers-reduced-motion`: activado asiente siempre;
+ * desactivado no asiente aunque el sistema permita movimiento.
+ */
+:root.nono-orb-rotate-on .nono-orb-affirm {
+  animation: nono-orb-affirm 1.8s ease-in-out infinite;
+}
+:root.nono-orb-rotate-off .nono-orb-affirm {
+  animation: none;
+}
+
 .nono-orb-gaze {
   transform-box: fill-box;
   transform-origin: center;
@@ -731,6 +785,42 @@ code::-webkit-scrollbar-track,
     border-color: var(--nc-border-dark) var(--nc-border-light) var(--nc-border-light) var(--nc-border-dark);
     box-shadow: 1px 1px 0px var(--nc-shadow);
     transform: translate(1px, 1px);
+  }
+
+  /* Icono plano (cola del chat, adjuntos, barra del compositor): anula el
+     recuadro retro global en reposo, hover y activo, y deja que el color lo
+     pongan las utilidades de cada botón. */
+  .nc-icon-btn,
+  .nc-icon-btn:hover,
+  .nc-icon-btn:active {
+    background-color: transparent;
+    border: 0;
+    padding: 0.25rem;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .nc-icon-btn:focus-visible {
+    outline: 2px solid var(--nc-text-accent);
+    outline-offset: 1px;
+    /* El anillo aparece de golpe: `transition-colors` también anima
+       outline-color y el foco llegaba con el color a medio camino. El resto
+       de transiciones (color, fondo) se conserva. */
+    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  }
+
+  /* El anillo de foco no debe heredar la animación de `transition-colors`:
+     cualquier control lo pinta en el acto. `:is()` sube la especificidad
+     (0,1,1) por encima de `.transition-colors` (0,1,0) sin usar !important. */
+  :is(button, summary, a, input, select, textarea):focus-visible {
+    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, translate, scale, rotate, filter, backdrop-filter;
+  }
+
+  /* Controles del compositor: el mismo anillo que los iconos, 2 px de acento
+     separados 1 px del control. */
+  [data-chat-divider] :is(button, summary, select, textarea, input, a):focus-visible {
+    outline: 2px solid var(--nc-text-accent);
+    outline-offset: 1px;
   }
 
   .nc-active {

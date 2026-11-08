@@ -25,15 +25,38 @@
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { startServer, type ServerHarness } from './helpers/serverHarness.js';
+import { setPermissions } from '../permissions.js';
 
 let srv: ServerHarness;
 
+/**
+ * Root temporal de los casos de `run-tool`.
+ *
+ * Sin `root`, el endpoint usa los permisos del repo: un `allowedTools`
+ * guardado (o globs) tumbaba el control de lectura aunque el guard de secretos
+ * funcionara. El package.json mínimo conserva el contrato de "archivo normal"
+ * sin depender de la configuración local de nadie.
+ */
+const PERMS_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'run-tool-root-'));
+fs.writeFileSync(path.join(PERMS_ROOT, 'package.json'), '{"name":"commander-test"}\n', 'utf8');
+setPermissions(PERMS_ROOT, {
+  mode: 'build',
+  allowedTools: null,
+  deniedTools: [],
+  files: { read: [], write: [] },
+});
+
 before(async () => { srv = await startServer(); });
-after(async () => { await srv?.stop(); });
+after(async () => {
+  await srv?.stop();
+  fs.rmSync(PERMS_ROOT, { recursive: true, force: true });
+});
 
 const uniqueId = (prefix: string) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
@@ -184,6 +207,26 @@ test('GET /api/threads lista primero los fijados y filtra por projectPath', asyn
   await srv.request('DELETE', '/api/threads/' + b);
 });
 
+test('GET /api/threads incluye el remoto normalizado del proyecto', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'http-remote-'));
+  const id = uniqueId('http-remote');
+  try {
+    execFileSync('git', ['init'], { cwd: dir, stdio: 'ignore' });
+    execFileSync('git', ['remote', 'add', 'origin', 'git@github.com:Owner/Repo.git'], {
+      cwd: dir,
+      stdio: 'ignore',
+    });
+    await srv.request('POST', '/api/threads', { id, title: 'remoto', projectPath: dir });
+
+    const list = await srv.request('GET', '/api/threads?projectPath=' + encodeURIComponent(dir));
+    const thread = (list.body.threads as any[]).find((t) => t.id === id);
+    assert.equal(thread?.git_remote, 'github.com/owner/repo');
+  } finally {
+    await srv.request('DELETE', '/api/threads/' + id);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('POST /api/autonomous/:threadId/plan sin goal responde 400 sin llamar al modelo', async () => {
   const thread = uniqueId('http-auto-plan');
   const res = await srv.request('POST', `/api/autonomous/${thread}/plan`, { parentSessionId: 'sess-x' });
@@ -290,10 +333,10 @@ test('POST /api/agent/run-tool niega fs.read y fs.grep sobre archivos de secreto
   // venir del guard. Con un archivo real, un verde también sería compatible con
   // "el archivo no estaba".
   const casos: Array<{ toolId: string; input: Record<string, unknown>; porque: string }> = [
-    { toolId: 'fs.read', input: { path: '.env' }, porque: 'las claves del proyecto' },
-    { toolId: 'fs.read', input: { path: '.ssh/id_ed25519' }, porque: 'una clave privada' },
-    { toolId: 'fs.grep', input: { pattern: 'API_KEY', path: '.env' }, porque: 'buscar dentro del .env' },
-    { toolId: 'fs.grep', input: { pattern: 'PRIVATE', path: 'certs/server.pem' }, porque: 'un certificado' },
+    { toolId: 'fs.read', input: { path: '.env', root: PERMS_ROOT }, porque: 'las claves del proyecto' },
+    { toolId: 'fs.read', input: { path: '.ssh/id_ed25519', root: PERMS_ROOT }, porque: 'una clave privada' },
+    { toolId: 'fs.grep', input: { pattern: 'API_KEY', path: '.env', root: PERMS_ROOT }, porque: 'buscar dentro del .env' },
+    { toolId: 'fs.grep', input: { pattern: 'PRIVATE', path: 'certs/server.pem', root: PERMS_ROOT }, porque: 'un certificado' },
   ];
 
   for (const caso of casos) {
@@ -309,7 +352,7 @@ test('POST /api/agent/run-tool niega fs.read y fs.grep sobre archivos de secreto
   // un 403 por una ruta mal montada pasaría como si el filtro hiciera su trabajo.
   const lectura = await srv.request('POST', '/api/agent/run-tool', {
     toolId: 'fs.read',
-    input: { path: 'package.json' },
+    input: { path: 'package.json', root: PERMS_ROOT },
   });
   assert.equal(lectura.status, 200, lectura.raw);
   assert.equal(lectura.body.ok, true);
@@ -317,7 +360,7 @@ test('POST /api/agent/run-tool niega fs.read y fs.grep sobre archivos de secreto
 
   const busqueda = await srv.request('POST', '/api/agent/run-tool', {
     toolId: 'fs.grep',
-    input: { pattern: '"name"', path: 'package.json' },
+    input: { pattern: '"name"', path: 'package.json', root: PERMS_ROOT },
   });
   assert.equal(busqueda.status, 200, busqueda.raw);
   assert.equal(busqueda.body.ok, true);

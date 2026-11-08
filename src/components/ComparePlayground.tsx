@@ -1,4 +1,3 @@
-import { getCachedApiKey } from '../lib/apiKeys';
 import React, { useState } from 'react';
 import { Play, Clock, Zap, Columns, Layers } from 'lucide-react';
 import { ParameterConfig } from '../types/studio';
@@ -45,14 +44,11 @@ export const ComparePlayground: React.FC<ComparePlaygroundProps> = ({
         const isLocal = route.isLocal;
         const isCustom = route.isCustom;
         const endpoint = route.endpoint;
-        const anthropicApiKey = parameters.anthropicApiKey || getCachedApiKey('ANTHROPIC_API_KEY') || undefined;
-        const geminiApiKey = getCachedApiKey('GEMINI_API_KEY') || undefined;
 
         const payload = isAnthropic
           ? {
               prompt,
               model,
-              anthropicApiKey,
               systemInstruction: parameters.systemInstruction,
               temperature: temp,
               maxTokens: parameters.maxTokens,
@@ -65,7 +61,6 @@ export const ComparePlayground: React.FC<ComparePlaygroundProps> = ({
               systemInstruction: parameters.systemInstruction,
               temperature: temp,
               maxTokens: parameters.maxTokens,
-              geminiApiKey: geminiApiKey || getCachedApiKey('GEMINI_API_KEY') || undefined,
             }
           : isFreeProvider || isLocal
           ? {
@@ -74,21 +69,16 @@ export const ComparePlayground: React.FC<ComparePlaygroundProps> = ({
               systemInstruction: parameters.systemInstruction,
               temperature: temp,
               maxTokens: parameters.maxTokens,
-              openrouterApiKey: getCachedApiKey('OPENROUTER_API_KEY') || undefined,
-              ollamaHost: getCachedApiKey('OLLAMA_HOST') || undefined,
             }
           : isCustom
           ? {
               prompt,
-              model: getCachedApiKey('CUSTOM_MODEL') || model,
+              model: model,
               systemInstruction: parameters.systemInstruction,
               temperature: temp,
               maxTokens: parameters.maxTokens,
-              baseURL: getCachedApiKey('CUSTOM_BASE_URL') || undefined,
-              apiKey: getCachedApiKey('CUSTOM_API_KEY') || getCachedApiKey('OPENCODE_API_KEY') || undefined,
             }
           : {
-              apiKey: geminiApiKey,
               contents: prompt,
               systemInstruction: parameters.systemInstruction,
               model,
