@@ -9,6 +9,7 @@ import {
 import { ParameterConfig, HfHubModel, DownloadedLocalModel } from '../types/studio';
 
 import { Language } from '../i18n/translations';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 
 
@@ -274,9 +275,9 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
 
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
 
-    navigator.clipboard.writeText(hfOutput);
+    if (!(await copyTextToClipboard(hfOutput))) return;
 
     setCopied(true);
 

@@ -24,6 +24,7 @@ import { AgentStepViewer } from './AgentStepViewer';
 import { ChatLiveAppViewerModal, ChatCodeSnippet } from './ChatLiveAppViewerModal';
 import { MentionItem, filterMentions } from '../data/contextMentions';
 import { searchFiles } from '../utils/codeSearchApi';
+import { copyTextToClipboard } from '../utils/clipboard';
 import { ChatMessage, ParameterConfig, StudioMode, RunMode } from '../types/studio';
 import { Language } from '../i18n/translations';
 import { ComposerToolbar } from './chat/ComposerToolbar';
@@ -740,8 +741,8 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleCopyMessage = (content: string) => {
-    navigator.clipboard.writeText(content);
+  const handleCopyMessage = async (content: string) => {
+    if (!(await copyTextToClipboard(content))) return;
     setCopiedId(content.slice(0, 20));
     setTimeout(() => setCopiedId(null), 2000);
   };

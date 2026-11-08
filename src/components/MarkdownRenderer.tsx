@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Copy, Check, Code2, Brain, Play } from 'lucide-react';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 interface MarkdownRendererProps {
   content: string;
@@ -25,8 +26,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isS
     mainContent = parts.slice(1).join('\n\n');
   }
 
-  const handleCopyCode = (codeText: string, index: number) => {
-    navigator.clipboard.writeText(codeText);
+  const handleCopyCode = async (codeText: string, index: number) => {
+    if (!(await copyTextToClipboard(codeText))) return;
     setCopiedIndex(index);
     setTimeout(() => setCopiedIndex(null), 2000);
   };

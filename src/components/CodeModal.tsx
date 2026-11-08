@@ -3,6 +3,7 @@ import { X, Copy, Check, Code2, Terminal, FileCode, Cpu, Monitor, Smartphone, Gl
 import { ParameterConfig } from '../types/studio';
 import JSZip from 'jszip';
 import { Language, TRANSLATIONS } from '../i18n/translations';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 interface CodeModalProps {
   isOpen: boolean;
@@ -173,8 +174,8 @@ func main() {
 
   const currentSnippet = snippets[activeTab];
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(currentSnippet);
+  const handleCopy = async () => {
+    if (!(await copyTextToClipboard(currentSnippet))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
