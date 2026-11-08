@@ -32,11 +32,11 @@ const HuggingFacePlayground = React.lazy(() =>
  * tocar la raíz. Quien no pase las props de un modo recibe `children`, que se
  * mantiene como salida de emergencia.
  */
-export const PLAYGROUND_MODES = ['chat', 'freeform', 'structured', 'composer', 'compare', 'huggingface'] as const;
+const PLAYGROUND_MODES = ['chat', 'freeform', 'structured', 'composer', 'compare', 'huggingface'] as const;
 
-export type PlaygroundMode = (typeof PLAYGROUND_MODES)[number];
+type PlaygroundMode = (typeof PLAYGROUND_MODES)[number];
 
-export function isPlaygroundMode(mode: StudioMode): mode is PlaygroundMode {
+function isPlaygroundMode(mode: StudioMode): mode is PlaygroundMode {
   return (PLAYGROUND_MODES as readonly string[]).includes(mode);
 }
 

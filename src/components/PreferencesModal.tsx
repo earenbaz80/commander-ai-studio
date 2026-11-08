@@ -27,7 +27,7 @@ import { ConsoleTheme } from './Header';
 import { Language } from '../i18n/translations';
 // El umbral lo consume el panel de subagentes; la clave y el aviso viven ahí
 // para que no haya dos copias del nombre que se puedan desincronizar.
-import { ATASCO_KEY, PREFERENCIAS_EVENT, normalizarUmbralAtasco } from './ServerSubAgents';
+import { ATASCO_KEY, PREFERENCIAS_EVENT, normalizarUmbralAtasco } from './subAgentSettings';
 import { ProviderManager } from './panel/ProviderManager';
 import { ExtensionsSettings } from './settings/ExtensionsSettings';
 import { ParameterConfig, StructuredExample } from '../types/studio';

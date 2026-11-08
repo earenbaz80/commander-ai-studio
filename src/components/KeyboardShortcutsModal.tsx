@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Keyboard, Sidebar, Save, Plus, Hammer, HelpCircle, Search, PanelRight, SlidersHorizontal, Layers, Activity, Send, ShieldCheck, TerminalSquare } from 'lucide-react';
+import { X, Keyboard, Sidebar, Save, Plus, Hammer, HelpCircle, Search, PanelRight, SlidersHorizontal, Layers, Activity, Send, ShieldCheck, TerminalSquare, Zap } from 'lucide-react';
 import { Language } from '../i18n/translations';
 
 interface KeyboardShortcutsModalProps {
@@ -111,6 +111,18 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
       cmdKeys: ['Enter'],
       action: lang === 'es' ? 'Enviar el mensaje en el chat' : lang === 'de' ? 'Nachricht im Chat senden' : 'Send the message in chat',
       icon: <Send className="w-4 h-4 text-amber-400" />,
+    },
+    {
+      keys: ['Ctrl', 'Enter'],
+      cmdKeys: ['⌘', 'Enter'],
+      action: lang === 'es' ? 'Interrumpir la acción actual y enviar el mensaje ya' : lang === 'de' ? 'Aktuelle Aktion unterbrechen und Nachricht jetzt senden' : 'Interrupt the current action and send the message now',
+      icon: <Zap className="w-4 h-4 text-[var(--nc-danger)]" />,
+    },
+    {
+      keys: ['Ctrl', 'Shift', 'Enter'],
+      cmdKeys: ['⌘', '⇧', 'Enter'],
+      action: lang === 'es' ? 'Enviar ahora el primer mensaje en cola' : lang === 'de' ? 'Erste Nachricht in der Warteschlange jetzt senden' : 'Send the first queued message now',
+      icon: <Send className="w-4 h-4 text-[var(--nc-text-accent)]" />,
     },
     {
       keys: ['Esc'],

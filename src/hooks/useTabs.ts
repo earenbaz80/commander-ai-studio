@@ -53,6 +53,7 @@ export const DEFAULT_PARAMETERS: ParameterConfig = {
   topP: 0.95,
   topK: 40,
   maxTokens: 2048,
+  contextLength: 0,
   thinkingLevel: 'LOW',
   responseFormat: 'text',
   jsonSchema: '',

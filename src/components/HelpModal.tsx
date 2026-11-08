@@ -345,6 +345,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, lang, inl
     { keys: 'Ctrl + Shift + G', mac: '⌘ + ⇧ + G', action: L('Ejecutar auditoría general del proyecto', 'Run a general project audit') },
     { keys: 'Alt + M', mac: '⌥ + M', action: L('Alternar modo del chat: Build → Plan → Sólo lectura', 'Cycle chat mode: Build → Plan → Read-only') },
     { keys: 'Enter', mac: 'Enter', action: L('Enviar el mensaje en el chat (Shift+Enter = salto de línea)', 'Send the chat message (Shift+Enter = newline)') },
+    { keys: 'Ctrl + Enter', mac: '⌘ + Enter', action: L('Interrumpir la acción actual y enviar el mensaje ya', 'Interrupt the current action and send the message now') },
+    { keys: 'Ctrl + Shift + Enter', mac: '⌘ + ⇧ + Enter', action: L('Enviar ahora el primer mensaje de la cola', 'Send the first queued message now') },
     { keys: 'Esc', mac: 'Esc', action: L('Cerrar cualquier ventana o menú', 'Close any modal or menu') },
   ];
 
