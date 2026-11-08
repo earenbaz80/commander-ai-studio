@@ -42,7 +42,7 @@ describe('runAgent (streaming)', () => {
           {
             type: 'done',
             fullText: 'Analizo el repo.',
-            functionCalls: [{ name: 'read_file', args: { path: 'a.ts' } }],
+            functionCalls: [{ name: 'fs_read', args: { path: 'a.ts' } }],
           },
         ])
       )
@@ -81,6 +81,9 @@ describe('runAgent (streaming)', () => {
     expect(chunks.join('')).toBe('Analizo el repo.Todo listo.');
     // Con streaming, el `thought` completo no se reemite (ya llegó por chunks).
     expect(types).not.toContain('thought');
+    // El servidor recibe el id de tool, no el nombre de la función del modelo.
+    const toolBody = JSON.parse(String(fetchMock.mock.calls[1][1].body));
+    expect(toolBody.toolId).toBe('fs.read');
   });
 
   test('sin stream usa el endpoint no-SSE', async () => {
@@ -114,7 +117,7 @@ describe('runAgent con Freebuff', () => {
       // El proxy es quien habla con el proveedor: recibe y devuelve `toolCalls`.
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ text: 'Leo el archivo', toolCalls: [{ name: 'read_file', args: { path: 'a.ts' } }] }),
+        json: async () => ({ text: 'Leo el archivo', toolCalls: [{ name: 'fs_read', args: { path: 'a.ts' } }] }),
       })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, data: { content: 'x' } }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ text: 'Listo', toolCalls: [] }) });
@@ -140,6 +143,8 @@ describe('runAgent con Freebuff', () => {
     const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));
     expect(body.model).toBe('freebuff/gpt-6-luna');
     expect(body.tools[0].type).toBe('function');
+    const toolBody = JSON.parse(String(fetchMock.mock.calls[1][1].body));
+    expect(toolBody.toolId).toBe('fs.read');
   });
 
   test('sin tool-calls no sale a la red y dice por qué', async () => {
