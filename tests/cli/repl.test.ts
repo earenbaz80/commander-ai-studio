@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ReplSession } from '../../src/cli/repl.js';
 import { runAgent, type RunAgentOptions } from '../../src/cli/agentClient.js';
-import { Tui } from '../../src/cli/tui.js';
+import { AgentRenderer, Tui } from '../../src/cli/tui.js';
 import { createSessionState, type CliEventV2 } from '../../src/agent/sessionTypes.js';
 import { startFakeAgentServer } from '../helpers/fakeAgentServer.js';
 
@@ -282,5 +282,52 @@ describe('REPL: continuidad y cancelación', () => {
 
     assert.equal(result.cancelled, true);
     assert.equal(result.state?.status, 'cancelled');
+  });
+
+  test('sin TTY y con TTY producen la misma secuencia de eventos', async (t) => {
+    const fake = await startFakeAgentServer();
+    t.after(() => fake.close());
+
+    // El renderer es el único consumidor de los eventos del bucle: si su
+    // secuencia no depende de la TTY, la transcripción tampoco. El spinner es
+    // presentación (escribe en stderr) y queda fuera de la comparación.
+    const run = async (interactive: boolean) => {
+      const events: string[] = [];
+      const lines: string[] = [];
+      const tui = new Tui({ interactive, color: false });
+      tui.line = (text = '') => {
+        lines.push(text);
+      };
+      tui.rule = () => {};
+      tui.startSpinner = () => {};
+      tui.setSpinner = () => {};
+      tui.stopSpinner = () => {};
+      const session = new ReplSession({
+        serverUrl: fake.baseUrl,
+        cwd: '/workspace/demo',
+        model: 'gemini-2.5-flash',
+        preferences: {},
+        tui,
+        deps: { savePreferences: async () => {} },
+      });
+      const original = AgentRenderer.prototype.handle;
+      AgentRenderer.prototype.handle = function (this: AgentRenderer, event: CliEventV2): void {
+        events.push(event.type);
+        original.call(this, event);
+      };
+      try {
+        await session.handleLine('SCENARIO:final el mismo caso');
+      } finally {
+        AgentRenderer.prototype.handle = original;
+      }
+      return { events, lines };
+    };
+
+    const interactive = await run(true);
+    const pipe = await run(false);
+
+    assert.ok(interactive.events.length > 0, 'el turno emitió eventos');
+    assert.deepEqual(pipe.events, interactive.events, 'misma secuencia de eventos');
+    assert.deepEqual(pipe.lines, interactive.lines, 'misma transcripción sin color');
   });
 });
