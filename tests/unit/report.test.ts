@@ -213,6 +213,51 @@ describe('informe Markdown', () => {
     }
   });
 
+  test('redacta claves compuestas y Authorization Basic en ambos formatos', () => {
+    const artifact = makeArtifact({
+      tests: [
+        failedTest({
+          command: 'npm test -- --client_secret=client-secret-value',
+          stdoutTail: 'OPENAI_API_KEY=openai-secret-value\naccess_token=access-secret-value',
+          stderrTail: 'Authorization: Basic dXNlcjpwYXNzd29yZA==',
+        }),
+      ],
+    });
+
+    for (const content of [
+      renderMarkdownReport(artifact, FIXED_AT),
+      renderHtmlReport(artifact, FIXED_AT),
+    ]) {
+      expect(content).not.toContain('client-secret-value');
+      expect(content).not.toContain('openai-secret-value');
+      expect(content).not.toContain('access-secret-value');
+      expect(content).not.toContain('dXNlcjpwYXNzd29yZA==');
+      expect(content).toContain('[REDACTED]');
+    }
+  });
+
+  test('preserva /dev/null como ruta especial del patch', () => {
+    const artifact = makeArtifact({
+      diff: {
+        patch: [
+          '--- /dev/null',
+          '+++ b/src/nuevo.ts',
+          '@@ -0,0 +1 @@',
+          '+hola',
+        ].join('\n'),
+        files: ['src/nuevo.ts'],
+      },
+    });
+
+    for (const content of [
+      renderMarkdownReport(artifact, FIXED_AT),
+      renderHtmlReport(artifact, FIXED_AT),
+    ]) {
+      expect(content).toContain('--- /dev/null');
+      expect(content).not.toContain('--- [ruta fuera del proyecto]');
+    }
+  });
+
   test('es determinista cuando se fija generatedAt', () => {
     const artifact = makeArtifact();
     expect(renderMarkdownReport(artifact, FIXED_AT)).toBe(

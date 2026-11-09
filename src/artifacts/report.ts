@@ -162,6 +162,9 @@ function projectLabel(projectPath: string): string {
 function relativePath(projectPath: string, value: unknown): string {
   const clean = sanitizeText(value).trim();
   if (!clean) return FALLBACK;
+  // `/dev/null` es una ruta especial del diff (archivo nuevo o borrado), no
+  // una ruta del workspace que deba ocultarse.
+  if (clean === '/dev/null') return '/dev/null';
   const root = normalizedParts(String(projectPath ?? ''));
   const target = normalizedParts(clean);
   const rootLower = root.map((part) => part.toLowerCase());
