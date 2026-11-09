@@ -14,7 +14,8 @@ import { readProjectFile, runAgentTool } from '../utils/agentToolsApi';
 import type { RuleFinding } from '../agent/tools/fs';
 import { applyExactEdit } from '../utils/patch';
 import { DiffViewer } from './DiffViewer';
-import { addRule, ruleTarget } from '../agent/permissionRules';
+import { addRule, persistRuleToProject, ruleTarget, syncRulesWithServer } from '../agent/permissionRules';
+import { getActiveProjectRoot } from '../agent/activeProject';
 
 interface AgentApprovalModalProps {
   approval: ApprovalRequest;
@@ -32,6 +33,16 @@ export function AgentApprovalModal({ approval, onResolve, lang = 'es' }: AgentAp
 
   const [oldText, setOldText] = useState<string | null>(null);
   const [loading, setLoading] = useState(isPatchTool);
+
+  // F1-07: una vez por carga, sube a `.commander/permissions.json` las reglas
+  // que sólo vivían en localStorage. El CLI lee ese archivo, no el navegador.
+  useEffect(() => {
+    const root = getActiveProjectRoot();
+    if (!root) return;
+    void syncRulesWithServer(root).catch(() => {
+      /* best-effort: sin servidor, localStorage sigue funcionando */
+    });
+  }, []);
 
   useEffect(() => {
     if (!isPatchTool) {
@@ -198,7 +209,16 @@ export function AgentApprovalModal({ approval, onResolve, lang = 'es' }: AgentAp
               <button
                 onClick={() => {
                   const target = ruleTarget(toolId, input);
-                  if (remember && target) addRule({ tool: toolId, pattern: target, decision: 'allow' });
+                  if (remember && target) {
+                    const rule = { tool: toolId, pattern: target, decision: 'allow' as const };
+                    addRule(rule);
+                    const root = getActiveProjectRoot();
+                    if (root) {
+                      void persistRuleToProject(root, rule).catch(() => {
+                        /* la regla local ya quedó; el archivo se reintenta al abrir */
+                      });
+                    }
+                  }
                   onResolve(true);
                 }}
                 className="nc-button text-xs px-3 py-1 bg-[var(--nc-active-bg)] text-black font-bold"

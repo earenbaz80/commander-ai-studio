@@ -15,6 +15,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { normalizeRules, type PermissionRule } from './src/agent/permissionRules';
 
 export type AgentMode = 'build' | 'plan' | 'readonly';
 
@@ -24,6 +25,13 @@ export interface Permissions {
   allowedTools: string[] | null;
   deniedTools: string[];
   files: { read: string[]; write: string[] };
+  /**
+   * Reglas por patrón creadas desde el escritorio (F1-07). Viven en el mismo
+   * archivo del proyecto para que el CLI evalúe exactamente las mismas.
+   */
+  rules: PermissionRule[];
+  /** Marca de la importación única desde localStorage. */
+  rulesImportedAt?: number;
 }
 
 export const DEFAULT_PERMISSIONS: Permissions = {
@@ -31,6 +39,7 @@ export const DEFAULT_PERMISSIONS: Permissions = {
   allowedTools: null,
   deniedTools: [],
   files: { read: [], write: [] },
+  rules: [],
 };
 
 /** Tools que modifican el filesystem o el repo. */
@@ -161,7 +170,16 @@ export function normalizePermissions(input: unknown): Permissions {
   const deniedTools = Array.isArray(p.deniedTools) ? p.deniedTools.map(String).slice(0, 100) : [];
   const read = Array.isArray(p.files?.read) ? p.files!.read.map(String).slice(0, 200) : [];
   const write = Array.isArray(p.files?.write) ? p.files!.write.map(String).slice(0, 200) : [];
-  return { mode, allowedTools, deniedTools, files: { read, write } };
+  const rules = normalizeRules(p.rules);
+  const importedAt = Number(p.rulesImportedAt);
+  return {
+    mode,
+    allowedTools,
+    deniedTools,
+    files: { read, write },
+    rules,
+    ...(Number.isFinite(importedAt) && importedAt > 0 ? { rulesImportedAt: importedAt } : {}),
+  };
 }
 
 export function getPermissions(root: string): Permissions {
@@ -183,8 +201,12 @@ export function setPermissions(root: string, perms: unknown): Permissions {
   const key = canonical(root);
   const normalized = normalizePermissions(perms);
   try {
-    fs.mkdirSync(path.join(key, CACHE_DIR), { recursive: true });
-    fs.writeFileSync(path.join(key, CACHE_DIR, CACHE_FILE), JSON.stringify(normalized, null, 2), 'utf8');
+    const dir = path.join(key, CACHE_DIR);
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, CACHE_FILE);
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(normalized, null, 2), 'utf8');
+    fs.renameSync(tmp, file);
   } catch {
     /* sin permisos de escritura: vive en memoria */
   }
@@ -194,4 +216,15 @@ export function setPermissions(root: string, perms: unknown): Permissions {
 
 export function invalidatePermissions(root: string): void {
   permsCache.delete(canonical(root));
+}
+
+/** Reglas por patrón del proyecto (F1-07), sin tocar el resto de permisos. */
+export function getPermissionRules(root: string): PermissionRule[] {
+  return getPermissions(root).rules;
+}
+
+/** Reemplaza las reglas del proyecto conservando modo, listas y globs. */
+export function setPermissionRules(root: string, rules: unknown): PermissionRule[] {
+  const current = getPermissions(root);
+  return setPermissions(root, { ...current, rules }).rules;
 }

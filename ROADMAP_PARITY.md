@@ -49,7 +49,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 | Backend multiinquilino | **V local** | `backend/tenantStore.ts`, `backend/routes.ts`, `tests/tenantBackend.test.ts` (6/6) | No aprovisiona bindings para apps publicadas |
 | Integraciones GitHub/Linear | **I** | `src/integrations/`, rutas OAuth, vault AES-256-GCM | Falta OAuth real con cuentas y permisos reales |
 | GitHub Actions | **I** | `.github/workflows/commander-agent.yml`, `scripts/github-agent.ts` | No hay una corrida real en GitHub |
-| CLI | **P** | `bin/commander.ts`, `src/cli/repl.ts`, `src/cli/agentClient.ts`, `src/cli/tui.ts` | REPL multi-turno, `ask_user`, `--resume`/`--fork` y diff por hunk operativos; falta la paridad de permisos del escritorio (F1-07) |
+| CLI | **P** | `bin/commander.ts`, `src/cli/repl.ts`, `src/cli/agentClient.ts`, `src/cli/tui.ts` | REPL multi-turno, `ask_user`, `--resume`/`--fork`, diff por hunk y paridad de permisos del escritorio (F1-07) operativos |
 | Extensión de VS Code | **P** | `vscode-extension/` | Scaffold: webview que lanza `npx commander agent`; no es un IDE integrado |
 | Skills/plugins/MCP | **V/P** | `skills/`, `pluginsRuntime.ts`, `src/agent/mcp.ts` | Hooks sólo `beforeTool`/`afterTool`; sin lifecycle completo ni marketplace propio |
 
@@ -170,7 +170,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 **Objetivo:** que el CLI sea una superficie completa del mismo agente, no un modo de una sola pasada, y que la sesión sea la misma en escritorio y terminal.
 
-> **Estado 2026-11-09 — F1-05, F1-06, F1-08 y F1-09 completados y cerrados.** `ask_user` se ofrece y resuelve en el CLI (commit `b01264a`); el REPL multi-turno (F1-08) con sus preferencias (F1-09, commit `7a5755f`) y el diff por hunk con `a`/`d`/`s`/`?`/`q` (F1-05) están cerrados. Quedan abiertos F1-07, F1-12 y F1-13.
+> **Estado 2026-11-09 — F1-05, F1-06, F1-07, F1-08 y F1-09 completados y cerrados.** `ask_user` se ofrece y resuelve en el CLI (commit `b01264a`); el REPL multi-turno (F1-08) con sus preferencias (F1-09, commit `7a5755f`), el diff por hunk con `a`/`d`/`s`/`?`/`q` (F1-05) y las reglas de permisos del escritorio aplicadas en el servidor y el CLI (F1-07) están cerrados. Quedan abiertos F1-12 y F1-13.
 
 > **Desglose ejecutable:** [docs/parity/backlog-f1.md](docs/parity/backlog-f1.md) — 14 issues, 21,0 d-persona, dependencias, camino crítico y pruebas por entregable.
 
