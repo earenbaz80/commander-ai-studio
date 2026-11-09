@@ -49,7 +49,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 | Backend multiinquilino | **V local** | `backend/tenantStore.ts`, `backend/routes.ts`, `tests/tenantBackend.test.ts` (6/6) | No aprovisiona bindings para apps publicadas |
 | Integraciones GitHub/Linear | **I** | `src/integrations/`, rutas OAuth, vault AES-256-GCM | Falta OAuth real con cuentas y permisos reales |
 | GitHub Actions | **I** | `.github/workflows/commander-agent.yml`, `scripts/github-agent.ts` | No hay una corrida real en GitHub |
-| CLI | **P** | `bin/commander.ts`, `src/cli/agentClient.ts`, `src/cli/tui.ts` | Una sola pasada, sin REPL, sin `ask_user`, sin aprobaciones y sin reanudar sesión |
+| CLI | **P** | `bin/commander.ts`, `src/cli/agentClient.ts`, `src/cli/tui.ts` | Una sola pasada, sin REPL, sin aprobaciones completas y sin reanudar sesión; `ask_user` ya resuelve en terminal |
 | Extensión de VS Code | **P** | `vscode-extension/` | Scaffold: webview que lanza `npx commander agent`; no es un IDE integrado |
 | Skills/plugins/MCP | **V/P** | `skills/`, `pluginsRuntime.ts`, `src/agent/mcp.ts` | Hooks sólo `beforeTool`/`afterTool`; sin lifecycle completo ni marketplace propio |
 
@@ -60,7 +60,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 | Capacidad | Commander | OpenCode | Antigravity | Freebuff |
 | --- | --- | --- | --- | --- |
 | App de escritorio | **V** (Electron/Tauri) | **V** | **V** (App) | **V** (Desktop) |
-| CLI/TUI interactivo | **P** (headless de una pasada; sin approvals/REPL) | **V** (TUI) | **V** (CLI) | **V** (CLI) |
+| CLI/TUI interactivo | **P** (headless de una pasada; `ask_user` operativo; sin approvals completas/REPL) | **V** (TUI) | **V** (CLI) | **V** (CLI) |
 | Web local / navegador | **V** (Workbench embebido) | **V** (web y `pair`) | **V** (Remote Control web) | **V** (Web) |
 | Extensión de IDE | **P** (VS Code scaffold) | **—** | **V** (VS Code, JetBrains, VS, Zed, Xcode, Eclipse) | **—** |
 | Móvil / control remoto | **F** | **P** (web pair/QR) | **V** (Remote Control) | **V** (Web/Chat) |
@@ -170,6 +170,8 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 **Objetivo:** que el CLI sea una superficie completa del mismo agente, no un modo de una sola pasada, y que la sesión sea la misma en escritorio y terminal.
 
+> **Estado 2026-11-09 — F1-06 implementado.** `ask_user` ya se ofrece y resuelve en el CLI (commit `b01264a`); F1-08 (REPL) sigue pendiente.
+
 > **Desglose ejecutable:** [docs/parity/backlog-f1.md](docs/parity/backlog-f1.md) — 14 issues, 21,0 d-persona, dependencias, camino crítico y pruebas por entregable.
 
 **Alcance**
@@ -186,7 +188,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 - [ ] `commander agent "tarea" --json` conserva su salida y sus consumidores actuales.
 - [ ] `commander` abre una sesión interactiva; una edición pide aprobación con diff, y denegar no escribe ni un byte.
-- [ ] `ask_user` bloquea la corrida hasta recibir respuesta y la respuesta queda en el historial.
+- [x] `ask_user` bloquea la corrida hasta recibir respuesta y la respuesta queda en el historial (F1-06, commit `b01264a`).
 - [ ] Una tarea iniciada en CLI aparece en el escritorio con el mismo `sessionId`, pasos y plan; `--resume` continúa sin duplicar tool calls y `--fork` no muta la original.
 - [ ] El plan se actualiza durante la corrida y sobrevive a un reinicio del servidor.
 - [ ] Un subagente con una tool denegada falla cerrado; 6 subagentes pueden correr en paralelo y el worktree no contamina el árbol principal.
