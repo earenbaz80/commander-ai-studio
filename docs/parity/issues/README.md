@@ -12,7 +12,7 @@ Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), 
 | [F1-06](F1-06.md) | [#7](https://github.com/earenbaz80/commander-ai-studio/issues/7) | Cerrado | `ask_user` en el CLI | `f1`, `p0`, `area:cli`, `area:agent` | 1,5 | F1-04 |
 | [F1-07](F1-07.md) | [#8](https://github.com/earenbaz80/commander-ai-studio/issues/8) | Abierto | Reglas de permisos del escritorio aplicadas en el CLI | `f1`, `p0`, `area:agent`, `security` | 1,5 | F1-04 |
 | [F1-08](F1-08.md) | [#9](https://github.com/earenbaz80/commander-ai-studio/issues/9) | Abierto | REPL interactivo con comandos | `f1`, `p0`, `area:cli` | 2,5 | F1-02, F1-06 |
-| [F1-09](F1-09.md) | [#10](https://github.com/earenbaz80/commander-ai-studio/issues/10) | Abierto | Selección de modelo/agente y preferencias | `f1`, `p1`, `area:cli` | 1,0 | F1-08 |
+| [F1-09](F1-09.md) | [#10](https://github.com/earenbaz80/commander-ai-studio/issues/10) | Cerrado | Selección de modelo/agente y preferencias | `f1`, `p1`, `area:cli` | 1,0 | F1-08 |
 | [F1-10](F1-10.md) | [#11](https://github.com/earenbaz80/commander-ai-studio/issues/11) | Cerrado | `--resume` y `--fork` sin duplicar tool calls | `f1`, `p0`, `area:cli`, `area:server` | 1,0 | F1-02, F1-08 |
 | [F1-11](F1-11.md) | [#12](https://github.com/earenbaz80/commander-ai-studio/issues/12) | Cerrado | Regresión del contrato `--json`/NDJSON | `f1`, `p0`, `area:cli`, `contract` | 0,5 | F1-01 |
 | [F1-12](F1-12.md) | [#13](https://github.com/earenbaz80/commander-ai-studio/issues/13) | Abierto | Seis subagentes con allowlist y worktree opcional | `f1`, `p1`, `area:agent` | 2,0 | F1-02 |

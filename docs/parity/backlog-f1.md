@@ -31,7 +31,7 @@
 | F1-06 | [#7](https://github.com/earenbaz80/commander-ai-studio/issues/7) | Cerrado | `ask_user` en el CLI | 1,5 | F1-04 | PR2 |
 | F1-07 | [#8](https://github.com/earenbaz80/commander-ai-studio/issues/8) | Abierto | Reglas de permisos del escritorio aplicadas en el CLI | 1,5 | F1-04 | PR2 |
 | F1-08 | [#9](https://github.com/earenbaz80/commander-ai-studio/issues/9) | Abierto | REPL interactivo con comandos | 2,5 | F1-02, F1-06 | PR3 |
-| F1-09 | [#10](https://github.com/earenbaz80/commander-ai-studio/issues/10) | Abierto | Selección de modelo/agente y preferencias | 1,0 | F1-08 | PR3 |
+| F1-09 | [#10](https://github.com/earenbaz80/commander-ai-studio/issues/10) | Cerrado | Selección de modelo/agente y preferencias | 1,0 | F1-08 | PR3 |
 | F1-10 | [#11](https://github.com/earenbaz80/commander-ai-studio/issues/11) | Cerrado | `--resume` y `--fork` sin duplicar tool calls | 1,0 | F1-02 (flags), F1-08 (comandos) | PR3 |
 | F1-11 | [#12](https://github.com/earenbaz80/commander-ai-studio/issues/12) | Cerrado | Regresión del contrato `--json`/NDJSON | 0,5 | F1-01 | PR3 |
 | F1-12 | [#13](https://github.com/earenbaz80/commander-ai-studio/issues/13) | Abierto | Seis subagentes con allowlist y worktree opcional | 2,0 | F1-02 | PR4 |
