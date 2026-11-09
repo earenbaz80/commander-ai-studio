@@ -19,6 +19,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { uid } from './src/agent/id';
+import { diffLines, toUnifiedDiff } from './src/utils/patch';
 import { toolDialectForModel, toOpenAITools } from './src/agent/providers';
 import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from './src/agent/fnTools';
 import { PLAN_TOOL, normalizePlan } from './src/agent/plan';
@@ -185,27 +186,16 @@ function redactApprovalValue(value: unknown, depth = 0): unknown {
   return out;
 }
 
-/** Diff mínimo para que el usuario vea qué va a cambiar una escritura. */
-function approvalDiff(rel: string, before: string, after: string): string {
-  const a = before.split(/\r?\n/);
-  const b = after.split(/\r?\n/);
-  let start = 0;
-  while (start < a.length && start < b.length && a[start] === b[start]) start += 1;
-  let endA = a.length;
-  let endB = b.length;
-  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
-    endA -= 1;
-    endB -= 1;
-  }
-  const removed = a.slice(start, endA).slice(0, 400);
-  const added = b.slice(start, endB).slice(0, 400);
-  return [
-    `--- a/${rel}`,
-    `+++ b/${rel}`,
-    `@@ -${start + 1},${removed.length} +${start + 1},${added.length} @@`,
-    ...removed.map((line) => `-${line}`),
-    ...added.map((line) => `+${line}`),
-  ].join('\n').slice(0, 20_000);
+/**
+ * Diff unificado (contexto 3) para que el usuario vea qué va a cambiar.
+ *
+ * Usa el mismo motor que el escritorio (`src/utils/patch.ts`), así que una
+ * `fs.edit` con varias regiones produce hunks separados y el CLI puede
+ * enseñarlos con números de línea.
+ */
+function approvalDiff(rel: string, before: string, after: string, exists = true): string {
+  const result = diffLines(before, after, 3);
+  return toUnifiedDiff(rel, result, { exists }).slice(0, 20_000);
 }
 
 function approvalPreview(tool: string, input: any, cwd: string): { diff?: string; hunks?: unknown[] } {
@@ -216,7 +206,8 @@ function approvalPreview(tool: string, input: any, cwd: string): { diff?: string
     const abs = path.resolve(cwd, raw);
     const rel = path.relative(cwd, abs).replace(/\\/g, '/');
     if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return {};
-    const before = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8').slice(0, 40_000) : '';
+    const exists = fs.existsSync(abs);
+    const before = exists ? fs.readFileSync(abs, 'utf8').slice(0, 40_000) : '';
     let after = '';
     const hunks: unknown[] = [];
     if (tool === 'fs.write') {
@@ -237,7 +228,7 @@ function approvalPreview(tool: string, input: any, cwd: string): { diff?: string
       }
     }
     if (before === after) return hunks.length > 0 ? { hunks } : {};
-    return { diff: approvalDiff(rel, before, after), ...(hunks.length > 0 ? { hunks } : {}) };
+    return { diff: approvalDiff(rel, before, after, exists), ...(hunks.length > 0 ? { hunks } : {}) };
   } catch {
     return {};
   }

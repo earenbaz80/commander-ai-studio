@@ -27,7 +27,7 @@
 | F1-02 | [#3](https://github.com/earenbaz80/commander-ai-studio/issues/3) | Cerrado | Sesión autoritativa en el servidor con persistencia durable | 2,5 | F1-01 | PR1 |
 | F1-03 | [#4](https://github.com/earenbaz80/commander-ai-studio/issues/4) | Cerrado | Stream de eventos reanudable (`Last-Event-ID`) | 1,5 | F1-02 | PR1 |
 | F1-04 | [#5](https://github.com/earenbaz80/commander-ai-studio/issues/5) | Cerrado | Canal de aprobaciones servidor ↔ CLI (allow/deny/allow-session) | 2,5 | F1-02 | PR2 |
-| F1-05 | [#6](https://github.com/earenbaz80/commander-ai-studio/issues/6) | Abierto | Diff por hunk en terminal | 1,0 | F1-04 | PR2 |
+| F1-05 | [#6](https://github.com/earenbaz80/commander-ai-studio/issues/6) | Cerrado | Diff por hunk en terminal | 1,0 | F1-04 | PR2 |
 | F1-06 | [#7](https://github.com/earenbaz80/commander-ai-studio/issues/7) | Cerrado | `ask_user` en el CLI | 1,5 | F1-04 | PR2 |
 | F1-07 | [#8](https://github.com/earenbaz80/commander-ai-studio/issues/8) | Abierto | Reglas de permisos del escritorio aplicadas en el CLI | 1,5 | F1-04 | PR2 |
 | F1-08 | [#9](https://github.com/earenbaz80/commander-ai-studio/issues/9) | Cerrado | REPL interactivo con comandos | 2,5 | F1-02, F1-06 | PR3 |
@@ -161,6 +161,7 @@
 
 **Labels:** `f1`, `p0`, `area:cli`
 **Estimación:** 1,0 d-persona · **Depende de:** F1-04
+**Estado:** Implementado y cerrado — 2026-11-09.
 
 **Por qué.** Aprobar sin ver el cambio es peor que no aprobar. El escritorio ya muestra diff; el CLI necesita el mismo contenido, con contexto y sin dependencias nuevas.
 
@@ -171,15 +172,21 @@
 - Tope de 400 líneas mostradas con aviso de truncado explícito.
 
 **Criterios de aceptación**
-- [ ] Un `fs.edit` de varias regiones muestra hunks separados y correctos.
-- [ ] `NO_COLOR=1` produce una salida estable, sin secuencias ANSI.
-- [ ] Un diff mayor que el tope lo dice y nunca finge estar completo.
-- [ ] Aprobar desde el diff aplica exactamente el contenido mostrado.
+- [x] Un `fs.edit` de varias regiones muestra hunks separados y correctos.
+- [x] `NO_COLOR=1` produce una salida estable, sin secuencias ANSI.
+- [x] Un diff mayor que el tope lo dice y nunca finge estar completo.
+- [x] Aprobar desde el diff aplica exactamente el contenido mostrado.
+
+**Implementación.** `src/cli/diff.ts` pinta el diff por hunk con números de línea, signos y color condicionado a TTY/`NO_COLOR`, con tope de 400 líneas y aviso explícito de truncado. El prompt acepta `a`/`d`/`s`, `?` recorre hunks y `q` deniega y detiene. El servidor genera el preview con `diffLines`/`toUnifiedDiff` (contexto 3), así que las ediciones multi-región llegan separadas.
 
 **Pruebas**
-- `tests/cli/diffRender.test.ts`: inserción, borrado, varios hunks, CRLF, archivo nuevo, truncado y `NO_COLOR`.
+- `tests/cli/diffRender.test.ts`: 7/7 — hunks, CRLF, archivo nuevo, truncado, `NO_COLOR` y aplicación exacta.
+- `tests/cli/approvalPrompt.test.ts`: 10/10 — teclas nuevas y menú anterior.
+- `tests/agent/approvalChannel.test.ts` + `approvalEndpoints.test.ts`: 7/7 — contrato de aprobaciones.
+- `tests/cli/e2e.test.ts`: 16/16 — regresión del CLI.
+- `tsc --noEmit`, `vite build` y `check:rules` en verde.
 
-**Archivos:** `src/cli/diff.ts` (nuevo), `src/cli/tui.ts`.
+**Archivos:** `src/cli/diff.ts` (nuevo), `src/cli/tui.ts`, `agentSession.ts`, `tests/cli/diffRender.test.ts`.
 
 ---
 
@@ -502,7 +509,7 @@ F1-02 + F1-04 + F1-08 ───────────────────�
 
 ## 8. Issues en GitHub
 
-Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #7 (F1-06), #9 (F1-08), #10 (F1-09), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). No vuelvas a ejecutar `gh issue create`, porque duplicaría el backlog. El mapeo está en la tabla de §2 y el cuerpo versionado de cada issue, en [`docs/parity/issues/`](issues/README.md).
+Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #6 (F1-05), #7 (F1-06), #9 (F1-08), #10 (F1-09), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). No vuelvas a ejecutar `gh issue create`, porque duplicaría el backlog. El mapeo está en la tabla de §2 y el cuerpo versionado de cada issue, en [`docs/parity/issues/`](issues/README.md).
 
 Para actualizar el cuerpo de un issue ya creado:
 
