@@ -21,6 +21,10 @@ export interface TaskToolInput {
   allowedTools?: string[] | null;
   mode?: 'build' | 'plan' | 'readonly';
   maxSteps?: number;
+  /** Ejecuta al subagente en un git worktree aislado. */
+  worktree?: boolean;
+  /** Conserva el worktree al terminar (por defecto se limpia). */
+  keepWorktree?: boolean;
   /** ID de la sesión padre (lo inyecta la app; opcional en la declaración). */
   parentSessionId?: string;
   /** Claves opcionales para el subagente. */
@@ -29,7 +33,7 @@ export interface TaskToolInput {
 
 export const taskTool: ToolDefinition<TaskToolInput, { answer: string }> = {
   id: 'task',
-  description: 'Lanza un subagente con su propio objetivo y contexto. Devuelve la respuesta final del subagente.',
+  description: 'Lanza un subagente con su propio objetivo y contexto. Devuelve la respuesta final del subagente. Con worktree:true corre en una copia aislada que se limpia al terminar.',
   danger: false,
   requiresApproval: () => false,
   run: async (input) => {

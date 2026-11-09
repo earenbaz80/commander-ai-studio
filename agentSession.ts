@@ -21,13 +21,15 @@ import path from 'node:path';
 import { uid } from './src/agent/id';
 import { diffLines, toUnifiedDiff } from './src/utils/patch';
 import { decide, needsHumanApproval } from './src/agent/permissionRules';
-import { getPermissions } from './permissions';
+import { enforceTool, getPermissions, type Permissions } from './permissions';
+import { createWorktree, removeWorktree, type WorktreeResult } from './worktrees';
+import { resolveSubagentPolicy } from './src/agent/subagentTemplates';
 import { toolDialectForModel, toOpenAITools } from './src/agent/providers';
 import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from './src/agent/fnTools';
 import { PLAN_TOOL, normalizePlan } from './src/agent/plan';
 import { TOOL_REGISTRY } from './src/agent/registry';
 import { loadMCPServers, mcpListTools } from './src/agent/mcp';
-import { executeAgentTool } from './agentTools';
+import { executeAgentTool, isReadOnlyCall } from './agentTools';
 import { startSubAgent, finishSubAgent } from './subAgents';
 import { getServerBaseUrl } from './serverRuntime';
 import { GEMINI_DEFAULT_MODEL } from './src/config/geminiModels';
@@ -301,11 +303,15 @@ export interface TaskToolInput {
   model?: string;
   /** Tools permitidas (null = todas las del padre). */
   allowedTools?: string[] | null;
+  /** Ejecuta al subagente en un git worktree aislado. */
+  worktree?: boolean;
+  /** Conserva el worktree al terminar (por defecto se limpia). */
+  keepWorktree?: boolean;
   /** Modo del subagente (build/plan/readonly). */
   mode?: 'build' | 'plan' | 'readonly';
   /** Límite de pasos. */
   maxSteps?: number;
-  /** Plantilla de subagente (file-explorer, researcher, reviewer, planner). */
+  /** Plantilla de subagente (file-explorer, researcher, reviewer, planner, coder, tester). */
   template?: string;
 }
 
@@ -607,6 +613,20 @@ export class AgentSession {
   getStopReason(): 'user' | 'timeout' | null { return this.stopReason; }
   setMode(mode: 'build' | 'plan' | 'readonly') { this.cfg.mode = mode; }
   setAllowedTools(tools: string[] | null) { this.cfg.allowedTools = tools; }
+
+  /**
+   * Permisos efectivos de la sesión: la política del proyecto nunca se relaja
+   * y la sesión sólo puede endurecerla con su modo y su allowlist (F1-12).
+   */
+  private effectivePermissions(): Permissions {
+    const project = getPermissions(this.cfg.cwd);
+    const mode = project.mode === 'build' ? (this.cfg.mode ?? 'build') : project.mode;
+    return {
+      ...project,
+      mode,
+      allowedTools: this.cfg.allowedTools ?? project.allowedTools,
+    };
+  }
 
   /** Aprobaciones que esperan una decisión (para clientes y pruebas). */
   getPendingApprovals(): ApprovalRequestV2[] {
@@ -1030,6 +1050,12 @@ export class AgentSession {
         error: `Denegado por regla de permisos del proyecto: ${call.tool}`,
       };
     }
+    // Allowlist y modo del subagente (F1-12): una tool fuera de política falla
+    // cerrado antes de mostrar cualquier aprobación.
+    const sessionErr = enforceTool(this.effectivePermissions(), call.tool, {
+      readOnly: isReadOnlyCall(call.tool, call.input),
+    });
+    if (sessionErr) return { tool: call.tool, ok: false, error: sessionErr };
     const needsApproval = needsHumanApproval(
       rule,
       this.requiresApproval(call.tool, call.input),
@@ -1433,38 +1459,64 @@ export async function executeTask(
   input: TaskToolInput,
   parentKeys?: AgentKeys,
   parentCwd?: string
-): Promise<{ ok: boolean; answer?: string; error?: string }> {
+): Promise<{ ok: boolean; answer?: string; error?: string; status?: number }> {
   const parent = getSession(parentSessionId);
   if (!parent) return { ok: false, error: `Sesión padre no encontrada: ${parentSessionId}` };
 
   const model = input.model || parent.getModel();
-  const cwd = parentCwd || parent.getConfig().cwd;
+  const projectPath = parent.getConfig().cwd;
+  let cwd = parentCwd || projectPath;
 
-  // Resolver plantilla si se pidió
-  let resolvedAllowed = input.allowedTools;
-  let resolvedMode = input.mode;
-  let resolvedMax = input.maxSteps;
-  if (input.template) {
-    const { getTemplate } = await import('./src/agent/subagentTemplates');
-    const tpl = getTemplate(String(input.template));
-    if (tpl) {
-      resolvedAllowed = input.allowedTools ?? tpl.allowedTools;
-      resolvedMode = input.mode ?? tpl.defaultMode;
-      resolvedMax = input.maxSteps ?? tpl.defaultMaxSteps;
+  // La plantilla, la allowlist y el modo se validan contra el registro antes de
+  // crear nada: una tool desconocida o fuera del modo no se ignora en silencio.
+  const resolved = resolveSubagentPolicy({
+    template: input.template,
+    allowedTools: input.allowedTools,
+    mode: input.mode,
+    maxSteps: input.maxSteps,
+  });
+  if (!resolved.ok) return { ok: false, error: resolved.error, status: 400 };
+  const { allowedTools, mode, maxSteps } = resolved.policy;
+
+  // `worktree` aísla al hijo en una copia git: escribe en su rama y el árbol
+  // principal no se toca. Se limpia al terminar salvo `keepWorktree`, también
+  // cuando la sesión falla o se cancela.
+  let worktree: WorktreeResult | undefined;
+  if (input.worktree) {
+    try {
+      worktree = createWorktree(uid('sub'), projectPath);
+      cwd = worktree.worktreePath;
+    } catch (error: any) {
+      return {
+        ok: false,
+        error: `No se pudo crear el worktree: ${String(error?.message || error)}`,
+        status: 500,
+      };
     }
   }
 
-  const session = createSession({
-    goal: input.goal,
-    cwd,
-    model,
-    keys: parentKeys,
-    maxSteps: Math.min(Math.max(Number(resolvedMax) || 8, 1), 50),
-  });
+  let session: ReturnType<typeof createSession>;
+  try {
+    session = createSession({
+      goal: input.goal,
+      cwd,
+      model,
+      keys: parentKeys,
+      maxSteps,
+    });
+  } catch (error: any) {
+    if (worktree && !input.keepWorktree) {
+      try { removeWorktree(worktree.worktreePath, projectPath, true, worktree.branch); } catch { /* best-effort */ }
+    }
+    return {
+      ok: false,
+      error: `No se pudo crear la sesión del subagente: ${String(error?.message || error)}`,
+      status: 500,
+    };
+  }
 
-  // Sobrescribe permisos si se especifican
-  if (resolvedMode) session.setMode(resolvedMode);
-  if (resolvedAllowed) session.setAllowedTools(resolvedAllowed);
+  session.setMode(mode);
+  if (allowedTools !== null) session.setAllowedTools(allowedTools);
 
   const resultPromise = new Promise<{ ok: boolean; answer?: string; error?: string; cancelled?: boolean }>((resolve) => {
     // El timeout se cancela al resolver: si quedaba armado, el temporizador de
@@ -1530,6 +1582,13 @@ export async function executeTask(
     // una sesión que nadie consulta y, al pasar de MAX_SESSIONS, el desalojo
     // podría tirar a la padre y dejar sin padre a los siguientes spawn_agents.
     removeSession(session.id);
+    if (worktree && !input.keepWorktree) {
+      try {
+        removeWorktree(worktree.worktreePath, projectPath, true, worktree.branch);
+      } catch {
+        /* best-effort: un worktree huérfano no debe tapar el resultado */
+      }
+    }
   }
 }
 

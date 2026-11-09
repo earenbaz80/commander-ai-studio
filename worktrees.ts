@@ -75,10 +75,21 @@ export function createWorktree(threadId: string, projectPath: string): WorktreeR
   return { worktreePath: base, branch, copied, bootstrapped };
 }
 
-export function removeWorktree(worktreePath: string, projectPath: string, force = false): void {
+export function removeWorktree(
+  worktreePath: string,
+  projectPath: string,
+  force = false,
+  branch?: string
+): void {
   const args = ['worktree', 'remove', worktreePath];
   if (force) args.push('--force');
   runGit(projectPath, args);
+  if (branch) {
+    try { runGit(projectPath, ['branch', '-D', branch]); } catch { /* la rama ya no existe */ }
+  }
+  // El directorio padre queda vacío tras retirar el worktree; si otro proceso
+  // lo usa, `rmdir` falla y no tocamos nada.
+  try { fs.rmdirSync(path.dirname(worktreePath)); } catch { /* no vacío */ }
 }
 
 export function listWorktrees(projectPath: string): { path: string; head: string; branch: string }[] {
