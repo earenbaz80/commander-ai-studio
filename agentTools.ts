@@ -33,6 +33,7 @@ import { runBrowserAction } from './browserSession';
 import { checkPreview, listPreviews, openPreview, stopPreview } from './previewServer';
 import { executeLinearAction } from './src/integrations/linearActions';
 import { getAccessToken } from './src/integrations/oauth';
+import { buildTestEvidence, captureVerificationEnvironment, isTestCommand } from './src/artifacts/testEvidence';
 
 const AGENT_ROOT = process.cwd();
 
@@ -562,6 +563,25 @@ async function runFileChangeHooks(absPath: string, root: string): Promise<{ ran:
     ...(formatted.output ? { output: formatted.output } : {}),
     ...(formatted.error ? { error: formatted.error } : {}),
   };
+}
+
+/**
+ * Commit y rama del proyecto para la evidencia de tests. Git es opcional: si
+ * el directorio no es un repo, el artifact conserva Node/SO y sigue siendo útil.
+ */
+async function readGitEnvironment(cwd: string): Promise<{ commit?: string; branch?: string }> {
+  try {
+    const { execFileSync } = await import('child_process');
+    const opts = { cwd, encoding: 'utf8' as const, timeout: 1500, maxBuffer: 64 * 1024 };
+    const commit = String(execFileSync('git', ['rev-parse', '--short', 'HEAD'], opts)).trim();
+    const branch = String(execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], opts)).trim();
+    return {
+      ...(commit ? { commit } : {}),
+      ...(branch ? { branch } : {}),
+    };
+  } catch {
+    return {};
+  }
 }
 
 /**
@@ -1162,6 +1182,26 @@ async function executeAgentToolCore(
     // el panel ya dijera «cancelado» (un `vite build` terminaba de escribir
     // `dist/` después de pulsar «parar»).
     if (result.aborted) return { ok: false, error: 'Cancelado por el usuario' };
+    const finishedAt = Date.now();
+    const durationMs = finishedAt - start;
+    // Sólo los comandos de tests dejan evidencia. Un `npm run build` o un
+    // `git status` no deben aparecer como “test no ejecutado” en el artifact.
+    const testEvidence = isTestCommand(cmd)
+      ? buildTestEvidence({
+          command: cmd,
+          cwd,
+          exitCode: result.exitCode,
+          startedAt: start,
+          finishedAt,
+          durationMs,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          timedOut: result.timedOut,
+        })
+      : null;
+    const environment = testEvidence
+      ? await captureVerificationEnvironment(() => readGitEnvironment(cwd))
+      : null;
     const cap = 8000;
     const clip = (s: string) => (s.length > cap ? s.slice(0, cap) + `\n… [${s.length - cap} caracteres omitidos]` : s);
     return {
@@ -1170,9 +1210,11 @@ async function executeAgentToolCore(
         stdout: clip(result.stdout),
         stderr: clip(result.stderr),
         exitCode: result.exitCode,
-        durationMs: Date.now() - start,
+        durationMs,
         stdoutBytes: result.stdout.length,
         stderrBytes: result.stderr.length,
+        ...(testEvidence ? { testEvidence } : {}),
+        ...(environment ? { environment } : {}),
         ...(result.stdout.length > cap || result.stderr.length > cap ? { truncated: true, hint: 'Salida recortada. Para comandos largos usa background:true y shell.job { action: "logs" }.' } : {}),
         ...(result.timedOut ? { timedOut: true } : {}),
       },

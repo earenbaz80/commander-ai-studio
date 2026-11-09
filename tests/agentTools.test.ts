@@ -217,6 +217,31 @@ test('shell.run con allowUnlisted ejecuta el comando pero respeta los bloqueos',
   assert.equal(bloqueado.status, 403);
 });
 
+test('shell.run adjunta evidencia y entorno a un comando de tests', async () => {
+  const dir = path.join(TEST_DIR, 'evidence');
+  fs.mkdirSync(dir, { recursive: true });
+  const fixture = path.join(dir, 'sample.test.mjs');
+  fs.writeFileSync(
+    fixture,
+    "import { test } from 'node:test';\ntest('ok', () => {});\n",
+    'utf8',
+  );
+  try {
+    const res: any = await executeAgentTool('shell.run', {
+      command: 'node --test tests/tmp/evidence/sample.test.mjs',
+      allowUnlisted: true,
+    });
+    assert.equal(res.ok, true, res.ok ? '' : res.error);
+    assert.equal(res.data.testEvidence.status, 'passed');
+    assert.equal(res.data.testEvidence.exitCode, 0);
+    assert.match(String(res.data.testEvidence.command), /node --test/);
+    assert.equal(res.data.environment.node, process.version);
+    assert.ok(String(res.data.environment.os).startsWith(process.platform));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('shell.run interactive escribe en el stdin del proceso', async () => {
   // Root temporal: la lista blanca de este repo no incluye shell.job, y lo que
   // se prueba aquí es el stdin, no la configuración del proyecto.
