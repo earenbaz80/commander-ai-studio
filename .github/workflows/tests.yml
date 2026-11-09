@@ -172,13 +172,37 @@ jobs:
 
       # El E2E del artifact necesita `server.ts` real y Chromium; se ejecuta
       # primero para que su fallo no quede enterrado en la suite completa.
+      # Cada paso escribe su propio blob: el reporter HTML limpia su carpeta al
+      # arrancar, así que compartirla borraría el resultado del paso anterior.
       - name: Run agent verification E2E (Chromium)
-        run: npx playwright test tests/e2e/agentVerificationArtifact.spec.ts --project=chromium
+        run: npx playwright test tests/e2e/agentVerificationArtifact.spec.ts --project=chromium --reporter=blob,list
+        env:
+          PLAYWRIGHT_BLOB_OUTPUT_DIR: blob-report/agent
+          PLAYWRIGHT_BLOB_OUTPUT_NAME: agent.zip
 
       # La suite general excluye ese spec porque ya corrió arriba; en Firefox y
       # móvil se salta por diseño.
       - name: Run Playwright tests
-        run: npx playwright test --grep-invert "Artifacts de verificación · productor real"
+        run: npx playwright test --grep-invert "Artifacts de verificación · productor real" --reporter=blob,list
+        env:
+          PLAYWRIGHT_BLOB_OUTPUT_DIR: blob-report/general
+          PLAYWRIGHT_BLOB_OUTPUT_NAME: general.zip
+
+      # Los dos blobs se fusionan en un único HTML + JSON para que el artifact
+      # incluya también el E2E del artifact, no sólo la suite general.
+      - name: Merge Playwright reports
+        if: always()
+        shell: bash
+        run: |
+          rm -rf blob-report/all
+          mkdir -p blob-report/all
+          cp blob-report/agent/agent.zip blob-report/all/ 2>/dev/null || true
+          cp blob-report/general/general.zip blob-report/all/ 2>/dev/null || true
+          npx playwright merge-reports --reporter=html,json blob-report/all
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report
+          PLAYWRIGHT_HTML_OPEN: never
+          PLAYWRIGHT_JSON_OUTPUT_FILE: playwright-report/results.json
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v7
