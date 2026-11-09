@@ -335,9 +335,12 @@ test('fs.glob y fs.grep buscan en el root de la petición, no en el repo', async
     ['src/solo-aqui.ts'],
     'glob no debe devolver ficheros del repo real'
   );
+  // `dir` puede venir con nombre corto 8.3 (RUNNER~1) en el temp de Windows;
+  // la tool devuelve la ruta canónica que usa para recorrer el árbol.
+  const expectedRoot = fs.realpathSync.native(path.resolve(dir));
   assert.deepEqual(
     globData.roots.map((root: string) => root.replace(/\\/g, '/').toLowerCase()),
-    [path.resolve(dir).replace(/\\/g, '/').toLowerCase()],
+    [expectedRoot.replace(/\\/g, '/').toLowerCase()],
     'la búsqueda debe reportar el root pedido'
   );
 
