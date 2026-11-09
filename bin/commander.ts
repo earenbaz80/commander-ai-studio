@@ -6,8 +6,8 @@ import fs from 'fs';
 import { loadConfig, writeConfig, getConfigPath, getProviderConfig } from '../src/config/index.js';
 import { CommanderConfigSchema } from '../src/config/schema.js';
 import { checkHealth, consumeSessionStream, forkServerSession, loadServerSession, respondApproval, runAgent } from '../src/cli/agentClient.js';
-import { encodeEvent, makeEventV2, type SessionStateV2 } from '../src/agent/sessionTypes.js';
-import { canPromptApprovals, AgentRenderer, promptApprovalDecision, Tui } from '../src/cli/tui.js';
+import { encodeEvent, makeEventV2, type QuestionV2, type SessionStateV2 } from '../src/agent/sessionTypes.js';
+import { canPromptApprovals, AgentRenderer, promptApprovalDecision, promptQuestionAnswer, Tui } from '../src/cli/tui.js';
 import { ApprovalQueue } from '../src/cli/approvals.js';
 import { GEMINI_DEFAULT_MODEL } from '../src/config/geminiModels.js';
 
@@ -361,13 +361,19 @@ program
       return;
     }
 
+    const tui = new Tui({ interactive: Boolean(process.stdout.isTTY) });
     const renderer = new AgentRenderer({
       task,
       model,
       maxSteps,
       serverUrl,
-      tui: new Tui({ interactive: Boolean(process.stdout.isTTY) }),
+      tui,
     });
+    // Con una terminal real respondemos en el cliente; con pipes o `--json` el
+    // bucle recibe la pregunta como evento y la cancela sin bloquearse.
+    const askUser = canPromptApprovals()
+      ? (question: QuestionV2) => promptQuestionAnswer(question, { tui })
+      : undefined;
 
     let result: { answer: string; steps: number };
     try {
@@ -381,6 +387,7 @@ program
         resumeFrom,
         goal: resumeFrom?.goal,
         persistSession: !resumeFrom,
+        askUser,
         onEvent: (event) => renderer.handle(event),
       });
     } catch (e) {

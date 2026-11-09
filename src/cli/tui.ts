@@ -12,6 +12,7 @@ import type {
   ApprovalDecision,
   ApprovalRequestV2,
   CliEventV2,
+  QuestionV2,
   SessionStateV2,
 } from '../agent/sessionTypes';
 
@@ -275,8 +276,11 @@ export class AgentRenderer {
         );
         break;
 
-      // F1-06 todavía no tiene canal interactivo en el CLI.
       case 'question':
+        // El prompt de la pregunta se pinta desde `bin/commander.ts`; aquí solo
+        // cerramos el stream para no mezclarlo con la entrada interactiva.
+        t.stopSpinner();
+        this.closeStream();
         break;
 
       case 'done':
@@ -524,6 +528,223 @@ export function promptApprovalDecision(
     if (opts.signal) {
       if (opts.signal.aborted) {
         finish(null);
+        return;
+      }
+      opts.signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+}
+
+export interface QuestionPromptOptions extends ApprovalPromptOptions {
+  /** Tiempo máximo de espera; por defecto 10 min (F1-06). */
+  timeoutMs?: number;
+}
+
+export interface QuestionPromptResult {
+  answer: string | null;
+  reason?: 'cancelled' | 'timeout';
+}
+
+export const QUESTION_TIMEOUT_MS = 10 * 60 * 1000;
+
+type QuestionKey =
+  | { kind: 'enter' }
+  | { kind: 'backspace' }
+  | { kind: 'escape' }
+  | { kind: 'interrupt' }
+  | { kind: 'up' }
+  | { kind: 'down' }
+  | { kind: 'char'; value: string };
+
+/** Separa un chunk de stdin en teclas para el prompt de `ask_user`. */
+function parseQuestionKeys(data: string): QuestionKey[] {
+  const keys: QuestionKey[] = [];
+  for (let i = 0; i < data.length; i += 1) {
+    const char = data[i];
+    if (char === '\x1b') {
+      const rest = data.slice(i);
+      if (rest.startsWith('\x1b[A') || rest.startsWith('\x1bOA')) {
+        keys.push({ kind: 'up' });
+        i += 2;
+        continue;
+      }
+      if (rest.startsWith('\x1b[B') || rest.startsWith('\x1bOB')) {
+        keys.push({ kind: 'down' });
+        i += 2;
+        continue;
+      }
+      keys.push({ kind: 'escape' });
+      continue;
+    }
+    if (char === '\r' || char === '\n') {
+      keys.push({ kind: 'enter' });
+      continue;
+    }
+    if (char === '\x7f' || char === '\x08') {
+      keys.push({ kind: 'backspace' });
+      continue;
+    }
+    if (char === '\x03') {
+      keys.push({ kind: 'interrupt' });
+      continue;
+    }
+    if (char >= ' ') keys.push({ kind: 'char', value: char });
+  }
+  return keys;
+}
+
+/**
+ * Pregunta de `ask_user`: opciones numeradas, texto libre y cancelación con
+ * `q`/Esc/Ctrl+C. Devuelve `null` con motivo `timeout` a los 10 minutos.
+ *
+ * A diferencia del menú de aprobaciones, las opciones no se recorren con
+ * flechas: se eligen por número para que el texto libre siga siendo directo.
+ * Restaura el modo raw y quita sus listeners pase lo que pase.
+ */
+export function promptQuestionAnswer(
+  question: QuestionV2,
+  opts: QuestionPromptOptions
+): Promise<QuestionPromptResult> {
+  const input = opts.input ?? (process.stdin as unknown as ApprovalPromptInput);
+  const output = opts.output ?? (process.stdout as unknown as ApprovalPromptOutput);
+  const t = opts.tui;
+  const options = (question.options ?? [])
+    .map((option) => String(option).trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  const allowFreeText = question.allowFreeText !== false;
+
+  return new Promise<QuestionPromptResult>((resolve) => {
+    let buffer = '';
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const cleanup = (): void => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      input.removeListener('data', onData);
+      input.removeListener('end', onEnd);
+      input.removeListener('close', onEnd);
+      input.removeListener('error', onEnd);
+      opts.signal?.removeEventListener('abort', onAbort);
+      try {
+        input.setRawMode?.(false);
+      } catch {
+        /* la terminal ya se restauró */
+      }
+      try {
+        input.pause?.();
+      } catch {
+        /* stdin cerrado */
+      }
+    };
+
+    const finish = (result: QuestionPromptResult, note?: string, echo?: string): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (result.answer) {
+        output.write(echo ? `${echo}\n` : '\n');
+      } else {
+        output.write(`\n${t.gray(`  ${note ?? 'pregunta cancelada'}`)}\n`);
+      }
+      resolve(result);
+    };
+
+    const invalid = (detail: string): void => {
+      output.write(
+        `\n${t.red('  opción inválida')} ${t.gray(detail)}\n${t.cyan('  › ')}`
+      );
+    };
+
+    const onData = (chunk: Buffer | string): void => {
+      if (settled) return;
+      for (const key of parseQuestionKeys(String(chunk))) {
+        if (settled) return;
+        if (key.kind === 'up' || key.kind === 'down') continue;
+        if (key.kind === 'escape') {
+          finish({ answer: null, reason: 'cancelled' }, 'pregunta cancelada');
+          return;
+        }
+        if (key.kind === 'interrupt') {
+          finish({ answer: null, reason: 'cancelled' }, 'pregunta cancelada');
+          opts.onInterrupt?.();
+          return;
+        }
+        if (key.kind === 'backspace') {
+          if (!buffer) continue;
+          buffer = buffer.slice(0, -1);
+          output.write('\b \b');
+          continue;
+        }
+        if (key.kind === 'enter') {
+          const answer = buffer.trim();
+          if (answer) finish({ answer });
+          else if (options.length) invalid(`elige 1-${options.length} o escribe una respuesta`);
+          else invalid('escribe una respuesta');
+          continue;
+        }
+
+        const value = key.value;
+        if (!buffer && options.length && /^\d$/.test(value)) {
+          const option = options[Number(value) - 1];
+          if (option) finish({ answer: option }, undefined, option);
+          else invalid(`no hay opción ${value}; elige 1-${options.length}`);
+          continue;
+        }
+        if (!buffer && value === 'q') {
+          finish({ answer: null, reason: 'cancelled' }, 'pregunta cancelada');
+          return;
+        }
+        if (!allowFreeText) {
+          invalid(options.length ? 'elige una opción numerada' : 'esta pregunta no acepta texto libre');
+          continue;
+        }
+        buffer += value;
+        output.write(value);
+      }
+    };
+    const onEnd = (): void =>
+      finish({ answer: null, reason: 'cancelled' }, 'pregunta cancelada');
+    const onAbort = (): void =>
+      finish({ answer: null, reason: 'cancelled' }, 'pregunta cancelada');
+
+    output.write(
+      `${t.yellow('?')} ${t.bold(question.header?.trim() || 'Pregunta del agente')}\n`
+    );
+    output.write(`${question.text}\n`);
+    options.forEach((option, i) => {
+      output.write(`  ${t.cyan(`${i + 1})`)} ${option}\n`);
+    });
+    output.write(
+      t.gray(
+        allowFreeText
+          ? '  Escribe la respuesta y pulsa Enter · q cancela\n'
+          : '  Elige una opción · q cancela\n'
+      )
+    );
+    output.write(t.cyan('  › '));
+
+    timer = setTimeout(
+      () => finish({ answer: null, reason: 'timeout' }, 'tiempo agotado'),
+      Math.max(1, opts.timeoutMs ?? QUESTION_TIMEOUT_MS)
+    );
+
+    try {
+      input.setRawMode?.(true);
+    } catch {
+      /* sin TTY real: el llamador ya comprobó canPromptApprovals */
+    }
+    input.resume?.();
+    input.on('data', onData);
+    input.once('end', onEnd);
+    input.once('close', onEnd);
+    input.once('error', onEnd);
+    if (opts.signal) {
+      if (opts.signal.aborted) {
+        finish({ answer: null, reason: 'cancelled' }, 'pregunta cancelada');
         return;
       }
       opts.signal.addEventListener('abort', onAbort, { once: true });
