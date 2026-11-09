@@ -170,8 +170,15 @@ jobs:
       - name: Build (Vite)
         run: npm run build
 
+      # El E2E del artifact necesita `server.ts` real y Chromium; se ejecuta
+      # primero para que su fallo no quede enterrado en la suite completa.
+      - name: Run agent verification E2E (Chromium)
+        run: npx playwright test tests/e2e/agentVerificationArtifact.spec.ts --project=chromium
+
+      # La suite general excluye ese spec porque ya corrió arriba; en Firefox y
+      # móvil se salta por diseño.
       - name: Run Playwright tests
-        run: npx playwright test
+        run: npx playwright test --grep-invert "Artifacts de verificación · productor real"
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v7

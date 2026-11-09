@@ -41,10 +41,14 @@ describe('AgentApprovalModal', () => {
       />
     );
     fireEvent.click(await screen.findByText('Aplicar seleccionados'));
-    expect(onResolve).toHaveBeenCalledWith(true, {
-      toolId: 'fs.write',
-      input: { path: 'x.txt', content: 'linea1\nCAMBIADA', overwrite: true },
-    });
+    expect(onResolve).toHaveBeenCalledWith(
+      true,
+      {
+        toolId: 'fs.write',
+        input: { path: 'x.txt', content: 'linea1\nCAMBIADA', overwrite: true },
+      },
+      expect.stringContaining('+++ b/x.txt')
+    );
   });
 
   test('fs.edit calcula la propuesta y la aplica como override', async () => {
@@ -57,10 +61,14 @@ describe('AgentApprovalModal', () => {
       />
     );
     fireEvent.click(await screen.findByText('Aplicar seleccionados'));
-    expect(onResolve).toHaveBeenCalledWith(true, {
-      toolId: 'fs.write',
-      input: { path: 'p.txt', content: 'a\nB\nc', overwrite: true },
-    });
+    expect(onResolve).toHaveBeenCalledWith(
+      true,
+      {
+        toolId: 'fs.write',
+        input: { path: 'p.txt', content: 'a\nB\nc', overwrite: true },
+      },
+      expect.stringContaining('+++ b/p.txt')
+    );
   });
 
   test('fs.edit sin coincidencia cae al modo simple de aprobar/denegar', async () => {
@@ -86,10 +94,14 @@ describe('AgentApprovalModal', () => {
       />
     );
     fireEvent.click(await screen.findByText('Aplicar seleccionados'));
-    expect(onResolve).toHaveBeenCalledWith(true, {
-      toolId: 'fs.write',
-      input: { path: 'nuevo.txt', content: 'hola', overwrite: true },
-    });
+    expect(onResolve).toHaveBeenCalledWith(
+      true,
+      {
+        toolId: 'fs.write',
+        input: { path: 'nuevo.txt', content: 'hola', overwrite: true },
+      },
+      expect.stringContaining('+++ b/nuevo.txt')
+    );
   });
 
   test('tools no-patch muestran la aprobación genérica', () => {

@@ -112,6 +112,24 @@ describe('evidencia de tests', () => {
     expect(tailText('corto', 50)).toBe('corto');
     expect(redactSecrets('token=secreto')).toBe('token=[REDACTED]');
   });
+
+  test('redacta claves compuestas y cabeceras Basic', () => {
+    expect(redactSecrets('OPENAI_API_KEY=super-secreto')).toBe(
+      'OPENAI_API_KEY=[REDACTED]'
+    );
+    expect(redactSecrets('client_secret=super-secreto')).toBe(
+      'client_secret=[REDACTED]'
+    );
+    expect(redactSecrets('access_token: super-secreto')).toBe(
+      'access_token: [REDACTED]'
+    );
+    expect(redactSecrets('Authorization: Basic dXNlcjpwYXNzd29yZA==')).toBe(
+      'Authorization: Basic [REDACTED]'
+    );
+    expect(redactSecrets('Authorization: Bearer abcdefghijkl')).toBe(
+      'Authorization: Bearer [REDACTED]'
+    );
+  });
 });
 
 describe('entorno de verificación', () => {

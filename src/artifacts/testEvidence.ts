@@ -67,7 +67,11 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
   [/\bAKIA[0-9A-Z]{16}\b/g, '[REDACTED_AWS_KEY]'],
   [/(\bBearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, '$1[REDACTED]'],
   [
-    /(\b(?:api[_-]?key|token|secret|password)\b\s*[:=]\s*)(["']?)[^\s"']+\2/gi,
+    /(\b(?:Proxy-)?Authorization\s*:\s*(?:Basic|Bearer)\s+)[A-Za-z0-9._~+/=-]+/gi,
+    '$1[REDACTED]',
+  ],
+  [
+    /(\b[A-Za-z0-9_]*(?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|secret|token|password|passwd|pwd|credentials?)\b\s*[:=]\s*)(["']?)[^\s"']+\2/gi,
     '$1$2[REDACTED]$2',
   ],
 ];

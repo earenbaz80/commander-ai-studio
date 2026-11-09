@@ -5,6 +5,8 @@ import { uid } from './id';
 import { saveSession, saveSessionThrottled, type AgentSession } from './sessions';
 import { clearActiveSession, rememberTask } from './activeSession';
 import { recordMetric } from './telemetry';
+import { getActiveProjectRoot } from './activeProject';
+import { persistVerificationArtifactFromRun } from '../artifacts/fromAgentRun';
 import type { AgentState, ApprovalRequest, ApprovalResult } from './types';
 
 export function useAgent(cwd: string, model?: string) {
@@ -14,6 +16,10 @@ export function useAgent(cwd: string, model?: string) {
   const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null);
   const resolver = useRef<((v: ApprovalResult) => void) | null>(null);
   const orchestratorRef = useRef<AgentOrchestrator | null>(null);
+  /** true entre el primer estado `running` y el cierre de esa corrida. */
+  const runWasRunning = useRef(false);
+  /** Proyecto activo al arrancar: el usuario puede cambiar de pestaña después. */
+  const runProjectPath = useRef('');
 
   /**
    * Autoguardado del avance.
@@ -56,7 +62,24 @@ export function useAgent(cwd: string, model?: string) {
           autosave(orch.getState());
         }
       },
-      onStateChange: (s) => { setState(s); autosave(s); },
+      onStateChange: (s) => {
+        if (s.running) {
+          runWasRunning.current = true;
+        } else if (runWasRunning.current) {
+          runWasRunning.current = false;
+          const projectPath =
+            runProjectPath.current || getActiveProjectRoot() || s.task?.cwd || cwd;
+          void persistVerificationArtifactFromRun({
+            state: s,
+            projectPath,
+          }).catch((e) => {
+            // Un artifact no debe tumbar la corrida; queda el aviso en consola.
+            console.warn('No se pudo guardar el artifact de verificación:', e);
+          });
+        }
+        setState(s);
+        autosave(s);
+      },
       approve: async (req) => {
         // Las preguntas de `ask_user` viajan por este canal aunque no sean
         // peligrosas: es el único punto donde el bucle espera al usuario.
@@ -92,6 +115,7 @@ export function useAgent(cwd: string, model?: string) {
     // sesión padre (objetivo, cwd, modelo). Sin red aquí: la sesión se crea en
     // el primer uso y no arranca el bucle del LLM.
     const taskId = uid('task');
+    runProjectPath.current = getActiveProjectRoot() || cwd;
     rememberTask({ taskId, goal, cwd, model });
     // maxSteps cuenta micro-steps (thought/call/result); 40 ≈ 6-8 turnos LLM
     loop.start({ id: taskId, goal, cwd, maxSteps: 40, plan, ...(opts?.persistThread === false ? { persistThread: false } : {}) });
@@ -112,6 +136,7 @@ export function useAgent(cwd: string, model?: string) {
   const continueSession = (s: AgentSession) => {
     const task = s.state?.task;
     if (!task) return false;
+    runProjectPath.current = getActiveProjectRoot() || task.cwd || cwd;
     orchestrator.restoreState(s.state);
     setState({ ...orchestrator.getState() });
     // Continuar puede ocurrir sin restaurar antes: se anota igual (sin red).
@@ -133,6 +158,7 @@ export function useAgent(cwd: string, model?: string) {
   const resumeTask = (): boolean => {
     const task = orchestrator.getState().task;
     if (!task) return false;
+    runProjectPath.current = getActiveProjectRoot() || task.cwd || cwd;
     rememberTask({ taskId: task.id, goal: task.goal, cwd: task.cwd || cwd, model });
     setState({ ...orchestrator.getState() });
     void loop.resume({ ...task, cwd: task.cwd || cwd });
@@ -147,8 +173,18 @@ export function useAgent(cwd: string, model?: string) {
     } catch { /* ignore */ }
   };
   const runTool = (toolId: string, input: unknown) => orchestrator.runTool(toolId, input);
-  const resolveApproval = (ok: boolean, override?: { toolId: string; input: unknown }, answer?: string) =>
-    resolver.current?.({ approved: ok, override, answer });
+  const resolveApproval = (
+    ok: boolean,
+    override?: { toolId: string; input: unknown },
+    diff?: string,
+    answer?: string
+  ) =>
+    resolver.current?.({
+      approved: ok,
+      override,
+      ...(diff ? { diff } : {}),
+      ...(answer ? { answer } : {}),
+    });
   const rollbackRun = async () => {
     const r = await orchestrator.rollbackRun();
     setState({ ...orchestrator.getState() });
