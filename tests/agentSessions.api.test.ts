@@ -311,6 +311,63 @@ describe('sesiones autoritativas (F1-02)', () => {
     assert.equal(foreign.status, 400, foreign.raw);
   });
 
+  test('GET /api/agent/sessions/:id devuelve el plan con estados, archivos y criterios', async () => {
+    const { id } = await createSession();
+    const idle = await waitForState(id, ['idle'], 2_000);
+    const plan = [
+      // Plan legado: sólo `done`; el servidor debe migrarlo al leerlo.
+      { id: 'p1', text: 'leer el repo', done: true },
+      {
+        id: 'p2',
+        text: 'esperar review',
+        status: 'blocked',
+        done: false,
+        files: ['src/a.ts'],
+        criteria: 'review aprobada',
+      },
+      {
+        id: 'p3',
+        text: 'escribir el fix',
+        status: 'in_progress',
+        done: false,
+        files: ['src/a.ts', 'tests/a.test.ts'],
+        criteria: 'tsc en verde',
+      },
+    ];
+
+    const saved = await srv.request('PUT', `/api/agent/sessions/${id}/state`, {
+      state: { ...idle, plan },
+    });
+    assert.equal(saved.status, 200, saved.raw);
+
+    const expected = [
+      { id: 'p1', text: 'leer el repo', status: 'done', done: true },
+      {
+        id: 'p2',
+        text: 'esperar review',
+        status: 'blocked',
+        done: false,
+        files: ['src/a.ts'],
+        criteria: 'review aprobada',
+      },
+      {
+        id: 'p3',
+        text: 'escribir el fix',
+        status: 'in_progress',
+        done: false,
+        files: ['src/a.ts', 'tests/a.test.ts'],
+        criteria: 'tsc en verde',
+      },
+    ];
+    assert.deepEqual(saved.body.state.plan, expected, saved.raw);
+
+    const res = await srv.request('GET', `/api/agent/sessions/${id}`);
+    assert.equal(res.status, 200, res.raw);
+    assert.deepEqual(res.body.state.plan, expected);
+    assert.equal(res.body.state.plan[1].status, 'blocked');
+    assert.equal(res.body.state.plan[1].done, false, 'blocked nunca se pinta completado');
+  });
+
   test('crear sin run no arranca nada, y DELETE quita también el estado', async () => {
     const requestsBefore = provider.requests;
     const { id } = await createSession();

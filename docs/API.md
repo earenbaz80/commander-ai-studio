@@ -622,7 +622,7 @@ TUI— usa el mismo sobre:
   "status": "completed",
   "turns": [{"role": "user", "text": "…", "ts": 1700000000000}],
   "steps": [{"id": "step_1", "type": "thought", "title": "…", "content": "…", "status": "completed", "ts": 1700000000000}],
-  "plan": [{"id": "p1", "text": "…", "done": true}],
+  "plan": [{"id": "p1", "text": "…", "status": "in_progress", "files": ["src/a.ts"], "criteria": "…", "done": false}],
   "pendingApproval": null,
   "createdAt": 1700000000000,
   "updatedAt": 1700000001000,
@@ -633,6 +633,21 @@ TUI— usa el mismo sobre:
 `status` es `idle | running | completed | failed | cancelled`. Los estados
 legados del servidor se migran al leer: `done` → `completed`, `error` →
 `failed`, `stopped` → `cancelled`.
+
+### Plan (`SessionStateV2.plan` y evento `plan`)
+
+`plan` es una lista ordenada de pasos. `status` es la fuente de verdad y vale
+`pending | in_progress | done | blocked`; `done` es derivado (`true` sólo con
+`status: "done"`) y se conserva por compatibilidad. Cada paso puede incluir
+`files` (máximo 20 rutas) y `criteria` (criterio de aceptación).
+
+`update_plan` acepta la lista completa o parciales `{id, status}` (o
+`{id, done}`) para actualizar un paso existente sin repetir su texto; un parcial
+conserva `text`, `files` y `criteria` si no los reenvía. Los pasos nuevos sin
+`status` nacen `pending`, el plan se limita a 20 pasos y las entradas inválidas
+no borran el plan actual. Un plan legado con `done: true/false` se migra a
+`done`/`pending` al leerlo. El estado completo se devuelve en
+`GET /api/agent/sessions/:id` y el evento `plan` lleva el mismo array.
 
 ### `POST /api/agent/sessions`
 
