@@ -638,16 +638,18 @@ legados del servidor se migran al leer: `done` → `completed`, `error` →
 
 `plan` es una lista ordenada de pasos. `status` es la fuente de verdad y vale
 `pending | in_progress | done | blocked`; `done` es derivado (`true` sólo con
-`status: "done"`) y se conserva por compatibilidad. Cada paso puede incluir
-`files` (máximo 20 rutas) y `criteria` (criterio de aceptación).
+`status: "done"`) y se conserva por compatibilidad. `text` se recorta a 160
+caracteres y cada paso puede incluir `files` (máximo 20 rutas, sin duplicados y
+300 caracteres por ruta) y `criteria` (máximo 500 caracteres).
 
 `update_plan` acepta la lista completa o parciales `{id, status}` (o
 `{id, done}`) para actualizar un paso existente sin repetir su texto; un parcial
 conserva `text`, `files` y `criteria` si no los reenvía. Los pasos nuevos sin
-`status` nacen `pending`, el plan se limita a 20 pasos y las entradas inválidas
-no borran el plan actual. Un plan legado con `done: true/false` se migra a
-`done`/`pending` al leerlo. El estado completo se devuelve en
-`GET /api/agent/sessions/:id` y el evento `plan` lleva el mismo array.
+`status` nacen `pending`; el plan se limita a 20 pasos, se descartan las entradas
+sin texto ni `id` conocido, los `id` repetidos se ignoran a partir del primero y
+un valor que no sea un array no borra el plan actual. Un plan legado con
+`done: true/false` se migra a `done`/`pending` al leerlo. El estado completo se
+devuelve en `GET /api/agent/sessions/:id` y el evento `plan` lleva el mismo array.
 
 ### `POST /api/agent/sessions`
 
