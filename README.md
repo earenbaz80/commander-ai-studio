@@ -67,6 +67,36 @@ Vercel Hobby sólo permite volver a la producción inmediatamente anterior.
 - MCP: panel lateral (add/list/toggle, persiste `localStorage`). Schemas MCP se anexan al `toolSchema`.
 - Sesiones: auto-guardado en `localStorage` (20), restore/fork/delete. Métricas por tool en panel.
 
+### Contrato del plan
+
+El agente mantiene el plan con `update_plan`, una pseudo-tool que no toca el
+workspace: sólo refleja el progreso. Acepta la lista completa de pasos o
+entradas parciales `{id, status}` (también `{id, done}`) para cambiar un paso
+existente sin repetir su texto.
+
+| Campo | Tipo | Reglas |
+| --- | --- | --- |
+| `id` | string | Identificador estable. Hace falta para actualizar un paso existente; si falta en uno nuevo, se genera. |
+| `text` | string | Descripción corta, máximo 160 caracteres. Un parcial conserva el texto anterior si no se reenvía. |
+| `status` | `pending` \| `in_progress` \| `done` \| `blocked` | Fuente de verdad del estado. Un paso nuevo sin estado nace `pending`. |
+| `files` | string[] opcional | Archivos que toca el paso: máximo 20, sin duplicados y 300 caracteres por ruta. Un parcial conserva los anteriores si no se reenvían. |
+| `criteria` | string opcional | Criterio de aceptación, máximo 500 caracteres. Un parcial conserva el anterior si no se reenvía. |
+| `done` | boolean | Derivado de `status` (`done` es el único estado que lo pone en `true`). Se mantiene para clientes antiguos. |
+
+El plan completo se limita a 20 pasos. Se descartan las entradas sin texto ni
+`id` conocido, los `id` repetidos se ignoran a partir del primero y un valor que
+no sea un array no borra el plan actual. Los planes guardados antes de F1-13
+sólo tienen `done`: se migran al leerse (`true` → `done`, `false` → `pending`).
+
+```json
+{"items":[{"id":"p1","text":"leer el repo","status":"in_progress","files":["src/a.ts"],"criteria":"localizar el bug"}]}
+{"items":[{"id":"p1","status":"done"}]}
+```
+
+El plan viaja en `SessionStateV2.plan`, se guarda con la sesión (incluido
+`--resume`) y se expone en `GET /api/agent/sessions/:id` y en el evento `plan`.
+La TUI lo pinta como `☐` pendiente, `▸` en curso, `✔` hecho y `!` bloqueado.
+
 ### Adjuntarse a una corrida del escritorio
 
 Cuando el escritorio lanza una sesión, la terminal puede seguirla sin arrancar
