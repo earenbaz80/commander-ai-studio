@@ -35,7 +35,7 @@
 | F1-10 | [#11](https://github.com/earenbaz80/commander-ai-studio/issues/11) | Cerrado | `--resume` y `--fork` sin duplicar tool calls | 1,0 | F1-02 (flags), F1-08 (comandos) | PR3 |
 | F1-11 | [#12](https://github.com/earenbaz80/commander-ai-studio/issues/12) | Cerrado | Regresión del contrato `--json`/NDJSON | 0,5 | F1-01 | PR3 |
 | F1-12 | [#13](https://github.com/earenbaz80/commander-ai-studio/issues/13) | Cerrado | Seis subagentes con allowlist y worktree opcional | 2,0 | F1-02 | PR4 |
-| F1-13 | [#14](https://github.com/earenbaz80/commander-ai-studio/issues/14) | Abierto | Plan persistente con estados, archivos y criterios | 1,0 | F1-02 | PR4 |
+| F1-13 | [#14](https://github.com/earenbaz80/commander-ai-studio/issues/14) | Cerrado | Plan persistente con estados, archivos y criterios | 1,0 | F1-02 | PR4 |
 | F1-14 | [#15](https://github.com/earenbaz80/commander-ai-studio/issues/15) | Cerrado | Arnés E2E del CLI con proveedor falso determinista | 1,5 | F1-02, F1-04, F1-08 | PR5 |
 
 ## 3. Issues
@@ -399,6 +399,7 @@
 
 **Labels:** `f1`, `p1`, `area:agent`, `area:cli`
 **Estimación:** 1,0 d-persona · **Depende de:** F1-02
+**Estado:** Implementado y cerrado — 2026-11-09.
 
 **Por qué.** `PlanItem` sólo tiene `done: boolean`; el plan no distingue bloqueado de pendiente ni guarda archivos o criterios, y no sobrevive a reiniciar.
 
@@ -409,16 +410,18 @@
 - Persistir el plan con la sesión y exponerlo en `GET /api/agent/sessions/:id`.
 
 **Criterios de aceptación**
-- [ ] Un plan viejo se migra sin perder pasos.
-- [ ] `blocked` nunca se pinta como completado.
-- [ ] El plan sobrevive a reiniciar el servidor y a `--resume`.
-- [ ] `update_plan` parcial (`{id, status}`) actualiza sin repetir el texto.
+- [x] Un plan viejo se migra sin perder pasos.
+- [x] `blocked` nunca se pinta como completado.
+- [x] El plan sobrevive a reiniciar el servidor y a `--resume`.
+- [x] `update_plan` parcial (`{id, status}`) actualiza sin repetir el texto.
 
 **Pruebas**
-- `tests/unit/planStatus.test.ts`: normalización, migración, topes, actualización parcial.
-- `tests/agent/planPersistence.test.ts`: plan tras reinicio y tras `--resume`.
+- `tests/unit/planStatus.test.ts`: 6/6 — normalización, migración, `blocked`, glifos, topes y actualización parcial.
+- `tests/agent/planPersistence.test.ts`: 3/3 — plan viejo migrado de disco, estados tras reiniciar y `getOrLoadSession` (`--resume`).
+- `tests/agentLoop.test.ts` 25/25 y `tests/cli/eventContract.test.ts` 9/9 — el bucle y el contrato v2 siguen verdes con `status`.
+- `tests/cli/e2e.test.ts` 16/16; `tsc`, `vite build`, `check:rules` y `check:criteria` en verde.
 
-**Archivos:** `src/agent/plan.ts`, `src/agent/llm.ts`, `agentSession.ts`, `src/cli/tui.ts`.
+**Archivos:** `src/agent/plan.ts`, `src/agent/sessionTypes.ts`, `src/agent/llm.ts`, `src/agent/fnTools.ts`, `agentSession.ts`, `src/cli/tui.ts`, `tests/unit/planStatus.test.ts`, `tests/agent/planPersistence.test.ts`.
 
 ---
 

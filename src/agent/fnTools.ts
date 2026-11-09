@@ -373,7 +373,7 @@ export const AGENT_FUNCTION_DECLARATIONS = [
   },
   {
     name: 'update_plan',
-    description: 'Actualizar el plan visible de la tarea. Envía la lista completa de pasos en orden y marca done:true los terminados (o manda sólo {id, done} para cambiar el estado de un paso ya listado). No ejecuta nada en el workspace: sólo refleja el progreso.',
+    description: 'Actualizar el plan visible de la tarea. Envía la lista completa de pasos en orden, o sólo {id, status} para cambiar el estado de un paso ya listado sin repetir el texto. status: pending, in_progress, done o blocked. No ejecuta nada en el workspace: sólo refleja el progreso.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -385,7 +385,10 @@ export const AGENT_FUNCTION_DECLARATIONS = [
             properties: {
               id: { type: 'STRING', description: 'Id estable; reutilízalo para actualizar un paso existente' },
               text: { type: 'STRING', description: 'Descripción corta del paso' },
-              done: { type: 'BOOLEAN', description: 'true si el paso ya está completado' },
+              status: { type: 'STRING', enum: ['pending', 'in_progress', 'done', 'blocked'], description: 'Estado del paso' },
+              files: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Archivos que toca el paso (opcional)' },
+              criteria: { type: 'STRING', description: 'Criterio de aceptación del paso (opcional)' },
+              done: { type: 'BOOLEAN', description: 'Compatibilidad: true equivale a status done' },
             },
           },
         },

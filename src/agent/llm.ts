@@ -17,7 +17,7 @@ export function buildSystemPrompt(ctx: LLMContext): string {
     `Eres un agente autónomo de ingeniería de código (Commander). Razona brevemente en texto y llama herramientas para avanzar hacia el objetivo. Si el objetivo ya está cumplido, responde SOLO texto final sin llamar herramientas.`
   );
   sections.push(
-    `PLAN: mantén el plan al día con \`update_plan\` (marca done:true lo terminado).`
+    `PLAN: mantén el plan al día con \`update_plan\` (status: pending/in_progress/done/blocked; envía {id,status} para cambios parciales).`
   );
   sections.push(
     `PROTOCOLO DE EDICIÓN:

@@ -9,6 +9,8 @@
  * en el proceso del usuario y tiene que poder importarlo tal cual.
  */
 
+import { planStatusOf, type PlanStatus } from './plan';
+
 export const SESSION_SCHEMA_VERSION = 2 as const;
 
 /** Modo del agente, igual que en el resto de la app. */
@@ -39,6 +41,10 @@ export interface SessionStepV2 {
 export interface SessionPlanItemV2 {
   id: string;
   text: string;
+  status: PlanStatus;
+  files?: string[];
+  criteria?: string;
+  /** Derivado de `status`; se conserva para consumidores antiguos. */
   done: boolean;
 }
 
@@ -341,7 +347,28 @@ function stepFrom(raw: unknown): SessionStepV2 | null {
 function planItemFrom(raw: unknown): SessionPlanItemV2 | null {
   const obj = asRecord(raw);
   if (!obj || typeof obj.id !== 'string' || !obj.id) return null;
-  return { id: obj.id, text: text(obj.text, 500), done: obj.done === true };
+  // Estados guardados antes de F1-13 sólo tienen `done`: se migran sin perder
+  // pasos (true → done, false → pending).
+  const status = planStatusOf(obj.status, obj.done) ?? 'pending';
+  const files = Array.isArray(obj.files)
+    ? [...new Set(
+        obj.files
+          .filter((value): value is string => typeof value === 'string')
+          .map((value) => text(value, 300))
+          .filter(Boolean)
+      )].slice(0, 20)
+    : [];
+  const criteria = typeof obj.criteria === 'string' && obj.criteria.trim()
+    ? text(obj.criteria, 500)
+    : '';
+  return {
+    id: obj.id,
+    text: text(obj.text, 500),
+    status,
+    done: status === 'done',
+    ...(files.length > 0 ? { files } : {}),
+    ...(criteria ? { criteria } : {}),
+  };
 }
 
 function approvalFrom(raw: unknown): ApprovalRequestV2 | null {

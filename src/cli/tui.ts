@@ -17,6 +17,7 @@ import type {
   SessionStateV2,
 } from '../agent/sessionTypes';
 import { DIFF_MAX_LINES, diffHunks, renderDiff, renderHunk } from './diff.js';
+import { planGlyph, type PlanStatus } from '../agent/plan';
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
@@ -167,6 +168,20 @@ export class AgentRenderer {
    * red en un volcado duplicado. En la primera conexión sí se pinta el
    * historial, porque el buffer de la sesión se cargó de disco.
    */
+  private planLine(item: SessionStateV2['plan'][number]): string {
+    const status: PlanStatus = item.status ?? (item.done ? 'done' : 'pending');
+    const glyph = planGlyph(status);
+    const icon = status === 'done' ? this.tui.green(glyph)
+      : status === 'in_progress' ? this.tui.cyan(glyph)
+      : status === 'blocked' ? this.tui.yellow(glyph)
+      : this.tui.gray(glyph);
+    const extras: string[] = [];
+    if (item.files?.length) extras.push(item.files.join(', '));
+    if (item.criteria) extras.push(item.criteria);
+    const detail = extras.length > 0 ? this.tui.gray(` · ${extras.join(' · ')}`) : '';
+    return `  ${icon} ${item.text}${detail}`;
+  }
+
   renderState(state: SessionStateV2): void {
     this.ensureHeader();
     this.tui.stopSpinner();
@@ -179,7 +194,7 @@ export class AgentRenderer {
     }
     this.sawEvent = true;
     for (const item of state.plan) {
-      this.tui.line(`  ${item.done ? this.tui.green('✔') : this.tui.gray('☐')} ${item.text}`);
+      this.tui.line(this.planLine(item));
     }
     if (state.pendingApproval) {
       this.tui.line(
@@ -271,7 +286,7 @@ export class AgentRenderer {
         t.stopSpinner();
         this.closeStream();
         for (const item of event.plan) {
-          t.line(`  ${item.done ? t.green('✔') : t.gray('☐')} ${item.text}`);
+          t.line(this.planLine(item));
         }
         break;
 

@@ -50,7 +50,7 @@ describe('sessionStore', () => {
     const state = stateWithSteps('sess_a', 3, 'contenido');
     state.status = 'completed';
     state.turns = [{ role: 'user', text: 'hola', ts: 1 }];
-    state.plan = [{ id: 'p1', text: 'leer', done: true }];
+    state.plan = [{ id: 'p1', text: 'leer', status: 'done', done: true }];
 
     store.save(state);
 
