@@ -27,6 +27,7 @@ import {
   type CliEventPayload,
   type CliEventV2,
   type QuestionV2,
+  type SessionMode,
   type SessionStateV2,
   type SessionStepV2,
   type SessionTurnV2,
@@ -74,6 +75,22 @@ export interface RunAgentOptions {
    * ejemplo en `--json` o sin TTY) la pregunta se cancela sin abrir un prompt.
    */
   askUser?: AskUserHandler;
+  /** Cancela el turno en vuelo (Ctrl+C del REPL). */
+  signal?: AbortSignal;
+  /** Modo del turno; plan/readonly no ofrecen tools que mutan el workspace. */
+  mode?: SessionMode;
+  /** Plantilla de agente visible en el prompt (F1-08). */
+  agent?: string;
+}
+
+/** Resultado de una corrida, con el estado final para encadenar turnos. */
+export interface RunAgentResult {
+  answer: string;
+  steps: number;
+  sessionId: string;
+  seq: number;
+  state?: SessionStateV2;
+  cancelled?: boolean;
 }
 
 /** Respuesta que el cliente da a una pregunta de `ask_user`. */
@@ -115,13 +132,15 @@ export async function checkHealth(
 export async function runTool(
   serverUrl: string,
   toolId: string,
-  input: unknown
+  input: unknown,
+  signal?: AbortSignal
 ): Promise<{ ok: boolean; data?: unknown; error?: string }> {
   try {
     const res = await fetch(`${normalizeServerUrl(serverUrl)}/api/agent/run-tool`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ toolId, input }),
+      signal,
     });
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) return { ok: false, error: String(data.error ?? `HTTP ${res.status}`) };
@@ -141,6 +160,54 @@ function streamRoute(model: string): string | null {
   return resolveStreamEndpoint(model);
 }
 
+/** Funciones que pueden mutar el workspace o un servicio externo. */
+const MUTATING_FUNCTIONS = new Set([
+  'fs_write',
+  'fs_edit',
+  'shell_run',
+  'shell_job',
+  'shell_pty',
+  'browser',
+  'preview',
+  'code_fix',
+  'task',
+  'spawn_agents',
+  'git_commit',
+  'git_worktree',
+  'git_rebase',
+  'git_conflict',
+  'code_run',
+  'run_file_change_hooks',
+  'worktree_create',
+  'mcp_call',
+  'linear',
+  'github_comment',
+]);
+
+/** Ids de tools que no se ofrecen ni se ejecutan en plan/readonly. */
+const MUTATING_TOOLS = new Set([
+  'fs.write',
+  'fs.edit',
+  'shell.run',
+  'shell.job',
+  'shell.pty',
+  'browser',
+  'preview',
+  'code.fix',
+  'task',
+  'spawn_agents',
+  'git.commit',
+  'git.worktree',
+  'git.rebase',
+  'git.conflict',
+  'code.run',
+  'run_file_change_hooks',
+  'worktree.create',
+  'mcp.call',
+  'linear',
+  'github.comment',
+]);
+
 /** Cuerpo común de la petición al LLM (compartido por streaming y no-streaming). */
 function buildPayload(
   opts: RunAgentOptions,
@@ -155,10 +222,21 @@ function buildPayload(
       ? `HISTORIAL:\n${history.join('\n')}`
       : 'Aún no hay pasos. Empieza explorando el proyecto.');
 
-  const systemInstruction =
+  const mode = opts.mode ?? 'build';
+  let systemInstruction =
     'Eres un agente autónomo de código. Razona brevemente y llama herramientas ' +
     `para avanzar hacia: ${objective}. Si el objetivo está cumplido, responde ` +
     'SOLO texto final sin llamar herramientas.';
+  if (mode === 'plan') {
+    systemInstruction +=
+      ' MODO PLAN: diseña, explora y propone; no edites archivos ni ejecutes comandos que muten el workspace.';
+  } else if (mode === 'readonly') {
+    systemInstruction +=
+      ' MODO REVISIÓN: inspecciona y reporta; no modifiques archivos ni el repositorio.';
+  }
+  if (opts.agent) {
+    systemInstruction += ` PLANTILLA DE AGENTE: ${opts.agent}.`;
+  }
 
   const payload: Record<string, unknown> = {
     contents: user,
@@ -169,8 +247,11 @@ function buildPayload(
     maxTokens: 2048,
   };
   // El CLI no pinta el plan y su bucle manda los nombres tal cual al backend:
-  // no le ofrecemos `update_plan`, que aquí no existe como tool.
-  const declarations = AGENT_FUNCTION_DECLARATIONS.filter((d) => d.name !== PLAN_TOOL);
+  // no le ofrecemos `update_plan`, que aquí no existe como tool. En plan y
+  // readonly tampoco se ofrecen las tools que mutan.
+  const declarations = AGENT_FUNCTION_DECLARATIONS.filter(
+    (d) => d.name !== PLAN_TOOL && (mode === 'build' || !MUTATING_FUNCTIONS.has(d.name))
+  );
   payload.tools =
     dialect === 'gemini'
       ? [{ functionDeclarations: declarations }]
@@ -198,6 +279,7 @@ async function streamModel(
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
     body: JSON.stringify(buildPayload(opts, history, dialect)),
+    signal: opts.signal,
   });
   if (!res.ok || !res.body) throw new Error(`LLM HTTP ${res.status}`);
 
@@ -275,6 +357,7 @@ async function callModel(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(buildPayload(opts, history, dialect)),
+    signal: opts.signal,
   });
   if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
 
@@ -357,6 +440,35 @@ export async function forkServerSession(serverUrl: string, id: string): Promise<
   return readSessionState(res);
 }
 
+/** Resumen de sesión que devuelve `GET /api/agent/sessions`. */
+export interface ServerSessionSummary {
+  id: string;
+  goal: string;
+  model?: string;
+  status?: string;
+  steps?: number;
+  createdAt?: number;
+}
+
+/** Lista las sesiones guardadas para `/resume` y `/fork` sin id. */
+export async function listServerSessions(serverUrl: string): Promise<ServerSessionSummary[]> {
+  const res = await fetch(sessionEndpoint(serverUrl, ''), {
+    signal: AbortSignal.timeout(10_000),
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    success?: boolean;
+    sessions?: unknown;
+    error?: string;
+  };
+  if (!res.ok || !body.success) throw new Error(String(body.error || `HTTP ${res.status}`));
+  if (!Array.isArray(body.sessions)) return [];
+  return body.sessions
+    .filter((item): item is ServerSessionSummary => {
+      return Boolean(item && typeof item === 'object' && typeof (item as { id?: unknown }).id === 'string');
+    })
+    .slice(0, 20);
+}
+
 /**
  * Responde a una aprobación pendiente de una sesión del servidor (F1-04).
  *
@@ -401,6 +513,7 @@ async function createServerSession(opts: RunAgentOptions): Promise<SessionStateV
         cwd: opts.cwd,
         model: opts.model || GEMINI_DEFAULT_MODEL,
         maxSteps: opts.maxSteps ?? 25,
+        mode: opts.mode || 'build',
         persist: true,
       }),
       signal: AbortSignal.timeout(4_000),
@@ -414,7 +527,7 @@ async function createServerSession(opts: RunAgentOptions): Promise<SessionStateV
 }
 
 /** Checkpoint best-effort: un fallo de disco/red no debe tumbar el agente. */
-async function saveServerState(serverUrl: string, state: SessionStateV2): Promise<void> {
+export async function saveServerState(serverUrl: string, state: SessionStateV2): Promise<void> {
   try {
     await fetch(sessionEndpoint(serverUrl, `/${encodeURIComponent(state.id)}/state`), {
       method: 'PUT',
@@ -684,15 +797,16 @@ function questionFromInput(input: Record<string, unknown>): QuestionV2 | null {
  * una sesión existente sin repetir el historial. El bucle sigue siendo local
  * para conservar el streaming hasta que F1-03 lo mueva al servidor.
  */
-export async function runAgent(
-  opts: RunAgentOptions
-): Promise<{ answer: string; steps: number; sessionId: string; seq: number }> {
+export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const resumed = opts.resumeFrom
     ? (JSON.parse(JSON.stringify(opts.resumeFrom)) as SessionStateV2)
     : null;
+  const requestedMode = opts.mode ?? resumed?.mode ?? 'build';
+  opts = { ...opts, mode: requestedMode };
   let sessionId = resumed?.id || opts.sessionId || '';
   let state: SessionStateV2 | null = resumed;
   let syncEnabled = Boolean(resumed);
+  let cancelled = false;
 
   // Las corridas normales del CLI dejan una sesión reanudable. Los tests
   // directos/goldens fijan `sessionId` y no habilitan `persistSession`, así que
@@ -710,18 +824,25 @@ export async function runAgent(
   const sequencer = new EventSequencer(sessionId, state?.steps.length ?? 0);
   const onEvent = opts.onEvent ?? (() => {});
   const emit = (payload: CliEventPayload) => onEvent(sequencer.next(payload));
-  const done = (answer: string, steps: number) => ({
+  const done = (answer: string, steps: number): RunAgentResult => ({
     answer,
     steps,
     sessionId: sequencer.sessionId,
     seq: sequencer.lastSeq,
+    ...(state ? { state } : {}),
+    ...(cancelled ? { cancelled: true } : {}),
   });
   const maxSteps = Math.max(1, opts.maxSteps ?? 25);
   const goal = state?.goal || opts.goal || opts.task;
   const model = opts.model || state?.model || GEMINI_DEFAULT_MODEL;
+  const mode = opts.mode ?? state?.mode ?? 'build';
   // A partir de aquí todo (incluido el prompt y el evento `session`) usa el
-  // objetivo persistido y el modelo real de la sesión reanudada.
-  opts = { ...opts, goal, model };
+  // objetivo persistido, el modelo y el modo reales de la sesión reanudada.
+  opts = { ...opts, goal, model, mode };
+  if (state) {
+    state.model = model;
+    state.mode = mode;
+  }
   const history: string[] = resumed
     ? (resumed.turns || []).map((turn) => `${turn.role.toUpperCase()}: ${turn.text}`)
     : [];
@@ -745,6 +866,17 @@ export async function runAgent(
     if (state.turns.length > 20) state.turns = state.turns.slice(-20);
     state.updatedAt = Date.now();
   };
+  const markCancelled = async (): Promise<void> => {
+    if (cancelled) return;
+    cancelled = true;
+    emit({ type: 'error', text: 'Turno cancelado.' });
+    if (state) {
+      state.status = 'cancelled';
+      state.error = 'Turno cancelado.';
+      state.updatedAt = Date.now();
+      await sync();
+    }
+  };
 
   if (state) {
     addTurn({ role: 'user', text: opts.task });
@@ -764,12 +896,16 @@ export async function runAgent(
       goal,
       cwd: opts.cwd,
       model,
-      mode: state?.mode || 'build',
+      mode,
       status: 'running',
     },
   });
 
   for (let i = 0; i < maxSteps; i++) {
+    if (opts.signal?.aborted) {
+      await markCancelled();
+      return done('', steps);
+    }
     steps = i + 1;
     emit({ type: 'status', text: `Paso ${steps}/${maxSteps}: pensando…` });
 
@@ -781,6 +917,10 @@ export async function runAgent(
         emit({ type: 'chunk', text })
       ));
     } catch (e) {
+      if (opts.signal?.aborted) {
+        await markCancelled();
+        return done('', steps);
+      }
       const text = e instanceof Error ? e.message : String(e);
       emit({ type: 'error', text });
       if (state) {
@@ -835,6 +975,18 @@ export async function runAgent(
         mapped.input && typeof mapped.input === 'object'
           ? (mapped.input as Record<string, unknown>)
           : {};
+      if (mode !== 'build' && MUTATING_TOOLS.has(mapped.tool)) {
+        const text = `Tool bloqueada en modo ${mode}: ${mapped.tool}`;
+        emit({ type: 'error', text });
+        history.push(`TOOL ${mapped.tool} → ERROR: ${text}`);
+        await addStep({
+          type: 'thought',
+          title: 'Tool bloqueada',
+          content: text,
+          status: 'failed',
+        });
+        continue;
+      }
       emit({ type: 'tool_call', tool: mapped.tool, input: mapped.input });
       await addStep({
         type: 'tool_call',
@@ -866,6 +1018,10 @@ export async function runAgent(
           } catch (e) {
             reply = { answer: null, reason: e instanceof Error ? e.message : String(e) };
           }
+        }
+        if (opts.signal?.aborted) {
+          await markCancelled();
+          return done('', steps);
         }
 
         const answer = typeof reply.answer === 'string' ? reply.answer.trim() : '';
@@ -899,10 +1055,16 @@ export async function runAgent(
         }
         continue;
       }
-      const result = await runTool(opts.serverUrl, mapped.tool, {
-        ...input,
-        root: opts.cwd,
-      });
+      const result = await runTool(
+        opts.serverUrl,
+        mapped.tool,
+        { ...input, root: opts.cwd },
+        opts.signal
+      );
+      if (opts.signal?.aborted) {
+        await markCancelled();
+        return done('', steps);
+      }
       const summary = result.ok ? summarize(result.data) : `ERROR: ${result.error}`;
       emit({ type: 'tool_result', tool: mapped.tool, ok: result.ok, summary });
       history.push(`TOOL ${mapped.tool} → ${summary}`);

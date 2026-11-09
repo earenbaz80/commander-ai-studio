@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { CommanderConfigSchema, CommanderConfig, DEFAULT_CONFIG, type ProviderConfig, type ToolsConfig, type UIConfig, type AgentConfig, type ServerConfig } from './schema';
+import { CommanderConfigSchema, CommanderConfig, DEFAULT_CONFIG, type ProviderConfig, type ToolsConfig, type UIConfig, type AgentConfig, type CliConfig, type ServerConfig } from './schema';
 import { GEMINI_DEFAULT_MODEL } from './geminiModels';
 
 /** Partial profundo: permite pasar solo las claves que se quieren cambiar. */
@@ -138,6 +138,73 @@ export function getConfigPath(): string | null {
 /** Fichero global de usuario: donde van las credenciales, fuera del proyecto. */
 export function getGlobalConfigPath(): string {
   return GLOBAL_CONFIG_FILE;
+}
+
+/** Preferencias del REPL que sobreviven entre procesos. */
+export interface CliPreferences {
+  lastModel?: string;
+  lastAgent?: string;
+  lastMode?: NonNullable<CliConfig['lastMode']>;
+}
+
+/**
+ * Lee `cli.*` sin variables de entorno ni defaults del agente: el REPL decide
+ * la precedencia final (flag > sesión > config > defecto).
+ */
+export function getCliPreferences(opts: { cwd?: string } = {}): CliPreferences {
+  const cli = loadConfig({ cwd: opts.cwd, skipCache: true }).cli;
+  if (!cli) return {};
+  return {
+    ...(cli.lastModel ? { lastModel: cli.lastModel } : {}),
+    ...(cli.lastAgent ? { lastAgent: cli.lastAgent } : {}),
+    ...(cli.lastMode ? { lastMode: cli.lastMode } : {}),
+  };
+}
+
+/**
+ * Escribe sólo `cli.*` en el fichero de configuración, sin fusionar el entorno
+ * (para no guardar una API key que vino de una variable) y con reemplazo
+ * atómico del archivo.
+ */
+export function saveCliPreferences(
+  prefs: CliPreferences,
+  opts: { cwd?: string } = {}
+): string {
+  const cwd = opts.cwd || process.cwd();
+  const filePath = findConfigFile(cwd) || path.join(cwd, 'commander.json');
+  const raw = fs.existsSync(filePath) ? loadConfigFile(filePath) : {};
+  const cli: Record<string, string> = {};
+  if (prefs.lastModel?.trim()) cli.lastModel = prefs.lastModel.trim();
+  if (prefs.lastAgent?.trim()) cli.lastAgent = prefs.lastAgent.trim();
+  if (prefs.lastMode) cli.lastMode = prefs.lastMode;
+
+  const next: Record<string, unknown> = { ...raw };
+  if (Object.keys(cli).length > 0) next.cli = cli;
+  else delete next.cli;
+
+  const validated = CommanderConfigSchema.parse(next);
+  const dir = path.dirname(filePath);
+  fs.mkdirSync(dir, { recursive: true });
+  const temp = path.join(
+    dir,
+    `.${path.basename(filePath)}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
+  );
+  try {
+    fs.writeFileSync(temp, JSON.stringify(validated, null, 2), 'utf-8');
+    fs.renameSync(temp, filePath);
+  } catch (error) {
+    try {
+      fs.unlinkSync(temp);
+    } catch {
+      /* el temporal pudo no haberse creado */
+    }
+    throw error;
+  }
+
+  // Al releer se vuelven a aplicar las variables de entorno, que no se guardan.
+  configCache = null;
+  configPathCache = filePath;
+  return filePath;
 }
 
 export function watchConfig(callback: (config: CommanderConfig) => void): () => void {

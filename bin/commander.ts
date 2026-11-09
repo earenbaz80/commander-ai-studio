@@ -6,10 +6,14 @@ import fs from 'fs';
 import { loadConfig, writeConfig, getConfigPath, getProviderConfig } from '../src/config/index.js';
 import { CommanderConfigSchema } from '../src/config/schema.js';
 import { checkHealth, consumeSessionStream, forkServerSession, loadServerSession, respondApproval, runAgent } from '../src/cli/agentClient.js';
-import { encodeEvent, makeEventV2, type QuestionV2, type SessionStateV2 } from '../src/agent/sessionTypes.js';
+import { encodeEvent, makeEventV2, type QuestionV2, type SessionMode, type SessionStateV2 } from '../src/agent/sessionTypes.js';
 import { canPromptApprovals, AgentRenderer, promptApprovalDecision, promptQuestionAnswer, Tui } from '../src/cli/tui.js';
 import { ApprovalQueue } from '../src/cli/approvals.js';
 import { GEMINI_DEFAULT_MODEL } from '../src/config/geminiModels.js';
+
+function parseSessionMode(value: unknown): SessionMode | undefined {
+  return value === 'build' || value === 'plan' || value === 'readonly' ? value : undefined;
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_PATH = path.resolve(__dirname, '../package.json');
@@ -19,6 +23,36 @@ program
   .name('commander')
   .description('Commander AI Studio - CLI')
   .version(PKG.version);
+
+// Sin subcomando se inyecta `repl` antes de parsear. No registramos una acción
+// en la raíz: Commander la ejecutaría también para `agent`/`attach` y se
+// perderían sus opciones (--server, --max-steps, etc.).
+program
+  .command('repl')
+  .description('Abrir el REPL interactivo (comando por defecto)')
+  .option('-s, --server <url>', 'Commander server URL', process.env.COMMANDER_SERVER || 'http://127.0.0.1:3280')
+  .option('-m, --model <string>', 'Modelo para el REPL')
+  .option('--mode <mode>', 'Modo inicial: build, plan o readonly')
+  .option('-a, --agent <plantilla>', 'Plantilla de agente inicial')
+  .option('--max-steps <number>', 'Máximo de pasos por turno')
+  .action(async (opts) => {
+    const mode = parseSessionMode(opts.mode);
+    if (opts.mode && !mode) {
+      console.error(`[commander] modo inválido: ${opts.mode} (usa build, plan o readonly)`);
+      process.exitCode = 1;
+      return;
+    }
+    const { runRepl } = await import('../src/cli/repl.js');
+    process.exitCode = await runRepl({
+      serverUrl: String(opts.server),
+      cwd: process.cwd(),
+      model: opts.model ? String(opts.model) : undefined,
+      mode,
+      agent: opts.agent ? String(opts.agent) : undefined,
+      maxSteps: opts.maxSteps ? Math.max(1, Number(opts.maxSteps) || 25) : undefined,
+      stream: true,
+    });
+  });
 
 program
   .command('serve')
@@ -639,7 +673,9 @@ skillsCmd
     console.log(`Imported ${imported} skill(s) under ${root}`);
   });
 
-program.parseAsync(process.argv).catch((err) => {
+const argv = process.argv.slice();
+if (argv.length <= 2) argv.push('repl');
+program.parseAsync(argv).catch((err) => {
   console.error(err.message);
   process.exit(1);
 });

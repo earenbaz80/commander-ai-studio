@@ -183,6 +183,16 @@ export const AgentConfigSchema = z.object({
   contextWindow: z.number().int().positive().default(128000),
 });
 
+/**
+ * Preferencias del REPL. Se guardan fuera de la sesión para que el modelo,
+ * la plantilla y el modo sobrevivan a reiniciar el CLI.
+ */
+export const CliConfigSchema = z.object({
+  lastModel: z.string().trim().min(1).max(200).optional(),
+  lastAgent: z.string().trim().min(1).max(80).optional(),
+  lastMode: z.enum(['build', 'plan', 'readonly']).optional(),
+});
+
 export const ServerConfigSchema = z.object({
   port: z.number().int().min(1024).max(65535).default(3280),
   host: z.string().default('127.0.0.1'),
@@ -202,6 +212,7 @@ export const CommanderConfigSchema = z.object({
   ui: UIConfigSchema.prefault({}),
   shortcuts: ShortcutsConfigSchema,
   agent: AgentConfigSchema.prefault({}),
+  cli: CliConfigSchema.optional(),
   server: ServerConfigSchema.prefault({}),
   projects: z.object({
     allowList: z.array(z.string()).default([]),
@@ -225,6 +236,7 @@ export type ToolsConfig = z.infer<typeof ToolsConfigSchema>;
 export type UIConfig = z.infer<typeof UIConfigSchema>;
 export type ShortcutsConfig = z.infer<typeof ShortcutsConfigSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
+export type CliConfig = z.infer<typeof CliConfigSchema>;
 export type ServerConfig = z.infer<typeof ServerConfigSchema>;
 
 export const DEFAULT_CONFIG: CommanderConfig = CommanderConfigSchema.parse({});
