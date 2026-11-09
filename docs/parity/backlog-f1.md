@@ -30,7 +30,7 @@
 | F1-05 | [#6](https://github.com/earenbaz80/commander-ai-studio/issues/6) | Abierto | Diff por hunk en terminal | 1,0 | F1-04 | PR2 |
 | F1-06 | [#7](https://github.com/earenbaz80/commander-ai-studio/issues/7) | Cerrado | `ask_user` en el CLI | 1,5 | F1-04 | PR2 |
 | F1-07 | [#8](https://github.com/earenbaz80/commander-ai-studio/issues/8) | Abierto | Reglas de permisos del escritorio aplicadas en el CLI | 1,5 | F1-04 | PR2 |
-| F1-08 | [#9](https://github.com/earenbaz80/commander-ai-studio/issues/9) | Abierto | REPL interactivo con comandos | 2,5 | F1-02, F1-06 | PR3 |
+| F1-08 | [#9](https://github.com/earenbaz80/commander-ai-studio/issues/9) | Cerrado | REPL interactivo con comandos | 2,5 | F1-02, F1-06 | PR3 |
 | F1-09 | [#10](https://github.com/earenbaz80/commander-ai-studio/issues/10) | Cerrado | Selección de modelo/agente y preferencias | 1,0 | F1-08 | PR3 |
 | F1-10 | [#11](https://github.com/earenbaz80/commander-ai-studio/issues/11) | Cerrado | `--resume` y `--fork` sin duplicar tool calls | 1,0 | F1-02 (flags), F1-08 (comandos) | PR3 |
 | F1-11 | [#12](https://github.com/earenbaz80/commander-ai-studio/issues/12) | Cerrado | Regresión del contrato `--json`/NDJSON | 0,5 | F1-01 | PR3 |
@@ -247,6 +247,7 @@
 
 **Labels:** `f1`, `p0`, `area:cli`
 **Estimación:** 2,5 d-persona · **Depende de:** F1-02, F1-06
+**Estado:** Implementado y cerrado — 2026-11-09.
 
 **Por qué.** `commander agent "<tarea>"` es de una pasada. OpenCode y Antigravity venden la terminal como superficie completa; sin REPL no hay continuidad ni comandos.
 
@@ -258,15 +259,19 @@
 - Sin TTY (pipe/CI): modo por líneas, sin colores ni spinner, misma semántica.
 
 **Criterios de aceptación**
-- [ ] Una sesión de varios turnos conserva contexto y no reinicia el bucle.
-- [ ] `Ctrl+C` cancela la tool en vuelo y deja el REPL usable.
-- [ ] `/plan` y `/build` cambian de modo y el siguiente turno lo respeta.
-- [ ] `/exit` cierra sin dejar procesos ni sesiones huérfanas.
-- [ ] El modo sin TTY produce la misma secuencia de eventos que el interactivo.
+- [x] Una sesión de varios turnos conserva contexto y no reinicia el bucle.
+- [x] `Ctrl+C` cancela la tool en vuelo y deja el REPL usable.
+- [x] `/plan` y `/build` cambian de modo y el siguiente turno lo respeta.
+- [x] `/exit` cierra sin dejar procesos ni sesiones huérfanas.
+- [x] El modo sin TTY produce la misma secuencia de eventos que el interactivo.
+
+**Implementación.** `ReplSession` reutiliza `runAgent` con `resumeFrom`, así que los turnos comparten sesión, plan y contador de pasos. `node:readline/promises` da prompt, historial y multilínea con `\` final; `Ctrl+C` aborta el `AbortSignal` del turno en vuelo y `Ctrl+D` cierra. Los once comandos (`/help`, `/plan`, `/build`, `/review`, `/compact`, `/undo`, `/resume`, `/fork`, `/model`, `/agent`, `/exit`) están implementados; `/compact` usa `compactTurns` y `/undo` reutiliza `nextUndoCandidate`. Con un pipe no hay ANSI ni spinner y la secuencia de eventos es la misma que con TTY.
 
 **Pruebas**
-- `tests/cli/repl.test.ts`: `spawn` con stdin guionizado; transcripción, comandos, multilínea, `Ctrl+C`, `Ctrl+D` y modo sin TTY.
-- `tests/cli/replCommands.test.ts`: `/compact`, `/undo`, `/plan`→`/build`.
+- `tests/cli/repl.test.ts`: 7/7 — continuidad de sesión, `Ctrl+C` y siguiente turno, abort de tool, proceso real por stdin, `Ctrl+D` y equivalencia TTY/pipe.
+- `tests/cli/replCommands.test.ts`: 4/4 — `/plan`→`/build` contra las tools, `/compact`, `/undo`, `/resume`, `/fork`, `/model`, `/agent` y `/exit`.
+- `tests/cli/e2e.test.ts`: 16/16 — regresión del CLI headless con proveedor falso.
+- `tsc --noEmit`, `vite build` y `check:rules` en verde.
 
 **Archivos:** `bin/commander.ts`, `src/cli/repl.ts` (nuevo), `src/cli/tui.ts`.
 
@@ -497,7 +502,7 @@ F1-02 + F1-04 + F1-08 ───────────────────�
 
 ## 8. Issues en GitHub
 
-Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #7 (F1-06), #10 (F1-09), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). No vuelvas a ejecutar `gh issue create`, porque duplicaría el backlog. El mapeo está en la tabla de §2 y el cuerpo versionado de cada issue, en [`docs/parity/issues/`](issues/README.md).
+Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #7 (F1-06), #9 (F1-08), #10 (F1-09), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). No vuelvas a ejecutar `gh issue create`, porque duplicaría el backlog. El mapeo está en la tabla de §2 y el cuerpo versionado de cada issue, en [`docs/parity/issues/`](issues/README.md).
 
 Para actualizar el cuerpo de un issue ya creado:
 
