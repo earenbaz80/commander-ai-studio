@@ -273,6 +273,24 @@ ipcMain.handle('app:getInfo', () => {
   };
 });
 
+// Abrir la carpeta local de un artifact. Sólo rutas absolutas que ya existan
+// y sean directorios: la ruta viene de IndexedDB, no de la red.
+ipcMain.handle('app:openFolder', async (_event, folderPath) => {
+  const value = typeof folderPath === 'string' ? folderPath.trim() : '';
+  if (!value || value.length > 4096 || !path.isAbsolute(value)) {
+    return { success: false, error: 'ruta inválida' };
+  }
+  try {
+    if (!fs.statSync(value).isDirectory()) {
+      return { success: false, error: 'no es una carpeta' };
+    }
+  } catch {
+    return { success: false, error: 'la carpeta no existe' };
+  }
+  const error = await shell.openPath(value);
+  return error ? { success: false, error } : { success: true };
+});
+
 // Auto-updater IPC handlers
 ipcMain.handle('update:check', async () => {
   if (!app.isPackaged || !autoUpdater) return { success: false, message: 'No disponible en desarrollo' };

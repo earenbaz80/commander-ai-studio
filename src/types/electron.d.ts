@@ -1,5 +1,9 @@
 export interface ElectronAPI {
   isElectron: boolean;
+  /** Puente nativo del proceso principal (preload.cjs). */
+  app?: {
+    openFolder?: (folderPath: string) => Promise<{ success: boolean; error?: string }>;
+  };
   minimize: () => Promise<void>;
   maximize: () => Promise<void>;
   close: () => Promise<void>;

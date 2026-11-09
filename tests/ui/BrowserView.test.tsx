@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-libra
 import { BrowserView } from '../../src/components/panel/BrowserView';
 import { LiveConsole, NetworkMonitor } from '../../src/components/WorkbenchPreview';
 import { clearArtifacts, listArtifacts } from '../../src/artifacts/store';
+import { isBrowserRecordingArtifact } from '../../src/artifacts/types';
 import type { BrowserFrame, BrowserSessionInfo } from '../../src/utils/browserSessionApi';
 
 class FakeEventSource {
@@ -320,8 +321,13 @@ describe('BrowserView real', () => {
     await waitFor(async () => {
       const artifacts = await listArtifacts('C:/tmp/x');
       expect(artifacts).toHaveLength(1);
-      expect(artifacts[0]?.frames.map((item) => item.seq)).toEqual([1, 2]);
-      expect(artifacts[0]?.title).toBe('App');
+      const recording = artifacts[0];
+      expect(
+        recording && isBrowserRecordingArtifact(recording)
+          ? recording.frames.map((item) => item.seq)
+          : []
+      ).toEqual([1, 2]);
+      expect(recording?.title).toBe('App');
     });
     expect(await screen.findByText(/Grabación guardada/)).toBeInTheDocument();
   });
