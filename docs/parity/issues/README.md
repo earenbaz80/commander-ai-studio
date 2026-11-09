@@ -9,7 +9,7 @@ Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), 
 | [F1-03](F1-03.md) | [#4](https://github.com/earenbaz80/commander-ai-studio/issues/4) | Cerrado | Stream de eventos reanudable | `f1`, `p0`, `area:server`, `area:cli` | 1,5 | F1-02 |
 | [F1-04](F1-04.md) | [#5](https://github.com/earenbaz80/commander-ai-studio/issues/5) | Cerrado | Canal de aprobaciones servidor ↔ CLI | `f1`, `p0`, `area:agent`, `area:cli`, `security` | 2,5 | F1-02 |
 | [F1-05](F1-05.md) | [#6](https://github.com/earenbaz80/commander-ai-studio/issues/6) | Abierto | Diff por hunk en terminal | `f1`, `p0`, `area:cli` | 1,0 | F1-04 |
-| [F1-06](F1-06.md) | [#7](https://github.com/earenbaz80/commander-ai-studio/issues/7) | Abierto | `ask_user` en el CLI | `f1`, `p0`, `area:cli`, `area:agent` | 1,5 | F1-04 |
+| [F1-06](F1-06.md) | [#7](https://github.com/earenbaz80/commander-ai-studio/issues/7) | Cerrado | `ask_user` en el CLI | `f1`, `p0`, `area:cli`, `area:agent` | 1,5 | F1-04 |
 | [F1-07](F1-07.md) | [#8](https://github.com/earenbaz80/commander-ai-studio/issues/8) | Abierto | Reglas de permisos del escritorio aplicadas en el CLI | `f1`, `p0`, `area:agent`, `security` | 1,5 | F1-04 |
 | [F1-08](F1-08.md) | [#9](https://github.com/earenbaz80/commander-ai-studio/issues/9) | Abierto | REPL interactivo con comandos | `f1`, `p0`, `area:cli` | 2,5 | F1-02, F1-06 |
 | [F1-09](F1-09.md) | [#10](https://github.com/earenbaz80/commander-ai-studio/issues/10) | Abierto | Selección de modelo/agente y preferencias | `f1`, `p1`, `area:cli` | 1,0 | F1-08 |
