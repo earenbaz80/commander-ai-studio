@@ -12,14 +12,18 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ApprovalRequest } from '../agent/types';
 import { readProjectFile, runAgentTool } from '../utils/agentToolsApi';
 import type { RuleFinding } from '../agent/tools/fs';
-import { applyExactEdit } from '../utils/patch';
+import { applyExactEdit, diffLines, toUnifiedDiff } from '../utils/patch';
 import { DiffViewer } from './DiffViewer';
 import { addRule, persistRuleToProject, ruleTarget, syncRulesWithServer } from '../agent/permissionRules';
 import { getActiveProjectRoot } from '../agent/activeProject';
 
 interface AgentApprovalModalProps {
   approval: ApprovalRequest;
-  onResolve: (ok: boolean, override?: { toolId: string; input: unknown }) => void;
+  onResolve: (
+    ok: boolean,
+    override?: { toolId: string; input: unknown },
+    diff?: string
+  ) => void;
   lang?: Language;
 }
 
@@ -86,6 +90,14 @@ export function AgentApprovalModal({ approval, onResolve, lang = 'es' }: AgentAp
 
   const showDiff = isPatchTool && !loading && oldText !== null && proposed !== null;
   const showFallback = !showDiff && !(isPatchTool && loading);
+
+  /** Patch del contenido que realmente se aplicó (incluye hunks rechazados). */
+  const patchFor = (nextText: string): string | undefined => {
+    if (oldText === null || nextText === oldText) return undefined;
+    return toUnifiedDiff(path, diffLines(oldText, nextText), {
+      exists: oldText !== '',
+    }).slice(0, 20_000);
+  };
 
   /**
    * Reglas del repo que introduce el borrador (color, i18n).
@@ -165,7 +177,11 @@ export function AgentApprovalModal({ approval, onResolve, lang = 'es' }: AgentAp
             oldText={oldText as string}
             newText={proposed as string}
             onApply={(merged) =>
-              onResolve(true, { toolId: 'fs.write', input: { path, content: merged, overwrite: true } })
+              onResolve(
+                true,
+                { toolId: 'fs.write', input: { path, content: merged, overwrite: true } },
+                patchFor(merged)
+              )
             }
             onReject={() => onResolve(false)}
             lang={lang}

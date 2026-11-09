@@ -3,6 +3,7 @@ import { decide } from './permissionRules';
 import { checkpointPaths, nextUndoCandidate } from './undoRedo';
 import type {
   AgentState,
+  AgentStep,
   OrchestratorOptions,
   ToolContext,
   GitWorktreeCheckpoint,
@@ -156,6 +157,7 @@ export class AgentOrchestrator {
 
     let effectiveTool: any = tool;
     let effectiveInput: unknown = input;
+    let recordedApproval: AgentStep['approval'];
 
     // Reglas por patrón: `deny` bloquea sin preguntar, `allow` ejecuta sin
     // modal y `ask` fuerza el modal aunque la tool no lo pidiera.
@@ -176,8 +178,20 @@ export class AgentOrchestrator {
         meta: { input, ...(tool.approvalMeta ? tool.approvalMeta(input) : {}) },
       };
       const res = await this.ctx.approve(req);
+      recordedApproval = {
+        id: req.id,
+        decision: res.approved ? 'allow' : 'deny',
+        ...(res.reason ? { reason: res.reason } : {}),
+        ...(res.approved && res.diff ? { diff: res.diff } : {}),
+      };
       if (!res.approved) {
-        this.recordFailed('tool_call', tool.id, `Denegado: ${res.reason || 'sin motivo'}`, input);
+        this.recordFailed(
+          'tool_call',
+          tool.id,
+          `Denegado: ${res.reason || 'sin motivo'}`,
+          input,
+          recordedApproval
+        );
         return { ok: false, error: 'Aprobación denegada' };
       }
       if (res.override) {
@@ -198,6 +212,7 @@ export class AgentOrchestrator {
       input: effectiveInput,
       status: 'running',
       ts: Date.now(),
+      ...(recordedApproval ? { approval: recordedApproval } : {}),
     };
     this.state.steps.push(callStep);
     this.state.currentStepId = callStep.id;
@@ -218,6 +233,7 @@ export class AgentOrchestrator {
         status: result.ok ? 'completed' : 'failed',
         durationMs: Date.now() - start,
         ts: Date.now(),
+        ...(recordedApproval ? { approval: recordedApproval } : {}),
       };
       callStep.status = result.ok ? 'completed' : 'failed';
       callStep.durationMs = resStep.durationMs;
@@ -239,6 +255,7 @@ export class AgentOrchestrator {
         status: 'failed',
         durationMs: Date.now() - start,
         ts: Date.now(),
+        ...(recordedApproval ? { approval: recordedApproval } : {}),
       };
       callStep.status = 'failed';
       callStep.durationMs = resStep.durationMs;
@@ -320,7 +337,13 @@ export class AgentOrchestrator {
     return transformed;
   }
 
-  private recordFailed(type: any, toolId: string | undefined, error: string, input?: unknown) {
+  private recordFailed(
+    type: any,
+    toolId: string | undefined,
+    error: string,
+    input?: unknown,
+    approval?: AgentStep['approval']
+  ) {
     const step: any = {
       id: uid('step'),
       type,
@@ -330,6 +353,7 @@ export class AgentOrchestrator {
       input,
       status: 'failed',
       ts: Date.now(),
+      ...(approval ? { approval } : {}),
     };
     this.state.steps.push(step);
     this.opts.onStep(step);

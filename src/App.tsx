@@ -1563,7 +1563,7 @@ export default function App() {
                 ((agent.pendingApproval.meta as any)?.kind === 'question' ? (
                   <AgentQuestionModal
                     approval={agent.pendingApproval}
-                    onResolve={(ok, answer) => agent.resolveApproval(ok, undefined, answer)}
+                    onResolve={(ok, answer) => agent.resolveApproval(ok, undefined, undefined, answer)}
                     lang={lang as any}
                   />
                 ) : (

@@ -1,3 +1,5 @@
+import type { ApprovalDecision } from './sessionTypes';
+
 export type ToolId =
   | 'fs.read'
   | 'fs.write'
@@ -57,6 +59,11 @@ export interface ApprovalResult {
   /** Respuesta del usuario cuando la aprobación era una pregunta (`ask_user`). */
   answer?: string;
   /**
+   * Patch unificado que el usuario revisó y aprobó. Se conserva para que el
+   * artifact de verificación tenga el diff real, sin regenerarlo después.
+   */
+  diff?: string;
+  /**
    * Si la UI modificó la propuesta (p.ej. el usuario aplicó sólo algunos hunks
    * del diff), se ejecuta esta tool con estos inputs en lugar del original.
    */
@@ -105,6 +112,14 @@ export interface AgentStep {
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   durationMs?: number;
   ts: number;
+  /** Aprobación humana que permitió o denegó esta tool (F1-04). */
+  approval?: {
+    id: string;
+    decision: ApprovalDecision;
+    reason?: string;
+    /** Patch revisado en el modal; sólo existe para tools que escriben. */
+    diff?: string;
+  };
 }
 
 export interface AgentPlanItem {
