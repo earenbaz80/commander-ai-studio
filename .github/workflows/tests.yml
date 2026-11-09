@@ -31,6 +31,12 @@ jobs:
       - name: Índice de git sano
         run: npm run check:index
 
+      # Hermano sin red de `sync:issue-status`: aquél pregunta a GitHub y gasta
+      # cuota; éste compara la tabla con el cuerpo versionado, así que también
+      # puede correr en el PR de un fork sin token.
+      - name: Criterios de los issues cerrados
+        run: npm run check:criteria
+
       # Gate de seguridad sobre lo que de verdad se empaqueta y se sirve.
       # Se omite dev a propósito: la cadena de tooling (ESLint, electron-builder)
       # arrastra un aviso de minimatch que sólo se parchea en la 11, y esa major
