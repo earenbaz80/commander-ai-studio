@@ -234,7 +234,9 @@ export const AGENT_FUNCTION_DECLARATIONS = [
         allowedTools: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Tools permitidas (null = todas las del padre)' },
         mode: { type: 'STRING', enum: ['build', 'plan', 'readonly'], description: 'Modo del subagente' },
         maxSteps: { type: 'NUMBER', description: 'Límite de pasos' },
-        template: { type: 'STRING', description: 'Plantilla: file-explorer, researcher, reviewer, planner' },
+        template: { type: 'STRING', description: 'Plantilla: file-explorer, researcher, reviewer, planner, coder, tester' },
+        worktree: { type: 'BOOLEAN', description: 'Ejecutar en un git worktree aislado (se limpia al terminar)' },
+        keepWorktree: { type: 'BOOLEAN', description: 'Conservar el worktree en vez de limpiarlo' },
         // Igual que en `spawn_agents`: el id lo pone la app, no el modelo.
         parentSessionId: { type: 'STRING', description: 'Lo inyecta la app; no hace falta enviarlo' },
       },
@@ -252,7 +254,7 @@ export const AGENT_FUNCTION_DECLARATIONS = [
     parameters: {
       type: 'OBJECT',
       properties: {
-        agents: { type: 'ARRAY', items: { type: 'OBJECT', properties: { goal: { type: 'STRING' }, instructions: { type: 'STRING' }, model: { type: 'STRING' }, allowedTools: { type: 'ARRAY', items: { type: 'STRING' } }, mode: { type: 'STRING', enum: ['build', 'plan', 'readonly'] }, maxSteps: { type: 'NUMBER' }, template: { type: 'STRING' } }, required: ['goal'] } },
+        agents: { type: 'ARRAY', items: { type: 'OBJECT', properties: { goal: { type: 'STRING' }, instructions: { type: 'STRING' }, model: { type: 'STRING' }, allowedTools: { type: 'ARRAY', items: { type: 'STRING' } }, mode: { type: 'STRING', enum: ['build', 'plan', 'readonly'] }, maxSteps: { type: 'NUMBER' }, template: { type: 'STRING' }, worktree: { type: 'BOOLEAN' }, keepWorktree: { type: 'BOOLEAN' } }, required: ['goal'] } },
         // No es `required`: el id lo pone la app con la sesión que registró el
         // servidor al empezar la tarea. Pedírselo al modelo sólo servía para
         // que inventara uno y los subagentes murieran con 404.

@@ -16,7 +16,7 @@
 | `agentSession.ts` (servidor) | `AgentSession` con plan y pasos | Sin approvals, sin `ask_user` en el bucle del servidor y sin persistencia durable |
 | `POST /api/agent/sessions` | Crea un **contexto padre** para subagentes | No arranca ni reanuda un bucle |
 | `src/agent/permissionRules.ts` | Reglas `allow`/`ask`/`deny` en `localStorage` | El CLI no las ve: sólo aplica el modo y la allowlist del servidor |
-| `src/agent/subagentTemplates.ts` | 4 roles: `file-explorer`, `researcher`, `reviewer`, `planner` | Faltan `coder` y `tester`; no hay worktree por subagente |
+| `src/agent/subagentTemplates.ts` | 6 roles: `file-explorer`, `researcher`, `reviewer`, `planner`, `coder`, `tester` | Allowlist/modo validados y worktree opcional por subagente |
 | Pruebas del CLI | Suite de contrato, E2E y `ask_user` | Todo entregable nace con su prueba |
 
 ## 2. Tabla de issues
@@ -34,7 +34,7 @@
 | F1-09 | [#10](https://github.com/earenbaz80/commander-ai-studio/issues/10) | Cerrado | Selección de modelo/agente y preferencias | 1,0 | F1-08 | PR3 |
 | F1-10 | [#11](https://github.com/earenbaz80/commander-ai-studio/issues/11) | Cerrado | `--resume` y `--fork` sin duplicar tool calls | 1,0 | F1-02 (flags), F1-08 (comandos) | PR3 |
 | F1-11 | [#12](https://github.com/earenbaz80/commander-ai-studio/issues/12) | Cerrado | Regresión del contrato `--json`/NDJSON | 0,5 | F1-01 | PR3 |
-| F1-12 | [#13](https://github.com/earenbaz80/commander-ai-studio/issues/13) | Abierto | Seis subagentes con allowlist y worktree opcional | 2,0 | F1-02 | PR4 |
+| F1-12 | [#13](https://github.com/earenbaz80/commander-ai-studio/issues/13) | Cerrado | Seis subagentes con allowlist y worktree opcional | 2,0 | F1-02 | PR4 |
 | F1-13 | [#14](https://github.com/earenbaz80/commander-ai-studio/issues/14) | Abierto | Plan persistente con estados, archivos y criterios | 1,0 | F1-02 | PR4 |
 | F1-14 | [#15](https://github.com/earenbaz80/commander-ai-studio/issues/15) | Cerrado | Arnés E2E del CLI con proveedor falso determinista | 1,5 | F1-02, F1-04, F1-08 | PR5 |
 
@@ -369,6 +369,7 @@
 
 **Labels:** `f1`, `p1`, `area:agent`
 **Estimación:** 2,0 d-persona · **Depende de:** F1-02
+**Estado:** Implementado y cerrado — 2026-11-09.
 
 **Por qué.** Hoy hay 4 plantillas y ninguna puede escribir; el plan pide seis roles (explorer, planner, coder, reviewer, tester, researcher) con allowlist, modo y `maxSteps`.
 
@@ -379,16 +380,18 @@
 - Mantener los nombres actuales (`file-explorer`, `researcher`, `reviewer`, `planner`) para no romper `spawn_agents`.
 
 **Criterios de aceptación**
-- [ ] Los 6 roles se pueden lanzar y cada uno respeta su allowlist.
-- [ ] Un subagente con tool denegada no la ejecuta y devuelve error, no éxito vacío.
-- [ ] 6 subagentes corren en paralelo sin pisarse el estado.
-- [ ] El worktree de un subagente no contamina el árbol principal y se limpia al cerrar.
+- [x] Los 6 roles se pueden lanzar y cada uno respeta su allowlist.
+- [x] Un subagente con tool denegada no la ejecuta y devuelve error, no éxito vacío.
+- [x] 6 subagentes corren en paralelo sin pisarse el estado.
+- [x] El worktree de un subagente no contamina el árbol principal y se limpia al cerrar.
 
 **Pruebas**
-- `tests/unit/subagentTemplates.test.ts`: 6 roles, allowlist válida, modo coherente, `maxSteps` > 0.
-- `tests/agent/subagents.test.ts`: ejecución con proveedor falso, tool denegada, 6 en paralelo, worktree aislado.
+- `tests/unit/subagentTemplates.test.ts`: 4/4 — seis roles, allowlist válida, modo coherente, `maxSteps` en rango y rechazo de plantilla/tool desconocidas.
+- `tests/agent/subagents.test.ts`: 4/4 — proveedor falso, tool denegada sin efecto lateral, seis en paralelo y worktree aislado y limpiado.
+- `tests/agentTaskIntegration.test.ts`: 3/3 — el executor previo sigue verde.
+- `tsc --noEmit`, `vite build`, `tests/cli/e2e.test.ts` 16/16, `check:rules` y `check:criteria` en verde.
 
-**Archivos:** `src/agent/subagentTemplates.ts`, `src/agent/tools/task.ts`, `server.ts`, `worktrees.ts`.
+**Archivos:** `src/agent/subagentTemplates.ts`, `src/agent/tools/task.ts`, `src/agent/tools/spawnAgents.ts`, `src/agent/fnTools.ts`, `agentSession.ts`, `agentTools.ts`, `worktrees.ts`, `tests/unit/subagentTemplates.test.ts`, `tests/agent/subagents.test.ts`.
 
 ---
 

@@ -170,7 +170,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 **Objetivo:** que el CLI sea una superficie completa del mismo agente, no un modo de una sola pasada, y que la sesión sea la misma en escritorio y terminal.
 
-> **Estado 2026-11-09 — F1-05, F1-06, F1-07, F1-08 y F1-09 completados y cerrados.** `ask_user` se ofrece y resuelve en el CLI (commit `b01264a`); el REPL multi-turno (F1-08) con sus preferencias (F1-09, commit `7a5755f`), el diff por hunk con `a`/`d`/`s`/`?`/`q` (F1-05) y las reglas de permisos del escritorio aplicadas en el servidor y el CLI (F1-07) están cerrados. Quedan abiertos F1-12 y F1-13.
+> **Estado 2026-11-09 — F1-05, F1-06, F1-07, F1-08, F1-09 y F1-12 completados y cerrados.** `ask_user` se ofrece y resuelve en el CLI (commit `b01264a`); el REPL multi-turno (F1-08) con sus preferencias (F1-09, commit `7a5755f`), el diff por hunk con `a`/`d`/`s`/`?`/`q` (F1-05) y las reglas de permisos del escritorio aplicadas en el servidor y el CLI (F1-07) están cerrados. Los seis roles de subagente, con allowlist validada y worktree opcional (F1-12), también. Queda abierto F1-13.
 
 > **Desglose ejecutable:** [docs/parity/backlog-f1.md](docs/parity/backlog-f1.md) — 14 issues, 21,0 d-persona, dependencias, camino crítico y pruebas por entregable.
 

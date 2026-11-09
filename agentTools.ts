@@ -588,7 +588,7 @@ async function runFileChangeHooks(absPath: string, root: string): Promise<{ ran:
  * es de terceros, sabe si su tool escribe. Los hints `readOnlyHint` del
  * protocolo son una promesa del propio servidor y aquí no se usan.
  */
-function isReadOnlyCall(toolId: string, input: any): boolean {
+export function isReadOnlyCall(toolId: string, input: any): boolean {
   if (toolId === 'git.worktree') {
     return String(input?.action || '').toLowerCase() === 'list';
   }
@@ -1908,21 +1908,19 @@ async function executeAgentToolCore(
     if (!parentSessionId) return { ok: false, error: 'parentSessionId requerido para task', status: 400 };
     const parent = getSession(parentSessionId);
     if (!parent) return { ok: false, error: `Sesión padre no encontrada: ${parentSessionId}`, status: 404 };
-    const keys = input.keys;
-    // Resolver plantilla si se pidió
-    let resolvedAllowed = allowedTools;
-    let resolvedMode = mode;
-    let resolvedMax = maxSteps;
-    if (template) {
-      const { getTemplate } = await import('./src/agent/subagentTemplates');
-      const tpl = getTemplate(String(template));
-      if (tpl) {
-        resolvedAllowed = allowedTools ?? tpl.allowedTools;
-        resolvedMode = mode ?? tpl.defaultMode;
-        resolvedMax = maxSteps ?? tpl.defaultMaxSteps;
-      }
-    }
-    return executeTask(parentSessionId, { goal, instructions, model, allowedTools: resolvedAllowed, mode: resolvedMode, maxSteps: resolvedMax }, keys);
+    // Plantilla, allowlist y modo se validan en `executeTask`, el mismo camino
+    // que usa `spawn_agents`; aquí sólo se reenvían.
+    return executeTask(parentSessionId, {
+      goal,
+      instructions,
+      model,
+      allowedTools,
+      mode,
+      maxSteps,
+      template,
+      worktree: input.worktree === true,
+      keepWorktree: input.keepWorktree === true,
+    }, input.keys);
   }
 
   if (toolId === 'spawn_agents') {
@@ -1942,6 +1940,8 @@ async function executeAgentToolCore(
         mode: a.mode,
         maxSteps: a.maxSteps,
         template: a.template,
+        worktree: a.worktree === true,
+        keepWorktree: a.keepWorktree === true,
       }, input?.keys))
     );
     const out = results.map((r, i) => ({
