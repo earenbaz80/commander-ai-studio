@@ -170,7 +170,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 **Objetivo:** que el CLI sea una superficie completa del mismo agente, no un modo de una sola pasada, y que la sesión sea la misma en escritorio y terminal.
 
-> **Estado 2026-11-09 — los 14 issues de F1 están completados y cerrados.** `ask_user` se ofrece y resuelve en el CLI (commit `b01264a`); el REPL multi-turno (F1-08) con sus preferencias (F1-09, commit `7a5755f`), el diff por hunk (F1-05), las reglas de permisos del escritorio aplicadas en el servidor y el CLI (F1-07), los seis roles de subagente con allowlist y worktree (F1-12) y el plan persistente con estados, archivos y criterios (F1-13) están cerrados.
+> **Estado 2026-11-09 — los 14 issues de F1 están completados y cerrados; G1 sigue abierto.** `ask_user` se ofrece y resuelve en el CLI (commit `b01264a`); el REPL multi-turno (F1-08) con sus preferencias (F1-09, commit `7a5755f`), el diff por hunk (F1-05), las reglas de permisos del escritorio aplicadas en el servidor y el CLI (F1-07), los seis roles de subagente con allowlist y worktree (F1-12) y el plan persistente con estados, archivos y criterios (F1-13) están cerrados.
 
 > **Desglose ejecutable:** [docs/parity/backlog-f1.md](docs/parity/backlog-f1.md) — 14 issues, 21,0 d-persona, dependencias, camino crítico y pruebas por entregable.
 
@@ -186,16 +186,18 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 **Criterios de aceptación**
 
-- [ ] `commander agent "tarea" --json` conserva su salida y sus consumidores actuales.
-- [ ] `commander` abre una sesión interactiva; una edición pide aprobación con diff, y denegar no escribe ni un byte.
+- [x] `commander agent "tarea" --json` conserva su salida y sus consumidores actuales.
+- [x] `commander` abre una sesión interactiva; una edición pide aprobación con diff, y denegar no escribe ni un byte.
 - [x] `ask_user` bloquea la corrida hasta recibir respuesta y la respuesta queda en el historial (F1-06, commit `b01264a`).
-- [ ] Una tarea iniciada en CLI aparece en el escritorio con el mismo `sessionId`, pasos y plan; `--resume` continúa sin duplicar tool calls y `--fork` no muta la original.
-- [ ] El plan se actualiza durante la corrida y sobrevive a un reinicio del servidor.
-- [ ] Un subagente con una tool denegada falla cerrado; 6 subagentes pueden correr en paralelo y el worktree no contamina el árbol principal.
-- [ ] 10 casos adversariales de permisos (shell, escritura, red, MCP, subagente) no ejecutan nada fuera de política.
-- [ ] Pruebas focalizadas del CLI/sesiones, `tsc --noEmit` y `vite build` en verde.
+- [x] Una tarea iniciada en CLI aparece en el escritorio con el mismo `sessionId`, pasos y plan; `--resume` continúa sin duplicar tool calls y `--fork` no muta la original.
+- [x] El plan se actualiza durante la corrida y sobrevive a un reinicio del servidor.
+- [x] Un subagente con una tool denegada falla cerrado; 6 subagentes pueden correr en paralelo y el worktree no contamina el árbol principal.
+- [x] 10 casos adversariales de permisos (shell, escritura, red, MCP, subagente) no ejecutan nada fuera de política.
+- [x] Pruebas focalizadas del CLI/sesiones, `tsc --noEmit` y `vite build` en verde.
 
 **Puerta G1:** dogfooding de 5 días con el CLI como superficie principal. Si la latencia de aprobación o la tasa de éxito retrocede frente a F0, no se empieza F2 hasta corregirlo.
+
+> **Estado G1 (2026-11-09): NO CERRADO.** Los 14 issues de F1 están cerrados y la suite focalizada pasa (70/70 CLI, 30/30 agente/sesiones), pero no se ejecutó el dogfooding de 5 días: F0/G0 sigue aparcado, no hay baseline de latencia/éxito ni modelo real. No se declara paridad. F2-01 (contrato/store de artifacts) avanzó como cambio aislado que no toca el bucle; G1 sigue abierto y no se cierra hasta ejecutar el dogfooding.
 
 ---
 
