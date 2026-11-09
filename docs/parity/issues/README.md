@@ -1,6 +1,6 @@
 # Issues de F1
 
-Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #7 (F1-06), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (**#6, #8–#10 y #13–#14**; el #1 es un PR ajeno a este backlog). Este directorio conserva el cuerpo versionado de cada uno, listo para `gh issue edit --body-file`.
+Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #7 (F1-06), #10 (F1-09), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (**#6, #8–#9 y #13–#14**; el #1 es un PR ajeno a este backlog). Este directorio conserva el cuerpo versionado de cada uno, listo para `gh issue edit --body-file`.
 
 | Archivo | Issue | Estado | Título | Labels | Est. | Depende de |
 | --- | --- | --- | --- | --- | --- | --- |

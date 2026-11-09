@@ -1,7 +1,7 @@
 # Backlog ejecutable — Fase 1 (CLI/TUI de primera clase y sesión única)
 
 > **Base:** Fase 1 de [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md).
-> **Estado:** los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #7 (F1-06), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). La tabla de §2 enlaza cada ID con su issue; los cuerpos versionados están en [docs/parity/issues/](issues/README.md).
+> **Estado:** los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #7 (F1-06), #10 (F1-09), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). La tabla de §2 enlaza cada ID con su issue; los cuerpos versionados están en [docs/parity/issues/](issues/README.md).
 > **Estimaciones:** días-persona, ±30 %. Suman **21,0 d-persona**, que con 2 personas en paralelo son ≈ 11–12 días de calendario; el gate G1 añade 5 días de dogfooding.
 > **Regla de cierre de cada issue:** `tsc --noEmit` + pruebas focalizadas en verde. Si toca UI, además `vite build`. Ningún issue se cierra con mocks que sustituyan una aserción real.
 
@@ -276,23 +276,29 @@
 
 **Labels:** `f1`, `p1`, `area:cli`
 **Estimación:** 1,0 d-persona · **Depende de:** F1-08
+**Estado:** Implementado y cerrado — commit `7a5755f` (2026-11-09).
 
 **Por qué.** Hoy el modelo sólo se elige por flag. En una sesión larga hay que poder cambiarlo sin salir, y el agente (plantilla) debe poder fijarse.
 
 **Alcance**
 - `/model <id>` y `/agent <plantilla>`; `/model` sin argumento lista los disponibles y marca el actual.
 - Precedencia: flag > sesión > `commander.json` (`cli.lastModel`, `cli.lastAgent`, `cli.lastMode`) > defecto.
-- Persistir sólo al salir o al cambiar, con escritura atómica.
+- Persistir al cambiar cada preferencia, con escritura atómica.
 
 **Criterios de aceptación**
-- [ ] Cambiar de modelo a mitad de sesión afecta al turno siguiente, no al que está en vuelo.
-- [ ] La preferencia sobrevive a reiniciar el CLI.
-- [ ] Un id inválido responde con la lista y no cambia nada.
+- [x] Cambiar de modelo a mitad de sesión afecta al turno siguiente, no al que está en vuelo.
+- [x] La preferencia sobrevive a reiniciar el CLI.
+- [x] Un id inválido responde con la lista y no cambia nada.
+
+**Implementación.** `cli` es un bloque opcional del schema con `lastModel`, `lastAgent` y `lastMode`, sin defaults, así que las configs existentes no cambian. `getCliPreferences` lee el JSON crudo sin fusionar el entorno, y `saveCliPreferences` escribe sólo `cli.*` en un temporal que reemplaza con `renameSync`: no se guarda una API key que venga de una variable y no queda ningún `.tmp` si la escritura falla. El REPL resuelve la precedencia al arrancar, valida `/model` y `/agent` contra el catálogo y persiste en cada cambio; sin argumento o con un id desconocido responde con la lista y el actual sin tocar nada. `runTurn` captura el modelo al construir las opciones, así que el cambio entra en el turno siguiente y no en el que está en vuelo. `--mode` y `--agent` acompañan a `--model` en el subcomando `repl`.
 
 **Pruebas**
-- `tests/cli/modelSelection.test.ts`: precedencia, persistencia, id inválido, cambio en caliente.
+- `tests/cli/modelSelection.test.ts`: 5/5 — precedencia flag/sesión/config/defecto, persistencia atómica sin `.tmp`, id inválido que no cambia nada y cambio de modelo durante un turno en vuelo.
+- `tests/cli/repl.test.ts` + `tests/cli/replCommands.test.ts`: 10/10 — el REPL y sus comandos siguen verdes con las preferencias inyectadas.
+- `tests/cli/e2e.test.ts`: 16/16 — regresión del CLI con proveedor falso.
+- `tsc --noEmit`, `vite build` y `check:rules` en verde.
 
-**Archivos:** `src/cli/repl.ts`, `src/config/index.ts`, `bin/commander.ts`.
+**Archivos:** `src/cli/repl.ts`, `src/config/index.ts`, `src/config/schema.ts`, `bin/commander.ts`, `tests/cli/modelSelection.test.ts`.
 
 ---
 
@@ -491,7 +497,7 @@ F1-02 + F1-04 + F1-08 ───────────────────�
 
 ## 8. Issues en GitHub
 
-Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #7 (F1-06), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). No vuelvas a ejecutar `gh issue create`, porque duplicaría el backlog. El mapeo está en la tabla de §2 y el cuerpo versionado de cada issue, en [`docs/parity/issues/`](issues/README.md).
+Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #7 (F1-06), #10 (F1-09), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). No vuelvas a ejecutar `gh issue create`, porque duplicaría el backlog. El mapeo está en la tabla de §2 y el cuerpo versionado de cada issue, en [`docs/parity/issues/`](issues/README.md).
 
 Para actualizar el cuerpo de un issue ya creado:
 
