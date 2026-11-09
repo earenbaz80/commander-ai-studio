@@ -23,10 +23,12 @@ export type FakeScenario =
   | 'tool-error'
   | 'tool-three'
   | 'tool-denied'
+  | 'slow-tool'
   | 'ask-user'
   | 'max-steps'
   | 'unknown-tool'
   | 'stream'
+  | 'slow'
   | 'llm-error';
 
 export interface FakeRequest {
@@ -79,10 +81,12 @@ const SCENARIOS: FakeScenario[] = [
   'tool-error',
   'tool-three',
   'tool-denied',
+  'slow-tool',
   'ask-user',
   'max-steps',
   'unknown-tool',
   'stream',
+  'slow',
   'llm-error',
 ];
 
@@ -112,6 +116,10 @@ function turnFor(scenario: FakeScenario, turn: number): ModelTurn {
     case 'tool-denied':
       return turn === 1
         ? { text: 'Voy a escribir.', functionCalls: [WRITE_CALL] }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'slow-tool':
+      return turn === 1
+        ? { text: 'Voy a leer lento.', functionCalls: [{ name: 'fs_read', args: { path: 'slow.txt' } }] }
         : { text: FINAL_TEXT, functionCalls: [] };
     case 'ask-user':
       return turn === 1
@@ -210,6 +218,10 @@ export async function startFakeAgentServer(): Promise<FakeAgentServer> {
 
     if (req.method === 'POST' && url.pathname === '/api/gemini/generate') {
       const scenario = scenarioFrom(body);
+      if (scenario === 'slow') {
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        if (res.destroyed) return;
+      }
       const script = turnFor(scenario, nextTurn(turns, scenario));
       if (script.status) {
         sendJson(res, script.status, { error: 'fallo simulado del proveedor' });
@@ -221,6 +233,10 @@ export async function startFakeAgentServer(): Promise<FakeAgentServer> {
 
     if (req.method === 'POST' && url.pathname === '/api/gemini/stream') {
       const scenario = scenarioFrom(body);
+      if (scenario === 'slow') {
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        if (res.destroyed) return;
+      }
       const script = turnFor(scenario, nextTurn(turns, scenario));
       if (script.status) {
         sendJson(res, script.status, { error: 'fallo simulado del proveedor' });
@@ -319,6 +335,10 @@ export async function startFakeAgentServer(): Promise<FakeAgentServer> {
     }
 
     if (req.method === 'POST' && url.pathname === '/api/agent/run-tool') {
+      if (body?.toolId === 'fs.read' && body?.input?.path === 'slow.txt') {
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        if (res.destroyed) return;
+      }
       if (body?.toolId === 'fs.write') {
         sendJson(res, 403, {
           error: 'Modo Sólo lectura: escritura bloqueada por la política del proyecto.',

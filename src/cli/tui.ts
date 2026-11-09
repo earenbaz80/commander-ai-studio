@@ -13,6 +13,7 @@ import type {
   ApprovalRequestV2,
   CliEventV2,
   QuestionV2,
+  SessionMode,
   SessionStateV2,
 } from '../agent/sessionTypes';
 
@@ -101,10 +102,13 @@ export interface AgentRendererOptions {
   model: string;
   maxSteps: number;
   serverUrl: string;
+  mode?: SessionMode;
   tui?: Tui;
   /** `attach`: muestra una corrida existente en vez de iniciar una. */
   attach?: boolean;
   sessionId?: string;
+  /** El REPL ya pintó su cabecera; los turnos siguientes no la repiten. */
+  showHeader?: boolean;
 }
 
 /**
@@ -130,17 +134,20 @@ export class AgentRenderer {
   private ensureHeader(): void {
     if (this.started) return;
     this.started = true;
+    if (this.opts.showHeader === false) return;
     const t = this.tui;
     if (this.opts.attach) {
       t.line(`${t.bold('[commander]')} ${t.cyan('adjunto')} → ${this.opts.serverUrl}`);
       t.line(`  ${t.gray('sesión')} ${t.yellow(this.opts.sessionId || this.opts.task)}`);
-      t.line(`  ${t.gray('modelo')} ${t.yellow(this.opts.model)}   ${t.gray('objetivo')} ${this.opts.task}`);
+      t.line(
+      `  ${t.gray('modelo')} ${t.yellow(this.opts.model)}   ${t.gray('objetivo')} ${this.opts.task}${this.opts.mode ? `   ${t.gray('modo')} ${t.yellow(this.opts.mode)}` : ''}`
+    );
       t.rule();
       return;
     }
     t.line(`${t.bold('[commander]')} ${t.cyan('agente')} → ${this.opts.serverUrl}`);
     t.line(
-      `  ${t.gray('modelo')} ${t.yellow(this.opts.model)}   ${t.gray('pasos máx')} ${this.opts.maxSteps}`
+      `  ${t.gray('modelo')} ${t.yellow(this.opts.model)}   ${t.gray('pasos máx')} ${this.opts.maxSteps}${this.opts.mode ? `   ${t.gray('modo')} ${t.yellow(this.opts.mode)}` : ''}`
     );
     t.line(`  ${t.gray('tarea ')} ${this.opts.task}`);
     t.rule();
