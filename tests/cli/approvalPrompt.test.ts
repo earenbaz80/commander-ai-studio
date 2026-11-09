@@ -40,7 +40,7 @@ class FakeOutput implements ApprovalPromptOutput {
   }
 }
 
-function approval(id = 'apr_1'): ApprovalRequestV2 {
+function approval(id = 'apr_1', overrides: Partial<ApprovalRequestV2> = {}): ApprovalRequestV2 {
   return {
     id,
     sessionId: 'sess_1',
@@ -49,6 +49,7 @@ function approval(id = 'apr_1'): ApprovalRequestV2 {
     diff: '--- a/nota.txt\n+++ b/nota.txt\n@@ -0,0 +1 @@\n+hola',
     createdAt: Date.now(),
     expiresAt: Date.now() + 60_000,
+    ...overrides,
   };
 }
 
@@ -108,6 +109,65 @@ describe('menú interactivo de aprobaciones', () => {
     controller.abort();
 
     assert.equal(await pending, null);
+    assert.deepEqual(input.rawModes, [true, false]);
+  });
+
+  test('a, d y s deciden directo y muestran el diff por hunk', async () => {
+    const diff = [
+      '--- a/nota.txt',
+      '+++ b/nota.txt',
+      '@@ -1,1 +1,1 @@',
+      '-uno',
+      '+UNO',
+      '@@ -10,1 +10,1 @@',
+      '-diez',
+      '+DIEZ',
+    ].join('\n');
+
+    for (const [tecla, esperada] of [
+      ['a', 'allow'],
+      ['d', 'deny'],
+      ['s', 'allow-session'],
+    ] as const) {
+      const input = new FakeInput();
+      const output = new FakeOutput();
+      const pending = promptApprovalDecision(approval('apr_diff', { diff }), {
+        tui: new Tui({ interactive: true, color: false }),
+        input: input as ApprovalPromptInput,
+        output,
+      });
+      input.emit('data', tecla);
+      assert.equal(await pending, esperada, `la tecla ${tecla} decide ${esperada}`);
+      assert.match(output.text, /@@ -1,1 \+1,1 @@/);
+      assert.match(output.text, /@@ -10,1 \+10,1 @@/);
+      assert.match(output.text, /\+DIEZ/);
+      assert.equal(output.text.includes('\x1b['), false, 'sin ANSI con color desactivado');
+    }
+  });
+
+  test('? recorre los hunks y q deniega y detiene', async () => {
+    const diff = '--- a/x\n+++ b/x\n@@ -1,1 +1,1 @@\n-uno\n+UNO\n@@ -9,1 +9,1 @@\n-nueve\n+NUEVE';
+    const input = new FakeInput();
+    const output = new FakeOutput();
+    let interrupted = false;
+    const pending = promptApprovalDecision(approval('apr_q', { diff }), {
+      tui: new Tui({ interactive: true, color: false }),
+      input: input as ApprovalPromptInput,
+      output,
+      onInterrupt: () => {
+        interrupted = true;
+      },
+    });
+
+    input.emit('data', '?');
+    assert.match(output.text, /hunk 1\/2/);
+    input.emit('data', '?');
+    assert.match(output.text, /hunk 2\/2/);
+    assert.match(output.text, /NUEVE/);
+
+    input.emit('data', 'q');
+    assert.equal(await pending, 'deny');
+    assert.equal(interrupted, true, 'q detiene la corrida');
     assert.deepEqual(input.rawModes, [true, false]);
   });
 

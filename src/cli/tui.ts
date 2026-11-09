@@ -16,6 +16,7 @@ import type {
   SessionMode,
   SessionStateV2,
 } from '../agent/sessionTypes';
+import { DIFF_MAX_LINES, diffHunks, renderDiff, renderHunk } from './diff.js';
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
@@ -37,6 +38,11 @@ export class Tui {
     const isTTY = Boolean(process.stdout && process.stdout.isTTY);
     this.interactive = opts.interactive ?? (isTTY && process.env.TERM !== 'dumb');
     this.useColor = opts.color ?? (this.interactive && !process.env.NO_COLOR);
+  }
+
+  /** ¿Se están usando secuencias ANSI? El diff lo respeta para `NO_COLOR`. */
+  get color(): boolean {
+    return this.useColor;
   }
 
   private wrap(code: string, s: string): string {
@@ -379,6 +385,11 @@ type ApprovalKey =
   | '3'
   | 'j'
   | 'k'
+  | 'a'
+  | 'd'
+  | 's'
+  | 'q'
+  | 'detail'
   | 'other';
 
 /** Separa un chunk de stdin en teclas, incluidas las flechas ANSI. */
@@ -421,6 +432,14 @@ function parseApprovalKeys(data: string): ApprovalKey[] {
       keys.push('k');
       continue;
     }
+    if (char === 'a' || char === 'd' || char === 's' || char === 'q') {
+      keys.push(char);
+      continue;
+    }
+    if (char === '?') {
+      keys.push('detail');
+      continue;
+    }
     keys.push('other');
   }
   return keys;
@@ -442,6 +461,7 @@ export function promptApprovalDecision(
 
   return new Promise<ApprovalDecision | null>((resolve) => {
     let index = 0;
+    let detailIndex = 0;
     let settled = false;
 
     const cleanup = (): void => {
@@ -495,9 +515,22 @@ export function promptApprovalDecision(
         if (key === 'up' || key === 'k') move(-1);
         else if (key === 'down' || key === 'j') move(1);
         else if (key === 'enter') finish(APPROVAL_CHOICES[index].value);
-        else if (key === '1') finish(APPROVAL_CHOICES[0].value);
-        else if (key === '2') finish(APPROVAL_CHOICES[1].value);
-        else if (key === '3') finish(APPROVAL_CHOICES[2].value);
+        else if (key === '1' || key === 'a') finish(APPROVAL_CHOICES[0].value);
+        else if (key === '2' || key === 'd') finish(APPROVAL_CHOICES[1].value);
+        else if (key === '3' || key === 's') finish(APPROVAL_CHOICES[2].value);
+        else if (key === 'q') {
+          finish('deny', 'denegado y detenido');
+          opts.onInterrupt?.();
+        } else if (key === 'detail') {
+          const hunks = approval.diff ? diffHunks(approval.diff) : [];
+          if (hunks.length > 0 && approval.diff) {
+            output.write(`${t.gray(`  hunk ${detailIndex + 1}/${hunks.length}`)}\n`);
+            for (const line of renderHunk(approval.diff, detailIndex, { color: t.color }) ?? []) {
+              output.write(`${line}\n`);
+            }
+            detailIndex = (detailIndex + 1) % hunks.length;
+          }
+        }
         else if (key === 'escape') finish(null, 'decisión dejada al escritorio');
         else if (key === 'interrupt') {
           finish(null);
@@ -513,13 +546,17 @@ export function promptApprovalDecision(
       `${t.yellow('⚠')} ${t.bold(approval.tool)}${detail ? ` ${t.gray(detail)}` : ''} ${t.gray(`· ${approval.id}`)}\n`
     );
     if (approval.diff) {
-      const lines = approval.diff.split(/\r?\n/);
-      for (const line of lines.slice(0, 12)) output.write(`${t.gray(`  ${line}`)}\n`);
-      if (lines.length > 12) output.write(t.gray(`  … ${lines.length - 12} línea(s) más\n`));
+      // Diff por hunk con números de línea; si no cabe, el propio render avisa.
+      for (const line of renderDiff(approval.diff, { color: t.color, maxLines: DIFF_MAX_LINES }).lines) {
+        output.write(`${line}\n`);
+      }
     }
     renderMenu(false);
     output.write(
-      t.gray('  ↑/↓ o j/k · Enter · 1/2/3 directo · Esc deja la decisión al escritorio\n')
+      t.gray(
+        '  a permitir · d denegar · s en esta sesión · ? detalle del hunk · q detener\n' +
+          '  ↑/↓ o j/k · Enter · 1/2/3 directo · Esc deja la decisión al escritorio\n'
+      )
     );
 
     try {
