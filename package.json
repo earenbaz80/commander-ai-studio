@@ -48,7 +48,7 @@
     "check:rules": "tsx scripts/check-rules.ts",
     "check:contrast": "npm run build && playwright test tests/e2e/contrast.spec.ts --project=chromium",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
-    "prepare": "husky install",
+    "prepare": "husky",
     "postinstall": "electron-builder install-app-deps",
     "capacitor:add": "cap add android ios",
     "capacitor:sync": "cap sync",
