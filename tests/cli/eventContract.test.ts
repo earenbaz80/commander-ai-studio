@@ -45,8 +45,8 @@ const SAMPLES: Record<CliEventType, CliEventPayload> = {
   plan: {
     type: 'plan',
     plan: [
-      { id: 'p1', text: 'leer el repo', done: true },
-      { id: 'p2', text: 'escribir el fix', done: false },
+      { id: 'p1', text: 'leer el repo', status: 'done', done: true },
+      { id: 'p2', text: 'escribir el fix', status: 'pending', done: false },
     ],
   },
   approval_request: {
@@ -114,8 +114,8 @@ function fullState(): SessionStateV2 {
     },
   ];
   state.plan = [
-    { id: 'p1', text: 'leer', done: true },
-    { id: 'p2', text: 'escribir', done: false },
+    { id: 'p1', text: 'leer', status: 'done', done: true },
+    { id: 'p2', text: 'escribir', status: 'pending', done: false },
   ];
   state.pendingApproval = {
     id: 'apr_1',

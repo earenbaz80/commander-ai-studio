@@ -76,7 +76,9 @@ function toCliPayload(evt: AgentEvent): CliEventPayload | null {
     case 'thought':
       return { type: 'thought', text: evt.content };
     case 'plan':
-      return { type: 'plan', plan: evt.plan };
+      // El evento interno puede venir de un plan viejo sin `status`; el sobre
+      // v2 siempre publica el estado completo (F1-13).
+      return { type: 'plan', plan: normalizePlan(evt.plan, []) };
     case 'tool_call':
       return { type: 'tool_call', tool: evt.toolId, input: evt.input };
     case 'tool_result':
@@ -556,7 +558,9 @@ export class AgentSession {
       this.updatedAt = restored.updatedAt || this.createdAt;
       this.status = legacyStatus(restored.status);
       this.steps = restored.steps.map((step) => ({ ...step }));
-      this.plan = restored.plan.map((item) => ({ ...item }));
+      // Migración tolerante: un estado viejo sólo trae `done` y aquí nace con
+      // `status`/`done` coherentes antes de exponerse o persistirse.
+      this.plan = normalizePlan(restored.plan, []);
       this.turns = restored.turns.map((turn) => ({ ...turn }));
       this.answer = restored.answer ?? '';
       this.lastError = restored.error ?? '';
@@ -1276,7 +1280,7 @@ export class AgentSession {
     }, this.abortCtrl.signal);
 
     if (llmRes.plan && llmRes.plan.length > 0) {
-      const p = llmRes.plan.map((x) => ({ id: x.id || uid('plan'), text: x.text, done: x.done ?? false }));
+      const p = normalizePlan(llmRes.plan, this.plan);
       this.plan = p;
       this.emit({ type: 'plan', plan: p });
     }

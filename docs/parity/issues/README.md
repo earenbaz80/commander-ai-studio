@@ -1,6 +1,6 @@
 # Issues de F1
 
-Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #6 (F1-05), #7 (F1-06), #8 (F1-07), #9 (F1-08), #10 (F1-09), #11 (F1-10), #12 (F1-11), #13 (F1-12) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (**#14 (F1-13)**; el #1 es un PR ajeno a este backlog). Este directorio conserva el cuerpo versionado de cada uno, listo para `gh issue edit --body-file`.
+Los 14 issues del backlog están **cerrados como completados**: #2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #6 (F1-05), #7 (F1-06), #8 (F1-07), #9 (F1-08), #10 (F1-09), #11 (F1-10), #12 (F1-11), #13 (F1-12), #14 (F1-13) y #15 (F1-14). El #1 es un PR ajeno a este backlog. Este directorio conserva el cuerpo versionado de cada uno, listo para `gh issue edit --body-file`.
 
 | Archivo | Issue | Estado | Título | Labels | Est. | Depende de |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -16,7 +16,7 @@ Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), 
 | [F1-10](F1-10.md) | [#11](https://github.com/earenbaz80/commander-ai-studio/issues/11) | Cerrado | `--resume` y `--fork` sin duplicar tool calls | `f1`, `p0`, `area:cli`, `area:server` | 1,0 | F1-02, F1-08 |
 | [F1-11](F1-11.md) | [#12](https://github.com/earenbaz80/commander-ai-studio/issues/12) | Cerrado | Regresión del contrato `--json`/NDJSON | `f1`, `p0`, `area:cli`, `contract` | 0,5 | F1-01 |
 | [F1-12](F1-12.md) | [#13](https://github.com/earenbaz80/commander-ai-studio/issues/13) | Cerrado | Seis subagentes con allowlist y worktree opcional | `f1`, `p1`, `area:agent` | 2,0 | F1-02 |
-| [F1-13](F1-13.md) | [#14](https://github.com/earenbaz80/commander-ai-studio/issues/14) | Abierto | Plan persistente con estados, archivos y criterios | `f1`, `p1`, `area:agent`, `area:cli` | 1,0 | F1-02 |
+| [F1-13](F1-13.md) | [#14](https://github.com/earenbaz80/commander-ai-studio/issues/14) | Cerrado | Plan persistente con estados, archivos y criterios | `f1`, `p1`, `area:agent`, `area:cli` | 1,0 | F1-02 |
 | [F1-14](F1-14.md) | [#15](https://github.com/earenbaz80/commander-ai-studio/issues/15) | Cerrado | Arnés E2E del CLI con proveedor falso determinista | `f1`, `p0`, `area:cli`, `tests` | 1,5 | F1-02, F1-04, F1-08 |
 
 La columna `Estado` de esta tabla y la de §2 del backlog se sincronizan con GitHub:

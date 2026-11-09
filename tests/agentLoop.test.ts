@@ -348,10 +348,10 @@ test('sin sustitución no se registra ningún paso de modelo', async () => {
 });
 
 test('normalizePlan marca por id sin repetir el texto y descarta basura', () => {
-  const current = [{ id: 'p1', text: 'leer el repo', done: false }];
+  const current = [{ id: 'p1', text: 'leer el repo', status: 'pending' as const, done: false }];
 
   assert.deepEqual(normalizePlan([{ id: 'p1', done: true }], current), [
-    { id: 'p1', text: 'leer el repo', done: true },
+    { id: 'p1', text: 'leer el repo', status: 'done', done: true },
   ]);
   assert.deepEqual(normalizePlan('no soy un array', current), current, 'un plan inválido no borra el actual');
   assert.equal(normalizePlan([{ text: '   ' }, { done: true }, null]).length, 0);
