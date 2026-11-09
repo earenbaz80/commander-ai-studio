@@ -1,6 +1,6 @@
 # Issues de F1
 
-Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; **F1-06 (#7) está implementado (commit `b01264a`) pero el issue sigue abierto**; el resto sigue abierto (**#6, #8–#10 y #13–#14**; el #1 es un PR ajeno a este backlog). Este directorio conserva el cuerpo versionado de cada uno, listo para `gh issue edit --body-file`.
+Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #7 (F1-06), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (**#6, #8–#10 y #13–#14**; el #1 es un PR ajeno a este backlog). Este directorio conserva el cuerpo versionado de cada uno, listo para `gh issue edit --body-file`.
 
 | Archivo | Issue | Estado | Título | Labels | Est. | Depende de |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -18,8 +18,6 @@ Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), 
 | [F1-12](F1-12.md) | [#13](https://github.com/earenbaz80/commander-ai-studio/issues/13) | Abierto | Seis subagentes con allowlist y worktree opcional | `f1`, `p1`, `area:agent` | 2,0 | F1-02 |
 | [F1-13](F1-13.md) | [#14](https://github.com/earenbaz80/commander-ai-studio/issues/14) | Abierto | Plan persistente con estados, archivos y criterios | `f1`, `p1`, `area:agent`, `area:cli` | 1,0 | F1-02 |
 | [F1-14](F1-14.md) | [#15](https://github.com/earenbaz80/commander-ai-studio/issues/15) | Cerrado | Arnés E2E del CLI con proveedor falso determinista | `f1`, `p0`, `area:cli`, `tests` | 1,5 | F1-02, F1-04, F1-08 |
-
-> **F1-06 (#7) implementado, issue abierto.** Commit `b01264a`; los criterios de aceptación ya están marcados. La fila conserva `Abierto` hasta que GitHub cierre #7.
 
 La columna `Estado` de esta tabla y la de §2 del backlog se sincronizan con GitHub:
 
