@@ -1,7 +1,7 @@
 # Backlog ejecutable — Fase 1 (CLI/TUI de primera clase y sesión única)
 
 > **Base:** Fase 1 de [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md).
-> **Estado:** los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; **F1-06 (#7) está implementado (commit `b01264a`) pero el issue sigue abierto**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). La tabla de §2 enlaza cada ID con su issue; los cuerpos versionados están en [docs/parity/issues/](issues/README.md).
+> **Estado:** los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #7 (F1-06), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). La tabla de §2 enlaza cada ID con su issue; los cuerpos versionados están en [docs/parity/issues/](issues/README.md).
 > **Estimaciones:** días-persona, ±30 %. Suman **21,0 d-persona**, que con 2 personas en paralelo son ≈ 11–12 días de calendario; el gate G1 añade 5 días de dogfooding.
 > **Regla de cierre de cada issue:** `tsc --noEmit` + pruebas focalizadas en verde. Si toca UI, además `vite build`. Ningún issue se cierra con mocks que sustituyan una aserción real.
 
@@ -37,8 +37,6 @@
 | F1-12 | [#13](https://github.com/earenbaz80/commander-ai-studio/issues/13) | Abierto | Seis subagentes con allowlist y worktree opcional | 2,0 | F1-02 | PR4 |
 | F1-13 | [#14](https://github.com/earenbaz80/commander-ai-studio/issues/14) | Abierto | Plan persistente con estados, archivos y criterios | 1,0 | F1-02 | PR4 |
 | F1-14 | [#15](https://github.com/earenbaz80/commander-ai-studio/issues/15) | Cerrado | Arnés E2E del CLI con proveedor falso determinista | 1,5 | F1-02, F1-04, F1-08 | PR5 |
-
-> **F1-06 implementado, issue #7 abierto.** Commit `b01264a`; los criterios de aceptación ya están marcados. La fila sigue `Abierto` porque GitHub aún no está cerrado.
 
 ## 3. Issues
 
@@ -189,7 +187,7 @@
 
 **Labels:** `f1`, `p0`, `area:cli`, `area:agent`
 **Estimación:** 1,5 d-persona · **Depende de:** F1-04
-**Estado:** Implementado — commit `b01264a` (2026-11-09); #7 abierto hasta su cierre formal.
+**Estado:** Implementado y cerrado — commit `b01264a` (2026-11-09).
 
 **Por qué.** El CLI filtra `ask_user` explícitamente, así que el agente supone en vez de preguntar. En el escritorio ya existe el modal y el canal.
 
@@ -456,14 +454,14 @@ F1-01 ─┬─► F1-02 ─┬─► F1-03
 F1-02 + F1-04 + F1-08 ─────────────────────► F1-14
 ```
 
-**Camino crítico:** F1-01 → F1-02 → F1-04 → F1-06 (implementado) → F1-08 → F1-09 (11 d-persona). F1-12 y F1-13 pueden correr en paralelo desde F1-02.
+**Camino crítico:** F1-01 → F1-02 → F1-04 → F1-06 → F1-08 → F1-09 (11 d-persona). F1-12 y F1-13 pueden correr en paralelo desde F1-02.
 
 ## 5. Orden de ejecución con 2 personas
 
 | Semana | Dev A | Dev B |
 | --- | --- | --- |
 | 1 | F1-01 → F1-02 | F1-13 (tras F1-02) → F1-12 |
-| 2 | F1-03 → F1-04 → F1-07 | F1-05 → F1-06 (implementado) → F1-08 |
+| 2 | F1-03 → F1-04 → F1-07 | F1-05 → F1-06 → F1-08 |
 | 3 | F1-10 → F1-11 → F1-14 | F1-09 + revisión de F1-14 |
 | 4 | Gate G1: 5 días de dogfooding con el CLI como superficie principal | idem |
 
@@ -493,7 +491,7 @@ F1-02 + F1-04 + F1-08 ───────────────────�
 
 ## 8. Issues en GitHub
 
-Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; **F1-06 (#7) está implementado (commit `b01264a`) pero sigue abierto**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). No vuelvas a ejecutar `gh issue create`, porque duplicaría el backlog. El mapeo está en la tabla de §2 y el cuerpo versionado de cada issue, en [`docs/parity/issues/`](issues/README.md).
+Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #7 (F1-06), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). No vuelvas a ejecutar `gh issue create`, porque duplicaría el backlog. El mapeo está en la tabla de §2 y el cuerpo versionado de cada issue, en [`docs/parity/issues/`](issues/README.md).
 
 Para actualizar el cuerpo de un issue ya creado:
 

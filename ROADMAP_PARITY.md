@@ -170,7 +170,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 **Objetivo:** que el CLI sea una superficie completa del mismo agente, no un modo de una sola pasada, y que la sesión sea la misma en escritorio y terminal.
 
-> **Estado 2026-11-09 — F1-06 implementado.** `ask_user` ya se ofrece y resuelve en el CLI (commit `b01264a`); F1-08 (REPL) sigue pendiente.
+> **Estado 2026-11-09 — F1-06 completado y cerrado.** `ask_user` ya se ofrece y resuelve en el CLI (commit `b01264a`); F1-08 (REPL) sigue pendiente.
 
 > **Desglose ejecutable:** [docs/parity/backlog-f1.md](docs/parity/backlog-f1.md) — 14 issues, 21,0 d-persona, dependencias, camino crítico y pruebas por entregable.
 
