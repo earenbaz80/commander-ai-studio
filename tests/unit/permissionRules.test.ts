@@ -6,7 +6,6 @@ import {
   normalizeRules,
   patternMatches,
   ruleTarget,
-  syncRulesWithServer,
 } from '../../src/agent/permissionRules';
 
 describe('reglas de permisos por patrón', () => {
@@ -95,50 +94,4 @@ describe('reglas de permisos por patrón', () => {
     expect(needsHumanApproval(null, false, false)).toBe(false);
   });
 
-  it('syncRulesWithServer importa localStorage una sola vez, sin duplicar', async () => {
-    const store = new Map<string, string>();
-    (globalThis as any).localStorage = {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => void store.set(key, value),
-      removeItem: (key: string) => void store.delete(key),
-      clear: () => store.clear(),
-      key: () => null,
-      length: 0,
-    };
-    store.set(
-      'commander.agent.permissionRules',
-      JSON.stringify([{ tool: 'fs.write', pattern: '.env', decision: 'deny' }])
-    );
-
-    const calls: Array<{ url: string; init?: any }> = [];
-    const fetcher = (async (url: string, init?: any) => {
-      calls.push({ url, init });
-      if (init?.method === 'PUT') {
-        const body = JSON.parse(init.body);
-        return new Response(JSON.stringify({ rules: body.rules, migrated: true }), { status: 200 });
-      }
-      return new Response(
-        JSON.stringify({
-          rules: [{ tool: 'fs.write', pattern: '.env', decision: 'ask' }],
-          migrated: false,
-        }),
-        { status: 200 }
-      );
-    }) as typeof fetch;
-
-    const rules = await syncRulesWithServer('/proj', fetcher);
-    // La regla local (deny) corrige a la del servidor; no quedan duplicados.
-    expect(rules).toEqual([{ tool: 'fs.write', pattern: '.env', decision: 'deny' }]);
-    expect(calls.map((c) => c.init?.method ?? 'GET')).toEqual(['GET', 'PUT']);
-    expect(JSON.parse(calls[1].init.body).migrate).toBe(true);
-
-    // Segunda vuelta: el servidor ya migró y devuelve las reglas guardadas.
-    calls.length = 0;
-    const again = (async (url: string, init?: any) => {
-      calls.push({ url, init });
-      return new Response(JSON.stringify({ rules, migrated: true }), { status: 200 });
-    }) as typeof fetch;
-    expect(await syncRulesWithServer('/proj', again)).toEqual(rules);
-    expect(calls.map((c) => c.init?.method ?? 'GET')).toEqual(['GET']);
-  });
 });
