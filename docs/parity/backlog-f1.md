@@ -1,7 +1,8 @@
 # Backlog ejecutable — Fase 1 (CLI/TUI de primera clase y sesión única)
 
 > **Base:** Fase 1 de [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md).
-> **Estado:** los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #7 (F1-06), #10 (F1-09), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). La tabla de §2 enlaza cada ID con su issue; los cuerpos versionados están en [docs/parity/issues/](issues/README.md).
+> **Estado:** los **14 issues están cerrados como completados** (#2–#15; el #1 es un PR ajeno a este backlog). La tabla de §2 enlaza cada ID con su issue; los cuerpos versionados están en [docs/parity/issues/](issues/README.md).
+> **G1: NO CERRADO.** El cierre de los issues acredita la implementación y sus pruebas, no el dogfooding de 5 días. Ver §7.
 > **Estimaciones:** días-persona, ±30 %. Suman **21,0 d-persona**, que con 2 personas en paralelo son ≈ 11–12 días de calendario; el gate G1 añade 5 días de dogfooding.
 > **Regla de cierre de cada issue:** `tsc --noEmit` + pruebas focalizadas en verde. Si toca UI, además `vite build`. Ningún issue se cierra con mocks que sustituyan una aserción real.
 
@@ -56,9 +57,9 @@
 **Fuera de alcance:** cambiar el transporte, añadir dependencias, tocar la UI.
 
 **Criterios de aceptación**
-- [ ] Todo evento emitido lleva `schemaVersion: 2` y un `seq` monotónico por sesión.
-- [ ] Un consumidor que ignore campos nuevos sigue funcionando con el flujo actual.
-- [ ] `SessionStateV2` se puede serializar y volver a leer sin pérdida (round-trip).
+- [x] Todo evento emitido lleva `schemaVersion: 2` y un `seq` monotónico por sesión.
+- [x] Un consumidor que ignore campos nuevos sigue funcionando con el flujo actual.
+- [x] `SessionStateV2` se puede serializar y volver a leer sin pérdida (round-trip).
 
 **Pruebas**
 - `tests/cli/eventContract.test.ts`: round-trip de estado; todos los `type` documentados; campo desconocido tolerado; `seq` estrictamente creciente.
@@ -85,10 +86,10 @@
 **Fuera de alcance:** approvals (F1-04), streaming reanudable (F1-03), plan con estados (F1-13).
 
 **Criterios de aceptación**
-- [ ] Una sesión creada con `run: true` avanza pasos y termina en `completed`, `failed` o `cancelled`.
-- [ ] Reiniciar el servidor y pedir `GET /api/agent/sessions/:id` devuelve el mismo estado (pasos, turnos, plan).
-- [ ] Dos peticiones concurrentes a `message` sobre la misma sesión no duplican pasos (la segunda recibe 409).
-- [ ] Un `id` inexistente responde 404 y uno con `..` responde 400.
+- [x] Una sesión creada con `run: true` avanza pasos y termina en `completed`, `failed` o `cancelled`.
+- [x] Reiniciar el servidor y pedir `GET /api/agent/sessions/:id` devuelve el mismo estado (pasos, turnos, plan).
+- [x] Dos peticiones concurrentes a `message` sobre la misma sesión no duplican pasos (la segunda recibe 409).
+- [x] Un `id` inexistente responde 404 y uno con `..` responde 400.
 
 **Pruebas**
 - `tests/agentSessions.api.test.ts` (arnés `startServer()`): crear, ejecutar con proveedor falso, estado, cancelar, 404/400, 409 concurrente.
@@ -113,10 +114,10 @@
 - El cliente del CLI reconecta una vez por caída con backoff 250 ms → 1 s → 2 s (máximo 3 intentos) y deduplica por `seq`.
 
 **Criterios de aceptación**
-- [ ] Cortar la conexión a mitad de corrida y reconectar con `Last-Event-ID` no repite ni pierde eventos.
-- [ ] Un `seq` desalojado produce `resync` y el cliente reconstruye el estado sin ejecutar tools.
-- [ ] `GET .../stream` de una sesión inexistente responde 404 antes de abrir el stream.
-- [ ] El stream no mantiene viva la sesión si el cliente se va; la corrida sigue en el servidor.
+- [x] Cortar la conexión a mitad de corrida y reconectar con `Last-Event-ID` no repite ni pierde eventos.
+- [x] Un `seq` desalojado produce `resync` y el cliente reconstruye el estado sin ejecutar tools.
+- [x] `GET .../stream` de una sesión inexistente responde 404 antes de abrir el stream.
+- [x] El stream no mantiene viva la sesión si el cliente se va; la corrida sigue en el servidor.
 
 **Pruebas**
 - `tests/agent/sessionStream.test.ts`: secuencia completa, reconexión con `Last-Event-ID`, `resync`, `gone`, keep-alive (timer falso).
@@ -141,12 +142,12 @@
 - `allow-session` recuerda la regla sólo para esa sesión, nunca en disco.
 
 **Criterios de aceptación**
-- [ ] Denegar una escritura no modifica ni un byte (hash del árbol antes/después idéntico).
-- [ ] Aprobar aplica el cambio y el paso queda en el estado con su decisión.
-- [ ] `allow-session` no vuelve a preguntar la misma tool+patrón dentro de la sesión y no afecta a otra sesión.
-- [ ] Un timeout deniega y la corrida continúa sin ejecutar la tool.
-- [ ] Una decisión repetida es idempotente; una contradictoria responde 409.
-- [ ] Ningún approval incluye tokens ni rutas fuera del proyecto en el mensaje de error.
+- [x] Denegar una escritura no modifica ni un byte (hash del árbol antes/después idéntico).
+- [x] Aprobar aplica el cambio y el paso queda en el estado con su decisión.
+- [x] `allow-session` no vuelve a preguntar la misma tool+patrón dentro de la sesión y no afecta a otra sesión.
+- [x] Un timeout deniega y la corrida continúa sin ejecutar la tool.
+- [x] Una decisión repetida es idempotente; una contradictoria responde 409.
+- [x] Ningún approval incluye tokens ni rutas fuera del proyecto en el mensaje de error.
 
 **Pruebas**
 - `tests/agent/approvalChannel.test.ts`: allow, deny, allow-session, timeout, idempotencia, 409, cancelación en bloque.
@@ -504,20 +505,29 @@ F1-02 + F1-04 + F1-08 ───────────────────�
 
 ## 7. Definición de terminado de F1 (gate G1)
 
-- [ ] `commander` abre REPL; una edición pide aprobación con diff y denegar no escribe.
+- [x] `commander` abre REPL; una edición pide aprobación con diff y denegar no escribe.
 - [x] `ask_user` bloquea hasta respuesta y queda en el historial (F1-06, commit `b01264a`).
-- [ ] Una tarea del CLI aparece en el escritorio con el mismo `sessionId`, pasos y plan.
-- [ ] `--resume` continúa sin duplicar tool calls; `--fork` no muta la original.
-- [ ] El plan sobrevive a reiniciar el servidor.
-- [ ] 6 subagentes en paralelo; una tool denegada falla cerrado; worktree aislado.
-- [ ] 10 casos adversariales de permisos sin escritura fuera de política.
-- [ ] `--json` mantiene su contrato y los consumidores siguen funcionando.
-- [ ] `tsc --noEmit` y todas las pruebas focalizadas en verde.
+- [x] Una tarea del CLI aparece en el escritorio con el mismo `sessionId`, pasos y plan.
+- [x] `--resume` continúa sin duplicar tool calls; `--fork` no muta la original.
+- [x] El plan sobrevive a reiniciar el servidor.
+- [x] 6 subagentes en paralelo; una tool denegada falla cerrado; worktree aislado.
+- [x] 10 casos adversariales de permisos sin escritura fuera de política.
+- [x] `--json` mantiene su contrato y los consumidores siguen funcionando.
+- [x] `tsc --noEmit` y todas las pruebas focalizadas en verde.
 - [ ] Dogfooding de 5 días sin regresión de latencia de aprobación ni tasa de éxito frente a F0.
+
+### Estado de G1 (2026-11-09)
+
+**G1: NO CERRADO.** La implementación de F1 está cerrada; el dogfooding de 5 días no se ejecutó.
+
+- **Implementación:** 14/14 issues cerrados como completados. `npm run check:criteria` confirma que los 14 tienen sus criterios completos.
+- **Evidencia automatizada:** 70/70 tests del CLI (`node:test`: contrato v2, NDJSON, REPL, diff, approvals, `--resume`, `--fork` y E2E) y 30/30 tests de agente/sesiones (Vitest: approvals, persistencia de sesión y plan, subagentes y denegación de escrituras). `npm run build` (`tsc --noEmit` + `vite build`) está verde.
+- **Dogfooding:** no ejecutado. F0/G0 sigue aparcado, no hay baseline de latencia/éxito ni un modelo real con el que comparar. No se puede declarar que G1 pase ni que haya paridad con F0.
+- **Excepción registrada:** F2-01 (contrato/store de artifacts) avanzó como cambio aislado que no toca el bucle del agente. Eso no cierra G1 ni autoriza F5; cualquier trabajo de F2 que modifique el agente debe esperar al dogfooding.
 
 ## 8. Issues en GitHub
 
-Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #6 (F1-05), #7 (F1-06), #9 (F1-08), #10 (F1-09), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). No vuelvas a ejecutar `gh issue create`, porque duplicaría el backlog. El mapeo está en la tabla de §2 y el cuerpo versionado de cada issue, en [`docs/parity/issues/`](issues/README.md).
+Los 14 issues están cerrados como completados (#2–#15). El #1 es un PR ajeno a este backlog. No vuelvas a ejecutar `gh issue create`, porque duplicaría el backlog. El mapeo está en la tabla de §2 y el cuerpo versionado de cada issue, en [`docs/parity/issues/`](issues/README.md).
 
 Para actualizar el cuerpo de un issue ya creado:
 
