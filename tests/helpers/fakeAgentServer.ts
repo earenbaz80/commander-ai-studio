@@ -23,6 +23,7 @@ export type FakeScenario =
   | 'tool-error'
   | 'tool-three'
   | 'tool-denied'
+  | 'ask-user'
   | 'max-steps'
   | 'unknown-tool'
   | 'stream'
@@ -61,6 +62,15 @@ const THREE_READ_CALLS: FunctionCall[] = [
   { name: 'fs_read', args: { path: 'AGENTS.md' } },
 ];
 const WRITE_CALL: FunctionCall = { name: 'fs_write', args: { path: 'salida.txt', content: 'x' } };
+const ASK_CALL: FunctionCall = {
+  name: 'ask_user',
+  args: {
+    header: 'Alcance',
+    question: '¿Qué alcance uso?',
+    options: ['mínimo', 'completo'],
+    allowFreeText: true,
+  },
+};
 const UNKNOWN_CALL: FunctionCall = { name: 'no_existe', args: {} };
 
 const SCENARIOS: FakeScenario[] = [
@@ -69,6 +79,7 @@ const SCENARIOS: FakeScenario[] = [
   'tool-error',
   'tool-three',
   'tool-denied',
+  'ask-user',
   'max-steps',
   'unknown-tool',
   'stream',
@@ -102,6 +113,10 @@ function turnFor(scenario: FakeScenario, turn: number): ModelTurn {
       return turn === 1
         ? { text: 'Voy a escribir.', functionCalls: [WRITE_CALL] }
         : { text: FINAL_TEXT, functionCalls: [] };
+    case 'ask-user':
+      return turn === 1
+        ? { text: 'Necesito confirmar el alcance.', functionCalls: [ASK_CALL] }
+        : { text: 'Listo: alcance elegido.', functionCalls: [] };
     case 'max-steps':
       return { text: 'Sigo leyendo.', functionCalls: [READ_CALL] };
     case 'unknown-tool':

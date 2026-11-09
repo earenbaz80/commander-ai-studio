@@ -26,6 +26,7 @@ import {
   type ApprovalDecision,
   type CliEventPayload,
   type CliEventV2,
+  type QuestionV2,
   type SessionStateV2,
   type SessionStepV2,
   type SessionTurnV2,
@@ -68,7 +69,21 @@ export interface RunAgentOptions {
    * tests directos y el golden no lo activan: no tocan la red de sesiones.
    */
   persistSession?: boolean;
+  /**
+   * Resuelve una pregunta de `ask_user` en el cliente. Sin este callback (por
+   * ejemplo en `--json` o sin TTY) la pregunta se cancela sin abrir un prompt.
+   */
+  askUser?: AskUserHandler;
 }
+
+/** Respuesta que el cliente da a una pregunta de `ask_user`. */
+export interface AskUserReply {
+  answer: string | null;
+  reason?: string;
+}
+
+/** Resuelve una pregunta en el cliente; sin handler la pregunta se cancela. */
+export type AskUserHandler = (question: QuestionV2) => Promise<AskUserReply>;
 
 interface ToolCall {
   name: string;
@@ -155,9 +170,7 @@ function buildPayload(
   };
   // El CLI no pinta el plan y su bucle manda los nombres tal cual al backend:
   // no le ofrecemos `update_plan`, que aquí no existe como tool.
-  const declarations = AGENT_FUNCTION_DECLARATIONS.filter(
-    (d) => d.name !== PLAN_TOOL && d.name !== 'ask_user'
-  );
+  const declarations = AGENT_FUNCTION_DECLARATIONS.filter((d) => d.name !== PLAN_TOOL);
   payload.tools =
     dialect === 'gemini'
       ? [{ functionDeclarations: declarations }]
@@ -642,6 +655,27 @@ export async function consumeSessionStream(
   }
 }
 
+/** Convierte los argumentos de `ask_user` al contrato de pregunta del CLI. */
+function questionFromInput(input: Record<string, unknown>): QuestionV2 | null {
+  const text = typeof input.question === 'string' ? input.question.trim() : '';
+  if (!text) return null;
+  const header = typeof input.header === 'string' ? input.header.trim() : '';
+  const options = Array.isArray(input.options)
+    ? input.options
+        .map((option) => String(option ?? '').trim())
+        .filter(Boolean)
+        .slice(0, 6)
+    : [];
+  const question: QuestionV2 = {
+    id: uid('q'),
+    text,
+    allowFreeText: input.allowFreeText !== false,
+  };
+  if (header) question.header = header;
+  if (options.length) question.options = options;
+  return question;
+}
+
 /**
  * Ejecuta el bucle del agente hasta terminar o agotar `maxSteps`.
  *
@@ -810,6 +844,61 @@ export async function runAgent(
         input: mapped.input,
         status: 'running',
       });
+      if (mapped.tool === 'ask_user') {
+        const question = questionFromInput(input);
+        if (!question) {
+          const text = 'ERROR: ask_user requiere question';
+          emit({ type: 'error', text });
+          history.push(`TOOL ask_user → ${text}`);
+          await addStep({ type: 'thought', title: 'ask_user inválida', content: text, status: 'failed' });
+          continue;
+        }
+
+        emit({ type: 'question', question });
+        let reply: AskUserReply = {
+          answer: null,
+          reason: opts.askUser ? 'sin respuesta' : 'sin terminal interactiva',
+        };
+        if (opts.askUser) {
+          try {
+            const resolved = await opts.askUser(question);
+            if (resolved) reply = resolved;
+          } catch (e) {
+            reply = { answer: null, reason: e instanceof Error ? e.message : String(e) };
+          }
+        }
+
+        const answer = typeof reply.answer === 'string' ? reply.answer.trim() : '';
+        if (answer) {
+          const summary = `respuesta: ${answer}`;
+          emit({ type: 'tool_result', tool: mapped.tool, ok: true, summary });
+          history.push(`TOOL ${mapped.tool} → ${summary}`);
+          addTurn({ role: 'tool', text: `PREGUNTA: ${question.text}\nRESPUESTA: ${answer}` });
+          await addStep({
+            type: 'tool_result',
+            toolId: mapped.tool,
+            title: mapped.tool,
+            content: summary,
+            input: mapped.input,
+            output: { answer },
+            status: 'completed',
+          });
+        } else {
+          const text = `ERROR: pregunta cancelada${reply.reason ? ` (${reply.reason})` : ''}`;
+          emit({ type: 'tool_result', tool: mapped.tool, ok: false, summary: text });
+          history.push(`TOOL ${mapped.tool} → ${text}`);
+          addTurn({ role: 'tool', text: `PREGUNTA: ${question.text}\n${text}` });
+          await addStep({
+            type: 'tool_result',
+            toolId: mapped.tool,
+            title: mapped.tool,
+            content: text,
+            input: mapped.input,
+            status: 'failed',
+          });
+        }
+        continue;
+      }
       const result = await runTool(opts.serverUrl, mapped.tool, {
         ...input,
         root: opts.cwd,
