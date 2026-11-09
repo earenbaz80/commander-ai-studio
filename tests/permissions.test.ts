@@ -9,6 +9,8 @@ import {
   enforcePath,
   getPermissions,
   setPermissions,
+  getPermissionRules,
+  setPermissionRules,
   normalizePermissions,
   DEFAULT_PERMISSIONS,
 } from '../permissions.js';
@@ -221,4 +223,162 @@ test('handleAgentRunTool: sin permisos configurados, todo permitido (build)', as
   await handleAgentRunTool(mockReq({ toolId: 'fs.write', input: { root: dir, path: 'a.txt', content: 'x' } }), w);
   assert.equal(w.statusCode, 200);
   assert.equal(w.body.ok, true);
+});
+
+// ── Reglas por patrón del proyecto (F1-07) ──
+
+test('reglas: roundtrip en .commander/permissions.json con marca de importación', () => {
+  const dir = makeProj('rules-roundtrip');
+  const saved = setPermissions(dir, {
+    mode: 'build',
+    rules: [
+      { tool: 'shell.run', pattern: 'npm *', decision: 'allow' },
+      { tool: 'fs.write', pattern: '.env', decision: 'deny' },
+    ],
+    rulesImportedAt: 123,
+  });
+  assert.equal(saved.rules.length, 2);
+  assert.equal(saved.rulesImportedAt, 123);
+  const loaded = getPermissions(dir);
+  assert.deepEqual(loaded.rules, saved.rules);
+  assert.equal(getPermissionRules(dir).length, 2);
+
+  // Actualizar sólo reglas conserva el resto de la política.
+  setPermissionRules(dir, [{ tool: 'fs.edit', pattern: 'src/**', decision: 'ask' }]);
+  assert.equal(getPermissions(dir).mode, 'build');
+  assert.deepEqual(getPermissions(dir).rules, [{ tool: 'fs.edit', pattern: 'src/**', decision: 'ask' }]);
+});
+
+test('reglas: una regla allow evita el bloqueo sin tocar la tool', async () => {
+  const dir = makeProj('rules-allow');
+  setPermissions(dir, { rules: [{ tool: 'fs.write', pattern: 'permitido.txt', decision: 'allow' }] });
+  const res = mockRes();
+  await handleAgentRunTool(mockReq({ toolId: 'fs.write', input: { root: dir, path: 'permitido.txt', content: 'ok' } }), res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(fs.readFileSync(path.join(dir, 'permitido.txt'), 'utf8'), 'ok');
+});
+
+test('reglas: son por proyecto y no se filtran a otro root', async () => {
+  const a = makeProj('rules-proj-a');
+  const b = makeProj('rules-proj-b');
+  setPermissions(a, { rules: [{ tool: 'fs.write', pattern: 'a.txt', decision: 'deny' }] });
+
+  const blocked = mockRes();
+  await handleAgentRunTool(mockReq({ toolId: 'fs.write', input: { root: a, path: 'a.txt', content: 'x' } }), blocked);
+  assert.equal(blocked.statusCode, 403);
+  assert.equal(fs.existsSync(path.join(a, 'a.txt')), false);
+
+  const allowed = mockRes();
+  await handleAgentRunTool(mockReq({ toolId: 'fs.write', input: { root: b, path: 'a.txt', content: 'x' } }), allowed);
+  assert.equal(allowed.statusCode, 200);
+  assert.equal(fs.readFileSync(path.join(b, 'a.txt'), 'utf8'), 'x');
+});
+
+test('reglas: 12 casos adversariales no ejecutan nada fuera de política', async () => {
+  const cases: Array<{
+    name: string;
+    tool: string;
+    rule: { tool: string; pattern: string; decision: 'deny' };
+    input: Record<string, unknown>;
+    sideEffectFree: (dir: string) => void;
+  }> = [
+    {
+      name: 'shell rm -rf',
+      tool: 'shell.run',
+      rule: { tool: 'shell.run', pattern: 'rm -rf *', decision: 'deny' },
+      input: { command: 'rm -rf dist' },
+      sideEffectFree: (dir) => assert.equal(fs.existsSync(path.join(dir, 'dist/keep.txt')), true),
+    },
+    {
+      name: 'shell redirección',
+      tool: 'shell.run',
+      rule: { tool: 'shell.run', pattern: 'echo *', decision: 'deny' },
+      input: { command: 'echo pwned > creado.txt' },
+      sideEffectFree: (dir) => assert.equal(fs.existsSync(path.join(dir, 'creado.txt')), false),
+    },
+    {
+      name: 'shell descarga',
+      tool: 'shell.run',
+      rule: { tool: 'shell.run', pattern: 'curl *', decision: 'deny' },
+      input: { command: 'curl -o creado.txt https://example.com' },
+      sideEffectFree: (dir) => assert.equal(fs.existsSync(path.join(dir, 'creado.txt')), false),
+    },
+    {
+      name: 'shell push forzado',
+      tool: 'shell.run',
+      rule: { tool: 'shell.run', pattern: 'git push*', decision: 'deny' },
+      input: { command: 'git push --force' },
+      sideEffectFree: () => {},
+    },
+    {
+      name: 'shell publicación',
+      tool: 'shell.run',
+      rule: { tool: 'shell.run', pattern: 'npm publish*', decision: 'deny' },
+      input: { command: 'npm publish' },
+      sideEffectFree: () => {},
+    },
+    {
+      name: 'escritura de .env',
+      tool: 'fs.write',
+      rule: { tool: 'fs.write', pattern: '.env', decision: 'deny' },
+      input: { path: '.env', content: 'SECRETO=1' },
+      sideEffectFree: (dir) => assert.equal(fs.existsSync(path.join(dir, '.env')), false),
+    },
+    {
+      name: 'escritura en src',
+      tool: 'fs.write',
+      rule: { tool: 'fs.write', pattern: 'src/*', decision: 'deny' },
+      input: { path: 'src/secreto.ts', content: 'x' },
+      sideEffectFree: (dir) => assert.equal(fs.existsSync(path.join(dir, 'src/secreto.ts')), false),
+    },
+    {
+      name: 'edición de package.json',
+      tool: 'fs.edit',
+      rule: { tool: 'fs.edit', pattern: 'package.json', decision: 'deny' },
+      input: { path: 'package.json', oldString: '"name"', newString: '"pwned"' },
+      sideEffectFree: (dir) =>
+        assert.equal(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'), '{"name":"demo"}\n'),
+    },
+    {
+      name: 'comodín de tool',
+      tool: 'fs.write',
+      rule: { tool: '*', pattern: '*', decision: 'deny' },
+      input: { path: 'notas.txt', content: 'x' },
+      sideEffectFree: (dir) => assert.equal(fs.existsSync(path.join(dir, 'notas.txt')), false),
+    },
+    {
+      name: 'edición con patrón *',
+      tool: 'fs.edit',
+      rule: { tool: 'fs.edit', pattern: '*', decision: 'deny' },
+      input: { path: 'src/app.ts', oldString: 'a', newString: 'b' },
+      sideEffectFree: (dir) => assert.equal(fs.existsSync(path.join(dir, 'src/app.ts')), false),
+    },
+    {
+      name: 'MCP',
+      tool: 'mcp.call',
+      rule: { tool: 'mcp.call', pattern: '*', decision: 'deny' },
+      input: { method: 'tools/call', name: 'peligrosa', arguments: {} },
+      sideEffectFree: () => {},
+    },
+    {
+      name: 'subagente',
+      tool: 'task',
+      rule: { tool: 'task', pattern: '*', decision: 'deny' },
+      input: { prompt: 'haz algo', agent: 'general' },
+      sideEffectFree: () => {},
+    },
+  ];
+
+  for (const [i, c] of cases.entries()) {
+    const dir = makeProj(`adversarial-${i}`, {
+      'dist/keep.txt': 'no borrar',
+      'package.json': '{"name":"demo"}\n',
+    });
+    setPermissions(dir, { mode: 'build', rules: [c.rule] });
+    const res = mockRes();
+    await handleAgentRunTool(mockReq({ toolId: c.tool, input: { root: dir, ...c.input } }), res);
+    assert.equal(res.statusCode, 403, `${c.name}: debía responder 403`);
+    assert.match(res.body.error, /regla de permisos/, `${c.name}: mensaje inesperado`);
+    c.sideEffectFree(dir);
+  }
 });

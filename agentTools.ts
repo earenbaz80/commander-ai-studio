@@ -26,6 +26,7 @@ import { runAfterToolHooks, runBeforeToolHooks, type PluginError } from './plugi
 import { uid } from './src/agent/id';
 import { invalidateIndex } from './repoIndex';
 import { getPermissions, enforceTool, enforcePath } from './permissions';
+import { decide } from './src/agent/permissionRules';
 import { executeTask, getSession } from './agentSession';
 import { listServerTools, callServerTool } from './src/mcp/client';
 import { runBrowserAction } from './browserSession';
@@ -640,6 +641,11 @@ async function executeAgentToolCore(
   // (las listas de tools permitidas/denegadas siguen aplicando dentro).
   const toolErr = enforceTool(perms, toolId, { readOnly: isReadOnlyCall(toolId, input) });
   if (toolErr) return { ok: false, error: toolErr, status: 403 };
+  // Reglas por patrón del proyecto (F1-07): `deny` gana siempre y se evalúa
+  // antes de ejecutar, así que ni `allow-session` ni `--yes` pueden saltarlo.
+  if (decide(toolId, input, perms.rules) === 'deny') {
+    return { ok: false, error: `Denegado por regla de permisos del proyecto: ${toolId}`, status: 403 };
+  }
 
   if (toolId === 'fs.read') {
     const p = String(input.path || '').slice(0, 500);

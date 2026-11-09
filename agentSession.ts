@@ -20,6 +20,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { uid } from './src/agent/id';
 import { diffLines, toUnifiedDiff } from './src/utils/patch';
+import { decide, needsHumanApproval } from './src/agent/permissionRules';
+import { getPermissions } from './permissions';
 import { toolDialectForModel, toOpenAITools } from './src/agent/providers';
 import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from './src/agent/fnTools';
 import { PLAN_TOOL, normalizePlan } from './src/agent/plan';
@@ -1018,8 +1020,21 @@ export class AgentSession {
 
   private async runOne(call: { tool: string; input: any }): Promise<ToolCallResult> {
     let approval: ToolCallResult['approval'];
-    const needsApproval =
-      this.requiresApproval(call.tool, call.input) && !this.isAllowedForSession(call.tool, call.input);
+    // Reglas del escritorio (F1-07): `deny` corta aquí y en el motor de tools;
+    // `allow` evita el prompt y `ask` lo fuerza aunque la tool no sea peligrosa.
+    const rule = decide(call.tool, call.input, getPermissions(this.cfg.cwd).rules);
+    if (rule === 'deny') {
+      return {
+        tool: call.tool,
+        ok: false,
+        error: `Denegado por regla de permisos del proyecto: ${call.tool}`,
+      };
+    }
+    const needsApproval = needsHumanApproval(
+      rule,
+      this.requiresApproval(call.tool, call.input),
+      this.isAllowedForSession(call.tool, call.input)
+    );
     if (needsApproval) {
       if (this.stopReason) {
         return { tool: call.tool, ok: false, error: 'Aprobación denegada: cancelled' };

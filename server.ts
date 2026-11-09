@@ -16,6 +16,7 @@ import { runAutonomousCampaign, planCampaign } from './autonomousRun';
 import { setServerBaseUrl } from './serverRuntime';
 import { addRoot, listRoots, removeRoot, removableRoots, resolveProjectPath } from './projects';
 import { enforceTool, getPermissions, setPermissions } from './permissions';
+import { mergeRuleSets, normalizeRules } from './src/agent/permissionRules';
 // `listSessions` ya lo exporta `sessionWorkspace` (sesiones de UI): se aliasa.
 import { createSession, forkSession, getOrLoadSession, listSessions as listAgentSessions, removeSession, stopSession } from './agentSession';
 import { isValidSessionId } from './src/agent/sessionStore';
@@ -978,8 +979,39 @@ app.put('/api/permissions', (req, res) => {
         read: patch.files?.read ?? current.files.read,
         write: patch.files?.write ?? current.files.write,
       },
+      // Las reglas por patrón tienen su propio endpoint; el panel no las pisa.
+      rules: current.rules,
+      ...(current.rulesImportedAt ? { rulesImportedAt: current.rulesImportedAt } : {}),
     };
     res.json({ success: true, root, permissions: setPermissions(root, next) });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+
+// Reglas por patrón del proyecto (F1-07): la UI las edita y el CLI las aplica
+// desde el mismo archivo. El PUT con `migrate` hace la importación única desde
+// localStorage; sin él, reemplaza el conjunto.
+app.get('/api/agent/permission-rules', (req, res) => {
+  try {
+    const root = permissionsRoot(req.query.root);
+    const perms = getPermissions(root);
+    res.json({ success: true, root, rules: perms.rules, migrated: Boolean(perms.rulesImportedAt) });
+  } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
+});
+
+app.put('/api/agent/permission-rules', (req, res) => {
+  try {
+    const body = req.body || {};
+    const root = permissionsRoot(body.root);
+    const current = getPermissions(root);
+    const incoming = normalizeRules(body.rules);
+    const migrate = body.migrate === true && !current.rulesImportedAt;
+    const rules = migrate ? mergeRuleSets(current.rules, incoming) : incoming;
+    const saved = setPermissions(root, {
+      ...current,
+      rules,
+      ...(migrate ? { rulesImportedAt: Date.now() } : {}),
+    });
+    res.json({ success: true, root, rules: saved.rules, migrated: Boolean(saved.rulesImportedAt) });
   } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
 });
 

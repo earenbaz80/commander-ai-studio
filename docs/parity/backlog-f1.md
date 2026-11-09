@@ -29,7 +29,7 @@
 | F1-04 | [#5](https://github.com/earenbaz80/commander-ai-studio/issues/5) | Cerrado | Canal de aprobaciones servidor ↔ CLI (allow/deny/allow-session) | 2,5 | F1-02 | PR2 |
 | F1-05 | [#6](https://github.com/earenbaz80/commander-ai-studio/issues/6) | Cerrado | Diff por hunk en terminal | 1,0 | F1-04 | PR2 |
 | F1-06 | [#7](https://github.com/earenbaz80/commander-ai-studio/issues/7) | Cerrado | `ask_user` en el CLI | 1,5 | F1-04 | PR2 |
-| F1-07 | [#8](https://github.com/earenbaz80/commander-ai-studio/issues/8) | Abierto | Reglas de permisos del escritorio aplicadas en el CLI | 1,5 | F1-04 | PR2 |
+| F1-07 | [#8](https://github.com/earenbaz80/commander-ai-studio/issues/8) | Cerrado | Reglas de permisos del escritorio aplicadas en el CLI | 1,5 | F1-04 | PR2 |
 | F1-08 | [#9](https://github.com/earenbaz80/commander-ai-studio/issues/9) | Cerrado | REPL interactivo con comandos | 2,5 | F1-02, F1-06 | PR3 |
 | F1-09 | [#10](https://github.com/earenbaz80/commander-ai-studio/issues/10) | Cerrado | Selección de modelo/agente y preferencias | 1,0 | F1-08 | PR3 |
 | F1-10 | [#11](https://github.com/earenbaz80/commander-ai-studio/issues/11) | Cerrado | `--resume` y `--fork` sin duplicar tool calls | 1,0 | F1-02 (flags), F1-08 (comandos) | PR3 |
@@ -225,6 +225,7 @@
 
 **Labels:** `f1`, `p0`, `area:agent`, `security`
 **Estimación:** 1,5 d-persona · **Depende de:** F1-04
+**Estado:** Implementado y cerrado — 2026-11-09.
 
 **Por qué.** `src/agent/permissionRules.ts` evalúa reglas `allow`/`ask`/`deny` en `localStorage`; el servidor no las conoce, así que el CLI puede ejecutar algo que el escritorio bloquearía. La paridad de permisos es criterio explícito de F1.
 
@@ -235,18 +236,19 @@
 - Exponer `GET/PUT /api/agent/permission-rules?root=` para que la UI y el CLI lean la misma fuente.
 
 **Criterios de aceptación**
-- [ ] Una regla `deny` del escritorio bloquea la misma tool en el CLI.
-- [ ] Una regla `allow` evita el prompt en CLI y en escritorio.
-- [ ] `ask` fuerza prompt aunque la tool no sea `danger`.
-- [ ] Las reglas son por proyecto y no viajan con el repo si `.commander/` está ignorado.
-- [ ] 10 casos adversariales (shell, escritura, red, MCP, subagente) no ejecutan nada fuera de política.
+- [x] Una regla `deny` del escritorio bloquea la misma tool en el CLI.
+- [x] Una regla `allow` evita el prompt en CLI y en escritorio.
+- [x] `ask` fuerza prompt aunque la tool no sea `danger`.
+- [x] Las reglas son por proyecto y no viajan con el repo si `.commander/` está ignorado.
+- [x] 10 casos adversariales (shell, escritura, red, MCP, subagente) no ejecutan nada fuera de política.
 
 **Pruebas**
-- `tests/agent/permissionParity.test.ts`: tabla de 10 casos contra servidor; comparación con `decide()` puro.
-- `tests/unit/permissionRulesMigration.test.ts`: migración desde `localStorage` sin duplicar reglas.
-- Comando: `npm run test:node -- tests/permissionParity.test.ts` + `vitest run --project node tests/unit/permissionRulesMigration.test.ts`.
+- `tests/permissions.test.ts`: 22/22 — `deny`/`allow`, aislamiento por proyecto y 12 casos adversariales con verificación de efectos laterales.
+- `tests/unit/permissionRules.test.ts`: 11/11 — normalización, fusión sin duplicados, `needsHumanApproval` y migración desde `localStorage` con una sola importación.
+- `tests/cli/e2e.test.ts`: 16/16 — regresión del CLI.
+- `tsc`, `vite build`, `check:rules` y `check:criteria` en verde.
 
-**Archivos:** `src/agent/permissionRules.ts`, `permissions.ts`, `server.ts`, `src/components/settings/*` (sólo el origen de datos).
+**Archivos:** `src/agent/permissionRules.ts`, `permissions.ts`, `agentTools.ts`, `agentSession.ts`, `server.ts`, `src/components/AgentApprovalModal.tsx`, `tests/permissions.test.ts`, `tests/unit/permissionRules.test.ts`.
 
 ---
 
