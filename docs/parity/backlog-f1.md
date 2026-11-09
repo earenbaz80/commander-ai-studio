@@ -1,7 +1,7 @@
 # Backlog ejecutable — Fase 1 (CLI/TUI de primera clase y sesión única)
 
 > **Base:** Fase 1 de [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md).
-> **Estado:** los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). La tabla de §2 enlaza cada ID con su issue; los cuerpos versionados están en [docs/parity/issues/](issues/README.md).
+> **Estado:** los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; **F1-06 (#7) está implementado (commit `b01264a`) pero el issue sigue abierto**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). La tabla de §2 enlaza cada ID con su issue; los cuerpos versionados están en [docs/parity/issues/](issues/README.md).
 > **Estimaciones:** días-persona, ±30 %. Suman **21,0 d-persona**, que con 2 personas en paralelo son ≈ 11–12 días de calendario; el gate G1 añade 5 días de dogfooding.
 > **Regla de cierre de cada issue:** `tsc --noEmit` + pruebas focalizadas en verde. Si toca UI, además `vite build`. Ningún issue se cierra con mocks que sustituyan una aserción real.
 
@@ -10,14 +10,14 @@
 | Pieza | Estado actual | Consecuencia para F1 |
 | --- | --- | --- |
 | `bin/commander.ts` | Comandos `serve`, `build`, `config`, `doctor`, `session`, `mcp`, `agent`, `completion`, `skills` | `agent` es de una pasada; no hay REPL ni `--resume`/`--fork` |
-| `src/cli/agentClient.ts` | Bucle propio del CLI: piensa → `/api/agent/run-tool` → repite | No pasa por el motor de sesión del servidor; filtra `update_plan` y `ask_user` |
-| `src/cli/tui.ts` | Spinner y render ANSI; no lee entrada | Falta REPL, diff y preguntas |
+| `src/cli/agentClient.ts` | Bucle propio del CLI: piensa → `/api/agent/run-tool` → repite | No pasa por el motor de sesión del servidor; `ask_user` ya se resuelve en el cliente y `update_plan` sigue filtrado |
+| `src/cli/tui.ts` | Spinner, render ANSI y prompt de preguntas | Falta REPL y diff |
 | `src/cli/sessionStorage.ts` | Sesiones JSON de chat en `.commander/sessions` | No guarda plan, approvals ni pasos del agente |
-| `agentSession.ts` (servidor) | `AgentSession` con plan y pasos | Sin approvals, sin `ask_user`, sin persistencia durable |
+| `agentSession.ts` (servidor) | `AgentSession` con plan y pasos | Sin approvals, sin `ask_user` en el bucle del servidor y sin persistencia durable |
 | `POST /api/agent/sessions` | Crea un **contexto padre** para subagentes | No arranca ni reanuda un bucle |
 | `src/agent/permissionRules.ts` | Reglas `allow`/`ask`/`deny` en `localStorage` | El CLI no las ve: sólo aplica el modo y la allowlist del servidor |
 | `src/agent/subagentTemplates.ts` | 4 roles: `file-explorer`, `researcher`, `reviewer`, `planner` | Faltan `coder` y `tester`; no hay worktree por subagente |
-| Pruebas del CLI | **No existe ninguna** en `tests/` | Todo entregable nace con su prueba |
+| Pruebas del CLI | Suite de contrato, E2E y `ask_user` | Todo entregable nace con su prueba |
 
 ## 2. Tabla de issues
 
@@ -37,6 +37,8 @@
 | F1-12 | [#13](https://github.com/earenbaz80/commander-ai-studio/issues/13) | Abierto | Seis subagentes con allowlist y worktree opcional | 2,0 | F1-02 | PR4 |
 | F1-13 | [#14](https://github.com/earenbaz80/commander-ai-studio/issues/14) | Abierto | Plan persistente con estados, archivos y criterios | 1,0 | F1-02 | PR4 |
 | F1-14 | [#15](https://github.com/earenbaz80/commander-ai-studio/issues/15) | Cerrado | Arnés E2E del CLI con proveedor falso determinista | 1,5 | F1-02, F1-04, F1-08 | PR5 |
+
+> **F1-06 implementado, issue #7 abierto.** Commit `b01264a`; los criterios de aceptación ya están marcados. La fila sigue `Abierto` porque GitHub aún no está cerrado.
 
 ## 3. Issues
 
@@ -187,25 +189,30 @@
 
 **Labels:** `f1`, `p0`, `area:cli`, `area:agent`
 **Estimación:** 1,5 d-persona · **Depende de:** F1-04
+**Estado:** Implementado — commit `b01264a` (2026-11-09); #7 abierto hasta su cierre formal.
 
 **Por qué.** El CLI filtra `ask_user` explícitamente, así que el agente supone en vez de preguntar. En el escritorio ya existe el modal y el canal.
 
 **Alcance**
-- Ofrecer `ask_user` al modelo en el CLI y resolverlo por el canal de aprobaciones con `kind: 'question'`.
+- Ofrecer `ask_user` al modelo en el CLI y resolverlo en el cliente con el contrato `QuestionV2` (`kind: 'question'`), sin enviarlo a `/api/agent/run-tool`.
 - Pregunta con `header`, hasta 6 opciones numeradas y texto libre si `allowFreeText`; opción vacía reintenta; `q` cancela la pregunta (la tool devuelve error, la corrida sigue).
 - Timeout de 10 min → cancela la pregunta con motivo `timeout`.
-- La pregunta y la respuesta quedan en `turns` y en el NDJSON (`question`, `answer`).
+- La pregunta y la respuesta quedan en `turns` y en el NDJSON (`question`, `tool_result` y la respuesta final).
 
 **Criterios de aceptación**
-- [ ] La corrida queda bloqueada hasta que hay respuesta o timeout.
-- [ ] La respuesta viaja como resultado de la tool y queda en el historial reanudable.
-- [ ] Cancelar no ejecuta ninguna tool posterior con datos inventados.
-- [ ] En `--json` la pregunta sale como evento, nunca como prompt interactivo.
+- [x] La corrida queda bloqueada hasta que hay respuesta o timeout.
+- [x] La respuesta viaja como resultado de la tool y queda en el historial reanudable.
+- [x] Cancelar no ejecuta ninguna tool posterior con datos inventados.
+- [x] En `--json` la pregunta sale como evento, nunca como prompt interactivo.
+
+**Implementación.** `runAgent` incluye `ask_user` en las function declarations y lo intercepta antes de `/api/agent/run-tool`: emite `question`, espera un `AskUserHandler` y persiste la respuesta en `turns` y en un paso `tool_result`. `promptQuestionAnswer` en `src/cli/tui.ts` implementa opciones numeradas, texto libre, reintento, `q`/Esc/Ctrl+C y timeout de 10 min; `bin/commander.ts` sólo lo conecta con dos TTY reales. Sin callback (`--json` o sin terminal) la pregunta se emite y la tool se cancela sin bloquear la corrida. El contrato `QuestionV2` es el mismo del canal de aprobaciones del escritorio; el bucle local no tiene `ApprovalQueue`.
 
 **Pruebas**
-- `tests/cli/askUser.test.ts`: opción, texto libre, opción inválida reintenta, timeout, cancelación y `--json`.
+- `tests/cli/askUser.test.ts`: 7/7 — opción, texto libre, opción inválida que reintenta, timeout, cancelación y `--json`; también comprueba que `ask_user` se ofrece al modelo y no se manda a `/api/agent/run-tool`.
+- `tests/cli/e2e.test.ts`: 16/16 — regresión completa del CLI.
+- `tests/cli/ndjson.golden.test.ts`: 1/1 — el contrato NDJSON no cambió.
 
-**Archivos:** `src/cli/agentClient.ts`, `src/agent/tools/askUser.ts`, `agentSession.ts`.
+**Archivos:** `src/cli/agentClient.ts`, `src/cli/tui.ts`, `bin/commander.ts`, `tests/cli/askUser.test.ts`, `tests/helpers/fakeAgentServer.ts`.
 
 ---
 
@@ -422,7 +429,7 @@
 
 **Cierre**
 - Los 3 casos que quedaban —approval de escritura, `ask_user` en `--json` y reconexión SSE— ya están cubiertos en `tests/cli/e2e.test.ts` sobre `attach --json` y el fixture SSE; no quedan `test.todo` en F1-14.
-- `ask_user` en el bucle de `agent` sigue siendo alcance de F1-06; este arnés cubre el evento `question` y el canal de sesión, no el prompt interactivo.
+- `ask_user` en el bucle de `agent` ya está implementado (F1-06, commit `b01264a`); este arnés cubre el evento `question` en `attach --json` y el canal de sesión, no el prompt interactivo.
 
 **Pruebas**
 - `tests/cli/e2e.test.ts`: 16 casos implementados, sin `test.todo`, con `spawn` del CLI contra el falso. Escenarios: `final`, `tool`, `tool-three`, `tool-denied`, `max-steps`, `unknown-tool`, `stream`, `llm-error`, approvals, `question` y reconexión SSE.
@@ -449,14 +456,14 @@ F1-01 ─┬─► F1-02 ─┬─► F1-03
 F1-02 + F1-04 + F1-08 ─────────────────────► F1-14
 ```
 
-**Camino crítico:** F1-01 → F1-02 → F1-04 → F1-06 → F1-08 → F1-09 (11 d-persona). F1-12 y F1-13 pueden correr en paralelo desde F1-02.
+**Camino crítico:** F1-01 → F1-02 → F1-04 → F1-06 (implementado) → F1-08 → F1-09 (11 d-persona). F1-12 y F1-13 pueden correr en paralelo desde F1-02.
 
 ## 5. Orden de ejecución con 2 personas
 
 | Semana | Dev A | Dev B |
 | --- | --- | --- |
 | 1 | F1-01 → F1-02 | F1-13 (tras F1-02) → F1-12 |
-| 2 | F1-03 → F1-04 → F1-07 | F1-05 → F1-06 → F1-08 |
+| 2 | F1-03 → F1-04 → F1-07 | F1-05 → F1-06 (implementado) → F1-08 |
 | 3 | F1-10 → F1-11 → F1-14 | F1-09 + revisión de F1-14 |
 | 4 | Gate G1: 5 días de dogfooding con el CLI como superficie principal | idem |
 
@@ -474,7 +481,7 @@ F1-02 + F1-04 + F1-08 ───────────────────�
 ## 7. Definición de terminado de F1 (gate G1)
 
 - [ ] `commander` abre REPL; una edición pide aprobación con diff y denegar no escribe.
-- [ ] `ask_user` bloquea hasta respuesta y queda en el historial.
+- [x] `ask_user` bloquea hasta respuesta y queda en el historial (F1-06, commit `b01264a`).
 - [ ] Una tarea del CLI aparece en el escritorio con el mismo `sessionId`, pasos y plan.
 - [ ] `--resume` continúa sin duplicar tool calls; `--fork` no muta la original.
 - [ ] El plan sobrevive a reiniciar el servidor.
@@ -486,7 +493,7 @@ F1-02 + F1-04 + F1-08 ───────────────────�
 
 ## 8. Issues en GitHub
 
-Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). No vuelvas a ejecutar `gh issue create`, porque duplicaría el backlog. El mapeo está en la tabla de §2 y el cuerpo versionado de cada issue, en [`docs/parity/issues/`](issues/README.md).
+Los 14 issues están creados. **#2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #11 (F1-10), #12 (F1-11) y #15 (F1-14) están cerrados como completados**; **F1-06 (#7) está implementado (commit `b01264a`) pero sigue abierto**; el resto sigue abierto (el #1 es un PR ajeno a este backlog). No vuelvas a ejecutar `gh issue create`, porque duplicaría el backlog. El mapeo está en la tabla de §2 y el cuerpo versionado de cada issue, en [`docs/parity/issues/`](issues/README.md).
 
 Para actualizar el cuerpo de un issue ya creado:
 
