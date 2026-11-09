@@ -42,6 +42,7 @@
     "typecheck": "tsc --noEmit",
     "check:index": "tsx scripts/check-index.ts",
     "check:issue-status": "tsx scripts/sync-issue-status.ts --check",
+    "check:criteria": "tsx scripts/check-issue-criteria.ts",
     "check:mcp": "tsx scripts/check-mcp.ts",
     "sync:issue-status": "tsx scripts/sync-issue-status.ts",
     "check:rules": "tsx scripts/check-rules.ts",

@@ -24,6 +24,7 @@ La columna `Estado` de esta tabla y la de §2 del backlog se sincronizan con Git
 ```bash
 npm run sync:issue-status
 npm run check:issue-status   # no escribe; falla por estados o criterios sin marcar
+npm run check:criteria      # sin red; corre en pre-commit y mira sólo el repo
 ```
 
 El script lee los enlaces `[#N](...)` de ambas tablas y cambia sólo la celda `Abierto`/`Cerrado`. Además, falla si un issue cerrado conserva un criterio `- [ ]` en su sección de aceptación; el error indica el F1 y los criterios pendientes. Usa `GITHUB_TOKEN` o `GH_TOKEN` si están definidos; sin token, la API pública limita a 60 peticiones/hora.

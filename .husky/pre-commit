@@ -1,0 +1,9 @@
+#!/bin/sh
+# Guardia local antes de commitear: un issue marcado como `Cerrado` en las
+# tablas no puede conservar criterios de aceptación sin marcar. Sin red, a
+# diferencia de `check:issue-status`, que consulta GitHub.
+if ! command -v npm >/dev/null 2>&1; then
+  echo "[pre-commit] npm no está en PATH: se omite check:criteria" >&2
+  exit 0
+fi
+npm run --silent check:criteria
