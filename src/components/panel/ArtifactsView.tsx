@@ -27,6 +27,7 @@ import {
   Play,
   RefreshCw,
   RotateCcw,
+  ShieldCheck,
   Trash2,
   X,
 } from 'lucide-react';
@@ -41,8 +42,16 @@ import type {
   Artifact,
   ArtifactComment,
   ArtifactFrame,
+  BrowserRecordingArtifact,
+  VerificationArtifact,
 } from '../../artifacts/types';
+import {
+  isBrowserRecordingArtifact,
+  isVerificationArtifact,
+} from '../../artifacts/types';
+import { effectiveVerificationStatus } from '../../artifacts/report';
 import { formatMediaTime, newArtifactId } from '../../artifacts/utils';
+import { VerificationArtifactDetail } from './VerificationArtifactDetail';
 
 interface ArtifactsViewProps {
   projectPath: string;
@@ -92,10 +101,18 @@ function frameSrc(frame: ArtifactFrame): string {
     : `data:${frame.mimeType};base64,${frame.data}`;
 }
 
-function thumbnailOf(artifact: Artifact): string {
+function thumbnailOf(artifact: BrowserRecordingArtifact): string {
   const first = artifact.frames[0];
   return first ? frameSrc(first) : '';
 }
+
+type ArtifactFilter = 'all' | 'browser-recording' | 'verification';
+
+const ARTIFACT_FILTERS: Array<{ id: ArtifactFilter; es: string; en: string }> = [
+  { id: 'all', es: 'Todos', en: 'All' },
+  { id: 'browser-recording', es: 'Grabaciones', en: 'Recordings' },
+  { id: 'verification', es: 'Verificaciones', en: 'Verifications' },
+];
 
 export function ArtifactsView({
   projectPath,
@@ -103,6 +120,7 @@ export function ArtifactsView({
   onOpenBrowser,
 }: ArtifactsViewProps) {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [kindFilter, setKindFilter] = useState<ArtifactFilter>('all');
   const [selectedId, setSelectedId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -120,6 +138,8 @@ export function ArtifactsView({
     setLoading(true);
     setError('');
     try {
+      // F2-05: grabaciones y verificaciones comparten lista; el filtro por
+      // tipo se aplica en memoria sobre la consulta por proyecto.
       const list = await listArtifacts(projectPath);
       setArtifacts(list);
       setSelectedId((current) =>
@@ -144,10 +164,32 @@ export function ArtifactsView({
     return () => window.removeEventListener('commander:artifact-created', onCreated);
   }, [load]);
 
-  const selected = useMemo(
-    () => artifacts.find((artifact) => artifact.id === selectedId) ?? null,
-    [artifacts, selectedId]
+  const visibleArtifacts = useMemo(
+    () =>
+      artifacts.filter(
+        (artifact) => kindFilter === 'all' || artifact.kind === kindFilter
+      ),
+    [artifacts, kindFilter]
   );
+  const selectedArtifact = useMemo(
+    () =>
+      visibleArtifacts.find((artifact) => artifact.id === selectedId) ?? null,
+    [visibleArtifacts, selectedId]
+  );
+  const selected =
+    selectedArtifact && isBrowserRecordingArtifact(selectedArtifact)
+      ? selectedArtifact
+      : null;
+  const selectedVerification =
+    selectedArtifact && isVerificationArtifact(selectedArtifact)
+      ? selectedArtifact
+      : null;
+  const linkedRecordingId = selectedVerification?.browserRecordingId ?? '';
+  const linkedRecording = useMemo(() => {
+    if (!linkedRecordingId) return null;
+    const found = artifacts.find((entry) => entry.id === linkedRecordingId);
+    return found && isBrowserRecordingArtifact(found) ? found : null;
+  }, [artifacts, linkedRecordingId]);
   const frames = useMemo(() => selected?.frames ?? [], [selected]);
   const duration = Math.max(
     1,
@@ -190,6 +232,13 @@ export function ArtifactsView({
     setFocusedCommentId('');
     setConfirmDelete(false);
   }, [selectedId]);
+
+  useEffect(() => {
+    if (selectedId && visibleArtifacts.some((artifact) => artifact.id === selectedId)) {
+      return;
+    }
+    setSelectedId(visibleArtifacts[0]?.id ?? '');
+  }, [selectedId, visibleArtifacts]);
 
   useEffect(() => {
     if (!playing || !selectedId) return;
@@ -272,7 +321,7 @@ export function ArtifactsView({
       createdAt: Date.now(),
       resolved: false,
     };
-    const next: Artifact = {
+    const next: BrowserRecordingArtifact = {
       ...selected,
       comments: [...selected.comments, comment],
     };
@@ -291,7 +340,7 @@ export function ArtifactsView({
 
   const replaceComments = async (nextComments: ArtifactComment[]) => {
     if (!selected) return;
-    const next: Artifact = { ...selected, comments: nextComments };
+    const next: BrowserRecordingArtifact = { ...selected, comments: nextComments };
     setArtifacts((current) =>
       current.map((artifact) => (artifact.id === next.id ? next : artifact))
     );
@@ -329,32 +378,93 @@ export function ArtifactsView({
     }
   };
 
+  const removeVerification = async (artifact: VerificationArtifact) => {
+    try {
+      await deleteArtifact(artifact.id);
+      const remaining = artifacts.filter((entry) => entry.id !== artifact.id);
+      setArtifacts(remaining);
+      const next = remaining.find(
+        (entry) => kindFilter === 'all' || entry.kind === kindFilter
+      );
+      setSelectedId(next?.id || '');
+    } catch (e: any) {
+      setError(String(e?.message || e).slice(0, 300));
+    }
+  };
+
+  const updateVerification = (next: VerificationArtifact) => {
+    setArtifacts((current) =>
+      current.map((entry) => (entry.id === next.id ? next : entry))
+    );
+  };
+
+  // El vínculo no copia frames: resuelve el artifact de grabación y cambia la
+  // selección. Si la grabación fue borrada, el detalle muestra el id huérfano.
+  const openRecording = (recordingId: string) => {
+    const exists = artifacts.some(
+      (entry) => entry.id === recordingId && isBrowserRecordingArtifact(entry)
+    );
+    if (!exists) return;
+    setKindFilter('all');
+    setSelectedId(recordingId);
+  };
+
   const header = (
-    <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-panel)] shrink-0">
-      <Film className="w-3.5 h-3.5 text-[var(--nc-text)]" />
-      <span className="font-bold text-[var(--nc-text)] uppercase tracking-wide">Artifacts</span>
-      <span className="text-[9px] text-white/45">
-        {artifacts.length} {tr(lang, 'grabaciones', 'recordings')}
-      </span>
-      <button
-        type="button"
-        onClick={() => void load()}
-        className="ml-auto p-1 text-black/70 hover:text-[var(--nc-text)]"
-        title={tr(lang, 'Refrescar artifacts', 'Refresh artifacts')}
-        aria-label={tr(lang, 'Refrescar artifacts', 'Refresh artifacts')}
-      >
-        <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-      </button>
-      <button
-        type="button"
-        onClick={openBrowser}
-        className="nc-button flex items-center gap-1 px-1.5 py-0.5 text-[10px]"
-        title={tr(lang, 'Grabar una sesión de navegador', 'Record a browser session')}
-      >
-        <MonitorPlay className="w-3.5 h-3.5" />
-        {tr(lang, 'Grabar', 'Record')}
-      </button>
-    </div>
+    <>
+      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-panel)] shrink-0">
+        <Film className="w-3.5 h-3.5 text-[var(--nc-text)]" />
+        <span className="font-bold text-[var(--nc-text)] uppercase tracking-wide">Artifacts</span>
+        <span className="text-[9px] text-white/45">
+          {artifacts.length} {tr(lang, 'artifacts', 'artifacts')}
+        </span>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="ml-auto p-1 text-black/70 hover:text-[var(--nc-text)]"
+          title={tr(lang, 'Refrescar artifacts', 'Refresh artifacts')}
+          aria-label={tr(lang, 'Refrescar artifacts', 'Refresh artifacts')}
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+        </button>
+        <button
+          type="button"
+          onClick={openBrowser}
+          className="nc-button flex items-center gap-1 px-1.5 py-0.5 text-[10px]"
+          title={tr(lang, 'Grabar una sesión de navegador', 'Record a browser session')}
+        >
+          <MonitorPlay className="w-3.5 h-3.5" />
+          {tr(lang, 'Grabar', 'Record')}
+        </button>
+      </div>
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-panel)] shrink-0">
+        {ARTIFACT_FILTERS.map((filter) => {
+          const active = kindFilter === filter.id;
+          const count =
+            filter.id === 'all'
+              ? artifacts.length
+              : artifacts.filter((artifact) => artifact.kind === filter.id).length;
+          return (
+            <button
+              key={filter.id}
+              type="button"
+              data-testid={`artifact-filter-${filter.id}`}
+              onClick={() => setKindFilter(filter.id)}
+              aria-pressed={active}
+              className={`px-1.5 py-0.5 text-[9px] font-bold border rounded ${
+                active
+                  ? 'bg-[var(--nc-highlight-bg)] text-black border-[var(--nc-border-light)]'
+                  : 'text-[var(--nc-text)] border-[var(--nc-border-dark)] hover:border-[var(--nc-border-light)]'
+              }`}
+            >
+              {tr(lang, filter.es, filter.en)}
+              <span className={`ml-1 ${active ? 'text-black/60' : 'text-white/45'}`}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </>
   );
 
   if (loading && artifacts.length === 0) {
@@ -362,7 +472,7 @@ export function ArtifactsView({
       <div className="h-full min-h-0 flex flex-col text-[11px] font-mono" data-testid="artifacts-view">
         {header}
         <div className="flex-1 flex items-center justify-center text-[var(--nc-text)]/70">
-          {tr(lang, 'Cargando grabaciones…', 'Loading recordings…')}
+          {tr(lang, 'Cargando artifacts…', 'Loading artifacts…')}
         </div>
       </div>
     );
@@ -389,8 +499,8 @@ export function ArtifactsView({
           <p className="max-w-[300px] text-white/60 leading-relaxed">
             {tr(
               lang,
-              'Abre el navegador, pulsa REC y navega. Al detener la grabación aparecerá aquí con sus frames y comentarios.',
-              'Open the browser, press REC and navigate. Stop the recording and it will appear here with its frames and comments.'
+              'Graba una sesión de navegador o guarda una verificación desde el agente. Los artifacts aparecerán aquí con su evidencia local.',
+              'Record a browser session or save a verification from the agent. Artifacts will appear here with their local evidence.'
             )}
           </p>
           <button type="button" onClick={openBrowser} className="nc-button flex items-center gap-1.5 px-3 py-1.5">
@@ -408,9 +518,53 @@ export function ArtifactsView({
       ) : (
         <>
           <div className="flex gap-1.5 px-2 py-2 overflow-x-auto border-b border-[var(--nc-border-dark)] shrink-0">
-            {artifacts.map((artifact) => {
-              const thumb = thumbnailOf(artifact);
+            {visibleArtifacts.map((artifact) => {
               const isSelected = artifact.id === selectedId;
+              if (!isBrowserRecordingArtifact(artifact)) {
+                const status = effectiveVerificationStatus(artifact);
+                const tone =
+                  status === 'passed'
+                    ? 'text-[var(--nc-success)]'
+                    : status === 'failed'
+                      ? 'text-red-300'
+                      : 'text-yellow-300';
+                const label =
+                  status === 'passed' ? 'OK' : status === 'failed' ? 'FALLÓ' : 'INCOMPLETO';
+                return (
+                  <button
+                    type="button"
+                    key={artifact.id}
+                    data-testid={`artifact-card-${artifact.id}`}
+                    onClick={() => setSelectedId(artifact.id)}
+                    aria-pressed={isSelected}
+                    className={`w-[132px] shrink-0 border text-left transition-colors ${
+                      isSelected
+                        ? 'border-[var(--nc-text-accent)] bg-[var(--nc-active-bg)]/25'
+                        : 'border-[var(--nc-border-dark)] hover:border-[var(--nc-border-light)]/70'
+                    }`}
+                    title={artifact.title}
+                  >
+                    <div className="relative aspect-video bg-[var(--nc-bg-panel)] flex items-center justify-center">
+                      <ShieldCheck className="w-6 h-6 text-[var(--nc-text-accent)]" />
+                      <span className={`absolute right-0.5 bottom-0.5 px-1 bg-black/80 text-[9px] font-bold ${tone}`}>
+                        {label}
+                      </span>
+                    </div>
+                    <div className="p-1">
+                      <div className="truncate text-[10px] text-[var(--nc-text)]">{artifact.title}</div>
+                      <div className="mt-0.5 flex items-center gap-1 text-[9px] text-white/40">
+                        <Clock3 className="w-2.5 h-2.5 shrink-0" />
+                        <span className="truncate">{formatDate(artifact.createdAt, lang)}</span>
+                      </div>
+                      <div className="mt-0.5 text-[9px] text-white/40">
+                        {artifact.tests.length} tests · {artifact.diff?.files.length ?? 0}{' '}
+                        {tr(lang, 'archivos', 'files')}
+                      </div>
+                    </div>
+                  </button>
+                );
+              }
+              const thumb = thumbnailOf(artifact);
               return (
                 <button
                   type="button"
@@ -454,6 +608,40 @@ export function ArtifactsView({
               );
             })}
           </div>
+
+          {visibleArtifacts.length === 0 && (
+            <div
+              data-testid="artifacts-filter-empty"
+              className="flex-1 min-h-0 flex flex-col items-center justify-center gap-2 px-6 py-8 text-center"
+            >
+              <ShieldCheck className="w-6 h-6 text-[var(--nc-text)]/50" />
+              <div className="text-[var(--nc-text-accent)] font-bold text-[11px]">
+                {kindFilter === 'verification'
+                  ? tr(lang, 'No hay verificaciones en este proyecto', 'No verification artifacts in this project')
+                  : tr(lang, 'No hay grabaciones en este proyecto', 'No recordings in this project')}
+              </div>
+              <button
+                type="button"
+                onClick={() => setKindFilter('all')}
+                className="nc-button px-2 py-0.5 text-[10px]"
+              >
+                {tr(lang, 'Ver todos', 'Show all')}
+              </button>
+            </div>
+          )}
+
+          {selectedVerification && (
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <VerificationArtifactDetail
+                artifact={selectedVerification}
+                lang={lang}
+                recording={linkedRecording ?? undefined}
+                onOpenRecording={openRecording}
+                onUpdated={updateVerification}
+                onDelete={() => void removeVerification(selectedVerification)}
+              />
+            </div>
+          )}
 
           {selected && (
             <div className="flex-1 min-h-0 overflow-y-auto">

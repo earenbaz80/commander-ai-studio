@@ -523,7 +523,7 @@ F1-02 + F1-04 + F1-08 ───────────────────�
 - **Implementación:** 14/14 issues cerrados como completados. `npm run check:criteria` confirma que los 14 tienen sus criterios completos.
 - **Evidencia automatizada:** 70/70 tests del CLI (`node:test`: contrato v2, NDJSON, REPL, diff, approvals, `--resume`, `--fork` y E2E) y 30/30 tests de agente/sesiones (Vitest: approvals, persistencia de sesión y plan, subagentes y denegación de escrituras). `npm run build` (`tsc --noEmit` + `vite build`) está verde.
 - **Dogfooding:** no ejecutado. F0/G0 sigue aparcado, no hay baseline de latencia/éxito ni un modelo real con el que comparar. No se puede declarar que G1 pase ni que haya paridad con F0.
-- **Excepción registrada:** F2-01 (contrato/store de artifacts) avanzó como cambio aislado que no toca el bucle del agente. Eso no cierra G1 ni autoriza F5; cualquier trabajo de F2 que modifique el agente debe esperar al dogfooding.
+- **Excepción registrada:** F2-01 (contrato/store) y F2-02 (evidencia de tests en `shell.run`) avanzaron con G1 pendiente. F2-02 añade campos opcionales al resultado de la tool y una lectura de git sólo para comandos de tests; no cambia el bucle, las aprobaciones ni la política de permisos. G1 sigue abierto y no se declara paridad; F5 sigue bloqueada.
 
 ## 8. Issues en GitHub
 

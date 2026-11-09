@@ -7,6 +7,7 @@
  * la interfaz también".
  */
 
+import type { VerificationEnvironment, VerificationTestEvidence } from '../artifacts/types';
 import { getActiveProjectRoot } from '../agent/activeProject';
 
 export interface ToolResponse<T = unknown> {
@@ -90,6 +91,8 @@ export interface ShellResult {
   stderr: string;
   exitCode: number;
   durationMs: number;
+  testEvidence?: VerificationTestEvidence;
+  environment?: VerificationEnvironment;
 }
 
 /** Ejecuta un comando shell en el servidor. */

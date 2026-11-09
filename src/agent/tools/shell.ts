@@ -1,3 +1,4 @@
+import type { VerificationEnvironment, VerificationTestEvidence } from '../../artifacts/types';
 import type { ToolDefinition } from '../types';
 import { withActiveRoot } from '../activeProject';
 import { splitPipeline } from '../shellCommand';
@@ -24,6 +25,9 @@ export interface ShellRunOutput {
   stderr: string;
   exitCode: number;
   durationMs: number;
+  /** Sólo para comandos de tests; el contrato base no cambia. */
+  testEvidence?: VerificationTestEvidence;
+  environment?: VerificationEnvironment;
 }
 
 /**

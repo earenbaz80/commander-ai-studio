@@ -197,13 +197,15 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 **Puerta G1:** dogfooding de 5 días con el CLI como superficie principal. Si la latencia de aprobación o la tasa de éxito retrocede frente a F0, no se empieza F2 hasta corregirlo.
 
-> **Estado G1 (2026-11-09): NO CERRADO.** Los 14 issues de F1 están cerrados y la suite focalizada pasa (70/70 CLI, 30/30 agente/sesiones), pero no se ejecutó el dogfooding de 5 días: F0/G0 sigue aparcado, no hay baseline de latencia/éxito ni modelo real. No se declara paridad. F2-01 (contrato/store de artifacts) avanzó como cambio aislado que no toca el bucle; G1 sigue abierto y no se cierra hasta ejecutar el dogfooding.
+> **Estado G1 (2026-11-09): NO CERRADO.** Los 14 issues de F1 están cerrados y la suite focalizada pasa (70/70 CLI, 30/30 agente/sesiones), pero no se ejecutó el dogfooding de 5 días: F0/G0 sigue aparcado, no hay baseline de latencia/éxito ni modelo real. No se declara paridad. F2-01 (contrato/store), F2-02 (evidencia de tests en `shell.run`), F2-03 (diff y decisiones), F2-04 (informe local Markdown/HTML), F2-05 (visor de artifacts), F2-06 (enlace a la grabación) y F2-07 (E2E local y límites) avanzaron; F2-02 es aditivo sobre la tool y F2-03/F2-04 son módulos puros, así que ninguno cambia el bucle ni las aprobaciones; G1 sigue abierto y no se cierra hasta ejecutar el dogfooding.
 
 ---
 
 ### Fase 2 — Artifacts de verificación · **P1** · 6–8 días
 
 **Objetivo:** que cada corrida deje evidencia revisable y exportable, no sólo mensajes en el chat.
+
+> **Desglose ejecutable:** [docs/parity/backlog-f2.md](docs/parity/backlog-f2.md) — F2-01 (contrato/store), F2-02 (evidencia de tests y entorno), F2-03 (diff y decisiones), F2-04 (informe local), F2-05 (visor), F2-06 (enlace a la grabación) y F2-07 (E2E local y límites) hechos. El E2E local cubre persistencia en Chromium; no sustituye la verificación visual en Electron ni el dogfooding de G1.
 
 **Alcance**
 
@@ -223,6 +225,8 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 - [ ] La evidencia de tests muestra `exitCode != 0` en rojo y no genera un “passed” si el comando falló o no llegó a ejecutarse.
 - [ ] El informe se abre desde el disco sin red, sin secretos y sin recursos externos.
 - [ ] Los artifacts sobreviven a reiniciar la app y siguen siendo locales; no requieren cuenta.
+
+> **Cierre del desglose (2026-11-09):** F2-01 a F2-07 están hechos. El E2E local de F2-07 demuestra persistencia en IndexedDB y recarga, pero los criterios de fase que exigen WebM, grabación de 30 s o revisión por hunk siguen fuera de alcance y no se marcan.
 
 ---
 

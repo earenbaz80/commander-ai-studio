@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // App info
   app: {
     getInfo: () => ipcRenderer.invoke('app:getInfo'),
+    openFolder: (folderPath) => ipcRenderer.invoke('app:openFolder', folderPath),
   },
 
   // Auto-updater
