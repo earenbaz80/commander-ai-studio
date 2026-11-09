@@ -44,6 +44,7 @@ staging/
 
 # Reportes de tests E2E
 playwright-report/
+blob-report/
 test-results/
 
 # Capturas locales de revisión visual (se regeneran, no son fuente)
