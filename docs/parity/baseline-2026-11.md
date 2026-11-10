@@ -1,15 +1,15 @@
-# Baseline F0 — Vercel, Linear y GitHub Actions
+# Baseline F0 — GitHub, línea base y límites (Vercel y Linear fuera de alcance)
 
-> **Estado:** `BLOQUEADO EN G0` — no hay credenciales reales en esta máquina.
+> **Estado:** `F0 ABIERTO — SÓLO FALTA LA LÍNEA BASE`. GitHub verificado (OAuth y Actions) el 2026-11-10; Vercel y Linear fuera de alcance por decisión. La corrida del 2026-11-07 se conserva como historial.
 > **Corrida:** 2026-11-07, 08:05 UTC.
 > **Revisión:** `f7822ed` en `main` (remoto `github.com/earenbaz80/commander-ai-studio`), con 115 entradas sin commitear al inicio de la corrida —este documento y la nota del roadmap se añaden después, también sin commitear—. El commit por sí solo **no** identifica el árbol medido.
-> **Alcance:** criterios de aceptación de la Fase 0 de [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md).
+> **Alcance:** criterios de aceptación de la Fase 0 de [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md), con el alcance ajustado el **2026-11-10**: Vercel y Linear quedan **fuera de alcance por decisión explícita** (sólo hay cuenta de GitHub). La decisión y sus recibos están en [receipts/F0-LOCAL-2026-11-10.md](receipts/F0-LOCAL-2026-11-10.md).
 
 ## 1. Resumen
 
-La Fase 0 no se puede cerrar: no existe ninguna cuenta ni credencial de Vercel, Linear ni GitHub conectada a este Commander. La puerta **G0** de `ROADMAP_PARITY.md` lo dice explícitamente — sin credenciales reales no se declara paridad de hosting ni de integraciones, y **F5 queda bloqueada**. F1 puede empezar.
+Al 2026-11-07 la Fase 0 no se podía cerrar: no había ninguna cuenta ni credencial de Vercel, Linear ni GitHub conectada a este Commander. Desde el **2026-11-10** el alcance cambió: GitHub está conectado y verificado (OAuth y Actions), y Vercel y Linear quedaron **fuera de alcance por decisión explícita**. Lo único que falta para cerrar **G0** es la línea base de 24 corridas (§6); **F5** ya no está bloqueada por un criterio de Vercel, aunque 5A siga necesitando una decisión de proveedor en G3.
 
-No se atribuye ningún resultado a un proveedor. Lo que sigue distingue tres cosas: lo **ejecutado y medido** en local, lo que sigue **sin verificar** y el **runbook** exacto para cerrar cada criterio cuando las cuentas estén disponibles.
+No se atribuye ningún resultado a un proveedor. Lo que sigue distingue lo **ejecutado y medido**, lo que está **fuera de alcance** y lo que sigue **sin verificar**, con el runbook exacto para cerrar cada criterio.
 
 ## 2. Entorno de la corrida
 
@@ -21,7 +21,7 @@ No se atribuye ningún resultado a un proveedor. Lo que sigue distingue tres cos
 | Servidor usado para sondear | `http://127.0.0.1:3280` (dev, `NODE_ENV=development`) |
 | CLIs | `vercel` y `gh` **no instalados** |
 
-## 3. Credenciales disponibles: ninguna
+## 3. Credenciales disponibles en la corrida del 2026-11-07: ninguna
 
 Comprobado con el entorno del proceso, la presencia de `.env`/`.env.local` y `GET /api/keys` del servidor en marcha (sólo devuelve booleanos, nunca valores).
 
@@ -41,6 +41,8 @@ Dos consecuencias que van más allá de los tres proveedores del título:
 
 - **Sin clave de modelo** no se pueden medir las 10 tareas canónicas (§6) ni ejecutar el agente de Actions, aunque hubiera repositorio.
 - **Sin `gh` ni `vercel` locales** cualquier comprobación manual debe hacerse con la API REST o dentro del runner de GitHub.
+
+> **Actualización 2026-11-10.** GitHub ya está configurado y verificado (OAuth App con scopes `repo`/`read:user`, cuenta `earenbaz80`), y las Actions completaron plan y write con PR real. Vercel y Linear salen del alcance por decisión del usuario, que sólo dispone de cuenta de GitHub. La instantánea de §3 describe la corrida del 2026-11-07 y se conserva como historial; el estado vigente está en §5 y en el recibo.
 
 ## 4. Ejecutado y verificado en local
 
@@ -76,20 +78,23 @@ Higiene de secretos:
 
 | # | Criterio | Estado | Nota |
 | --- | --- | --- | --- |
-| 1 | App Vite con URL real de preview y producción | **Sin verificar** | falta `VERCEL_TOKEN` + `VERCEL_PROJECT_ID` |
-| 2 | HTML/JS/CSS con content types correctos | **Sin verificar** | el E2E local sí los comprueba, pero contra el contrato simulado |
-| 3 | Rollback real < 30 s | **Sin verificar** | requiere un segundo deployment real |
-| 4 | El estado sobrevive a reiniciar Commander | **Sin verificar** | implementación durable presente: `configuredAdapter.ts` → `PublisherRemoteStateStore` → `.commander/publish/<slug>/state.json`; `MemoryRemoteStateStore` es sólo para tests. Reinicio real pendiente |
-| 5 | Linear OAuth real: conectar, `whoami`, crear issue, revocar | **Sin verificar** | falta la OAuth app |
-| 6 | GitHub OAuth real y revocación | **Sin verificar** | falta la OAuth app |
-| 7 | `/commander` en modo plan y `--write` con PR real | **Sin verificar y bloqueado** | además de credenciales, `.github/workflows/commander-agent.yml` y `scripts/github-agent.ts` están **sin versionar** (`git status`: `??`) |
-| 8 | Ningún token en artifacts, logs ni respuestas | **Parcial** | árbol y tests OK; falta comprobarlo en deployments y runs reales |
+| 1 | App Vite con URL real de preview y producción | **Fuera de alcance** | decisión 2026-11-10: no hay cuenta de Vercel |
+| 2 | HTML/JS/CSS con content types correctos | **Fuera de alcance** | depende del hosting remoto de (1) |
+| 3 | Rollback real < 30 s | **Fuera de alcance** | depende del hosting remoto de (1) |
+| 4 | El estado sobrevive a reiniciar Commander | **Fuera de alcance** | la persistencia local sigue cubierta por tests; la prueba contra proveedor ya no aplica |
+| 5 | Linear OAuth real: conectar, `whoami`, crear issue, revocar | **Fuera de alcance** | decisión 2026-11-10: no hay cuenta de Linear |
+| 6 | GitHub OAuth real y revocación | **Verificado** | recibo `F0-LOCAL-2026-11-10` §8: lectura, comentario con aprobación y revocación con `earenbaz80` |
+| 7 | `/commander` en modo plan y `--write` con PR real | **Verificado** | recibo §11: runs `42871512187` (plan) y `42871837763` (write), comentario `6775265011`, PR #7 |
+| 8 | Ningún token en artifacts, logs ni respuestas | **Verificado en lo aplicable** | árbol sin coincidencias y runs/PR revisados; no hay deployments de Vercel en alcance |
 | 9 | `docs/parity/baseline-2026-11.md` | **Hecho** | este documento |
-| 10 | `tsc`, `vite build` y pruebas focalizadas en verde | **Hecho** | §4 |
+| 10 | `tsc`, `vite build` y pruebas focalizadas en verde | **Hecho** | §4 y recibo §2 |
+| 11 | Línea base de 24 corridas (T1–T10) | **Sin medir** | único criterio abierto de F0; ver §6 |
 
 ## 6. Línea base de las 10 tareas canónicas
 
 **Método acordado** (no ejecutado): 2 corridas por tarea y 3 en las cuatro críticas; registrar éxito, pasos, tool calls, tokens, costo, aprobaciones, duración y fallos. Las cuatro críticas son **T1, T7, T8 y T9**.
+
+Es el **único criterio que sigue abierto para cerrar G0** desde el 2026-11-10: no necesita Vercel ni Linear, sólo un modelo real configurado. T7 (deploy) se mide con el publicador local, que ya soporta preview, promoción y rollback.
 
 | ID | Tarea | Criterio de éxito | Corridas | Estado |
 | --- | --- | --- | --- | --- |
@@ -107,6 +112,8 @@ Higiene de secretos:
 Motivo común: no hay clave de modelo configurada (`/api/keys` devuelve todo `false`). «Sin medir» es el único valor honesto; no se estima.
 
 ## 7. Runbook para cerrar F0
+
+> **Vigencia 2026-11-10:** §7.1 (Vercel) y §7.2 (Linear) quedan como referencia y **no forman parte de F0**; sólo §7.3 (GitHub) y §6 (baseline) cierran la puerta. El orden operativo vigente está en [runbook-g1-f0.md](runbook-g1-f0.md).
 
 Los valores **nunca** se pegan en el chat ni se commitean: se escriben en `.env` (ignorado) o se conectan desde la UI.
 
@@ -159,20 +166,19 @@ Los valores **nunca** se pegan en el chat ni se commitean: se escriben en `.env`
 
 ## 9. Checklist de F0
 
-- [ ] App Vite con URL real de preview y producción.
-- [ ] HTML, JS y CSS con content types correctos en el proveedor.
-- [ ] Rollback real < 30 s y estado persistente tras reiniciar.
-- [ ] Linear OAuth real con `whoami`, creación y revocación.
-- [ ] GitHub OAuth real con lectura y comentario revocables.
-- [ ] `/commander` (plan) y `--write` (PR) reales en Actions.
-- [ ] Sin tokens en artifacts, logs ni respuestas de las corridas reales.
+- [x] GitHub OAuth real con lectura y comentario revocables (recibo §8).
+- [x] `/commander` (plan) y `--write` (PR) reales en Actions (recibo §11).
+- [x] Sin tokens en artifacts, logs ni respuestas de las corridas reales.
+- [ ] Línea base de 24 corridas (T1–T10) medida y registrada.
 - [x] `docs/parity/baseline-2026-11.md` con metodología, resultados y limitaciones.
 - [x] `tsc --noEmit`, `vite build` y pruebas focalizadas en verde.
+- [—] Vercel (preview/producción, content types, rollback, reinicio): **fuera de alcance por decisión (2026-11-10)**.
+- [—] Linear OAuth con `whoami`, creación y revocación: **fuera de alcance por decisión (2026-11-10)**.
 
 ## 10. Cómo reanudar
 
-1. Escribir en `.env` las variables de §3 (o conectar OAuth desde Ajustes para Linear/GitHub).
-2. Reiniciar el servidor y confirmar `GET /api/integrations` y `GET /api/deploy/status` sin errores de configuración.
-3. Versionar y empujar el workflow a un repo de prueba.
-4. Repetir §7 y reemplazar cada «Sin verificar» de §5 por un recibo con URL, fecha y límite.
-5. Sólo entonces mover las filas correspondientes de la matriz de `ROADMAP_PARITY.md` a **V**.
+1. Confirmar que la OAuth App de GitHub sigue conectada (`GET /api/integrations`) y que hay un modelo real configurado.
+2. Ejecutar la línea base de 24 corridas de §6 con ese modelo y registrar cada corrida.
+3. Reemplazar el «Sin medir» de §5 #11 por el recibo de la baseline.
+4. Sólo entonces mover las filas correspondientes de la matriz de `ROADMAP_PARITY.md` a **V** y cerrar G0.
+5. Vercel y Linear no se reanudan: si algún día se deciden, vuelven como alcance nuevo con su propio recibo, no como deuda de F0.

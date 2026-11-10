@@ -45,9 +45,9 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 | Permisos, aprobaciones y undo | **V** | `permissionRules`, `AgentApprovalModal`, checkpoints y `undoStep`/`redo` | La política vive sobre todo en la UI de escritorio |
 | Sesiones | **V** | `src/agent/sessions.ts`, rutas de sesiones y threads del servidor | No hay reanudación desde CLI ni desde un cliente remoto |
 | Navegador y artifacts | **V/P** | `browserSession.ts`, `BrowserView.tsx`, `useBrowserRecording.ts`, `ArtifactsView.tsx` | Frames a ~1,4 fps; sin exportación, sin MP4 y sin verificación visual en Electron |
-| Publicación estática/SPA | **V local / I remoto** | `publisher.ts`, `deploy/vercelAdapter.ts`, tests de contrato | No hay despliegue real contra Vercel; sin SSR/Workers |
+| Publicación estática/SPA | **V local; remoto fuera de alcance** | `publisher.ts`, `deploy/vercelAdapter.ts`, tests de contrato | Sin proveedor verificado por decisión (2026-11-10); sin SSR/Workers |
 | Backend multiinquilino | **V local** | `backend/tenantStore.ts`, `backend/routes.ts`, `tests/tenantBackend.test.ts` (6/6) | No aprovisiona bindings para apps publicadas |
-| Integraciones GitHub/Linear | **I** | `src/integrations/`, rutas OAuth, vault AES-256-GCM | Falta OAuth real con cuentas y permisos reales |
+| Integraciones GitHub/Linear | **V GitHub; Linear fuera de alcance** | `src/integrations/`, rutas OAuth, vault AES-256-GCM | GitHub con OAuth real verificado (recibo §8); Linear no se configura |
 | GitHub Actions | **I** | `.github/workflows/commander-agent.yml`, `scripts/github-agent.ts` | No hay una corrida real en GitHub |
 | CLI | **P** | `bin/commander.ts`, `src/cli/repl.ts`, `src/cli/agentClient.ts`, `src/cli/tui.ts` | REPL multi-turno, `ask_user`, `--resume`/`--fork`, diff por hunk y paridad de permisos del escritorio (F1-07) operativos |
 | Extensión de VS Code | **P** | `vscode-extension/` | Scaffold: webview que lanza `npx commander agent`; no es un IDE integrado |
@@ -99,14 +99,14 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 | Plugins / hooks | **P** (sólo `beforeTool`/`afterTool`) | **V** | **V** (hooks/plugins) | **P** (MCP/skills; sin hooks documentados) |
 | Agentes y comandos custom | **V** | **V** | **V** | **V** |
 | Marketplace / ecosistema | **P** (catálogo de plugins de Claude) | **P** (comunidad) | **V** (plugins) | **—** |
-| Integraciones nativas | **P** (GitHub/Linear; falta OAuth real) | **P** (MCP/GitHub) | **V** (bundles de Google + MCP) | **P** (GitHub/repos; sin catálogo amplio documentado) |
+| Integraciones nativas | **V** (GitHub con OAuth real; Linear fuera de alcance) | **P** (MCP/GitHub) | **V** (bundles de Google + MCP) | **P** (GitHub/repos; sin catálogo amplio documentado) |
 | SSO / enterprise | **F** | **P** | **V** (SSO/BYOID, VPC-SC, residencia) | **—** |
 
 ### 4.4 Plataforma de apps
 
 | Capacidad | Commander | OpenCode | Antigravity | Freebuff |
 | --- | --- | --- | --- | --- |
-| Hosting estático/SPA | **P** (local **V**; Vercel **I**) | **—** | **—** | **V** |
+| Hosting estático/SPA | **P** (local **V**; proveedor remoto fuera de alcance) | **—** | **—** | **V** |
 | Hosting SSR/full-stack | **F** | **—** | **P** (Google Cloud) | **V** |
 | Auth/DB/storage para apps publicadas | **P** (backend local; sin bindings desplegados) | **—** | **P** (Firebase/Google) | **V** |
 | Realtime para apps | **F** | **—** | **P** | **—** (no documentado) |
@@ -123,7 +123,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 | ID | Hueco | Por qué importa | Fase | Prioridad |
 | --- | --- | --- | --- | --- |
-| P0-1 | Verdad externa de Vercel, Linear, GitHub y Actions | Hoy hay código con mocks; afirmar paridad sin recibo erosiona la confianza | F0 | **P0** |
+| P0-1 | Verdad externa de GitHub y Actions, y línea base de 24 corridas (Vercel y Linear fuera de alcance desde 2026-11-10) | Hoy hay código con mocks; afirmar paridad sin recibo erosiona la confianza | F0 | **P0** |
 | P0-2 | CLI/TUI de primera clase con approvals y `ask_user` | Es la superficie principal de OpenCode/Antigravity/Freebuff y hoy Commander sólo tiene una pasada | F1 | **P0** |
 | P0-3 | Sesión única y plan persistente entre escritorio y CLI | Sin continuidad, el usuario pierde el trabajo al cambiar de superficie | F1 | **P0** |
 | P1-0 | Artifact de verificación: plan + diff + tests + grabación | Es lo que hace revisable y confiable una corrida; Antigravity ya lo vende | F2 | **P1** |
@@ -141,28 +141,32 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 **Objetivo:** convertir “está implementado” en “está verificado” y fijar una línea base medible antes de añadir superficie.
 
 > **Estado 2026-11-07 — bloqueada en G0.** En esta máquina no hay credenciales de Vercel, GitHub ni Linear (ni `.env`, ni variables de entorno, ni conectores OAuth), así que ninguna fila externa está verificada. Lo medido en local, lo que falta y el runbook para cerrarla están en [docs/parity/baseline-2026-11.md](docs/parity/baseline-2026-11.md).
+>
+> **Decisión de alcance 2026-11-10 — F0 sin Vercel ni Linear.** El usuario sólo dispone de cuenta de GitHub y decidió explícitamente no configurar Vercel ni Linear. Esas filas salen del alcance de F0 y quedan marcadas como **fuera de alcance por decisión**, no como pendientes. F0 se cierra con GitHub (OAuth real y Actions, ya verificados con recibos) y la línea base de 24 corridas. Recibos en [docs/parity/receipts/F0-LOCAL-2026-11-10.md](docs/parity/receipts/F0-LOCAL-2026-11-10.md); orden de ejecución en [docs/parity/runbook-g1-f0.md](docs/parity/runbook-g1-f0.md).
 
 **Alcance**
 
-- Verificar con cuentas reales:
-  - despliegue estático/SPA en Vercel: preview, producción, rollback, content types, persistencia tras reinicio;
-  - OAuth de Linear y GitHub: conectar, `whoami`, crear issue/comentar PR, revocar, comprobar que el token no aparece en UI/logs;
-  - GitHub Actions: `/commander` en modo plan y `--write` en un repo de prueba, con PR real.
+- Verificar con cuentas reales, dentro del alcance vigente:
+  - OAuth de GitHub: conectar, leer un PR, comentar con aprobación, revocar y comprobar que el token no aparece en UI/logs;
+  - GitHub Actions: `/commander` en modo plan y `--write` en un repo de prueba, con PR y comentario reales.
+- **Fuera de alcance por decisión (2026-11-10):** despliegue estático/SPA en Vercel y OAuth de Linear. No hay cuenta de ninguno de los dos y el usuario decidió no crearlas; no se simulan ni se declaran verificados. El hosting remoto se decide en G3, al abordar 5A.
 - Medir 10 tareas canónicas (bugfix, feature pequeña, refactor, tests, revisión, browser, deploy, permiso denegado, resume y subagente) con 2 corridas; 3 corridas en las 4 críticas. Registrar éxito, pasos, tokens/costo, aprobaciones, duración y fallos.
 - Revisar la matriz de este documento y marcar cada fila con evidencia o con “sin verificar”.
 - Corregir sólo los defectos que impidan la verificación; no abrir features nuevas.
 
 **Criterios de aceptación**
 
-- [ ] Una app Vite de ejemplo tiene URL real de preview y producción; HTML, JS y CSS responden con content types correctos.
-- [ ] El rollback real vuelve a la release anterior en menos de 30 s y el estado sobrevive a reiniciar Commander.
-- [ ] Linear y GitHub completan OAuth real; las acciones permitidas funcionan y la revocación invalida el acceso.
-- [ ] GitHub Actions ejecuta `/commander` y `--write` en un repo de prueba; el PR y el comentario son reales.
-- [ ] Ningún token, `.env`, source map ni secreto aparece en artifacts, logs o respuestas.
-- [x] Existe `docs/parity/baseline-2026-11.md` con metodología, resultados y limitaciones (creado 2026-11-07; el resto de criterios sigue sin verificar).
-- [ ] `tsc --noEmit`, `vite build` y las pruebas focalizadas siguen en verde.
+- [—] ~~App Vite de ejemplo con URL real de preview y producción y content types correctos~~ **fuera de alcance por decisión (2026-11-10):** no hay cuenta de Vercel.
+- [—] ~~Rollback real en menos de 30 s y estado persistente tras reiniciar contra el proveedor~~ **fuera de alcance por decisión (2026-11-10).**
+- [x] GitHub completa OAuth real: lectura de un PR, comentario con aprobación y revocación que invalida el acceso (recibo `F0-LOCAL-2026-11-10` §8).
+- [x] GitHub Actions ejecuta `/commander` en modo plan y `--write` en el repo de prueba; el comentario y el PR son reales (recibo `F0-LOCAL-2026-11-10` §11).
+- [—] ~~Linear completa OAuth real~~ **fuera de alcance por decisión (2026-11-10):** no hay cuenta de Linear.
+- [x] Ningún token, `.env`, source map ni secreto aparece en artifacts, logs o respuestas (árbol, runs reales y PR revisados; no hay deployments de Vercel en alcance).
+- [x] Existe `docs/parity/baseline-2026-11.md` con metodología, resultados y limitaciones.
+- [x] `tsc --noEmit`, `vite build` y las pruebas focalizadas siguen en verde (recibo `F0-LOCAL-2026-11-10` §2).
+- [ ] La línea base de 24 corridas (T1–T10) está medida y registrada.
 
-**Puerta G0:** sin credenciales reales no se puede cerrar F0. F1 puede empezar, pero no se declara paridad de hosting ni de integraciones, y F5 queda bloqueada.
+**Puerta G0:** se cierra con dos piezas: GitHub verificado (OAuth y Actions, ya con recibos) y la línea base de 24 corridas registrada. Vercel y Linear no forman parte de la puerta desde la decisión de alcance del 2026-11-10. F1 puede empezar con F0 abierto, pero no se declara paridad de integraciones no verificadas, y 5A (hosting SSR/Workers) sigue necesitando una decisión de proveedor en G3.
 
 ---
 
@@ -305,7 +309,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 **Alcance (tres entregas separadas)**
 
-- **5A. Hosting SSR/Workers.** Extender `DeploymentAdapter` para `ssr`/`worker`, elegir proveedor después de F0 (Vercel Functions o Cloudflare Workers), variables públicas/secretas, logs, previews, dominios y rollback.
+- **5A. Hosting SSR/Workers.** Extender `DeploymentAdapter` para `ssr`/`worker`, elegir proveedor en G3 (Vercel queda fuera por la decisión de alcance del 2026-11-10; candidato natural, Cloudflare Workers), variables públicas/secretas, logs, previews, dominios y rollback.
 - **5B. Backend gestionado.** Aprovisionar auth, DB y storage por app; reutilizar el contrato y las garantías de aislamiento de `/api/backend`; migraciones, cuotas, backup/export y borrado.
 - **5C. Realtime.** Salas autenticadas, snapshots durables y reconexión; el cliente no elige `userId` ni capacidades; estado crítico en el servidor.
 - Plantilla full-stack de referencia: registro/login/logout, CRUD, subida de archivo y una sala realtime.
@@ -374,7 +378,7 @@ Una fase termina sólo si:
 
 | Riesgo | Prob. | Impacto | Mitigación |
 | --- | --- | --- | --- |
-| Faltan credenciales reales de Vercel/Linear/GitHub | Alta | Alto | F0 es explícito; F1 puede avanzar, F5 no. No se declara paridad con mocks. |
+| Falta la credencial real de un proveedor (Vercel y Linear ya están fuera de alcance) | Media | Medio | F0 mide lo que sí hay (GitHub) y no declara paridad con mocks; un proveedor nuevo exige su propio recibo antes de volver a la matriz. |
 | El alcance crece por comparar tres productos a la vez | Alta | Alto | Puertas G0–G3, no objetivos y fases separadas; F6 sólo con aprobación. |
 | El pair remoto expone código o approvals | Media | Alto | Loopback por defecto, enlace de un uso, caducidad, cookie, Origin/CSRF, control lease, revisión de seguridad. |
 | Cambian las APIs de proveedores | Media | Medio | Adaptadores, tests de contrato, versiones y recibos por release. |
