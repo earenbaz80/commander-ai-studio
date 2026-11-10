@@ -206,7 +206,7 @@ test('NonoHead: el orbe procesando mira arriba, asiente y no usa el binario del 
   assert.ok(busy.includes('nono-orb-busy-face'), 'Procesando debe pintar la cara satisfecha');
   assert.ok(busy.includes('data-look="up"'), 'La cara mira hacia el chat');
   assert.ok(busy.includes('nono-orb-affirm'), 'La cara puede asentir');
-  assert.ok(busy.includes('M27 39 Q32 43 37 39'), 'La sonrisa acompaña a los ojos');
+  assert.ok(!busy.includes('M27 39 Q32 43 37 39'), 'El orbe no debe mostrar boca');
   assert.ok(!busy.includes('nono-orb-processing'), 'Procesando ya no gira');
   assert.ok(!busy.includes('nono-orb-rotor'), 'No debe quedar el rotor');
   assert.ok(!busy.includes('nono-orb-latitudes'), 'No debe quedar la superficie 3D');
@@ -216,6 +216,36 @@ test('NonoHead: el orbe procesando mira arriba, asiente y no usa el binario del 
   assert.ok(!failed.includes('nono-orb-busy-face'), 'Un error no muestra la cara satisfecha');
   assert.ok(!idle.includes('nono-orb-processing'), 'En reposo no hay rotor');
   assert.ok(!idle.includes('nono-orb-rotor'), 'En reposo no se pinta el rotor');
+});
+
+test('NonoHead: el orbe no dibuja boca en ninguna expresión', () => {
+  const expressions: NonoExpression[] = [
+    'neutral', 'happy', 'sad', 'surprised', 'angry',
+    'wink', 'sleepy', 'thinking', 'error', 'love', 'cool', 'watch', 'curious',
+  ];
+
+  for (const expression of expressions) {
+    for (const busy of [false, true]) {
+      const markup = renderToStaticMarkup(
+        <NonoHead
+          expression={expression}
+          eyeOffset={{ x: 0, y: 0 }}
+          blink={false}
+          size={64}
+          variant="orb"
+          busy={busy}
+        />
+      );
+      assert.ok(
+        !markup.includes('M27 39 Q32 43 37 39'),
+        `El orbe no debe dibujar boca en ${expression}${busy ? ' (procesando)' : ''}`
+      );
+      assert.ok(
+        !markup.includes('data-testid="nono-face-mouth"'),
+        `El orbe no debe incluir la boca clásica en ${expression}${busy ? ' (procesando)' : ''}`
+      );
+    }
+  }
 });
 
 test('NonoHead: el orbe parpadea y cambia de expresión', () => {
@@ -429,8 +459,8 @@ test('NonoHead: ninguna variante dibuja cejas', () => {
     }
   }
 
-  // En watch y curious los ojos son círculos o barras y la boca una línea o
-  // elipse: cualquier <path> nuevo en esas caras sería una ceja.
+  // En watch y curious los ojos son círculos o barras; en la clásica la boca
+  // es una línea o elipse. Cualquier <path> nuevo en esas caras sería una ceja.
   for (const variant of ['classic', 'orb'] as const) {
     for (const expression of ['watch', 'curious'] as const) {
       const markup = renderToStaticMarkup(
