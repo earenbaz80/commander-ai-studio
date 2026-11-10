@@ -525,9 +525,10 @@ export const NonoHead: React.FC<{
     };
 
     /**
-     * Cara de procesamiento: los ojos de barra miran arriba (hacia el chat) y
-     * una sonrisa pequeña los acompaña. `nono-orb-affirm` deja que el ajuste
-     * de Configuración decida si asiente; el componente no anima nada.
+     * Cara de procesamiento: los ojos de barra miran arriba (hacia el chat).
+     * El orbe no dibuja boca en ninguna expresión ni estado.
+     * `nono-orb-affirm` deja que el ajuste de Configuración decida si asiente;
+     * el componente no anima nada.
      */
     const renderBusyFace = () => (
       <g
@@ -545,13 +546,6 @@ export const NonoHead: React.FC<{
           <>
             {bar(22.5)}
             {bar(36.5)}
-            <path
-              d="M27 39 Q32 43 37 39"
-              fill="none"
-              stroke={eye}
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
           </>
         )}
       </g>
