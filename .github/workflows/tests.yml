@@ -204,6 +204,14 @@ jobs:
           PLAYWRIGHT_HTML_OPEN: never
           PLAYWRIGHT_JSON_OUTPUT_FILE: playwright-report/results.json
 
+      # El merge puede terminar en verde con un blob perdido (por ejemplo, si
+      # un paso no escribió el suyo). El conteo exacto convierte esa pérdida en
+      # un fallo del job; el upload posterior sigue corriendo con `if: always()`
+      # para poder inspeccionar el reporte igualmente.
+      - name: Verify merged Playwright report
+        if: always()
+        run: npm run check:playwright-report
+
       - name: Upload Playwright report
         uses: actions/upload-artifact@v7
         if: always()

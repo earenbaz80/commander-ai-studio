@@ -44,6 +44,7 @@
     "check:issue-status": "tsx scripts/sync-issue-status.ts --check",
     "check:criteria": "tsx scripts/check-issue-criteria.ts",
     "check:mcp": "tsx scripts/check-mcp.ts",
+    "check:playwright-report": "tsx scripts/check-playwright-report.ts",
     "sync:issue-status": "tsx scripts/sync-issue-status.ts",
     "check:rules": "tsx scripts/check-rules.ts",
     "check:contrast": "npm run build && playwright test tests/e2e/contrast.spec.ts --project=chromium",
