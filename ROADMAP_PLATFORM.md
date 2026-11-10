@@ -2,7 +2,7 @@
 
 > **Estado:** revisado contra el árbol, 2026-11-07. Complementa [ROADMAP_UX.md](ROADMAP_UX.md) y [ROADMAP_PARITY.md](ROADMAP_PARITY.md); no los sustituye.
 >
-> **Objetivo:** cerrar los huecos de plataforma frente a un entorno como Freebuff sin dejar de ser local-first por defecto. Cada fase debe poder entregarse y probarse por separado. Las fases 0–2 y el agente de GitHub Actions ya están implementadas en código; Linear y GitHub están implementados pero pendientes de verificación real. El estado distingue código de verificación real.
+> **Objetivo:** cerrar los huecos de plataforma frente a un entorno como Freebuff sin dejar de ser local-first por defecto. Cada fase debe poder entregarse y probarse por separado. Las fases 0–2 y el agente de GitHub Actions ya están implementadas en código; GitHub quedó verificado el 2026-11-10 y Linear salió del alcance por decisión explícita. El estado distingue código de verificación real.
 
 ## Principios
 
@@ -21,7 +21,7 @@
 | Publicación local | **Hecho** | `server.ts` sirve `/published/<slug>/<entorno>/`; `PublishView.tsx` ya tiene la pestaña **Publicar** |
 | Build antes de publicar | **Hecho** | `createRelease({ build: true })` ejecuta `npm run build` con timeout y límites de archivos/tamaño |
 | Contrato de despliegue | **Hecho** | `deploy/types.ts` incluye `configured`; `deploy/adapter.ts`, `deploy/stateStore.ts` y `commander.app.json`; el estado local conserva `remote` con migración tolerante |
-| Hosting público | **Implementado; E2E local, falta Vercel real** | `deploy/vercelAdapter.ts` sube la release ya construida, con preview, promoción, rollback y logs. `tests/unit/vercelAdapter.e2e.test.ts` recorre el ciclo contra un servidor HTTP local que implementa el contrato; no es una cuenta Vercel |
+| Hosting público | **Implementado; verificación contra proveedor fuera de alcance (2026-11-10)** | `deploy/vercelAdapter.ts` sube la release ya construida, con preview, promoción, rollback y logs. `tests/unit/vercelAdapter.e2e.test.ts` recorre el ciclo contra un servidor HTTP local que implementa el contrato; no es una cuenta Vercel |
 | Navegador del agente | **Hecho** | `browserSession.ts` y `src/agent/tools/browser.ts` usan Playwright; la misma sesión alimenta frames, consola y red |
 | Panel Navegador | **Hecho** | `BrowserView.tsx` pinta frames JPEG por SSE (700 ms), envía entrada real, selecciona sesión, captura screenshots y graba; `LiveConsole`/`NetworkMonitor` leen eventos reales |
 | Grabaciones y artifacts | **Hecho local** | `useBrowserRecording.ts` captura frames; `ArtifactsView.tsx` reproduce, guarda en IndexedDB y permite comentarios inline. Límite: 120 s/180 frames, sin MP4, export ni visor remoto |
@@ -455,11 +455,11 @@ Esto cambia el modelo del producto. Si Commander sigue siendo una app personal l
 | Fase | Estado | Valor | Esfuerzo restante | Dependencias | Prioridad |
 | --- | --- | --- | --- | --- | --- |
 | 0. Contrato | Hecho | Alto (base) | — | Ninguna | — |
-| 1. Hosting estático | Implementado; verificación real pendiente | Muy alto | Bajo/medio | Cuenta Vercel | P0 verificar |
+| 1. Hosting estático | Implementado; verificación contra proveedor **fuera de alcance (2026-11-10)** | Alto | — | Proveedor en G3 | En pausa |
 | 2. Navegador + artifacts | Hecho con límites | Alto | Bajo (fps/export) | Ninguna | P2 pulir |
 | 3. Backend | Pendiente | Muy alto | Alto | Proveedor y auth por app | **P0** |
 | 4. Realtime | Pendiente | Medio | Medio | Fase 3 | P1 |
-| 5. Conectores | Linear + GitHub implementados; falta verificación real | Alto | Bajo verificar | OAuth y vault | P1 |
+| 5. Conectores | GitHub verificado (OAuth + Actions, 2026-11-10); Linear fuera de alcance | Alto | — | OAuth y vault | Hecho en lo verificado |
 | 6. Skills/cuenta | Parcial | Medio | Medio | Auth de cuenta | P2 |
 | 7. Workspaces remotos | No iniciado | Muy alto | Muy alto | Infraestructura y producto | P3/opcional |
 
@@ -502,14 +502,16 @@ Esto cambia el modelo del producto. Si Commander sigue siendo una app personal l
 - Reemplazar Firebase como auth de Commander.
 - Cambiar la paleta, la tipografía o el rol de Nono.
 
-## Siguiente corte recomendado (2026-11-07)
+## Siguiente corte recomendado (2026-11-07; alcance ajustado 2026-11-10)
+
+> **Actualizado 2026-11-10:** Vercel y Linear quedaron **fuera de alcance por decisión explícita** (sólo hay cuenta de GitHub). Lo que sigue se conserva como historial. El corte vigente es medir la línea base de F0, correr G1 y decidir proveedor en G3 para 5A. Detalle: [docs/parity/receipts/F0-LOCAL-2026-11-10.md](docs/parity/receipts/F0-LOCAL-2026-11-10.md).
 
 **Ahora — P0: verificar lo construido**
 
-- Desplegar una app Vite real en Vercel: preview, URL pública, content types, promoción y rollback cronometrado.
-- Configurar Linear y completar OAuth, uso, refresco y revocación con una cuenta real.
-- Ejecutar el workflow de GitHub Actions con un modelo real.
-- Publicar una app Vite real en Vercel y medir el rollback; el E2E local ya no sustituye esa comprobación.
+- ~~Desplegar una app Vite real en Vercel~~ **fuera de alcance (2026-11-10)**.
+- ~~Configurar Linear y completar OAuth~~ **fuera de alcance (2026-11-10)**.
+- Ejecutar el workflow de GitHub Actions con un modelo real. **Hecho (2026-11-10).**
+- Medir la línea base de 24 corridas de F0, que es lo único que falta para G0.
 
 **Semanas 1–3 — P0: Fase 3**
 
