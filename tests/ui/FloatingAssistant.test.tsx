@@ -96,6 +96,37 @@ describe('FloatingAssistant (Nono)', () => {
       expect(screen.getByText('¡Sí! Voy con ello.')).toBeInTheDocument();
     });
 
+    test('el orbe no muestra boca en ningún estado', () => {
+      localStorage.setItem('nono-memory-v1', JSON.stringify({ ui: { orbSkin: true } }));
+
+      const expectOrbWithoutMouth = () => {
+        const orb = document.querySelector('svg[data-variant="orb"]') as SVGSVGElement | null;
+        expect(orb).toBeTruthy();
+        expect(orb?.querySelector('[data-testid="nono-face-mouth"]')).toBeNull();
+        // La sonrisa del antiguo estado busy era el único trazo de boca del orbe.
+        expect(orb?.innerHTML).not.toContain('M27 39 Q32 43 37 39');
+      };
+
+      const { rerender } = render(<FloatingAssistant lang="es" />);
+      expectOrbWithoutMouth();
+
+      rerender(<FloatingAssistant lang="es" busy status={{ type: 'generating' }} />);
+      expect(screen.getByTestId('nono-orb-busy-face')).toBeInTheDocument();
+      expectOrbWithoutMouth();
+
+      rerender(<FloatingAssistant lang="es" busy status={{ type: 'error' }} />);
+      expect(getExpression()).toBe('error');
+      expectOrbWithoutMouth();
+
+      rerender(<FloatingAssistant lang="es" status={{ type: 'done' }} />);
+      expectOrbWithoutMouth();
+
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+      expectOrbWithoutMouth();
+    });
+
     test('se ancla a la línea del chat cuando existe', () => {
       const divider = document.createElement('div');
       divider.setAttribute('data-chat-divider', '');

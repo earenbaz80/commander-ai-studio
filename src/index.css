@@ -275,7 +275,7 @@
 }
 /* ===== Orbe procesando: mira arriba y asiente ===== */
 /* Sustituye al antiguo giro de la superficie: la cara se queda visible, con
-   los ojos levantados hacia el chat y una sonrisa. El ajuste de Configuración
+   los ojos levantados hacia el chat y sin boca. El ajuste de Configuración
    controla el asentimiento (las clases del root conservan su nombre histórico
    para no invalidar la preferencia guardada). */
 @keyframes nono-orb-affirm {
