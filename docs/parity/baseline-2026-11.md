@@ -109,7 +109,7 @@ Es el **único criterio que sigue abierto para cerrar G0** desde el 2026-11-10: 
 | T9 | Resume | reanudar sin duplicar tool calls | 3 | Sin medir |
 | T10 | Subagente | dos subagentes en paralelo con allowlist y worktree | 2 | Sin medir |
 
-Motivo común: no hay clave de modelo configurada (`/api/keys` devuelve todo `false`). «Sin medir» es el único valor honesto; no se estima.
+**Motivo (actualizado 2026-11-10).** Sigue sin haber clave de modelo: `/api/keys` devuelve las 16 claves en `false`, `GEMINI_API_KEY` está vacía en `.env` y Pollinations responde 404. Se intentó con el LM Studio local (18 modelos): sólo `lmstudio-community/qwen3.8-27b` emite `tool_calls`, y a ~38 s/paso una corrida de T1 gastó 497 s en 13 pasos sin terminar, por encima del presupuesto de 300 s por tarea. Medir así no sería una línea base del agente, sino de la máquina. «Sin medir» sigue siendo el único valor honesto; no se estima. El arnés queda listo en `evals/baseline.ts` (`npm run baseline`); detalle y evidencia en el recibo §13.
 
 ## 7. Runbook para cerrar F0
 

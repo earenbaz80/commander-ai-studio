@@ -29,6 +29,7 @@
     "test:node": "tsx scripts/test-node.ts",
     "test:logic": "vitest run --project node",
     "eval": "tsx evals/run.ts",
+    "baseline": "tsx evals/baseline.ts",
     "eval:live": "cross-env EVAL_LIVE=1 tsx evals/run.ts",
     "eval:strict": "tsx evals/run.ts --strict-scope",
     "eval:history": "tsx evals/run.ts --history",
