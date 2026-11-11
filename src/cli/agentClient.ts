@@ -231,6 +231,29 @@ function mutationKeyFor(tool: string, input: Record<string, unknown>): string {
   return `${tool}\u0000${stableInput(input)}`;
 }
 
+/** Archivo de test que el CLI acepta en la forma canónica de `node --test`. */
+const TEST_FILE_PATTERN = /(?:^|[\\/])[^\\/]+\.(?:test|spec)\.[cm]?[jt]sx?$/i;
+
+/**
+ * Política de herramientas del CLI: los tests se verifican con `shell.run` y
+ * la forma `node --test <archivo>`. Si el modelo propone `node <test>`, se
+ * normaliza antes de pedir aprobación para que el comando ejecutado sea el
+ * canónico y esté dentro de la allowlist.
+ */
+export function normalizeTestCommand(command: unknown): string {
+  const text = typeof command === 'string' ? command.trim() : '';
+  if (!text || /^node\s+--test(?:\s|$)/i.test(text)) return text;
+  const match = text.match(/^node\s+("([^"]+)"|'([^']+)'|(\S+))$/i);
+  if (!match) return text;
+  const target = (match[2] ?? match[3] ?? match[4] ?? '').replace(/\\/g, '/');
+  return TEST_FILE_PATTERN.test(target) ? `node --test ${match[1]}` : text;
+}
+
+const CLI_TOOL_POLICY =
+  ' POLÍTICA DE HERRAMIENTAS: para verificar tests usa siempre shell.run con la forma exacta ' +
+  '`node --test <archivo>`; no uses code.run para tests ni `node <archivo>`. code.run no está ' +
+  'disponible en el CLI.';
+
 /** Cuerpo común de la petición al LLM (compartido por streaming y no-streaming). */
 function buildPayload(
   opts: RunAgentOptions,
@@ -260,6 +283,7 @@ function buildPayload(
   if (opts.agent) {
     systemInstruction += ` PLANTILLA DE AGENTE: ${opts.agent}.`;
   }
+  systemInstruction += CLI_TOOL_POLICY;
 
   const payload: Record<string, unknown> = {
     contents: user,
@@ -273,7 +297,10 @@ function buildPayload(
   // no le ofrecemos `update_plan`, que aquí no existe como tool. En plan y
   // readonly tampoco se ofrecen las tools que mutan.
   const declarations = AGENT_FUNCTION_DECLARATIONS.filter(
-    (d) => d.name !== PLAN_TOOL && (mode === 'build' || !MUTATING_FUNCTIONS.has(d.name))
+    (d) =>
+      d.name !== PLAN_TOOL &&
+      d.name !== 'code_run' &&
+      (mode === 'build' || !MUTATING_FUNCTIONS.has(d.name))
   );
   payload.tools =
     dialect === 'gemini'
@@ -1012,6 +1039,18 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
           status: 'failed',
         });
         continue;
+      }
+      if (mapped.tool === 'code.run') {
+        const text =
+          'Política del CLI: code.run no está disponible; verifica tests con shell.run y ' +
+          '`node --test <archivo>`.';
+        emit({ type: 'error', text });
+        history.push(`TOOL ${mapped.tool} → ERROR: ${text}`);
+        await addStep({ type: 'thought', title: 'Política de tools', content: text, status: 'failed' });
+        continue;
+      }
+      if (mapped.tool === 'shell.run' && typeof input.command === 'string') {
+        input.command = normalizeTestCommand(input.command);
       }
       const mutationKey = MUTATING_TOOLS.has(mapped.tool) ? mutationKeyFor(mapped.tool, input) : null;
       if (mutationKey && completedMutations.has(mutationKey)) {

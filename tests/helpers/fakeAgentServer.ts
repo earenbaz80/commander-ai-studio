@@ -25,6 +25,7 @@ export type FakeScenario =
   | 'tool-denied'
   | 'tool-write-twice'
   | 'tool-edit-same-twice'
+  | 'shell-run-node-test'
   | 'slow-tool'
   | 'ask-user'
   | 'max-steps'
@@ -89,6 +90,7 @@ const SCENARIOS: FakeScenario[] = [
   'tool-denied',
   'tool-write-twice',
   'tool-edit-same-twice',
+  'shell-run-node-test',
   'slow-tool',
   'ask-user',
   'max-steps',
@@ -137,6 +139,13 @@ function turnFor(scenario: FakeScenario, turn: number): ModelTurn {
     case 'tool-edit-same-twice':
       return turn <= 2
         ? { text: `Edito la misma salida (${turn}).`, functionCalls: [EDIT_CALL] }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'shell-run-node-test':
+      return turn === 1
+        ? {
+            text: 'Verifico el test con la forma corta.',
+            functionCalls: [{ name: 'shell_run', args: { command: 'node math.test.mjs' } }],
+          }
         : { text: FINAL_TEXT, functionCalls: [] };
     case 'slow-tool':
       return turn === 1
