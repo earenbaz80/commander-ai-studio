@@ -377,10 +377,14 @@ export function checkShellSegments(
     // `allowUnlisted` salta SÓLO la lista de prefijos. Los patrones bloqueados,
     // los operadores prohibidos y las rutas siguen aplicando, y el cliente ya
     // exigió aprobación para un comando que no está en la allowlist.
-    if (!opts.allowUnlisted && !SHELL_ALLOW_PREFIX.some((a) => lower.startsWith(a))) {
+    // El prefijo `node --test ` exige archivo; la forma exacta `node --test`
+    // usa el descubrimiento del runner y también es válida para T1. No se usa
+    // un prefijo sin espacio porque abriría variantes como `node --testevil`.
+    const exactAllowed = lower === 'node --test';
+    if (!opts.allowUnlisted && !exactAllowed && !SHELL_ALLOW_PREFIX.some((a) => lower.startsWith(a))) {
       return {
         ok: false,
-        error: `Comando no permitido: ${segment.slice(0, 80)}. Usa npm test, npm run <script>, node --test <archivo>, git, ls, echo, tsc o vite.`,
+        error: `Comando no permitido: ${segment.slice(0, 80)}. Usa npm test, npm run <script>, node --test [archivo], git, ls, echo, tsc o vite.`,
         status: 403,
       };
     }

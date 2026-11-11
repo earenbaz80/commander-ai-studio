@@ -1,6 +1,7 @@
 # Calibración G1 — latencia de aprobación (preflight)
 
-> **Estado:** protocolo preparado; calibración **no ejecutada**.
+> **Estado:** protocolo preparado y alineado con el allowlist de D0; calibración **no ejecutada**.
+> **Precondición:** el fix de allowlist (`node --test` y `node --test <archivo>`) debe estar en un commit fijo y el árbol debe estar limpio. No se calibra sobre cambios sin commit.
 > **Propósito:** obtener una referencia reproducible de latencia de aprobación antes de D1, sin contar estas corridas dentro de las 24 de G1.
 > **Límite:** la baseline F0 no registró aprobaciones ni latencia. Esta calibración **no es paridad F0**; es una referencia provisional que debe declararse como tal.
 
@@ -32,9 +33,10 @@ La unidad de muestra es **una decisión explícita**, no una corrida. Las llamad
 - **5 corridas de T1** con el mismo commit, modelo y servidor.
 - Cada corrida debe producir **2 decisiones explícitas**:
   1. `fs.edit` sobre `math.mjs`;
-  2. `shell.run` con `node --test math.test.mjs`.
+  2. `shell.run` con `node --test math.test.mjs` (forma canónica).
 - Muestra objetivo: **10 decisiones**.
 - Usar **Permitir una vez** (`a`), no `allow-session`, para forzar los dos prompts.
+- La auditoría de D0 confirmó que `node --test` y `node --test <archivo>` están permitidos; `node <script>` no. `node --test` sin archivo se registra como variante separada y no se mezcla con la forma canónica.
 - No usar `node math.test.mjs`; esa forma sigue fuera de la allowlist. La forma válida es `node --test math.test.mjs`.
 - Si una corrida no produce las dos decisiones, registrar las que haya; no rellenar ni inventar muestras. Con menos de 8 muestras, el resultado es **provisional**.
 - Estas 5 corridas **no cuentan** para D1–D5 ni para las 24 de G1.
@@ -43,7 +45,7 @@ La p95 con 10 muestras es descriptiva: será el máximo observado o un valor muy
 
 ## 3. Procedimiento
 
-1. Congelar commit, modelo, servidor y `maxSteps`. Verificar `/api/health`.
+1. Fijar un commit que incluya el fix de allowlist y confirmar que `git status --short` está vacío. Congelar modelo, servidor y `maxSteps`; verificar `/api/health`.
 2. Preparar el workspace desechable de T1 con `math.mjs` roto y `math.test.mjs` intacto.
 3. Abrir el CLI en una TTY real:
 
@@ -55,7 +57,7 @@ La p95 con 10 muestras es descriptiva: será el máximo observado o un valor muy
    ```
 
 4. Cuando aparezca el menú de `fs.edit`, elegir `a`.
-5. Cuando aparezca el menú de `shell.run`, elegir `a` para `node --test math.test.mjs`.
+5. Cuando aparezca el menú de `shell.run`, elegir `a` para `node --test math.test.mjs`. Si el modelo propone `node --test` sin archivo, es válido, pero se anota como variante y no se mezcla con la forma canónica.
 6. Anotar la línea que muestra la TUI, por ejemplo:
 
    ```text
@@ -92,7 +94,7 @@ No guardar `input`, diff, contenido de archivos, tokens, cookies ni `.env`. La c
 
 ## 6. Checklist de cierre de la calibración
 
-- [ ] Commit limpio y fijo.
+- [ ] Commit fijo que incluye el fix de allowlist; árbol limpio.
 - [ ] 5 corridas T1 intentadas, con modelo y servidor sin cambios.
 - [ ] 10 decisiones objetivo registradas, sin `allow-session`.
 - [ ] `latencyMs` presente en cada `approval_result`.

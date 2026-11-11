@@ -5,6 +5,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import {
+  checkShellSegments,
   handleAgentRunTool as handleAgentRunToolRaw,
   executeAgentTool as executeAgentToolRaw,
 } from '../agentTools.js';
@@ -205,6 +206,17 @@ test('shell.run sin allowUnlisted rechaza un comando fuera de la lista', async (
   const res: any = await executeAgentTool('shell.run', { command: 'node --version' });
   assert.equal(res.ok, false);
   assert.equal(res.status, 403);
+});
+
+test('allowlist: node --test funciona con o sin archivo y no abre node <script>', () => {
+  assert.equal(checkShellSegments('node --test').ok, true, 'node --test sin archivo debe descubrir los tests');
+  assert.equal(checkShellSegments('node --test math.test.mjs').ok, true, 'node --test <archivo> debe funcionar');
+
+  const script = checkShellSegments('node math.test.mjs');
+  assert.equal(script.ok, false, 'node <script> sigue fuera de la allowlist');
+  if (!script.ok) assert.equal(script.status, 403);
+
+  assert.equal(checkShellSegments('node --testevil math.test.mjs').ok, false, 'no se permite un prefijo laxo');
 });
 
 test('shell.run con allowUnlisted ejecuta el comando pero respeta los bloqueos', async () => {
