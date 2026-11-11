@@ -24,6 +24,7 @@ export type FakeScenario =
   | 'tool-three'
   | 'tool-denied'
   | 'tool-write-twice'
+  | 'tool-edit-same-twice'
   | 'slow-tool'
   | 'ask-user'
   | 'max-steps'
@@ -65,6 +66,10 @@ const THREE_READ_CALLS: FunctionCall[] = [
   { name: 'fs_read', args: { path: 'AGENTS.md' } },
 ];
 const WRITE_CALL: FunctionCall = { name: 'fs_write', args: { path: 'salida.txt', content: 'x' } };
+const EDIT_CALL: FunctionCall = {
+  name: 'fs_edit',
+  args: { path: 'salida.txt', oldString: 'x', newString: 'y' },
+};
 const ASK_CALL: FunctionCall = {
   name: 'ask_user',
   args: {
@@ -83,6 +88,7 @@ const SCENARIOS: FakeScenario[] = [
   'tool-three',
   'tool-denied',
   'tool-write-twice',
+  'tool-edit-same-twice',
   'slow-tool',
   'ask-user',
   'max-steps',
@@ -128,6 +134,10 @@ function turnFor(scenario: FakeScenario, turn: number): ModelTurn {
               functionCalls: [{ name: 'fs_write', args: { path: 'salida2.txt', content: 'y' } }],
             }
           : { text: FINAL_TEXT, functionCalls: [] };
+    case 'tool-edit-same-twice':
+      return turn <= 2
+        ? { text: `Edito la misma salida (${turn}).`, functionCalls: [EDIT_CALL] }
+        : { text: FINAL_TEXT, functionCalls: [] };
     case 'slow-tool':
       return turn === 1
         ? { text: 'Voy a leer lento.', functionCalls: [{ name: 'fs_read', args: { path: 'slow.txt' } }] }

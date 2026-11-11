@@ -333,6 +333,7 @@ export class ReplSession {
             this.deps.promptQuestion(question, {
               tui: this.tui,
               signal: controller.signal,
+              onInterrupt: () => controller.abort(),
             })
         : undefined;
     const requestApproval =
@@ -341,6 +342,7 @@ export class ReplSession {
             promptApprovalDecision(approval, {
               tui: this.tui,
               signal: controller.signal,
+              onInterrupt: () => controller.abort(),
             })
         : undefined;
 

@@ -405,12 +405,22 @@ program
     });
     // Con una terminal real respondemos en el cliente; con pipes o `--json` el
     // bucle recibe la pregunta como evento y la cancela sin bloquearse.
+    const agentController = new AbortController();
     const askUser = canPromptApprovals()
-      ? (question: QuestionV2) => promptQuestionAnswer(question, { tui })
+      ? (question: QuestionV2) =>
+          promptQuestionAnswer(question, {
+            tui,
+            signal: agentController.signal,
+            onInterrupt: () => agentController.abort(),
+          })
       : undefined;
     const requestApproval = canPromptApprovals()
       ? (approval: Parameters<typeof promptApprovalDecision>[0]) =>
-          promptApprovalDecision(approval, { tui })
+          promptApprovalDecision(approval, {
+            tui,
+            signal: agentController.signal,
+            onInterrupt: () => agentController.abort(),
+          })
       : undefined;
 
     let result: { answer: string; steps: number };
@@ -425,6 +435,7 @@ program
         resumeFrom,
         goal: resumeFrom?.goal,
         persistSession: !resumeFrom,
+        signal: agentController.signal,
         askUser,
         requestApproval,
         onEvent: (event) => renderer.handle(event),

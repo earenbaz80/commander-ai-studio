@@ -214,6 +214,23 @@ const MUTATING_TOOLS = new Set([
   'github.comment',
 ]);
 
+/** Serializa un input con claves ordenadas para detectar llamadas idénticas. */
+function stableInput(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableInput).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableInput(record[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+function mutationKeyFor(tool: string, input: Record<string, unknown>): string {
+  return `${tool}\u0000${stableInput(input)}`;
+}
+
 /** Cuerpo común de la petición al LLM (compartido por streaming y no-streaming). */
 function buildPayload(
   opts: RunAgentOptions,
@@ -840,6 +857,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   });
   const maxSteps = Math.max(1, opts.maxSteps ?? 25);
   const approvedForSession = new Set<string>();
+  const completedMutations = new Set<string>();
+  const repeatedMutations = new Map<string, number>();
   const goal = state?.goal || opts.goal || opts.task;
   const model = opts.model || state?.model || GEMINI_DEFAULT_MODEL;
   const mode = opts.mode ?? state?.mode ?? 'build';
@@ -994,6 +1013,45 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         });
         continue;
       }
+      const mutationKey = MUTATING_TOOLS.has(mapped.tool) ? mutationKeyFor(mapped.tool, input) : null;
+      if (mutationKey && completedMutations.has(mutationKey)) {
+        const repeats = (repeatedMutations.get(mutationKey) ?? 0) + 1;
+        repeatedMutations.set(mutationKey, repeats);
+        const summary =
+          repeats === 1
+            ? `Sin cambios: ${mapped.tool} ya se aplicó con el mismo input en esta sesión.`
+            : `Bucle detectado: ${mapped.tool} repite el mismo input ya aplicado.`;
+        if (repeats >= 2) {
+          emit({ type: 'error', text: summary });
+          history.push(`TOOL ${mapped.tool} → ERROR: ${summary}`);
+          await addStep({
+            type: 'thought',
+            title: 'Bucle de tool detectado',
+            content: summary,
+            status: 'failed',
+          });
+          if (state) {
+            state.status = 'failed';
+            state.error = summary;
+            state.updatedAt = Date.now();
+            await sync();
+          }
+          return done('', steps);
+        }
+        emit({ type: 'tool_result', tool: mapped.tool, ok: true, summary });
+        history.push(`TOOL ${mapped.tool} → ${summary}`);
+        addTurn({ role: 'tool', text: `TOOL ${mapped.tool} → ${summary}` });
+        await addStep({
+          type: 'tool_result',
+          toolId: mapped.tool,
+          title: mapped.tool,
+          content: summary,
+          input: mapped.input,
+          output: { skipped: 'duplicate' },
+          status: 'completed',
+        });
+        continue;
+      }
       let approval: { id: string; decision: ApprovalDecision; reason?: string; latencyMs?: number } | undefined;
       if (MUTATING_TOOLS.has(mapped.tool)) {
         const approvalKey = `${goal}\u0000${mapped.tool}`;
@@ -1131,6 +1189,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         return done('', steps);
       }
       const summary = result.ok ? summarize(result.data) : `ERROR: ${result.error}`;
+      if (mutationKey && result.ok) completedMutations.add(mutationKey);
       emit({ type: 'tool_result', tool: mapped.tool, ok: result.ok, summary });
       history.push(`TOOL ${mapped.tool} → ${summary}`);
       addTurn({ role: 'tool', text: `TOOL ${mapped.tool} → ${summary}` });
