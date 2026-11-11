@@ -1,7 +1,7 @@
 # Backlog ejecutable — Fase 2 (artifacts de verificación)
 
 > **Base:** Fase 2 de [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md).
-> **Estado (2026-11-09):** **F2-01 a F2-07 implementados** (contrato/store, evidencia de tests, diff/decisiones, informe local, visor, enlace a la grabación y E2E local); G1 sigue pendiente. **G1 sigue sin medirse**: F0 está aparcado y no hay una corrida real con modelo que permita comparar latencia/éxito. F2-02 añade evidencia al resultado de `shell.run` sin cambiar el bucle ni las aprobaciones.
+> **Estado (2026-11-09):** **F2-01 a F2-07 implementados** (contrato/store, evidencia de tests, diff/decisiones, informe local, visor, enlace a la grabación y E2E local); G1 sigue pendiente. **G1 sigue sin medirse**: F0 ya tiene una baseline válida con NVIDIA (24 corridas, 8/24, 0 timeouts), pero no se ejecutó el dogfooding que permita comparar latencia/éxito. F2-02 añade evidencia al resultado de `shell.run` sin cambiar el bucle ni las aprobaciones.
 > **Estimaciones:** días-persona, ±30 %. Suman **6,5 d-persona**; el roadmap estima 6–8 días.
 > **Regla de cierre:** `tsc --noEmit` + pruebas focalizadas en verde; si toca UI, además `vite build`. Un test con `exitCode != 0` o que no llegó a ejecutarse **no** se pinta como aprobado.
 > **Dependencias externas:** ninguna. F2 no requiere Vercel, Linear ni un proveedor de modelo.
@@ -266,4 +266,4 @@ F2-01 a F2-07 ya están hechos. El desglose de F2 queda cerrado; G1 sigue siendo
 
 ## 6. Nota sobre G1
 
-G1 pide cinco días de dogfooding comparados con F0. F0 está aparcado y no hay una línea base medida, así que **G1 no está cerrado**. F2-01 es schema/store y F2-02 añade un campo opcional al resultado de `shell.run`; ninguno cambia el bucle ni las aprobaciones. F2-07 usa un proveedor falso determinista y no sustituye ese dogfooding. Si se quiere respetar el gate al pie de la letra, hay que decidir explícitamente si se acepta avanzar F2 con G1 pendiente o si se pospone hasta tener un modelo real.
+G1 pide cinco días de dogfooding comparados con F0. F0 ya tiene una línea base válida con NVIDIA (24 corridas, 8/24, 0 timeouts), pero falta el dogfooding, así que **G1 no está cerrado**. F2-01 es schema/store y F2-02 añade un campo opcional al resultado de `shell.run`; ninguno cambia el bucle ni las aprobaciones. F2-07 usa un proveedor falso determinista y no sustituye ese dogfooding. Si se quiere respetar el gate al pie de la letra, hay que decidir explícitamente si se acepta avanzar F2 con G1 pendiente o si se pospone hasta tener un modelo real.

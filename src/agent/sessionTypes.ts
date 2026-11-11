@@ -35,7 +35,7 @@ export interface SessionStepV2 {
   durationMs?: number;
   ts: number;
   /** Decisión de aprobación que permitió/denegó la tool (F1-04). */
-  approval?: { id: string; decision: ApprovalDecision; reason?: string };
+  approval?: { id: string; decision: ApprovalDecision; reason?: string; latencyMs?: number };
 }
 
 export interface SessionPlanItemV2 {
@@ -142,6 +142,8 @@ export type CliEventPayload =
       approvalId: string;
       decision: ApprovalDecision;
       reason?: string;
+      /** Tiempo desde `approval_request.createdAt` hasta la decisión. */
+      latencyMs?: number;
     }
   | { type: 'question'; question: QuestionV2 }
   | { type: 'answer'; text: string }

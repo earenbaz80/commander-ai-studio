@@ -229,7 +229,6 @@ test('shell.run adjunta evidencia y entorno a un comando de tests', async () => 
   try {
     const res: any = await executeAgentTool('shell.run', {
       command: 'node --test tests/tmp/evidence/sample.test.mjs',
-      allowUnlisted: true,
     });
     assert.equal(res.ok, true, res.ok ? '' : res.error);
     assert.equal(res.data.testEvidence.status, 'passed');

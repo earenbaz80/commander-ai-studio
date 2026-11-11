@@ -1,44 +1,46 @@
 /**
  * Línea base F0: T1–T10 sobre el modelo real, con corridas contadas.
  *
- * Reutiliza `runTask` de `./harness.ts`: mismo camino que una evaluación
- * (`AgentLoop` → `/api/agent/run-tool` → `executeAgentTool`), workspace temporal
- * por corrida y comprobaciones que ejecutan el código resultante.
+ * T1–T5 y T8 reutilizan `runTask` de `./harness.ts` (bucle en el proceso del
+ * runner). T6, T7, T9 y T10 viven en `./scenarios.ts` porque necesitan el
+ * servidor real (browser, sesión, subagentes) o el publicador local. Cada
+ * corrida usa un workspace temporal y comprobaciones que observan el resultado
+ * real, no el texto del modelo.
  *
  * Uso:
  *   npm run baseline                         # todas las tareas medibles
+ *   npm run baseline -- --resume             # sólo las corridas que faltan
  *   npm run baseline -- --only T1 --runs 1   # una tarea, una corrida (pilot)
+ *   EVAL_TIMEOUT_MS=600000 npm run baseline -- --only T4 --runs 1
  *   BASELINE_MODEL=lmstudio/<id> npm run baseline
  *
  * Registra cada corrida en `evals/baseline-results.jsonl` (una línea por
- * corrida, sin secretos) e imprime el resumen por tarea. Las tareas que la
- * máquina no puede medir hoy (T6, T7, T9, T10) se listan con el motivo y NO se
- * ejecutan: un cero inventado no es una medición.
+ * corrida, sin secretos) e imprime el resumen por tarea.
+ *
+ * Ningún escenario inventa un resultado: si falta un paso, la comprobación
+ * falla con el estado observado.
  *
  * Volumen acordado (runbook §4.1): 3 corridas en T1, T7, T8 y T9; 2 en el
- * resto. Aquí sólo corren las medibles; el total real se imprime al final.
+ * resto, 24 en total.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
-import { runTask, type EvalContext, type EvalTask } from './harness.js';
+import { runTask, type EvalContext, type EvalStopReason, type EvalTask } from './harness.js';
+import { runT6, runT7, runT9, runT10, type ScenarioOptions } from './scenarios.js';
 import { ensureEvalServer } from './server.js';
 import { gitInfo } from './history.js';
+import { resolveBaselineModel } from './baselineModel.js';
 
 const RESULTS_PATH = path.join(process.cwd(), 'evals', 'baseline-results.jsonl');
 
 /** Volumen por tarea; las críticas llevan 3. */
 const RUNS: Record<string, number> = { T1: 3, T7: 3, T8: 3, T9: 3 };
 
-/** Tareas que este arnés no puede medir, con el motivo exacto. */
-const BLOCKED: Record<string, string> = {
-  T6: 'necesita navegador y un preview vivo; el arnés no expone la tool de browser',
-  T7: 'el deploy local se mide contra /api/deploy/*, no con una tool del agente',
-  T9: '--resume vive en la sesión del servidor; runTask no persiste sesión',
-  T10: 'spawn_agents exige sesión de servidor; el shim de fetch no la provee',
-};
+/** Tareas que no pasan por `runTask`: sesión de servidor o publicador local. */
+const SCENARIO_IDS = ['T6', 'T7', 'T9', 'T10'] as const;
 
 /** Corre `node --test` en el workspace y falla si no queda verde. */
 function nodeTest(ctx: EvalContext): void {
@@ -94,6 +96,7 @@ const t1: EvalTask = {
     'El test de `math.mjs` falla: `average([2, 4, 6])` debería dar 4 y `average([10])` debería dar 10. ' +
     'Corrige el defecto en `math.mjs` sin tocar `math.test.mjs`.',
   files: [],
+  allowChanges: ['math.mjs'],
   setup: (dir) => {
     fs.writeFileSync(path.join(dir, 'math.mjs'), T1_SOURCE);
     fs.writeFileSync(path.join(dir, 'math.test.mjs'), T1_TEST);
@@ -282,6 +285,7 @@ const t4: EvalTask = {
     'Añade tests que cubran las ramas de error de `applyDiscount` (porcentaje fuera de [0, 100] y total ' +
     'inválido) y los límites 0 y 100. Los tests deben pasar sin modificar `discount.mjs`.',
   files: [],
+  allowChanges: ['discount.test.mjs'],
   setup: (dir) => {
     fs.writeFileSync(path.join(dir, 'discount.mjs'), T4_SOURCE);
     fs.writeFileSync(path.join(dir, 'discount.test.mjs'), T4_TEST);
@@ -395,6 +399,8 @@ const TASKS: EvalTask[] = [t1, t2, t3, t4, t5, t8];
 
 interface BaselineRecord {
   runId: string;
+  /** Corrida de diagnóstico con `--only`; no cuenta para la baseline completa. */
+  subset?: boolean;
   ts: string;
   commit: string;
   dirty: boolean;
@@ -406,6 +412,10 @@ interface BaselineRecord {
   toolCalls: number;
   durationMs: number;
   checks: Array<{ name: string; error?: string }>;
+  stopReason: EvalStopReason;
+  timedOut: boolean;
+  /** Corrida descartada por cuota, mock o un fallo externo. */
+  invalid?: string;
   outOfScope?: Array<{ path: string; status: string }>;
   modelFallback?: { from: string; to: string };
   answeredModels?: string[];
@@ -420,14 +430,16 @@ const valueOf = (name: string): string | null => {
   return value && !value.startsWith('--') ? value : null;
 };
 const only = valueOf('--only');
+const resume = process.argv.includes('--resume');
 const forcedRuns = Number(valueOf('--runs')) || 0;
-const model = process.env.BASELINE_MODEL || 'lmstudio/lmstudio-community/qwen3.8-27b';
+const timeoutMs = Number(process.env.EVAL_TIMEOUT_MS) || undefined;
+const model = resolveBaselineModel();
 const baseUrl = process.env.BASELINE_BASE_URL || process.env.EVAL_BASE_URL || undefined;
 
-const selected = only ? TASKS.filter((task) => task.id === only) : TASKS;
+const ALL_IDS = [...TASKS.map((task) => task.id), ...SCENARIO_IDS];
+const selected = only ? ALL_IDS.filter((id) => id === only) : ALL_IDS;
 if (selected.length === 0) {
-  console.error(`No hay tarea medible "${only}". Medibles: ${TASKS.map((t) => t.id).join(', ')}`);
-  console.error(`Bloqueadas: ${Object.entries(BLOCKED).map(([id, why]) => `${id} (${why})`).join('; ')}`);
+  console.error(`No hay tarea medible "${only}". Medibles: ${ALL_IDS.join(', ')}`);
   process.exit(1);
 }
 
@@ -435,55 +447,125 @@ const server = await ensureEvalServer({ baseUrl, log: (line) => console.log(line
 const { commit, dirty } = gitInfo();
 const records: BaselineRecord[] = [];
 
+// `--resume` permite continuar una corrida interrumpida sin repetir las
+// corridas completas del mismo modelo. Los timeouts no cuentan como completas:
+// se vuelven a medir para no cerrar una baseline inválida.
+const existingRecords: BaselineRecord[] =
+  resume && fs.existsSync(RESULTS_PATH)
+    ? fs
+        .readFileSync(RESULTS_PATH, 'utf8')
+        .split(/\r?\n/)
+        .flatMap((line) => {
+          if (!line.trim()) return [];
+          try {
+            return [JSON.parse(line) as BaselineRecord];
+          } catch {
+            return [];
+          }
+        })
+    : [];
+
+const customKeys =
+  process.env.BASELINE_CUSTOM_BASE_URL && process.env.BASELINE_CUSTOM_API_KEY
+    ? {
+        CUSTOM_BASE_URL: process.env.BASELINE_CUSTOM_BASE_URL,
+        CUSTOM_API_KEY: process.env.BASELINE_CUSTOM_API_KEY,
+        ...(process.env.BASELINE_CUSTOM_MODEL ? { CUSTOM_MODEL: process.env.BASELINE_CUSTOM_MODEL } : {}),
+      }
+    : undefined;
+
 console.log(
   `▶ línea base · modelo ${model} · commit ${commit}${dirty ? '* · árbol sucio' : ''} · ` +
-    `servidor ${server.baseUrl}`
+    `timeout ${timeoutMs ? `${Math.round(timeoutMs / 1000)}s` : 'por defecto'} · servidor ${server.baseUrl}`
 );
-for (const [id, why] of Object.entries(BLOCKED)) console.log(`  ⏸ ${id} sin medir: ${why}`);
 
-for (const task of selected) {
-  const total = forcedRuns > 0 ? forcedRuns : RUNS[task.id] ?? 2;
+for (const id of selected) {
+  const total = forcedRuns > 0 ? forcedRuns : RUNS[id] ?? 2;
+  const completed = new Set(
+    existingRecords
+      .filter(
+        (record) =>
+          record.model === model &&
+          record.taskId === id &&
+          !record.subset &&
+          !record.invalid &&
+          record.timedOut !== true
+      )
+      .map((record) => record.run)
+  );
   for (let run = 1; run <= total; run++) {
+    if (completed.has(run)) {
+      console.log(`↷ ${id}-${run} ya registrada; se omite`);
+      continue;
+    }
     const started = Date.now();
     let toolCalls = 0;
     let answer = '';
-    let result;
+    let result: Awaited<ReturnType<typeof runTask>>;
+    const isScenario = (SCENARIO_IDS as readonly string[]).includes(id);
+    const onStep = (step: any) => {
+      // `AgentSession` persiste el resultado, no el evento `tool_call`: en los
+      // escenarios se cuenta el resultado para no registrar 0 tools falsos.
+      if (isScenario ? step.type === 'tool_result' : step.type === 'tool_call') toolCalls += 1;
+      if (step.title === 'Finalizado') answer = step.content ?? '';
+    };
     try {
-      result = await runTask(task, {
-        live: true,
-        model,
-        baseUrl: server.baseUrl,
-        onStep: (step) => {
-          if (step.type === 'tool_call') toolCalls += 1;
-          if (step.title === 'Finalizado') answer = step.content ?? '';
-        },
-      });
+      if (id === 'T6' || id === 'T9' || id === 'T10') {
+        const scenarioOpts: ScenarioOptions = {
+          baseUrl: server.baseUrl,
+          model,
+          ...(timeoutMs ? { timeoutMs } : {}),
+          ...(customKeys ? { keys: customKeys } : {}),
+          onStep,
+        };
+        result =
+          id === 'T6' ? await runT6(scenarioOpts)
+          : id === 'T9' ? await runT9(scenarioOpts)
+          : await runT10(scenarioOpts);
+      } else if (id === 'T7') {
+        result = await runT7({ baseUrl: server.baseUrl });
+      } else {
+        const task = TASKS.find((candidate) => candidate.id === id);
+        if (!task) throw new Error(`tarea no encontrada: ${id}`);
+        result = await runTask(task, {
+          live: true,
+          model,
+          baseUrl: server.baseUrl,
+          ...(timeoutMs ? { timeoutMs } : {}),
+          onStep,
+        });
+      }
     } catch (e: any) {
-      // `runTask` no debería lanzar, pero una caída del servidor no puede
-      // quedar como corrida inexistente: se registra con el error.
+      // `runTask`/los escenarios no deberían lanzar, pero una caída del
+      // servidor no puede quedar como corrida inexistente: se registra.
       result = {
-        id: task.id,
+        id,
         passed: false,
         steps: 0,
         durationMs: Date.now() - started,
         checks: [],
+        stopReason: 'error',
+        timedOut: false,
         error: e?.message || String(e),
       };
     }
 
     const record: BaselineRecord = {
-      runId: `${task.id}-${run}`,
+      runId: `${id}-${run}`,
+      ...(only ? { subset: true } : {}),
       ts: new Date().toISOString(),
       commit,
       dirty,
       model,
-      taskId: task.id,
+      taskId: id,
       run,
       passed: result.passed,
       steps: result.steps,
       toolCalls,
       durationMs: result.durationMs,
       checks: result.checks,
+      stopReason: result.stopReason ?? (result.error ? 'error' : 'completed'),
+      timedOut: result.timedOut === true,
       ...(result.outOfScope?.length ? { outOfScope: result.outOfScope } : {}),
       ...(result.modelFallback ? { modelFallback: result.modelFallback } : {}),
       ...(result.answeredModels?.length ? { answeredModels: result.answeredModels } : {}),
@@ -498,6 +580,7 @@ for (const task of selected) {
     console.log(
       `${mark} ${record.runId}  ${(record.durationMs / 1000).toFixed(1)}s · ${record.steps} pasos · ` +
         `${record.toolCalls} tool calls` +
+        (record.timedOut ? ' · timeout' : '') +
         (failed.length ? ` · falló: ${failed.join('; ')}` : '') +
         (record.error ? ` · error: ${record.error}` : '') +
         (answer ? '' : ' · sin respuesta final')
@@ -516,11 +599,11 @@ function median(values: number[]): number {
 }
 
 console.log('\ntarea  corridas  éxito  duración p50  pasos p50  tools p50');
-for (const task of selected) {
-  const rows = records.filter((record) => record.taskId === task.id);
+for (const id of selected) {
+  const rows = records.filter((record) => record.taskId === id);
   const ok = rows.filter((record) => record.passed).length;
   console.log(
-    `${task.id.padEnd(5)} ${String(rows.length).padStart(8)} ${String(`${ok}/${rows.length}`).padStart(7)} ` +
+    `${id.padEnd(5)} ${String(rows.length).padStart(8)} ${String(`${ok}/${rows.length}`).padStart(7)} ` +
       `${`${(median(rows.map((r) => r.durationMs)) / 1000).toFixed(1)}s`.padStart(13)} ` +
       `${String(median(rows.map((r) => r.steps))).padStart(9)} ` +
       `${String(median(rows.map((r) => r.toolCalls))).padStart(9)}`
@@ -529,5 +612,8 @@ for (const task of selected) {
 console.log(`\nguardado en ${RESULTS_PATH}`);
 const total = records.length;
 const ok = records.filter((record) => record.passed).length;
-console.log(`medidas ${total} corridas · ${ok} passed · ${total - ok} failed`);
+const timeouts = records.filter((record) => record.timedOut).length;
+console.log(
+  `medidas ${total} corridas · ${ok} passed · ${total - ok} failed · ${timeouts} timeout`
+);
 process.exitCode = ok === total ? 0 : 1;

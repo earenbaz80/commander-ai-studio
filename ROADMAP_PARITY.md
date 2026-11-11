@@ -140,9 +140,11 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 **Objetivo:** convertir “está implementado” en “está verificado” y fijar una línea base medible antes de añadir superficie.
 
-> **Estado 2026-11-07 — bloqueada en G0.** En esta máquina no hay credenciales de Vercel, GitHub ni Linear (ni `.env`, ni variables de entorno, ni conectores OAuth), así que ninguna fila externa está verificada. Lo medido en local, lo que falta y el runbook para cerrarla están en [docs/parity/baseline-2026-11.md](docs/parity/baseline-2026-11.md).
+> **Estado 2026-11-07 (histórico) — bloqueada en G0.** En esta máquina no hay credenciales de Vercel, GitHub ni Linear (ni `.env`, ni variables de entorno, ni conectores OAuth), así que ninguna fila externa está verificada. Lo medido en local, lo que falta y el runbook para cerrarla están en [docs/parity/baseline-2026-11.md](docs/parity/baseline-2026-11.md).
 >
 > **Decisión de alcance 2026-11-10 — F0 sin Vercel ni Linear.** El usuario sólo dispone de cuenta de GitHub y decidió explícitamente no configurar Vercel ni Linear. Esas filas salen del alcance de F0 y quedan marcadas como **fuera de alcance por decisión**, no como pendientes. F0 se cierra con GitHub (OAuth real y Actions, ya verificados con recibos) y la línea base de 24 corridas. Recibos en [docs/parity/receipts/F0-LOCAL-2026-11-10.md](docs/parity/receipts/F0-LOCAL-2026-11-10.md); orden de ejecución en [docs/parity/runbook-g1-f0.md](docs/parity/runbook-g1-f0.md).
+>
+> **Cierre 2026-11-11 — F0/G0 cerrados.** La línea base de 24 corridas se completó con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`: 8/24, 0 timeouts y 0 inválidas. La paridad es baja, pero la muestra es válida y sirve de referencia para G1; el dogfooding sigue pendiente.
 
 **Alcance**
 
@@ -164,9 +166,9 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 - [x] Ningún token, `.env`, source map ni secreto aparece en artifacts, logs o respuestas (árbol, runs reales y PR revisados; no hay deployments de Vercel en alcance).
 - [x] Existe `docs/parity/baseline-2026-11.md` con metodología, resultados y limitaciones.
 - [x] `tsc --noEmit`, `vite build` y las pruebas focalizadas siguen en verde (recibo `F0-LOCAL-2026-11-10` §2).
-- [ ] La línea base de 24 corridas (T1–T10) está medida y registrada.
+- [x] La línea base de 24 corridas (T1–T10) está medida y registrada con NVIDIA (8/24, 0 timeouts, 0 inválidas).
 
-**Puerta G0:** se cierra con dos piezas: GitHub verificado (OAuth y Actions, ya con recibos) y la línea base de 24 corridas registrada. Vercel y Linear no forman parte de la puerta desde la decisión de alcance del 2026-11-10. F1 puede empezar con F0 abierto, pero no se declara paridad de integraciones no verificadas, y 5A (hosting SSR/Workers) sigue necesitando una decisión de proveedor en G3.
+**Puerta G0: CERRADA (2026-11-11).** GitHub está verificado (OAuth y Actions, con recibos) y la línea base de 24 corridas quedó registrada con NVIDIA (8/24, 0 timeouts, 0 inválidas). Vercel y Linear no forman parte de la puerta desde la decisión de alcance del 2026-11-10. G1 sigue abierta hasta el dogfooding, y 5A (hosting SSR/Workers) sigue necesitando una decisión de proveedor en G3.
 
 ---
 
@@ -201,7 +203,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 **Puerta G1:** dogfooding de 5 días con el CLI como superficie principal. Si la latencia de aprobación o la tasa de éxito retrocede frente a F0, no se empieza F2 hasta corregirlo.
 
-> **Estado G1 (2026-11-09): NO CERRADO.** Los 14 issues de F1 están cerrados y la suite focalizada pasa (70/70 CLI, 30/30 agente/sesiones), pero no se ejecutó el dogfooding de 5 días: F0/G0 sigue aparcado, no hay baseline de latencia/éxito ni modelo real. No se declara paridad. F2-01 (contrato/store), F2-02 (evidencia de tests en `shell.run`), F2-03 (diff y decisiones), F2-04 (informe local Markdown/HTML), F2-05 (visor de artifacts), F2-06 (enlace a la grabación) y F2-07 (E2E local y límites) avanzaron; F2-02 es aditivo sobre la tool y F2-03/F2-04 son módulos puros, así que ninguno cambia el bucle ni las aprobaciones; G1 sigue abierto y no se cierra hasta ejecutar el dogfooding.
+> **Estado G1 (2026-11-09): NO CERRADO.** Los 14 issues de F1 están cerrados y la suite focalizada pasa (70/70 CLI, 30/30 agente/sesiones), pero no se ejecutó el dogfooding de 5 días. F0/G0 está cerrado y la baseline NVIDIA de 24 corridas es válida (8/24, 0 timeouts), así que falta el dogfooding para comparar latencia/éxito. No se declara paridad. F2-01 (contrato/store), F2-02 (evidencia de tests en `shell.run`), F2-03 (diff y decisiones), F2-04 (informe local Markdown/HTML), F2-05 (visor de artifacts), F2-06 (enlace a la grabación) y F2-07 (E2E local y límites) avanzaron; F2-02 es aditivo sobre la tool y F2-03/F2-04 son módulos puros, así que ninguno cambia el bucle ni las aprobaciones; G1 sigue abierto y no se cierra hasta ejecutar el dogfooding.
 
 ---
 

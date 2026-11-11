@@ -20,6 +20,9 @@ export type ToolDialect = 'gemini' | 'openai' | 'anthropic' | 'json-text';
 export function toolDialectForModel(model?: string): ToolDialect {
   if (!model) return 'gemini';
   if (/^ollama\//.test(model)) return 'openai';
+  // DeepSeek R1 local no anuncia tool_use en LM Studio y devuelve un bloque
+  // JSON como texto; el camino nativo lo tomaba por una respuesta final.
+  if (/^lmstudio\/.*deepseek[-_]?r1/i.test(model)) return 'json-text';
   // LM Studio también es OpenAI-compatible.
   if (/^lmstudio\//.test(model)) return 'openai';
   if (/^openrouter\//.test(model)) return 'openai';

@@ -68,6 +68,17 @@ test('allowlist: los npm permitidos siguen funcionando', () => {
   }
 });
 
+test('allowlist: node --test está permitido, node <script> no', () => {
+  assert.ok(
+    SHELL_ALLOW_PREFIX.some((p) => 'node --test math.test.mjs'.startsWith(p)),
+    'node --test debe poder ejecutar el test de T1'
+  );
+  assert.ok(
+    !SHELL_ALLOW_PREFIX.some((p) => 'node math.test.mjs'.startsWith(p)),
+    'node <script> no debe entrar en la allowlist'
+  );
+});
+
 test('allowlist: find queda fuera (-delete / -exec no usan operadores)', () => {
   for (const cmd of ['find . -delete', 'find . -exec rm {}']) {
     assert.ok(

@@ -300,7 +300,9 @@ export class AgentRenderer {
 
       case 'approval_result':
         t.line(
-          `      ${event.decision === 'deny' ? t.red('✗') : t.green('✓')} ${t.gray(`aprobación ${event.decision}`)}`
+          `      ${event.decision === 'deny' ? t.red('✗') : t.green('✓')} ${t.gray(
+            `aprobación ${event.decision}${event.latencyMs !== undefined ? ` · ${event.latencyMs} ms` : ''}`
+          )}`
         );
         break;
 

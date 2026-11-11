@@ -72,6 +72,7 @@ function toSessionStep(step: AgentStep): SessionStepV2 {
             id: step.approval.id,
             decision: step.approval.decision,
             ...(step.approval.reason ? { reason: step.approval.reason } : {}),
+            ...(step.approval.latencyMs !== undefined ? { latencyMs: step.approval.latencyMs } : {}),
           },
         }
       : {}),

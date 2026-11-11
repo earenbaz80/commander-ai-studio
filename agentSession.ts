@@ -340,7 +340,7 @@ export interface SessionConfig {
 /** `idle`: sesión creada como contexto padre y nunca arrancada (no gasta tokens). */
 export type SessionStatus = 'idle' | 'running' | 'done' | 'error' | 'stopped';
 
-const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.list', 'fs.grep', 'shell.run', 'shell.pty', 'read_diagnostics', 'git.status', 'git.diff', 'git.log', 'git.commit', 'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list', 'task', 'spawn_agents', 'skill', 'github.comment'];
+const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.list', 'fs.grep', 'shell.run', 'shell.pty', 'read_diagnostics', 'git.status', 'git.diff', 'git.log', 'git.commit', 'web.fetch', 'web.search', 'code.run', 'browser', 'preview', 'mcp.call', 'mcp.list', 'task', 'spawn_agents', 'skill', 'github.comment'];
 
 // ── LLM en el servidor (llamada interna a los endpoints existentes) ──
 
@@ -361,6 +361,7 @@ async function callLlmNative(
     dialect === 'gemini' ? '/api/gemini/generate'
     : model.startsWith('openrouter/') ? '/api/openrouter/generate'
     : model.startsWith('ollama/') ? '/api/ollama/generate'
+    : model.startsWith('lmstudio/') ? '/api/lmstudio/generate'
     : model.startsWith('freebuff/') ? '/api/freebuff/generate'
     : '/api/custom/generate';
 
@@ -439,7 +440,7 @@ ULTIMOS PASOS:
 ${JSON.stringify(ctx.recentSteps.slice(-10), null, 2)}
 
 HISTORIAL BREVE:
-${JSON.stringify(ctx.history.slice(-6).map((m) => ({ role: m.role, content: m.content.slice(0, 400) })), null, 2)}
+${JSON.stringify(ctx.history.slice(-6).map((m) => ({ role: m.role, content: m.content.slice(0, 4000) })), null, 2)}
 
 TOOLS:
 ${ctx.toolSchema}`;
@@ -449,6 +450,7 @@ ${ctx.toolSchema}`;
     : model.startsWith('pollinations/') ? '/api/pollinations/generate'
     : model.startsWith('freebuff/') ? '/api/freebuff/generate'
     : model.startsWith('ollama/') ? '/api/ollama/generate'
+    : model.startsWith('lmstudio/') ? '/api/lmstudio/generate'
     : '/api/gemini/generate';
 
   const payload = {
@@ -1105,9 +1107,18 @@ export class AgentSession {
     }
 
     try {
+      // `task` y `spawn_agents` los lanza la app, no el modelo: el padre debe
+      // ir inyectado y las claves de la sesión tienen que llegar al hijo. Sin
+      // esto el subagente nacía sin proveedor y `spawn_agents` siempre fallaba
+      // con «parentSessionId requerido».
+      const toolInput: Record<string, unknown> = { ...call.input, root: this.cfg.cwd };
+      if (call.tool === 'task' || call.tool === 'spawn_agents') {
+        toolInput.parentSessionId = this.id;
+        if (this.cfg.keys) toolInput.keys = this.cfg.keys;
+      }
       const result = await executeAgentTool(
         call.tool,
-        { ...call.input, root: this.cfg.cwd },
+        toolInput,
         { signal: this.abortCtrl.signal, sessionId: this.id }
       );
       return {
@@ -1276,7 +1287,10 @@ export class AgentSession {
   private async stepJson(recentSteps: any[]) {
     const llmRes = await callLlmJson(this.cfg, {
       goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
-      toolSchema: this.toolSchema(), agentsMd: this.agentsMd, history: [],
+      toolSchema: this.toolSchema(), agentsMd: this.agentsMd,
+      // Los resultados de tools viven en `turns`; el resumen de `recentSteps`
+      // no lleva su contenido y el modelo acababa releyendo los archivos.
+      history: this.turns.map((turn) => ({ role: turn.role, content: turn.text })),
     }, this.abortCtrl.signal);
 
     if (llmRes.plan && llmRes.plan.length > 0) {

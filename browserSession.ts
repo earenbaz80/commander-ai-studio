@@ -567,13 +567,22 @@ async function newSession(root: string): Promise<Session> {
   return session;
 }
 
-/** Sesión por id, o la última abierta (para no repetir el id en cada llamada). */
+/**
+ * Sesión por id, o la última del mismo workspace (para no repetir el id en
+ * cada llamada). Con `root` nunca se reutiliza otro proyecto: una sesión
+ * abierta para T6 no puede contaminar la navegación ni los logs de otro test
+ * o workspace. Sin `root`, el panel genérico sigue usando la última abierta.
+ */
 function pickSession(id: unknown, root: string): Session | null {
   const wanted = String(id ?? '').trim();
   if (wanted) return sessions.get(wanted) ?? null;
-  const mine = [...sessions.values()].filter((s) => !root || s.root === root);
-  const pool = mine.length > 0 ? mine : [...sessions.values()];
-  return pool.sort((a, b) => b.createdAt - a.createdAt)[0] ?? null;
+  const candidates = [...sessions.values()];
+  if (root) {
+    return candidates
+      .filter((session) => session.root === root)
+      .sort((a, b) => b.createdAt - a.createdAt)[0] ?? null;
+  }
+  return candidates.sort((a, b) => b.createdAt - a.createdAt)[0] ?? null;
 }
 
 /** Normaliza y valida el destino: esquema y seguridad de red en una sola puerta. */

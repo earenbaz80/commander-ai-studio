@@ -24,6 +24,7 @@ import {
   EventSequencer,
   decodeEvent,
   type ApprovalDecision,
+  type ApprovalRequestV2,
   type CliEventPayload,
   type CliEventV2,
   type QuestionV2,
@@ -75,6 +76,11 @@ export interface RunAgentOptions {
    * ejemplo en `--json` o sin TTY) la pregunta se cancela sin abrir un prompt.
    */
   askUser?: AskUserHandler;
+  /**
+   * Decide una tool mutante antes de ejecutarla. Sin callback se deniega
+   * (headless/--json); el REPL y la TUI pasan el menú interactivo.
+   */
+  requestApproval?: (approval: ApprovalRequestV2) => Promise<ApprovalDecision | null>;
   /** Cancela el turno en vuelo (Ctrl+C del REPL). */
   signal?: AbortSignal;
   /** Modo del turno; plan/readonly no ofrecen tools que mutan el workspace. */
@@ -833,6 +839,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     ...(cancelled ? { cancelled: true } : {}),
   });
   const maxSteps = Math.max(1, opts.maxSteps ?? 25);
+  const approvedForSession = new Set<string>();
   const goal = state?.goal || opts.goal || opts.task;
   const model = opts.model || state?.model || GEMINI_DEFAULT_MODEL;
   const mode = opts.mode ?? state?.mode ?? 'build';
@@ -987,6 +994,63 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         });
         continue;
       }
+      let approval: { id: string; decision: ApprovalDecision; reason?: string; latencyMs?: number } | undefined;
+      if (MUTATING_TOOLS.has(mapped.tool)) {
+        const approvalKey = `${goal}\u0000${mapped.tool}`;
+        if (!approvedForSession.has(approvalKey)) {
+          const requestedAt = Date.now();
+          const request: ApprovalRequestV2 = {
+            id: uid('apr'),
+            sessionId: sequencer.sessionId,
+            tool: mapped.tool,
+            input: mapped.input,
+            createdAt: requestedAt,
+            expiresAt: requestedAt + 5 * 60_000,
+          };
+          emit({ type: 'approval_request', approval: request });
+          let decision: ApprovalDecision | null = null;
+          let reason: string | undefined;
+          try {
+            if (opts.requestApproval) decision = await opts.requestApproval(request);
+            else reason = 'sin terminal interactiva';
+          } catch (e) {
+            decision = 'deny';
+            reason = e instanceof Error ? e.message : String(e);
+          }
+          if (opts.signal?.aborted) {
+            await markCancelled();
+            return done('', steps);
+          }
+          const finalDecision = decision ?? 'deny';
+          if (!decision && !reason) reason = 'sin decisión';
+          const latencyMs = Math.max(0, Date.now() - requestedAt);
+          if (finalDecision === 'allow-session') approvedForSession.add(approvalKey);
+          approval = { id: request.id, decision: finalDecision, ...(reason ? { reason } : {}), latencyMs };
+          emit({
+            type: 'approval_result',
+            approvalId: request.id,
+            decision: finalDecision,
+            ...(reason ? { reason } : {}),
+            latencyMs,
+          });
+          if (finalDecision === 'deny') {
+            const text = `ERROR: aprobación denegada${reason ? ` (${reason})` : ''}: ${mapped.tool}`;
+            emit({ type: 'tool_result', tool: mapped.tool, ok: false, summary: text });
+            history.push(`TOOL ${mapped.tool} → ${text}`);
+            addTurn({ role: 'tool', text: `TOOL ${mapped.tool} → ${text}` });
+            await addStep({
+              type: 'tool_result',
+              toolId: mapped.tool,
+              title: mapped.tool,
+              content: text,
+              input: mapped.input,
+              status: 'failed',
+              approval,
+            });
+            continue;
+          }
+        }
+      }
       emit({ type: 'tool_call', tool: mapped.tool, input: mapped.input });
       await addStep({
         type: 'tool_call',
@@ -995,6 +1059,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         content: summarize(mapped.input ?? {}, 500),
         input: mapped.input,
         status: 'running',
+        ...(approval ? { approval } : {}),
       });
       if (mapped.tool === 'ask_user') {
         const question = questionFromInput(input);

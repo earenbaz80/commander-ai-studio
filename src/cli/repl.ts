@@ -44,6 +44,7 @@ import {
 import {
   AgentRenderer,
   canPromptApprovals,
+  promptApprovalDecision,
   promptQuestionAnswer,
   Tui,
   type QuestionPromptResult,
@@ -334,6 +335,14 @@ export class ReplSession {
               signal: controller.signal,
             })
         : undefined;
+    const requestApproval =
+      this.tui.interactive && canPromptApprovals()
+        ? (approval: Parameters<typeof promptApprovalDecision>[0]) =>
+            promptApprovalDecision(approval, {
+              tui: this.tui,
+              signal: controller.signal,
+            })
+        : undefined;
 
     try {
       const result = await this.deps.runAgent({
@@ -350,6 +359,7 @@ export class ReplSession {
         persistSession: !this.state,
         signal: controller.signal,
         askUser,
+        requestApproval,
         onEvent: (event) => renderer.handle(event),
       });
       if (result.state) this.state = result.state;

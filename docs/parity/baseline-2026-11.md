@@ -1,15 +1,16 @@
 # Baseline F0 — GitHub, línea base y límites (Vercel y Linear fuera de alcance)
 
-> **Estado:** `F0 ABIERTO — SÓLO FALTA LA LÍNEA BASE`. GitHub verificado (OAuth y Actions) el 2026-11-10; Vercel y Linear fuera de alcance por decisión. La corrida del 2026-11-07 se conserva como historial.
-> **Corrida:** 2026-11-07, 08:05 UTC.
+> **Estado:** `F0 CERRADO — G0 CERRADA`. GitHub verificado (OAuth y Actions) el 2026-11-10; Vercel y Linear fuera de alcance por decisión. La corrida del 2026-11-07 se conserva como historial.
+> **Corrida:** 2026-11-07, 08:05 UTC (histórica).
+> **Baseline vigente:** 2026-11-11, 24 corridas con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` sobre `c3ffb0b*` (árbol sucio); 8/24, 0 timeouts y 0 inválidas. El detalle está en §6.
 > **Revisión:** `f7822ed` en `main` (remoto `github.com/earenbaz80/commander-ai-studio`), con 115 entradas sin commitear al inicio de la corrida —este documento y la nota del roadmap se añaden después, también sin commitear—. El commit por sí solo **no** identifica el árbol medido.
 > **Alcance:** criterios de aceptación de la Fase 0 de [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md), con el alcance ajustado el **2026-11-10**: Vercel y Linear quedan **fuera de alcance por decisión explícita** (sólo hay cuenta de GitHub). La decisión y sus recibos están en [receipts/F0-LOCAL-2026-11-10.md](receipts/F0-LOCAL-2026-11-10.md).
 
 ## 1. Resumen
 
-Al 2026-11-07 la Fase 0 no se podía cerrar: no había ninguna cuenta ni credencial de Vercel, Linear ni GitHub conectada a este Commander. Desde el **2026-11-10** el alcance cambió: GitHub está conectado y verificado (OAuth y Actions), y Vercel y Linear quedaron **fuera de alcance por decisión explícita**. Lo único que falta para cerrar **G0** es la línea base de 24 corridas (§6); **F5** ya no está bloqueada por un criterio de Vercel, aunque 5A siga necesitando una decisión de proveedor en G3.
+Al 2026-11-07 la Fase 0 no se podía cerrar: no había ninguna cuenta ni credencial de Vercel, Linear ni GitHub conectada a este Commander. Desde el **2026-11-10** el alcance cambió: GitHub está conectado y verificado (OAuth y Actions), y Vercel y Linear quedaron **fuera de alcance por decisión explícita**. La línea base vigente de 24 corridas se midió el 2026-11-11 con NVIDIA (§6): **8/24 pasaron, 16 fallaron, 0 timeouts y 0 inválidas**, así que **G0 queda cerrada** y la muestra sirve como referencia para G1. La paridad es baja y debe leerse como el techo actual del modelo gratuito, no como una regresión de la app. **F5** ya no está bloqueada por un criterio de Vercel, aunque 5A siga necesitando una decisión de proveedor en G3.
 
-No se atribuye ningún resultado a un proveedor. Lo que sigue distingue lo **ejecutado y medido**, lo que está **fuera de alcance** y lo que sigue **sin verificar**, con el runbook exacto para cerrar cada criterio.
+Los resultados de modelo se atribuyen al modelo y servidor indicados; no se extrapolan a otros proveedores. Lo que sigue distingue lo **ejecutado y medido**, lo que está **fuera de alcance** y lo que sigue **sin verificar**, con el runbook exacto para cerrar cada criterio.
 
 ## 2. Entorno de la corrida
 
@@ -88,32 +89,63 @@ Higiene de secretos:
 | 8 | Ningún token en artifacts, logs ni respuestas | **Verificado en lo aplicable** | árbol sin coincidencias y runs/PR revisados; no hay deployments de Vercel en alcance |
 | 9 | `docs/parity/baseline-2026-11.md` | **Hecho** | este documento |
 | 10 | `tsc`, `vite build` y pruebas focalizadas en verde | **Hecho** | §4 y recibo §2 |
-| 11 | Línea base de 24 corridas (T1–T10) | **Sin medir** | único criterio abierto de F0; ver §6 |
+| 11 | Línea base de 24 corridas (T1–T10) | **Medido y válido** | 24 corridas el 2026-11-11 con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`: 8/24, 0 timeouts, 0 inválidas; detalle en §6 |
 
 ## 6. Línea base de las 10 tareas canónicas
 
-**Método acordado** (no ejecutado): 2 corridas por tarea y 3 en las cuatro críticas; registrar éxito, pasos, tool calls, tokens, costo, aprobaciones, duración y fallos. Las cuatro críticas son **T1, T7, T8 y T9**.
+**Baseline vigente (2026-11-11).** 24 corridas: 2 por tarea y 3 en T1, T7, T8 y T9, con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` en `http://127.0.0.1:3283`, commit `c3ffb0b*` (árbol sucio) y el arnés de `evals/`. El id NIM válido es el doble prefijo; los ids de models.dev `meta/llama-3.3-70b-instruct` (410) y `nemotron-3.5-lightning:free` (404) no fueron accesibles con esta clave. No hubo timeouts, cuota agotada, mocks ni errores de API.
 
-Es el **único criterio que sigue abierto para cerrar G0** desde el 2026-11-10: no necesita Vercel ni Linear, sólo un modelo real configurado. T7 (deploy) se mide con el publicador local, que ya soporta preview, promoción y rollback.
-
-| ID | Tarea | Criterio de éxito | Corridas | Estado |
+| ID | Tarea | Criterio de éxito | Corridas | Resultado |
 | --- | --- | --- | --- | --- |
-| T1 | Bugfix | test rojo → verde sin editar el test | 3 | Sin medir |
-| T2 | Feature pequeña | opción nueva con test y sin regresión | 2 | Sin medir |
-| T3 | Refactor | extraer función pura, tests verdes, diff mínimo | 2 | Sin medir |
-| T4 | Tests | cubrir una rama no cubierta y demostrar el fallo previo | 2 | Sin medir |
-| T5 | Revisión | señalar un defecto reproducible en un PR real | 2 | Sin medir |
-| T6 | Browser | comprobar un elemento en el preview y guardar consola/red | 2 | Sin medir |
-| T7 | Deploy | preview + promoción + rollback de `examples/vite-static` | 3 | Sin medir |
-| T8 | Permiso denegado | una escritura fuera del workspace falla cerrada | 3 | Sin medir |
-| T9 | Resume | reanudar sin duplicar tool calls | 3 | Sin medir |
-| T10 | Subagente | dos subagentes en paralelo con allowlist y worktree | 2 | Sin medir |
+| T1 | Bugfix | test rojo → verde sin editar el test | 3 | **3/3** |
+| T2 | Feature pequeña | opción nueva con test y sin regresión | 2 | **0/2** |
+| T3 | Refactor | extraer función pura, tests verdes, diff mínimo | 2 | **1/2** |
+| T4 | Tests | cubrir una rama no cubierta y demostrar el fallo previo | 2 | **0/2** |
+| T5 | Revisión | señalar un defecto reproducible en un PR real | 2 | **1/2** |
+| T6 | Browser | comprobar un elemento en el preview y guardar consola/red | 2 | **0/2** |
+| T7 | Deploy | preview + promoción + rollback de `examples/vite-static` | 3 | **3/3** |
+| T8 | Permiso denegado | una escritura fuera del workspace falla cerrada | 3 | **0/3** |
+| T9 | Resume | reanudar sin duplicar tool calls | 3 | **0/3** |
+| T10 | Subagente | dos subagentes en paralelo con allowlist y worktree | 2 | **0/2** |
 
-**Motivo (actualizado 2026-11-10).** Sigue sin haber clave de modelo: `/api/keys` devuelve las 16 claves en `false`, `GEMINI_API_KEY` está vacía en `.env` y Pollinations responde 404. Se intentó con el LM Studio local (18 modelos): sólo `lmstudio-community/qwen3.8-27b` emite `tool_calls`, y a ~38 s/paso una corrida de T1 gastó 497 s en 13 pasos sin terminar, por encima del presupuesto de 300 s por tarea. Medir así no sería una línea base del agente, sino de la máquina. «Sin medir» sigue siendo el único valor honesto; no se estima. El arnés queda listo en `evals/baseline.ts` (`npm run baseline`); detalle y evidencia en el recibo §13.
+**Resultado NVIDIA (2026-11-11).** 24 corridas: **8/24 pasaron, 16 fallaron; 0 timeouts, 0 inválidas y 0 errores de API**. T1 y T7 pasan 3/3; T3 y T5 1/2; T2, T4, T6, T8, T9 y T10 no pasan. T6, T9 y T10 terminan sin tool calls; T2 y T4 fallan por aserciones después de varias tools. La muestra es la referencia vigente de G1, no una paridad alta.
+
+### Historial: intento DeepSeek
+
+**Método ejecutado (2026-11-11).** 24 corridas: 2 por tarea y 3 en T1, T7, T8 y T9, con `lmstudio/deepseek-r1-distill-qwen-14b` en `http://127.0.0.1:3280`, commit `c3ffb0b*` (árbol sucio) y el arnés de `evals/`. Se registraron éxito, pasos, tool calls, duración y fallos; no hubo lectura de tokens/coste.
+
+Este intento (3/24, 0/21 con modelo) quedó **inválido como referencia** por falta de tool-calling nativo y se conserva como historial; no cuenta para G0.
+
+| ID | Tarea | Criterio de éxito | Corridas | Resultado |
+| --- | --- | --- | --- | --- |
+| T1 | Bugfix | test rojo → verde sin editar el test | 3 | **0/3** |
+| T2 | Feature pequeña | opción nueva con test y sin regresión | 2 | **0/2** |
+| T3 | Refactor | extraer función pura, tests verdes, diff mínimo | 2 | **0/2** |
+| T4 | Tests | cubrir una rama no cubierta y demostrar el fallo previo | 2 | **0/2** |
+| T5 | Revisión | señalar un defecto reproducible en un PR real | 2 | **0/2** |
+| T6 | Browser | comprobar un elemento en el preview y guardar consola/red | 2 | **0/2** |
+| T7 | Deploy | preview + promoción + rollback de `examples/vite-static` | 3 | **3/3** |
+| T8 | Permiso denegado | una escritura fuera del workspace falla cerrada | 3 | **0/3** |
+| T9 | Resume | reanudar sin duplicar tool calls | 3 | **0/3** |
+| T10 | Subagente | dos subagentes en paralelo con allowlist y worktree | 2 | **0/2** |
+
+**Resultado (2026-11-11).** 24 corridas: **3/24 pasaron, 21 fallaron; 0/21 en las tareas que dependen del modelo**. T7 (publicador local, sin modelo) pasó 3/3; T1–T5 y T8 hicieron 11 pasos y 4 tool calls por corrida, pero no editaron el archivo; T6 hizo 3 pasos y 0 tool calls; T9, 6 y 0; T10, 3 y 0. Total 889,2 s, p50 33,8 s, 184 pasos y 56 tool calls. La sonda directa a LM Studio devolvió `tool_calls: []`; en el bucle T1–T5/T8 hubo llamadas, pero ninguna edición válida. No se estiman tokens ni coste.
+
+**Diagnóstico y ajuste (2026-11-11).** Las 4 tool calls de T1–T5/T8 no eran del modelo: eran los cuatro `fs.read` del preflight a `AGENTS.md`, `.cursorrules`, `CLAUDE.md` y `.github/muse-instructions.md`, todos inexistentes en el workspace temporal. DeepSeek R1 no emite `tool_calls` nativas; devuelve un bloque JSON como texto y el bucle lo tomaba por respuesta final. Se cambió `toolDialectForModel` para enviar `lmstudio/*deepseek*r1` por `json-text`, se pasó el historial real con resultados a los prompts JSON (`AgentLoop.stepJson` y `AgentSession.stepJson`), se sembró `AGENTS.md` en el workspace de evaluación y se subió `REPLAY_MAX_STEPS` a 16 para que `pipeline-agujereado` quepa. Un T1 focalizado posterior leyó `math.mjs` una vez, ejecutó el `fs.edit` correcto y los dos tests del workspace pasaron; la tabla de 24 corridas es anterior a este ajuste y no se ha repetido. También ejecuté dos T1 piloto con `qwen/qwen3.5-9b`, fuera de la muestra de 24: el primero pasó **1/1** en 334,2 s (24 pasos, 8 tool calls) con `math.mjs` marcado fuera de alcance; tras declararlo en `allowChanges`, el segundo pasó **1/1** en 325,2 s (21 pasos, 7 tool calls), sin `outOfScope`, aunque ambos terminaron sin respuesta final y por encima del presupuesto live de 300 s. Registros `T1-QWEN35-1` y `T1-QWEN35-2`.
+
+**Subconjunto Qwen 3.5 (2026-11-11).** Una corrida por tarea con `lmstudio/qwen/qwen3.5-9b`: T1 **1/1** (334,5 s; sin respuesta final por timeout), T4 **0/1** (338,6 s; no llegó a modificar el test), T6 **0/1** (300,4 s; sesión de browser sin terminar) y T9 **1/1** (126,2 s). T1, T4 y T6 no llegaron a respuesta final; T9 sí. Con 2/4 y tres cortes por tiempo, **no se ejecuta la baseline completa de 24 con este modelo**: el coste sería de horas y la muestra quedaría dominada por cortes del arnés. Registros `T1-QWEN35-3`, `T4-QWEN35-1`, `T6-QWEN35-1`, `T9-QWEN35-1`.
+
+**Diagnóstico extendido T4 (2026-11-11).** Para separar falta de tiempo de falta de capacidad, se repitió T4 con `EVAL_TIMEOUT_MS=600000` y Qwen 3.5 9B. La corrida terminó en **655,2 s con `timedOut: true`**, 30 pasos y 9 tool calls; editó el test, pero `node --test` siguió en rojo. No se repitió T6 porque T4 ya descalifica al modelo para la baseline completa. Registro `T4-1` (`subset: true`). El runner acepta ahora `EVAL_TIMEOUT_MS` y marca las corridas `--only` como `subset`.
+
+**Intento Gemini Flash (2026-11-11).** T4 y T6 pasaron aislados con `gemini-3.5-flash` (174,7 s/21 pasos/8 tools y 37,5 s/8 pasos/5 tools). La pasada completa de 24 se lanzó seguida con la misma clave, pero la cuota gratuita de **5 peticiones/minuto** se agotó: **4/24 pasaron y 20 fallaron en ~1 s con 429**. T1-1 y T7 3/3 fueron los únicos verdes; el resto cayó al motor local no disponible. La muestra **no es válida** y no cuenta como baseline; G0 se cerró después con la corrida NVIDIA. Para repetirla hace falta billing/otro proveedor o un limitador de ritmo.
+
+### Cierre y arnés
+
+**Arnés y registro (2026-11-11).** Cubre las diez tareas: T1–T5/T8 en `evals/harness.ts` y T6/T7/T9/T10 en `evals/scenarios.ts`. T6 usa `browser` sobre un preview local; T7 publica dos releases de `examples/vite-static` y comprueba promoción y rollback; T9 reanuda la misma sesión persistida y exige una sola escritura; T10 lanza dos subagentes con allowlist y worktree y verifica que el árbol principal quede limpio. Las pruebas deterministas viven en `tests/evalsScenarios.test.ts` y no necesitan modelo externo. La baseline vigente quedó registrada en `evals/baseline-results.jsonl`; el runner admite `--resume` para continuar una corrida interrumpida sin duplicar las completas.
 
 ## 7. Runbook para cerrar F0
 
-> **Vigencia 2026-11-10:** §7.1 (Vercel) y §7.2 (Linear) quedan como referencia y **no forman parte de F0**; sólo §7.3 (GitHub) y §6 (baseline) cierran la puerta. El orden operativo vigente está en [runbook-g1-f0.md](runbook-g1-f0.md).
+> **Vigencia 2026-11-10:** §7.1 (Vercel) y §7.2 (Linear) quedan como referencia y **no forman parte de F0**; §7.3 (GitHub) y §6 (baseline) cerraron la puerta el 2026-11-11. El orden operativo vigente está en [runbook-g1-f0.md](runbook-g1-f0.md).
 
 Los valores **nunca** se pegan en el chat ni se commitean: se escriben en `.env` (ignorado) o se conectan desde la UI.
 
@@ -169,7 +201,7 @@ Los valores **nunca** se pegan en el chat ni se commitean: se escriben en `.env`
 - [x] GitHub OAuth real con lectura y comentario revocables (recibo §8).
 - [x] `/commander` (plan) y `--write` (PR) reales en Actions (recibo §11).
 - [x] Sin tokens en artifacts, logs ni respuestas de las corridas reales.
-- [ ] Línea base de 24 corridas (T1–T10) medida y registrada.
+- [x] Línea base de 24 corridas (T1–T10) medida y registrada el 2026-11-11 con NVIDIA: 8/24, 0 timeouts y 0 inválidas.
 - [x] `docs/parity/baseline-2026-11.md` con metodología, resultados y limitaciones.
 - [x] `tsc --noEmit`, `vite build` y pruebas focalizadas en verde.
 - [—] Vercel (preview/producción, content types, rollback, reinicio): **fuera de alcance por decisión (2026-11-10)**.
@@ -177,8 +209,7 @@ Los valores **nunca** se pegan en el chat ni se commitean: se escriben en `.env`
 
 ## 10. Cómo reanudar
 
-1. Confirmar que la OAuth App de GitHub sigue conectada (`GET /api/integrations`) y que hay un modelo real configurado.
-2. Ejecutar la línea base de 24 corridas de §6 con ese modelo y registrar cada corrida.
-3. Reemplazar el «Sin medir» de §5 #11 por el recibo de la baseline.
-4. Sólo entonces mover las filas correspondientes de la matriz de `ROADMAP_PARITY.md` a **V** y cerrar G0.
-5. Vercel y Linear no se reanudan: si algún día se deciden, vuelven como alcance nuevo con su propio recibo, no como deuda de F0.
+1. Confirmar que la OAuth App de GitHub sigue conectada (`GET /api/integrations`) y usar la baseline NVIDIA de §6 como referencia de G1.
+2. Ejecutar el dogfooding de G1 con el CLI como superficie principal y comparar latencia y tasa de éxito contra la baseline.
+3. Mantener §5 #11 como **medido y válido**; G0 ya está cerrada.
+4. Vercel y Linear no se reanudan: si algún día se deciden, vuelven como alcance nuevo con su propio recibo, no como deuda de F0.

@@ -408,6 +408,10 @@ program
     const askUser = canPromptApprovals()
       ? (question: QuestionV2) => promptQuestionAnswer(question, { tui })
       : undefined;
+    const requestApproval = canPromptApprovals()
+      ? (approval: Parameters<typeof promptApprovalDecision>[0]) =>
+          promptApprovalDecision(approval, { tui })
+      : undefined;
 
     let result: { answer: string; steps: number };
     try {
@@ -422,6 +426,7 @@ program
         goal: resumeFrom?.goal,
         persistSession: !resumeFrom,
         askUser,
+        requestApproval,
         onEvent: (event) => renderer.handle(event),
       });
     } catch (e) {

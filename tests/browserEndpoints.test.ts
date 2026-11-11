@@ -1,5 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { startServer, type ServerHarness } from './helpers/serverHarness.js';
 
 let srv: ServerHarness;
@@ -43,6 +45,35 @@ test('browser: lista las sesiones activas para el selector', async () => {
   assert.equal(res.status, 200);
   assert.equal(res.body?.success, true);
   assert.ok(Array.isArray(res.body?.sessions));
+});
+
+test('browser: no reutiliza la sesión de otro workspace', async () => {
+  const rootA = fs.mkdtempSync(path.join(process.cwd(), 'tests', 'tmp-browser-root-a-'));
+  const rootB = fs.mkdtempSync(path.join(process.cwd(), 'tests', 'tmp-browser-root-b-'));
+  const ids: string[] = [];
+
+  try {
+    const a = await srv.request('POST', '/api/browser/session', { root: rootA });
+    assert.equal(a.status, 201, a.raw);
+    const idA = String(a.body?.session?.id ?? '');
+    assert.ok(idA);
+    ids.push(idA);
+
+    const b = await srv.request('POST', '/api/browser/session', { root: rootB });
+    assert.equal(b.status, 201, b.raw);
+    const idB = String(b.body?.session?.id ?? '');
+    assert.ok(idB);
+    ids.push(idB);
+
+    assert.notEqual(idB, idA, 'otro workspace debe abrir su propia sesión');
+    assert.match(String(b.body?.session?.root ?? ''), /browser-root-b-/i);
+  } finally {
+    for (const id of ids) {
+      await srv.request('DELETE', `/api/browser/session/${id}`);
+    }
+    fs.rmSync(rootA, { recursive: true, force: true });
+    fs.rmSync(rootB, { recursive: true, force: true });
+  }
 });
 
 test('browser: atrás y adelante reflejan el historial real', async () => {

@@ -517,7 +517,7 @@ describe('CLI E2E con proveedor falso (F1-14)', () => {
     assert.equal(answer?.text, 'Listo: el faro funciona.', message);
   });
 
-  test('tool denegada: reporta el 403 y sigue hasta la respuesta', async (t) => {
+  test('tool mutante sin aprobación: deniega en el cliente y sigue hasta la respuesta', async (t) => {
     const fake = await startFakeAgentServer();
     t.after(() => fake.close());
     const result = await runScenario('tool-denied', { serverUrl: fake.baseUrl, stream: false });
@@ -526,11 +526,25 @@ describe('CLI E2E con proveedor falso (F1-14)', () => {
     const message = diag(result, receipt);
 
     assert.equal(result.code, 0, message);
+    const approvalRequest = events.find((event) => event.type === 'approval_request');
+    assert.equal(approvalRequest?.type, 'approval_request', message);
+    if (approvalRequest?.type === 'approval_request') {
+      assert.equal(approvalRequest.approval?.tool, 'fs.write', message);
+    }
+    const decision = events.find((event) => event.type === 'approval_result');
+    assert.equal(decision?.type, 'approval_result', message);
+    if (decision?.type === 'approval_result') {
+      assert.equal(decision.decision, 'deny', message);
+      assert.match(decision.reason || '', /terminal interactiva/, message);
+    }
     const toolResult = events.find((event) => event.type === 'tool_result');
     assert.equal(toolResult?.ok, false, message);
-    assert.match(String(toolResult?.summary), /Sólo lectura/, message);
-    const request = fake.requests.find((entry) => entry.path === '/api/agent/run-tool');
-    assert.equal(request?.body?.toolId, 'fs.write', message);
+    assert.match(String(toolResult?.summary), /aprobación denegada/, message);
+    assert.equal(
+      fake.requests.some((entry) => entry.path === '/api/agent/run-tool'),
+      false,
+      `${message}\nla tool mutante no debe llegar al servidor sin aprobación`
+    );
     const answer = events.find((event) => event.type === 'answer');
     assert.equal(answer?.text, 'Listo: el faro funciona.', message);
   });

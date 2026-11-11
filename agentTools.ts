@@ -380,7 +380,7 @@ export function checkShellSegments(
     if (!opts.allowUnlisted && !SHELL_ALLOW_PREFIX.some((a) => lower.startsWith(a))) {
       return {
         ok: false,
-        error: `Comando no permitido: ${segment.slice(0, 80)}. Usa npm/npx/node/python/git/ls/cat/echo/tsc/vite.`,
+        error: `Comando no permitido: ${segment.slice(0, 80)}. Usa npm test, npm run <script>, node --test <archivo>, git, ls, echo, tsc o vite.`,
         status: 403,
       };
     }

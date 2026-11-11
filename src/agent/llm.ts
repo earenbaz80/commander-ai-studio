@@ -124,7 +124,7 @@ PASOS RECIENTES:
 ${formatStepDigest(ctx.recentSteps)}
 
 ${ctx.history.length > 0 ? `HISTORIAL:\n${JSON.stringify(
-  ctx.history.slice(-6).map((m) => ({ role: m.role, content: m.content.slice(0, 400) })),
+  ctx.history.slice(-6).map((m) => ({ role: m.role, content: clipMiddle(m.content, RESULT_TURN_CHARS) })),
   null,
   2
 )}\n\n` : ''}TOOLS:

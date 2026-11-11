@@ -23,6 +23,7 @@ export type FakeScenario =
   | 'tool-error'
   | 'tool-three'
   | 'tool-denied'
+  | 'tool-write-twice'
   | 'slow-tool'
   | 'ask-user'
   | 'max-steps'
@@ -81,6 +82,7 @@ const SCENARIOS: FakeScenario[] = [
   'tool-error',
   'tool-three',
   'tool-denied',
+  'tool-write-twice',
   'slow-tool',
   'ask-user',
   'max-steps',
@@ -117,6 +119,15 @@ function turnFor(scenario: FakeScenario, turn: number): ModelTurn {
       return turn === 1
         ? { text: 'Voy a escribir.', functionCalls: [WRITE_CALL] }
         : { text: FINAL_TEXT, functionCalls: [] };
+    case 'tool-write-twice':
+      return turn === 1
+        ? { text: 'Voy a escribir la primera salida.', functionCalls: [WRITE_CALL] }
+        : turn === 2
+          ? {
+              text: 'Ahora escribo la segunda salida.',
+              functionCalls: [{ name: 'fs_write', args: { path: 'salida2.txt', content: 'y' } }],
+            }
+          : { text: FINAL_TEXT, functionCalls: [] };
     case 'slow-tool':
       return turn === 1
         ? { text: 'Voy a leer lento.', functionCalls: [{ name: 'fs_read', args: { path: 'slow.txt' } }] }

@@ -17,6 +17,7 @@ test('toolDialectForModel detecta los tres dialectos', () => {
   assert.equal(toolDialectForModel('nvidia/meta/llama-3.3-70b-instruct'), 'openai');
   assert.equal(toolDialectForModel('pollinations/openai'), 'json-text');
   assert.equal(toolDialectForModel('deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B'), 'json-text');
+  assert.equal(toolDialectForModel('lmstudio/deepseek-r1-distill-qwen-14b'), 'json-text');
   assert.equal(toolDialectForModel(undefined), 'gemini');
 });
 

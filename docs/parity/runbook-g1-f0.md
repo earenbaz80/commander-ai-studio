@@ -1,7 +1,7 @@
 # Runbook operativo — F0 y G1
 
-> **Estado:** preparado 2026-11-10; alcance ajustado el 2026-11-10. **Parcialmente ejecutado:** F0-GITHUB verificado (OAuth y Actions); línea base y G1 pendientes.
-> **Objetivo:** cerrar F0 con los recibos externos que están en alcance —GitHub y la línea base— y G1 con cinco días de dogfooding del CLI, sin convertir tests locales en falsa paridad.
+> **Estado:** F0 cerrado y G0 cerrada el 2026-11-11; G1 pendiente. F0-GITHUB verificado (OAuth y Actions) y baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts, 0 inválidas). Falta el dogfooding de G1.
+> **Objetivo:** conservar la evidencia de F0 y ejecutar el dogfooding de G1 sin convertir tests locales en falsa paridad.
 > **Alcance (2026-11-10):** Vercel y Linear quedan **fuera de F0 por decisión explícita**; sólo hay cuenta de GitHub. Detalle y recibos en [receipts/F0-LOCAL-2026-11-10.md](receipts/F0-LOCAL-2026-11-10.md).
 > **Documentos base:** [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md), [baseline-2026-11.md](baseline-2026-11.md), [backlog-f1.md](backlog-f1.md) §7 y [backlog-f2.md](backlog-f2.md).
 > **Regla de honestidad:** si falta una credencial, una cuenta, un modelo o una medición, el estado es `bloqueado` o `sin medir`. Nunca se estima un resultado ni se marca una fila como verificada por un mock.
@@ -10,11 +10,11 @@
 
 | Puerta | Qué exige | Estado de partida | Este runbook produce |
 | --- | --- | --- | --- |
-| **G0/F0** | GitHub real (OAuth + Actions) y baseline de 10 tareas. Vercel y Linear fuera de alcance | GitHub verificado con recibos; baseline sin medir | Recibo de GitHub (hecho) + baseline actualizada |
-| **G1** | 5 días de dogfooding del CLI sin regresión frente a F0 | Implementación F1 cerrada; dogfooding no ejecutado | 24 corridas medidas + decisión del gate |
+| **G0/F0** | GitHub real (OAuth + Actions) y baseline de 10 tareas. Vercel y Linear fuera de alcance | **Cerrada:** GitHub verificado y baseline NVIDIA válida (8/24, 0 timeouts) | Mantener la evidencia; no hay más trabajo de F0 |
+| **G1** | 5 días de dogfooding del CLI sin regresión frente a F0 | Implementación F1 cerrada; dogfooding no ejecutado | Dogfooding de 5 días + decisión del gate |
 | **F2** | Artifacts de verificación | Implementado; E2E local | Evidencia reutilizable para las corridas de F0/G1 |
 
-F0 y G1 son puertas distintas. F0 puede cerrarse sin G1. **G1 no puede cerrarse formalmente sin una baseline F0 válida**; si no existe, el runbook sólo puede producir métricas provisionales y debe dejar G1 abierto.
+F0 y G1 son puertas distintas. F0 ya está cerrada. **G1 no puede cerrarse sin el dogfooding de 5 días**; la baseline NVIDIA de 8/24 es la referencia de éxito y latencia.
 
 ## 2. Precondiciones
 
@@ -32,7 +32,7 @@ F0 y G1 son puertas distintas. F0 puede cerrarse sin G1. **G1 no puede cerrarse 
 Los valores **nunca** se pegan en el chat. Se escriben en `.env` (ignorado) o se conectan desde Ajustes.
 
 - [x] OAuth app de GitHub (`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`), conectada con la cuenta `earenbaz80`.
-- [ ] Clave del proveedor de modelo elegido, configurada en la UI o en `.env`.
+- [x] Clave NVIDIA configurada en `.env` y servidor local respondiendo.
 - [x] Repo de prueba de GitHub con permiso para crear ramas, PR y comentarios (`earenbaz80/commander-agent-test`, público).
 - [ ] Confirmar que `.env` sigue ignorado y que `git status` no lo muestra.
 - [—] `VERCEL_TOKEN`/`VERCEL_PROJECT_ID` y OAuth de Linear: **fuera de alcance por decisión (2026-11-10)**.
@@ -142,6 +142,10 @@ Esta fase mide el punto de comparación. Se ejecuta **antes** del dogfooding G1 
 | T9 | Resume | reanudar sin duplicar tool calls | 3 |
 | T10 | Subagente | dos subagentes en paralelo con allowlist y worktree | 2 |
 
+**Arnés y baseline (2026-11-11).** `npm run baseline` ejecuta T1–T10; T6/T7/T9/T10 viven en `evals/scenarios.ts` porque necesitan servidor o publicador. `tests/evalsScenarios.test.ts` los prueba con un proveedor guionizado (browser real, publicador local, sesión persistida y worktrees). Las 24 corridas vigentes se ejecutaron con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`: 8/24 pasaron, 16 fallaron, 0 timeouts y 0 inválidas. T1 y T7 pasan 3/3; T3 y T5 1/2; T6/T9/T10 no usan tools. Registro en `evals/baseline-results.jsonl`. G0 queda cerrada; G1 sigue pendiente del dogfooding.
+
+**Ajuste posterior (2026-11-11).** El diagnóstico mostró que DeepSeek R1 devuelve JSON como texto, no `tool_calls` nativas, y que las 4 tool calls de T1 eran lecturas fallidas del preflight. Se activó `json-text` para `lmstudio/*deepseek*r1`, se pasó el historial con resultados a los prompts JSON, se sembró `AGENTS.md` en el workspace de evaluación y se subió el presupuesto replay a 16. Un T1 focalizado ya lee y edita correctamente; la tabla de 24 corridas no se ha repetido tras el ajuste. Además, dos T1 piloto con `qwen/qwen3.5-9b` pasaron 1/1: 334,2 s (24 pasos, 8 tool calls) y 325,2 s (21 pasos, 7 tool calls), este último sin `outOfScope` tras declarar `math.mjs`; ambos quedaron sin respuesta final y fuera de la muestra de 24 (`T1-QWEN35-1/2`). El subconjunto T1/T4/T6/T9 con el 9B dio 2/4 (T1 y T9), con T1 y T4 en ~335 s sin respuesta final y T6 sin terminar la sesión de browser a los 300 s; no se lanza la baseline completa con este modelo.
+
 ### 4.2 Registro por corrida
 
 Copiar esta tabla por corrida, sin inventar campos:
@@ -179,6 +183,23 @@ Por tarea, registrar:
 - intervenciones humanas no previstas.
 
 Una corrida invalidada por entorno (por ejemplo, proveedor caído) se marca `invalid` y se repite; no se borra del registro.
+
+### 4.4 Limpieza de sesiones y navegador
+
+El arnés no debe dejar sesiones `running` ni navegadores huérfanos cuando una tarea agota su presupuesto o falla una tool.
+
+- **Sesión de agente.** Al vencer `waitForTerminal`, el escenario llama a `cancelAndDeleteSession`: `POST /api/agent/sessions/:id/cancel` para detener el bucle y `DELETE` para borrar el estado persistido. Después lanza `ScenarioTimeoutError`. Esto cubre T6 y también T9/T10, que comparten el mismo `waitForTerminal`.
+- **Sesión de Playwright.** T6 captura el `sessionId` del navegador en cuanto llega el `tool_result` de `browser`, no sólo al recibir el estado final. Si el timeout ocurre después de `browser open`, `runT6` cierra esa sesión con `DELETE /api/browser/session/:id`.
+- **Fallos que no son timeout.** El cierre no depende de `stopReason`: si el navegador ya se abrió y después falla una tool (por ejemplo, un `click` con un `uid` inexistente), `runT6` termina el escenario, cierra Playwright y borra la sesión de agente. El error de tool hace fallar los checks, pero no deja el navegador vivo.
+- **Resultado en la baseline.** Una corrida cortada por presupuesto queda con `stopReason: "timeout"` y `timedOut: true`; no se confunde con un fallo de checks ni con un error del modelo.
+
+La prueba de timeout `T6 · el timeout después de abrir cierra también la sesión de Playwright` espera a que `/api/browser/sessions` muestre el navegador abierto, deja colgada la siguiente llamada al modelo y exige que no queden ni sesiones T6 en `/api/agent/sessions` ni sesiones en `/api/browser/sessions`.
+
+**Error de tool sin timeout.** La prueba `T6 · un error de tool después de abrir cierra el navegador sin timeout` usa un proveedor guionizado que abre el preview, pide `browser click` con `uid: e999999` y responde. El `click` falla con `uid desconocido`, pero el escenario termina sin timeout: `stopReason` es `completed`, `timedOut` es `false` y `passed` es `false` por los checks. La prueba captura los `tool_result` para confirmar que hubo un `open` completado con `sessionId` y un `click` fallido; al salir, `/api/browser/sessions` y las sesiones T6 de `/api/agent/sessions` están vacías. Así se comprueba que la limpieza no depende de `ScenarioTimeoutError`.
+
+**Guardia reutilizable de sesiones.** `tests/helpers/sessionAssertions.ts` expone `snapshotSessions()` y `assertNoLingeringSessions()`. El primero toma una foto de los ids de `/api/agent/sessions` y `/api/browser/sessions`; el segundo compara después y falla si el escenario dejó una sesión nueva, indicando el id y la meta del agente o el id y el `root` de Playwright. El guardia no cierra sesiones: falla para que la fuga quede visible. Se ejecuta en `beforeEach`/`afterEach` de `tests/evalsScenarios.test.ts`, así que cubre T6, T7, T9 y T10 sin exigir que la lista global esté vacía, porque el servidor se comparte entre archivos. Las dos pruebas unitarias de `tests/sessionAssertions.test.ts` simulan con un fake, sin HTTP ni Chromium, una sesión extra de agente y una de Playwright, y comprueban que el guardia falla en ambos casos.
+
+Los registros históricos anteriores a este fix no se reescriben.
 
 ## 5. Fase C — G1: dogfooding de 5 días
 
@@ -246,11 +267,13 @@ Registrar al final de cada día:
 
 ### 5.5 Comparación con F0
 
+**Latencia de aprobación (preflight).** F0 no registró `approvals` ni `approvalLatencyMs`; la referencia se obtiene con la [calibración G1](g1-approval-calibration.md), separada de las 24 corridas. No se declara paridad de aprobación contra un dato que F0 no midió.
+
 G1 pasa sólo si:
 
 - [ ] Se completaron los 5 días y las 24 corridas (o sus repeticiones).
 - [ ] La tasa de éxito no es inferior a la baseline F0.
-- [ ] La latencia p95 de aprobación no es superior a la baseline F0.
+- [ ] La latencia p95 de aprobación no es superior a la referencia de calibración G1 (F0 no la midió).
 - [ ] No hubo escrituras sin aprobación.
 - [ ] `--resume` no duplicó tool calls.
 - [ ] Los artifacts de F2 conservaron plan, diff y evidencia; un fallo no se pintó verde.
@@ -283,7 +306,7 @@ Actualizar [backlog-f1.md](backlog-f1.md) §7 y la matriz de `ROADMAP_PARITY.md`
 | 0 | Precondiciones y gates locales | Recibo de entorno + `tsc`/build/tests | **Hecho** |
 | 1 | F0 GitHub OAuth | `F0-GITHUB-OAUTH` | **Hecho** |
 | 2 | F0 Actions | `F0-GITHUB-ACTIONS` + run/PR | **Hecho** |
-| 3 | Baseline F0 (24 corridas) | Tabla T1–T10 | Pendiente |
+| 3 | Baseline F0 (24 corridas) | Tabla T1–T10 | **Medida y válida (8/24, 0 timeouts)** |
 | 4 | G1 (5 días, 24 corridas CLI-first) | Diario D1–D5 | Pendiente |
 | 5 | Decisión y documentación | G0/G1 actualizados, matriz revisada | Pendiente |
 | — | ~~F0 Vercel~~ y ~~F0 Linear~~ | — | **Fuera de alcance (2026-11-10)** |
@@ -306,10 +329,11 @@ En esos casos, el estado correcto es `bloqueado` o `no verificado`, nunca `hecho
 - [x] F0 local reproducible en el commit medido.
 - [x] GitHub OAuth, PR/comentario y revocación.
 - [x] Actions en modo plan y `--write` con PR real.
-- [ ] Baseline F0 de 24 corridas registrada.
+- [x] Baseline F0 de 24 corridas registrada el 2026-11-11 con NVIDIA (8/24; 0 timeouts, 0 inválidas).
 - [—] Vercel preview/producción, content types, rollback y persistencia: **fuera de alcance por decisión (2026-11-10)**.
 - [—] Linear OAuth, issue y revocación: **fuera de alcance por decisión (2026-11-10)**.
 - [ ] G1 de 5 días con CLI como superficie principal.
+- [ ] Cero sesiones huérfanas de agente o Playwright al cerrar cada escenario; el guardia de [§4.4](#44-limpieza-de-sesiones-y-navegador) queda en verde.
 - [ ] Sin regresión de éxito o latencia frente a F0.
 - [ ] Cero escrituras sin aprobación y cero tool calls duplicadas en resume.
 - [ ] Artifacts F2 con plan, diff y tests; fallo sigue rojo.
