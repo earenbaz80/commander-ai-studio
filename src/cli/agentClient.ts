@@ -249,10 +249,26 @@ export function normalizeTestCommand(command: unknown): string {
   return TEST_FILE_PATTERN.test(target) ? `node --test ${match[1]}` : text;
 }
 
+const TEST_CHANGE_PATTERN =
+  /(?:\bañade|\bañadir|\bagrega|\bagregar|\bcrea|\bcrear|\bincluye|\bincluir|\bescribe|\bescribir|\badd|\bcreate|\binclude|\bwrite)\b[^.\n]{0,80}\b(?:test|prueba|spec|cobertura)\b|\b(?:test|prueba)\b[^.\n]{0,60}\b(?:cubra|cubrir|cobertura|cover)\b/i;
+
+const TEST_PATH_PATTERN = /(?:^|[\\/])[^\\/]+\.(?:test|spec)\.[cm]?[jt]sx?$/i;
+
+/** ¿El objetivo pide añadir o cubrir un test nuevo? */
+export function requiresTestChange(goal: unknown): boolean {
+  return TEST_CHANGE_PATTERN.test(String(goal ?? ''));
+}
+
+/** ¿La ruta corresponde a un archivo de test? */
+export function isTestPath(value: unknown): boolean {
+  return typeof value === 'string' && TEST_PATH_PATTERN.test(value);
+}
+
 const CLI_TOOL_POLICY =
   ' POLÍTICA DE HERRAMIENTAS: para verificar tests usa siempre shell.run con la forma exacta ' +
   '`node --test <archivo>`; no uses code.run para tests ni `node <archivo>`. code.run no está ' +
-  'disponible en el CLI.';
+  'disponible en el CLI. Si el objetivo pide añadir o cubrir un test, edita un archivo de test y ejecuta ' +
+  '`node --test` después; no cierres sin ambos.';
 
 /** Cuerpo común de la petición al LLM (compartido por streaming y no-streaming). */
 function buildPayload(
@@ -884,6 +900,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   });
   const maxSteps = Math.max(1, opts.maxSteps ?? 25);
   const approvedForSession = new Set<string>();
+  let testEditStep = 0;
+  let testRunStep = 0;
   const completedMutations = new Set<string>();
   const repeatedMutations = new Map<string, number>();
   const goal = state?.goal || opts.goal || opts.task;
@@ -998,6 +1016,15 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     if (thought && !streamed) emit({ type: 'thought', text: thought });
 
     if (calls.length === 0) {
+      if (requiresTestChange(goal) && !(testEditStep > 0 && testRunStep > testEditStep)) {
+        const text =
+          'Política de test obligatorio: edita un archivo de test y ejecuta `node --test` después ' +
+          'antes de cerrar la tarea.';
+        emit({ type: 'error', text });
+        history.push(`SISTEMA: ${text}`);
+        await addStep({ type: 'thought', title: 'Test obligatorio', content: text, status: 'failed' });
+        continue;
+      }
       const answer = thought || '(el modelo no devolvió respuesta)';
       addTurn({ role: 'assistant', text: answer });
       await addStep({ type: 'thought', title: 'Finalizado', content: answer, status: 'completed' });
@@ -1228,7 +1255,19 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         return done('', steps);
       }
       const summary = result.ok ? summarize(result.data) : `ERROR: ${result.error}`;
-      if (mutationKey && result.ok) completedMutations.add(mutationKey);
+      if (mutationKey && result.ok) {
+        completedMutations.add(mutationKey);
+        if ((mapped.tool === 'fs.edit' || mapped.tool === 'fs.write') && isTestPath(input.path)) {
+          testEditStep = steps;
+        }
+        if (
+          mapped.tool === 'shell.run' &&
+          typeof input.command === 'string' &&
+          /^node\s+--test(?:\s|$)/i.test(input.command)
+        ) {
+          testRunStep = steps;
+        }
+      }
       emit({ type: 'tool_result', tool: mapped.tool, ok: result.ok, summary });
       history.push(`TOOL ${mapped.tool} → ${summary}`);
       addTurn({ role: 'tool', text: `TOOL ${mapped.tool} → ${summary}` });

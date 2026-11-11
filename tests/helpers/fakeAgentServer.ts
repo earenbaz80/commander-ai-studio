@@ -26,6 +26,8 @@ export type FakeScenario =
   | 'tool-write-twice'
   | 'tool-edit-same-twice'
   | 'shell-run-node-test'
+  | 'test-mandatory-source-only'
+  | 'test-mandatory-complete'
   | 'slow-tool'
   | 'ask-user'
   | 'max-steps'
@@ -91,6 +93,8 @@ const SCENARIOS: FakeScenario[] = [
   'tool-write-twice',
   'tool-edit-same-twice',
   'shell-run-node-test',
+  'test-mandatory-source-only',
+  'test-mandatory-complete',
   'slow-tool',
   'ask-user',
   'max-steps',
@@ -140,6 +144,32 @@ function turnFor(scenario: FakeScenario, turn: number): ModelTurn {
       return turn <= 2
         ? { text: `Edito la misma salida (${turn}).`, functionCalls: [EDIT_CALL] }
         : { text: FINAL_TEXT, functionCalls: [] };
+    case 'test-mandatory-source-only':
+      return turn === 1
+        ? {
+            text: 'Edito el código, pero no el test.',
+            functionCalls: [{ name: 'fs_edit', args: { path: 'slug.mjs', oldString: 'a', newString: 'b' } }],
+          }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'test-mandatory-complete':
+      return turn === 1
+        ? {
+            text: 'Edito el código.',
+            functionCalls: [{ name: 'fs_edit', args: { path: 'slug.mjs', oldString: 'a', newString: 'b' } }],
+          }
+        : turn === 2
+          ? {
+              text: 'Añado el test.',
+              functionCalls: [
+                { name: 'fs_edit', args: { path: 'slug.test.mjs', oldString: 'a', newString: 'b' } },
+              ],
+            }
+          : turn === 3
+            ? {
+                text: 'Ejecuto el test.',
+                functionCalls: [{ name: 'shell_run', args: { command: 'node math.test.mjs' } }],
+              }
+            : { text: FINAL_TEXT, functionCalls: [] };
     case 'shell-run-node-test':
       return turn === 1
         ? {

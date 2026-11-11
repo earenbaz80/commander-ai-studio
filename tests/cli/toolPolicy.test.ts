@@ -1,6 +1,11 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeTestCommand, runAgent } from '../../src/cli/agentClient.js';
+import {
+  isTestPath,
+  normalizeTestCommand,
+  requiresTestChange,
+  runAgent,
+} from '../../src/cli/agentClient.js';
 import type { CliEventV2 } from '../../src/agent/sessionTypes.js';
 import { startFakeAgentServer } from '../helpers/fakeAgentServer.js';
 
@@ -19,6 +24,72 @@ describe('política de herramientas para tests en el CLI', () => {
     assert.equal(normalizeTestCommand('node --test math.test.mjs'), 'node --test math.test.mjs');
     assert.equal(normalizeTestCommand('node server.js'), 'node server.js');
     assert.equal(normalizeTestCommand('npm test'), 'npm test');
+  });
+
+  test('detecta cuándo el objetivo exige un test nuevo', () => {
+    assert.equal(requiresTestChange('Añade un test que cubra la opción.'), true);
+    assert.equal(requiresTestChange('Agrega cobertura para maxLength.'), true);
+    assert.equal(
+      requiresTestChange('El test de math.mjs falla; corrige math.mjs sin tocar math.test.mjs.'),
+      false
+    );
+    assert.equal(isTestPath('slug.test.mjs'), true);
+    assert.equal(isTestPath('src/slug.spec.ts'), true);
+    assert.equal(isTestPath('slug.mjs'), false);
+  });
+
+  test('rechaza una respuesta final sin test editado y ejecutado', async (t) => {
+    const fake = await startFakeAgentServer();
+    t.after(() => fake.close());
+    const events: CliEventV2[] = [];
+
+    const result = await runAgent({
+      serverUrl: fake.baseUrl,
+      task: 'SCENARIO:test-mandatory-source-only Añade un test que cubra la opción.',
+      cwd: '/workspace/demo',
+      model: 'gemini-2.5-flash',
+      maxSteps: 3,
+      stream: false,
+      sessionId: 'sess_mandatory_missing',
+      requestApproval: async () => 'allow',
+      onEvent: (event) => events.push(event),
+    });
+
+    assert.equal(result.answer, '');
+    assert.ok(events.some((event) => event.type === 'error' && /test obligatorio/i.test(event.text)));
+    assert.equal(
+      fake.requests.some((request) => request.path === '/api/agent/run-tool' && request.body?.toolId === 'shell.run'),
+      false,
+      'no ejecuta el test si el test no fue editado'
+    );
+  });
+
+  test('acepta la respuesta final después de editar el test y ejecutar node --test', async (t) => {
+    const fake = await startFakeAgentServer();
+    t.after(() => fake.close());
+    const events: CliEventV2[] = [];
+
+    const result = await runAgent({
+      serverUrl: fake.baseUrl,
+      task: 'SCENARIO:test-mandatory-complete Añade un test que cubra la opción.',
+      cwd: '/workspace/demo',
+      model: 'gemini-2.5-flash',
+      maxSteps: 5,
+      stream: false,
+      sessionId: 'sess_mandatory_complete',
+      requestApproval: async () => 'allow',
+      onEvent: (event) => events.push(event),
+    });
+
+    assert.equal(result.answer, 'Listo: el faro funciona.');
+    assert.equal(events.some((event) => event.type === 'error' && /test obligatorio/i.test(event.text)), false);
+    assert.equal(
+      fake.requests.some(
+        (request) => request.path === '/api/agent/run-tool' && request.body?.toolId === 'shell.run'
+      ),
+      true,
+      'el test se ejecutó después de editarlo'
+    );
   });
 
   test('no ofrece code_run y normaliza el test antes de pedir aprobación', async (t) => {
