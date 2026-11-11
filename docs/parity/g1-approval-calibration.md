@@ -1,6 +1,6 @@
 # Calibración G1 — latencia de aprobación (preflight)
 
-> **Estado:** protocolo preparado y alineado con el allowlist de D0; calibración **no ejecutada**.
+> **Estado:** calibración ejecutada el 2026-11-11; **10/10 muestras canónicas** y **5/5 corridas válidas**. Recibo: [G1-APPROVAL-CAL-2026-11-11](receipts/G1-APPROVAL-CAL-2026-11-11.md). Resultado **provisional** por el solapamiento de cal-04/05/07 y por descartar cal-01/cal-06.
 > **Precondición:** el fix de allowlist (`node --test` y `node --test <archivo>`) debe estar en un commit fijo y el árbol debe estar limpio. No se calibra sobre cambios sin commit.
 > **Propósito:** obtener una referencia reproducible de latencia de aprobación antes de D1, sin contar estas corridas dentro de las 24 de G1.
 > **Límite:** la baseline F0 no registró aprobaciones ni latencia. Esta calibración **no es paridad F0**; es una referencia provisional que debe declararse como tal.
@@ -94,11 +94,12 @@ No guardar `input`, diff, contenido de archivos, tokens, cookies ni `.env`. La c
 
 ## 6. Checklist de cierre de la calibración
 
-- [ ] Commit fijo que incluye el fix de allowlist; árbol limpio.
-- [ ] 5 corridas T1 intentadas, con modelo y servidor sin cambios.
-- [ ] 10 decisiones objetivo registradas, sin `allow-session`.
-- [ ] `latencyMs` presente en cada `approval_result`.
-- [ ] p50/p95 calculados y recibo saneado guardado.
-- [ ] Cero escrituras sin aprobación.
-- [ ] Cero secretos en la evidencia.
-- [ ] Nota explícita de que F0 no midió esta métrica.
+- [x] Commit fijo que incluye el fix de allowlist; árbol limpio al inicio.
+- [x] 5 corridas T1 válidas de 7 intentos (`cal-01` y `cal-06` descartadas), con modelo y servidor sin cambios.
+- [x] 10 decisiones canónicas registradas, sin `allow-session`.
+- [x] `latencyMs` presente en cada `approval_result`.
+- [x] p50/p95 calculados y recibo saneado guardado.
+- [x] Cero escrituras sin aprobación.
+- [x] Sin secretos en la evidencia capturada.
+- [x] Nota explícita de que F0 no midió esta métrica.
+- [ ] Cierre definitivo: el resultado es provisional por el solapamiento de `cal-04/05/07`.
