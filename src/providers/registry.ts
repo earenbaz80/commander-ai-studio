@@ -15,6 +15,8 @@ import { filterModelIds, isProviderEnabled, modelFilterOf } from '../lib/provide
 import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
 import { compatibleModelId } from '../lib/openaiCompatibleProviders';
 
+export const NVIDIA_DEFAULT_MODEL = 'nvidia/nvidia/nemotron-3.5-lightning-30b-a3b';
+
 export type ProviderFieldKind = 'secret' | 'url' | 'text';
 
 export interface ProviderField {
@@ -79,7 +81,7 @@ export const PROVIDER_SPECS: ProviderSpec[] = [
     name: 'NVIDIA NIM',
     env: ['NVIDIA_API_KEY'],
     fields: [{ name: 'apiKey', required: true, kind: 'secret' }],
-    defaultModel: 'meta/llama-3.3-70b-instruct',
+    defaultModel: NVIDIA_DEFAULT_MODEL,
   },
   {
     id: 'huggingface',
@@ -250,7 +252,7 @@ const OPENAI_FALLBACK_MODELS: CatalogModel[] = [
 ];
 
 const NVIDIA_FALLBACK_MODELS: CatalogModel[] = [
-  { id: 'meta/llama-3.3-70b-instruct', name: 'Llama 3.3 70B Instruct', provider: 'nvidia', contextWindow: '128K tokens', supportsTools: true },
+  { id: NVIDIA_DEFAULT_MODEL, name: 'Nemotron 3.5 Lightning 30B A3B', provider: 'nvidia', contextWindow: '128K tokens', supportsTools: true },
   { id: 'meta/llama-3.1-8b-instruct', name: 'Llama 3.1 8B Instruct', provider: 'nvidia', contextWindow: '128K tokens', supportsTools: true },
   { id: 'nvidia/llama-3.1-nemotron-70b-instruct', name: 'Llama 3.1 Nemotron 70B', provider: 'nvidia', contextWindow: '128K tokens', supportsTools: true },
   { id: 'deepseek-ai/deepseek-r1', name: 'DeepSeek R1', provider: 'nvidia', contextWindow: '128K tokens', supportsReasoning: true },
