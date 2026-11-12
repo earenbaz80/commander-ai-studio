@@ -42,7 +42,7 @@ import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList
 import { isAllowedHost, allowedHostsFromEnv } from './hostGuard';
 import { CONTENT_SECURITY_POLICY } from './security';
 import { getConfig, getConfigPath, getEnvProviderIds, getGlobalConfigPath, getProviderSecret, loadConfig, removeOpenAiCompatibleProvider, removeProviderConfig } from './src/config/index';
-import { PROVIDER_SPECS, buildProviderList, customProviderSpecs, describeProvider, getAllProviderCatalog, getProviderCatalog } from './src/providers/registry';
+import { PROVIDER_SPECS, NVIDIA_DEFAULT_MODEL, buildProviderList, customProviderSpecs, describeProvider, getAllProviderCatalog, getProviderCatalog } from './src/providers/registry';
 import { parseCompatibleModelId, slugifyProviderId } from './src/lib/openaiCompatibleProviders';
 import { probeLocalProvider } from './src/providers/localProbe';
 import skillsRouter from './skills/api';
@@ -4008,7 +4008,7 @@ async function generateOpenAiCompatible(req: any, res: any, provider: 'openai' |
     if (!key) return res.json({ ok: false, error: `${isOpenAI ? 'OPENAI_API_KEY' : 'NVIDIA_API_KEY'} requerida` });
 
     const base = isOpenAI ? 'https://api.openai.com/v1' : 'https://integrate.api.nvidia.com/v1';
-    const fallbackModel = isOpenAI ? 'gpt-4.1-mini' : 'meta/llama-3.3-70b-instruct';
+    const fallbackModel = isOpenAI ? 'gpt-4.1-mini' : NVIDIA_DEFAULT_MODEL;
     const model = String(body.model || getProviderSecret(provider, 'defaultModel') || fallbackModel).replace(
       new RegExp(`^${provider}/`),
       ''

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   PROVIDER_SPECS,
+  NVIDIA_DEFAULT_MODEL,
   buildProviderList,
   describeProvider,
   parseModelsDev,
@@ -121,6 +122,16 @@ describe('buildProviderList', () => {
     expect(list[0].id).toBe('anthropic');
     expect(list[0].configured).toBe(true);
     expect(list.every((p, i) => i === 0 || list[i - 1].configured || !p.configured)).toBe(true);
+  });
+
+  test('el default estático de NVIDIA usa el modelo NIM vigente y está en el catálogo de respaldo', () => {
+    const spec = specOf('nvidia');
+    expect(spec.defaultModel).toBe(NVIDIA_DEFAULT_MODEL);
+    expect(spec.defaultModel).not.toBe('meta/llama-3.3-70b-instruct');
+
+    const nvidia = buildProviderList({}, new Set(), []).find((p) => p.id === 'nvidia')!;
+    expect(nvidia.defaultModel).toBe(NVIDIA_DEFAULT_MODEL);
+    expect(nvidia.allModels.some((m) => m.id === NVIDIA_DEFAULT_MODEL)).toBe(true);
   });
 
   test('OpenAI y NVIDIA se configuran con clave y tienen catálogo de respaldo', () => {
