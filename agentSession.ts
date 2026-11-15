@@ -24,13 +24,21 @@ import { decide, needsHumanApproval } from './src/agent/permissionRules';
 import { enforceTool, getPermissions, type Permissions } from './permissions';
 import { createWorktree, removeWorktree, type WorktreeResult } from './worktrees';
 import { resolveSubagentPolicy } from './src/agent/subagentTemplates';
-import { toolDialectForModel, toOpenAITools } from './src/agent/providers';
+import { agentMaxTokens, toolDialectForModel, toOpenAITools } from './src/agent/providers';
 import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from './src/agent/fnTools';
 import { PLAN_TOOL, normalizePlan } from './src/agent/plan';
 import { TOOL_REGISTRY } from './src/agent/registry';
+import { LoopGuard, type LoopCut } from './src/agent/identicalCalls';
+import {
+  emptyProposalStats,
+  normalizeProposals,
+  proposalStatsFor,
+  type ProposalDropStats,
+} from './src/agent/proposals';
+import { applyProposalToFile, type ApplyProposalResult } from './src/agent/applyProposal';
 import { loadMCPServers, mcpListTools } from './src/agent/mcp';
 import { executeAgentTool, isReadOnlyCall } from './agentTools';
-import { startSubAgent, finishSubAgent } from './subAgents';
+import { startSubAgent, finishSubAgent, summarizeCalls, summarizeStepTitles } from './subAgents';
 import { getServerBaseUrl } from './serverRuntime';
 import { GEMINI_DEFAULT_MODEL } from './src/config/geminiModels';
 import {
@@ -40,6 +48,7 @@ import {
   type ApprovalRequestV2,
   type CliEventPayload,
   type SessionPlanItemV2,
+  type SessionProposalV2,
   type SessionStateV2,
   type SessionStepV2,
   type SessionTurnV2,
@@ -164,6 +173,8 @@ interface ToolCallResult {
   data?: unknown;
   error?: string;
   approval?: { id: string; decision: ApprovalDecision; reason?: string };
+  /** Repetía una llamada idéntica: el bucle hay que cerrarlo, no seguir. */
+  loopCut?: LoopCut;
 }
 
 function isApprovalDecision(value: unknown): value is ApprovalDecision {
@@ -287,6 +298,25 @@ function legacyStatus(status: SessionStateV2['status']): SessionStatus {
   }
 }
 
+/**
+ * Pendientes que declara un cliente, saneadas para publicarlas.
+ *
+ * Sin caducadas y sin duplicados por `id`: una aprobación vencida no se anuncia
+ * aunque el checkpoint la repita, y la que el servidor ya conoce manda.
+ */
+function clientApprovalViews(state: SessionStateV2): ApprovalRequestV2[] {
+  const list = state.pendingApprovals?.length
+    ? state.pendingApprovals
+    : state.pendingApproval
+      ? [state.pendingApproval]
+      : [];
+  const now = Date.now();
+  return list
+    .filter((item) => typeof item?.id === 'string' && item.id !== '' && item.expiresAt > now)
+    .slice(0, 10)
+    .map((item) => ({ ...item }));
+}
+
 export interface AgentKeys {
   OPENROUTER_API_KEY?: string;
   OLLAMA_HOST?: string;
@@ -335,12 +365,55 @@ export interface SessionConfig {
   persist?: boolean;
   /** Timeout de aprobaciones; 5 min por defecto (F1-04). */
   approvalTimeoutMs?: number;
+  /**
+   * Instrucciones que el padre dio al subagente (`task`/`spawn_agents`).
+   * Viajan en el prompt del hijo: antes se aceptaban y se descartaban.
+   */
+  instructions?: string;
+  /** Contrato de cierre fijo del subagente; lo pone `executeTask`, no el padre. */
+  closingContract?: string;
+}
+
+/**
+ * Cierre obligatorio de un subagente.
+ *
+ * Es texto fijo del producto, no del modelo padre: el dogfooding de G1 mostró
+ * que los hijos cerraban con «Objetivo completado.» sin decir qué habían hecho
+ * ni qué tool se les había denegado, así que el padre se quedaba sin el dato
+ * aunque el `tool_result` de la denegación lo tuviera el hijo.
+ */
+export const SUBAGENT_CLOSING_CONTRACT =
+  'CIERRE OBLIGATORIO: al terminar, responde en dos líneas y sin frases genéricas. ' +
+  'Línea 1: «Archivos:» seguido de las rutas que escribiste, o «ninguno» si no escribiste. ' +
+  'Línea 2: «Denegado:» seguido de la tool que el sistema te rechazó y el motivo tal como lo devolvió, ' +
+  'o «ninguna» si no hubo ninguna.';
+
+/** Recordatorio corto que `spawn_agents` añade al encargo de cada hijo. */
+export const SUBAGENT_CLOSING_REMINDER =
+  'Al terminar, informa en el cierre qué archivos escribiste y qué tool se te denegó, con el motivo; si no hubo denegación, dilo.';
+
+/** Añade el recordatorio de cierre a las instrucciones del padre, sin duplicarlo. */
+export function reinforceClosingContract(instructions?: string): string {
+  const base = String(instructions ?? '').trim();
+  if (base === '') return SUBAGENT_CLOSING_REMINDER;
+  if (base.includes(SUBAGENT_CLOSING_REMINDER)) return base;
+  return `${base}\n\n${SUBAGENT_CLOSING_REMINDER}`;
+}
+
+/** Encargo y contrato del hijo, listos para pegarse al prompt de sistema. */
+function childDirectives(cfg: SessionConfig): string {
+  const parts: string[] = [];
+  if (cfg.instructions && cfg.instructions.trim() !== '') {
+    parts.push(`INSTRUCCIONES DEL PADRE:\n${cfg.instructions.trim()}`);
+  }
+  if (cfg.closingContract) parts.push(cfg.closingContract);
+  return parts.length === 0 ? '' : `\n\n${parts.join('\n\n')}`;
 }
 
 /** `idle`: sesión creada como contexto padre y nunca arrancada (no gasta tokens). */
 export type SessionStatus = 'idle' | 'running' | 'done' | 'error' | 'stopped';
 
-const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.list', 'fs.grep', 'shell.run', 'shell.pty', 'read_diagnostics', 'git.status', 'git.diff', 'git.log', 'git.commit', 'web.fetch', 'web.search', 'code.run', 'mcp.call', 'mcp.list', 'task', 'spawn_agents', 'skill', 'github.comment'];
+const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.list', 'fs.grep', 'shell.run', 'shell.pty', 'read_diagnostics', 'git.status', 'git.diff', 'git.log', 'git.commit', 'web.fetch', 'web.search', 'code.run', 'browser', 'preview', 'mcp.call', 'mcp.list', 'task', 'spawn_agents', 'skill', 'github.comment'];
 
 // ── LLM en el servidor (llamada interna a los endpoints existentes) ──
 
@@ -353,7 +426,7 @@ async function callLlmNative(
   const dialect = toolDialectForModel(model);
   const turns = ctx.turns || [];
   const user = `OBJETIVO: ${ctx.goal}\nCWD: ${ctx.cwd}\n\nPLAN ACTUAL:\n${JSON.stringify(ctx.plan, null, 2)}\n\nULTIMOS PASOS:\n${JSON.stringify(ctx.recentSteps.slice(-10), null, 2)}\n\nHISTORIAL:\n${turns.slice(-8).map((t) => `${t.role.toUpperCase()}: ${t.text.slice(0, 1200)}`).join('\n\n')}\n\nTOOLS:\n${ctx.toolSchema}${ctx.systemExtra ? `\n${ctx.systemExtra}` : ''}`;
-  const systemInstruction = `Eres un agente autónomo de código. Razona brevemente en texto y llama herramientas para avanzar hacia: ${ctx.goal}. Si el objetivo está cumplido, responde SOLO texto final sin llamar herramientas. Antes de editar, localiza el código con fs.glob/fs.grep y léelo con fs.read para tener el texto exacto: los cambios pequeños van con fs.edit y un oldString idéntico al del archivo.${ctx.agentsMd ? `\nREGLAS DEL REPO:\n${ctx.agentsMd.slice(0, 4000)}` : ''}`;
+  const systemInstruction = `Eres un agente autónomo de código. Razona brevemente en texto y llama herramientas para avanzar hacia: ${ctx.goal}. Si el objetivo está cumplido, responde SOLO texto final sin llamar herramientas. Antes de editar, localiza el código con fs.glob/fs.grep y léelo con fs.read para tener el texto exacto: los cambios pequeños van con fs.edit y un oldString idéntico al del archivo.${ctx.agentsMd ? `\nREGLAS DEL REPO:\n${ctx.agentsMd.slice(0, 4000)}` : ''}${childDirectives(cfg)}`;
 
   if (dialect === 'json-text') return { thought: '', calls: [] };
 
@@ -361,6 +434,7 @@ async function callLlmNative(
     dialect === 'gemini' ? '/api/gemini/generate'
     : model.startsWith('openrouter/') ? '/api/openrouter/generate'
     : model.startsWith('ollama/') ? '/api/ollama/generate'
+    : model.startsWith('lmstudio/') ? '/api/lmstudio/generate'
     : model.startsWith('freebuff/') ? '/api/freebuff/generate'
     : '/api/custom/generate';
 
@@ -370,7 +444,9 @@ async function callLlmNative(
     systemInstruction,
     model: model.startsWith('custom/') ? (cfg.keys?.CUSTOM_MODEL || model) : model,
     temperature: 0.2,
-    maxTokens: 2048,
+    // Con 2 048 los modelos que razonan se cortan en `finish_reason: length` y
+    // devuelven contenido vacío (`G1-EMPTY-TURN`).
+    maxTokens: agentMaxTokens(model),
     openrouterApiKey: cfg.keys?.OPENROUTER_API_KEY || undefined,
     ollamaHost: cfg.keys?.OLLAMA_HOST || undefined,
     baseURL: cfg.keys?.CUSTOM_BASE_URL || undefined,
@@ -390,6 +466,11 @@ async function callLlmNative(
   });
   if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
   const data = await res.json();
+  // Un turno truncado por presupuesto llega como error del servidor: leerlo
+  // como texto vacío lo disfrazaba de turno sin salida.
+  if (data?.success === false || data?.ok === false) {
+    throw new Error(String(data?.error || 'el proveedor no devolvió respuesta'));
+  }
   if (dialect === 'gemini') {
     const calls = (data.functionCalls || []).map((fc: any) => ({ name: fc.name, args: fc.args || {} }));
     return { thought: data.text || '', calls };
@@ -418,7 +499,7 @@ REGLAS:
 - Si el comando shell es potencialmente destructivo, lo marcarás pero ejecutará solo con aprobación.
 - Sé minimalista. Un tool_call a la vez si es incierto.
 - Si ya cumpliste el objetivo, responde con {"finish": true, "answer": "..."}.
-${ctx.agentsMd ? `\nREGLAS DEL REPO (AGENTS.md):\n${ctx.agentsMd.slice(0, 4000)}\n` : ''}
+${ctx.agentsMd ? `\nREGLAS DEL REPO (AGENTS.md):\n${ctx.agentsMd.slice(0, 4000)}\n` : ''}${childDirectives(cfg)}
 
 FORMATO JSON:
 {
@@ -439,7 +520,7 @@ ULTIMOS PASOS:
 ${JSON.stringify(ctx.recentSteps.slice(-10), null, 2)}
 
 HISTORIAL BREVE:
-${JSON.stringify(ctx.history.slice(-6).map((m) => ({ role: m.role, content: m.content.slice(0, 400) })), null, 2)}
+${JSON.stringify(ctx.history.slice(-6).map((m) => ({ role: m.role, content: m.content.slice(0, 4000) })), null, 2)}
 
 TOOLS:
 ${ctx.toolSchema}`;
@@ -449,6 +530,7 @@ ${ctx.toolSchema}`;
     : model.startsWith('pollinations/') ? '/api/pollinations/generate'
     : model.startsWith('freebuff/') ? '/api/freebuff/generate'
     : model.startsWith('ollama/') ? '/api/ollama/generate'
+    : model.startsWith('lmstudio/') ? '/api/lmstudio/generate'
     : '/api/gemini/generate';
 
   const payload = {
@@ -456,7 +538,7 @@ ${ctx.toolSchema}`;
     contents: `${system}\n\n${user}`,
     prompt: `${system}\n\n${user}`,
     temperature: 0.2,
-    maxTokens: 2048,
+    maxTokens: agentMaxTokens(model),
     openrouterApiKey: cfg.keys?.OPENROUTER_API_KEY || undefined,
     ollamaHost: cfg.keys?.OLLAMA_HOST || undefined,
     baseURL: cfg.keys?.CUSTOM_BASE_URL || undefined,
@@ -471,6 +553,9 @@ ${ctx.toolSchema}`;
   });
   if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
   const data = await res.json();
+  if (data?.success === false || data?.ok === false) {
+    throw new Error(String(data?.error || 'el proveedor no devolvió respuesta'));
+  }
   const text = data.text || data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
   const cleaned = text.replace(/```json|```/g, '').trim();
   try {
@@ -485,7 +570,7 @@ ${ctx.toolSchema}`;
         contents: `Tu respuesta anterior no fue JSON válido. Reemite EXACTAMENTE este JSON corregido, sin markdown ni texto extra:\n${cleaned.slice(0, 4000)}`,
         prompt: `Reemite solo JSON válido: ${cleaned.slice(0, 4000)}`,
         temperature: 0,
-        maxTokens: 2048,
+        maxTokens: agentMaxTokens(model),
         openrouterApiKey: cfg.keys?.OPENROUTER_API_KEY || undefined,
         ollamaHost: cfg.keys?.OLLAMA_HOST || undefined,
         baseURL: cfg.keys?.CUSTOM_BASE_URL || undefined,
@@ -515,6 +600,10 @@ export class AgentSession {
   private readonly persistEnabled: boolean;
   private answer = '';
   private lastError = '';
+  /** Causa del último corte por llamadas idénticas, si lo hubo. */
+  private loopCut: LoopCut | null = null;
+  private proposals: SessionProposalV2[] = [];
+  private proposalStats = emptyProposalStats();
   private updatedAt: number;
   private agentsMd = '';
   private mcpSchema = '';
@@ -531,8 +620,22 @@ export class AgentSession {
   private abortCtrl = new AbortController();
   /** Quién cortó: el usuario (cancelación) o el límite de tiempo (fallo). */
   private stopReason: 'user' | 'timeout' | null = null;
+  /** Turnos vacíos ya reintentados; sólo se usa en el camino del subagente. */
+  private emptyTurnRetries = 0;
+  /** Tandas seguidas de `spawn_agents` en las que fallaron todos los hijos. */
+  private spawnFailureStreak = 0;
+  /** Escrituras repetidas y lecturas sin progreso; ver `src/agent/identicalCalls`. */
+  private readonly loopGuard = new LoopGuard();
   /** Aprobaciones pendientes por id (F1-04); puede haber varias en paralelo. */
   private readonly pendingApprovals = new Map<string, PendingApproval>();
+  /**
+   * Aprobaciones que anuncia un cliente que ejecuta el bucle en su proceso.
+   *
+   * En ese modo la promesa que espera la decisión vive en el CLI, así que el
+   * servidor no las tiene en `pendingApprovals`. Se aceptan como información
+   * —no se pueden resolver desde aquí— y sólo mientras la sesión corre.
+   */
+  private clientApprovals: ApprovalRequestV2[] = [];
   /** Decisiones ya resueltas, para que repetir la misma petición sea idempotente. */
   private readonly resolvedApprovals = new Map<string, ResolvedApproval>();
   /** Reglas `allow-session` de esta instancia; nunca se escriben en disco. */
@@ -564,6 +667,8 @@ export class AgentSession {
       this.turns = restored.turns.map((turn) => ({ ...turn }));
       this.answer = restored.answer ?? '';
       this.lastError = restored.error ?? '';
+      this.proposals = normalizeProposals(restored.proposals ?? []);
+      this.proposalStats = proposalStatsFor(this.proposals, restored.proposalStats);
     } else {
       this.id = uid('sess');
       this.createdAt = Date.now();
@@ -676,7 +781,47 @@ export class AgentSession {
       updatedAt: this.updatedAt,
       ...(this.answer ? { answer: this.answer } : {}),
       ...(this.lastError ? { error: this.lastError } : {}),
+      ...(this.loopCut ? { loopCut: this.loopCut } : {}),
+      ...(this.proposals.length ? { proposals: this.proposals.map((p) => ({ ...p })) } : {}),
+      ...(this.hasProposalStats() ? { proposalStats: { ...this.proposalStats } } : {}),
     };
+  }
+
+  /**
+   * Aplica una propuesta guardada. No hay llamada al modelo: el diff se
+   * reconstruye y se valida contra `baseHash`/`afterHash` antes de escribir.
+   * Reintentar una propuesta ya aplicada devuelve éxito sin tocar disco.
+   */
+  applyProposal(proposalId: string, opts: { dryRun?: boolean } = {}): ApplyProposalResult {
+    if (this.running) {
+      return {
+        ok: false,
+        code: 'SESSION_RUNNING',
+        error: 'No se puede aplicar una propuesta con la sesión en ejecución.',
+      };
+    }
+    const index = this.proposals.findIndex((proposal) => proposal.proposalId === proposalId);
+    if (index < 0) {
+      return {
+        ok: false,
+        code: 'PROPOSAL_NOT_FOUND',
+        error: `Propuesta no encontrada: ${proposalId}`,
+      };
+    }
+
+    const wasApplied = this.proposals[index].applied;
+    const result = applyProposalToFile(this.proposals[index], {
+      root: this.cfg.cwd,
+      dryRun: opts.dryRun === true,
+    });
+    if (result.ok && result.proposal) {
+      this.proposals[index] = result.proposal;
+      if (!wasApplied && result.applied) {
+        this.proposalStats.applied += 1;
+      }
+      this.touch();
+    }
+    return result;
   }
 
   /**
@@ -690,12 +835,27 @@ export class AgentSession {
   replaceState(state: SessionStateV2): void {
     if (this.running) throw new Error('la sesión está en ejecución');
     const nextStatus = normalizeSessionStatus(state.status);
+    // Un checkpoint puede anunciar la aprobación que el CLI tiene abierta: es la
+    // única forma de que `GET /state` —y con él el escritorio o un `attach`— sepa
+    // que hay un prompt esperando. En cuanto la sesión deja de correr se descarta:
+    // ya no hay nada que decidir.
+    this.clientApprovals = nextStatus === 'running' ? clientApprovalViews(state) : [];
     this.status = legacyStatus(nextStatus);
     this.steps = state.steps.slice(-MAX_STEPS_IN_MEMORY).map((step) => ({ ...step }));
+    // El CLI ejecuta las tools y sincroniza el estado: sus propuestas viajan
+    // aquí para sobrevivir al proceso y poder aplicarse después.
+    const drops: ProposalDropStats = { duplicates: 0, perFileCap: 0, totalCap: 0 };
+    this.proposals = normalizeProposals(state.proposals ?? [], drops);
+    const stats = proposalStatsFor(this.proposals, state.proposalStats);
+    stats.duplicatesDropped += drops.duplicates;
+    stats.perFileCapDropped += drops.perFileCap;
+    stats.totalCapDropped += drops.totalCap;
+    this.proposalStats = stats;
     this.plan = state.plan.slice(-100).map((item) => ({ ...item }));
     this.turns = state.turns.slice(-20).map((turn) => ({ ...turn }));
     this.answer = state.answer ?? '';
     this.lastError = state.error ?? '';
+    this.loopCut = state.loopCut ?? null;
     this.stopReason = null;
     this.updatedAt = Date.now();
     this.touch();
@@ -719,6 +879,10 @@ export class AgentSession {
 
   private stateStore(): SessionStore {
     return createSessionStore();
+  }
+
+  private hasProposalStats(): boolean {
+    return Object.values(this.proposalStats).some((value) => value > 0);
   }
 
   addListener(fn: (evt: AgentEvent) => void): () => void {
@@ -772,6 +936,7 @@ export class AgentSession {
     this.status = 'running';
     this.stopReason = null;
     this.lastError = '';
+    this.loopCut = null;
     if (this.turns.length === 0) {
       this.turns.push({ role: 'user', text: this.cfg.goal, ts: Date.now() });
     }
@@ -818,6 +983,20 @@ export class AgentSession {
     this.emit({ type: 'error', error: msg });
   }
 
+  /**
+   * Cierra la sesión si una tool se cortó por repetir una edición aplicada.
+   * El motivo queda en `lastError`, así la UI y el estado guardado dicen por qué.
+   */
+  private failOnLoopCut(results: ToolCallResult[]): boolean {
+    const result = results.find((r) => r.loopCut);
+    if (!result?.loopCut) return false;
+    this.loopCut = result.loopCut;
+    const motivo = result.error || `Bucle de ${result.tool}: llamadas idénticas repetidas.`;
+    this.addStep({ type: 'thought', title: 'Bucle de tool detectado', content: motivo, status: 'failed' });
+    this.fail(motivo);
+    return true;
+  }
+
   stop(reason: 'user' | 'timeout' = 'user') {
     this.stopReason = reason;
     this.running = false;
@@ -825,6 +1004,8 @@ export class AgentSession {
     try { this.abortCtrl.abort(); } catch { /* ya abortado */ }
     // Ninguna tool puede quedar esperando una decisión que ya no llegará.
     this.denyAllPending(reason === 'timeout' ? 'timeout' : 'cancelled');
+    // Las del CLI tampoco sobreviven a una parada: su promesa está en otro proceso.
+    this.clientApprovals = [];
     // Cancelar una sesión idle también deja constancia; done/error se respetan.
     if (this.status !== 'done' && this.status !== 'error') this.status = 'stopped';
     this.emit({ type: 'status', status: this.status });
@@ -835,7 +1016,15 @@ export class AgentSession {
   }
 
   private pendingApprovalViews(): ApprovalRequestV2[] {
-    return [...this.pendingApprovals.values()].map((pending) => ({ ...pending.request }));
+    const propias = [...this.pendingApprovals.values()].map((pending) => ({ ...pending.request }));
+    // Las del CLI sólo se anuncian mientras la sesión corre y dentro de su plazo.
+    if (this.status !== 'running' || this.clientApprovals.length === 0) return propias;
+    const ids = new Set(propias.map((item) => item.id));
+    const now = Date.now();
+    return [
+      ...propias,
+      ...this.clientApprovals.filter((item) => item.expiresAt > now && !ids.has(item.id)),
+    ];
   }
 
   /** ¿Esta llamada necesita una decisión humana? */
@@ -1043,6 +1232,25 @@ export class AgentSession {
   }
 
   private async runOne(call: { tool: string; input: any }): Promise<ToolCallResult> {
+    // Antes de aprobar o ejecutar: repetir una edición ya aplicada no avanza y
+    // cada llamada gasta un paso del presupuesto de la sesión.
+    const repeat = this.loopGuard.repeat(call.tool, call.input);
+    if (repeat) {
+      if (repeat.action === 'cut') {
+        return {
+          tool: call.tool,
+          ok: false,
+          error: repeat.message,
+          data: { skipped: 'loop', ...repeat.cut },
+          loopCut: repeat.cut,
+        };
+      }
+      // La primera repetición avisa al modelo; las siguientes son un fallo
+      // explícito. En ambos casos se evita ejecutar y volver a pedir aprobación.
+      return repeat.action === 'warn'
+        ? { tool: call.tool, ok: true, data: { skipped: 'duplicate', message: repeat.message } }
+        : { tool: call.tool, ok: false, error: repeat.message };
+    }
     let approval: ToolCallResult['approval'];
     // Reglas del escritorio (F1-07): `deny` corta aquí y en el motor de tools;
     // `allow` evita el prompt y `ask` lo fuerza aunque la tool no sea peligrosa.
@@ -1105,11 +1313,23 @@ export class AgentSession {
     }
 
     try {
+      // `task` y `spawn_agents` los lanza la app, no el modelo: el padre debe
+      // ir inyectado y las claves de la sesión tienen que llegar al hijo. Sin
+      // esto el subagente nacía sin proveedor y `spawn_agents` siempre fallaba
+      // con «parentSessionId requerido».
+      const toolInput: Record<string, unknown> = { ...call.input, root: this.cfg.cwd };
+      if (call.tool === 'task' || call.tool === 'spawn_agents') {
+        toolInput.parentSessionId = this.id;
+        if (this.cfg.keys) toolInput.keys = this.cfg.keys;
+      }
       const result = await executeAgentTool(
         call.tool,
-        { ...call.input, root: this.cfg.cwd },
+        toolInput,
         { signal: this.abortCtrl.signal, sessionId: this.id }
       );
+      // Sólo un resultado bueno marca el input: una edición fallida se puede
+      // reintentar con el mismo texto sin que eso sea un bucle.
+      if (result.ok) this.loopGuard.succeeded(call.tool, call.input);
       return {
         tool: call.tool,
         ok: result.ok,
@@ -1180,7 +1400,15 @@ export class AgentSession {
       // Abortado: reintentar en modo JSON volvería a pedirle al proveedor justo
       // lo que el usuario acaba de cancelar.
       if (this.stopReason) return;
-      this.addStep({ type: 'thought', title: 'Tool-use falló', content: `${e?.message || e}. Reintentando en modo JSON.`, status: 'failed' });
+      const msg = String(e?.message || e);
+      // Truncado por presupuesto: reintentar en JSON volvería a cortarse y
+      // taparía la causa. Se cierra con el motivo en vez de fingir un cierre.
+      if (/truncada por max_tokens/.test(msg)) {
+        this.addStep({ type: 'thought', title: 'Respuesta truncada', content: msg, status: 'failed' });
+        this.fail(msg);
+        return;
+      }
+      this.addStep({ type: 'thought', title: 'Tool-use falló', content: `${msg}. Reintentando en modo JSON.`, status: 'failed' });
       return this.stepJson(recentSteps);
     }
 
@@ -1218,6 +1446,29 @@ export class AgentSession {
       .slice(0, 5);
 
     if (mapped.length === 0) {
+      // Un turno vacío del proveedor (sin pensamiento, sin llamadas, sin plan)
+      // no es un cierre. En el subagente caía en la respuesta de relleno y el
+      // padre contaba al hijo como terminado bien (G1-D5-07).
+      if (this.cfg.closingContract && planCalls.length === 0 && !String(native.thought ?? '').trim()) {
+        if (this.emptyTurnRetries < 1) {
+          this.emptyTurnRetries += 1;
+          this.addStep({
+            type: 'thought',
+            title: 'Turno vacío',
+            content: 'El proveedor devolvió el turno sin pensamiento ni llamadas. Reintentando una vez.',
+            status: 'failed',
+          });
+          // Salir sin cerrar: el bucle pide otro turno.
+          return;
+        }
+        const motivo = 'El proveedor devolvió turnos vacíos: el subagente no produjo respuesta ni llamadas.';
+        this.addStep({ type: 'thought', title: 'Finalizado sin respuesta', content: motivo, status: 'failed' });
+        // Termina como error, no como `done`: `executeTask` resuelve ok:false y
+        // la fila del hijo queda fallida en vez de inventarse una respuesta.
+        this.fail(motivo);
+        return;
+      }
+
       // Un turno que sólo actualizó el plan no es la respuesta final.
       if (planCalls.length > 0) {
         this.turns.push({ role: 'assistant', text: native.thought || '(plan actualizado)', ts: Date.now() });
@@ -1271,12 +1522,38 @@ export class AgentSession {
     if (fails.length > 0) {
       this.addStep({ type: 'thought', title: 'Tools con fallo', content: fails.map((f) => `${f.tool}: ${f.error}`).join('\n').slice(0, 1000), status: 'completed' });
     }
+    if (this.failOnLoopCut(results)) return;
+
+    // El modelo puede re-lanzar `spawn_agents` cuando todos los hijos fallan:
+    // en G1-D5-08 lo hizo tres veces y nunca cerró. A la segunda tanda seguida
+    // sin un solo hijo bueno se cierra informando del fallo, en vez de repetir.
+    const spawnRuns = results.filter((r) => r.tool === 'spawn_agents');
+    if (spawnRuns.length > 0) {
+      const hijos = spawnChildrenFromResults(spawnRuns);
+      const todosFallidos = hijos.length > 0 && hijos.every((hijo: any) => hijo?.ok === false);
+      this.spawnFailureStreak = todosFallidos ? this.spawnFailureStreak + 1 : 0;
+      if (this.spawnFailureStreak >= 2) {
+        const motivos = [...new Set(hijos.map((hijo: any) => String(hijo?.error ?? '').trim()).filter(Boolean))];
+        const finalAnswer = `No completé la tarea: los subagentes fallaron en dos tandas seguidas.${motivos.length ? ` Motivo: ${motivos.join(' | ')}` : ''}`.slice(0, 1000);
+        this.answer = finalAnswer;
+        this.turns.push({ role: 'assistant', text: finalAnswer, ts: Date.now() });
+        if (this.turns.length > 10) this.turns = this.turns.slice(-10);
+        this.addStep({ type: 'thought', title: 'Finalizado', content: finalAnswer, status: 'completed' });
+        this.emit({ type: 'finish', answer: finalAnswer });
+        this.status = 'done';
+        this.running = false;
+        this.emit({ type: 'status', status: 'done' });
+      }
+    }
   }
 
   private async stepJson(recentSteps: any[]) {
     const llmRes = await callLlmJson(this.cfg, {
       goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
-      toolSchema: this.toolSchema(), agentsMd: this.agentsMd, history: [],
+      toolSchema: this.toolSchema(), agentsMd: this.agentsMd,
+      // Los resultados de tools viven en `turns`; el resumen de `recentSteps`
+      // no lleva su contenido y el modelo acababa releyendo los archivos.
+      history: this.turns.map((turn) => ({ role: turn.role, content: turn.text })),
     }, this.abortCtrl.signal);
 
     if (llmRes.plan && llmRes.plan.length > 0) {
@@ -1328,6 +1605,7 @@ export class AgentSession {
       if (fails.length > 0) {
         this.addStep({ type: 'thought', title: 'Tools con fallo', content: fails.map((f) => `${f.tool} error: ${f.error}`).join('\n').slice(0, 1000), status: 'completed' });
       }
+      if (this.failOnLoopCut(results)) return;
     } else {
       this.addStep({ type: 'thought', title: 'Sin acción', content: 'LLM no propuso toolCalls ni finish. Forzando detención segura.', status: 'completed' });
       this.status = 'done';
@@ -1507,6 +1785,8 @@ export async function executeTask(
       model,
       keys: parentKeys,
       maxSteps,
+      instructions: input.instructions,
+      closingContract: SUBAGENT_CLOSING_CONTRACT,
     });
   } catch (error: any) {
     if (worktree && !input.keepWorktree) {
@@ -1550,11 +1830,16 @@ export async function executeTask(
           error: porTimeout ? 'Subagente excedió tiempo límite' : 'Cancelado',
         });
       } else if (evt.type === 'status' && evt.status === 'done') {
-        // Si no hubo 'finish' explícito, busca la última respuesta
-        const steps = session.getSteps();
-        const last = steps.find((s) => s.type === 'thought' && s.title === 'Finalizado');
+        // `done` sin `finish` no es una respuesta: llega al agotar `maxSteps` o el
+        // presupuesto de tools. Antes se inventaba un texto («Subagente
+        // completado sin respuesta explícita») y el padre lo contaba como hijo
+        // terminado bien; ahora queda incompleto con su motivo.
+        const last = session.getSteps().find((s) => s.type === 'thought' && s.title === 'Finalizado');
+        const respuesta = String(last?.content ?? '').trim();
         cleanup();
-        done({ ok: true, answer: last?.content || 'Subagente completado sin respuesta explícita' });
+        done(respuesta
+          ? { ok: true, answer: respuesta }
+          : { ok: false, error: 'El subagente terminó sin respuesta final' });
       }
     });
     // Timeout de seguridad
@@ -1579,6 +1864,13 @@ export async function executeTask(
       error: result.error,
       steps: session.getSteps().length,
       cancelled: result.cancelled,
+      // La sesión hija se borra justo después: si no se resume aquí, la
+      // evidencia de qué tools llamó (y cuál le denegaron) se pierde y
+      // `/subagents` no puede responder a la medición de T10.
+      calls: summarizeCalls(session.getSteps()),
+      // Los títulos separan un cierre que decidió no llamar tools de un turno
+      // vacío del proveedor: con sólo `calls:[]` los dos se veían iguales.
+      stepTitles: summarizeStepTitles(session.getSteps()),
     });
     return result;
   } finally {
@@ -1608,4 +1900,22 @@ export function removeSession(id: string): void {
   if (isValidSessionId(id)) {
     try { createSessionStore().remove(id); } catch { /* sin archivo */ }
   }
+}
+
+/**
+ * Hijos devueltos por cada `spawn_agents` de una tanda de tools.
+ *
+ * La forma depende de dónde se ejecutó la tool: en proceso el resultado es
+ * `{ results, spawned, capped }`, pero el CLI ejecuta las tools contra
+ * `/api/agent/tool` y recibe el sobre entero, `{ ok, data: { results, … } }`.
+ * G1-D5-09 lo destapó: la guarda leía sólo la primera forma, así que el padre
+ * relanzó `spawn_agents` cuatro veces sin que la cuenta de tandas fallidas
+ * subiera nunca.
+ */
+export function spawnChildrenFromResults(results: any[]): any[] {
+  return results.flatMap((r) => {
+    const entrada = (r?.data ?? r) as any;
+    const lista = entrada?.results ?? entrada?.data?.results;
+    return Array.isArray(lista) ? lista : [];
+  });
 }

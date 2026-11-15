@@ -125,6 +125,69 @@ test('formatSnapshot: una línea por elemento, con uid y valor', () => {
   assert.equal(snapshot.truncated, false);
 });
 
+test('formatSnapshot: expone caja, overflow, display, visibilidad y contraste', () => {
+  const nodes = toSnapshotNodes([
+    {
+      role: 'button',
+      name: 'Comprar',
+      depth: 0,
+      box: { x: 10.04, y: 20.06, width: 80, height: 24 },
+      display: 'inline-block',
+      visibility: 'visible',
+      overflow: 'x:hidden,clip:x',
+      contrast: 3.126,
+      contrastMin: 4.5,
+    },
+    {
+      role: 'button',
+      name: 'Oculto',
+      display: 'none',
+      visibility: 'hidden',
+      hidden: true,
+      box: { x: 0, y: 0, width: 0, height: 0 },
+    },
+  ]);
+
+  const snapshot = formatSnapshot(nodes, {
+    title: 'Demo',
+    url: 'http://localhost:3000/',
+    viewport: { width: 1280, height: 800 },
+  });
+
+  assert.match(snapshot.text, /viewport=1280x800/);
+  assert.match(
+    snapshot.text,
+    /- e1 button "Comprar" box=10,20.1,80x24 display=inline-block visibility=visible overflow=x:hidden,clip:x contrast=3.13\/4.5/,
+  );
+  assert.match(
+    snapshot.text,
+    /- e2 button "Oculto" box=0,0,0x0 display=none visibility=hidden hidden/,
+  );
+  assert.equal(snapshot.nodes, 2);
+});
+
+test('toSnapshotNodes: descarta metadatos visuales inválidos y acota los números', () => {
+  const [node] = toSnapshotNodes([
+    {
+      role: 'button',
+      name: 'Raro',
+      box: { x: Number.NaN, y: 1, width: -4, height: 2 },
+      display: 'evil;display',
+      visibility: 'visible',
+      overflow: 'x:hidden;y:auto',
+      contrast: 999,
+      contrastMin: 0,
+    },
+  ]);
+
+  assert.equal(node.box, undefined, 'una caja no finita no se inventa');
+  assert.equal(node.display, undefined, 'display no se acepta con metacaracteres');
+  assert.equal(node.visibility, 'visible');
+  assert.equal(node.overflow, undefined, 'overflow no se acepta con metacaracteres');
+  assert.equal(node.contrast, 21, 'el contraste se acota a 21:1');
+  assert.equal(node.contrastMin, 1, 'el mínimo se acota a 1');
+});
+
 test('formatSnapshot: avisa cuando la página no tiene nada que usar', () => {
   const empty = formatSnapshot([]);
   assert.match(empty.text, /sin elementos interactivos/);

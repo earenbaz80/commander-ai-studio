@@ -9,7 +9,8 @@
  */
 import type { EventEmitter } from 'node:events';
 import type {
-  ApprovalDecision,
+    ApprovalDecision,
+  ApprovalRenderFacts,
   ApprovalRequestV2,
   CliEventV2,
   QuestionV2,
@@ -17,6 +18,7 @@ import type {
   SessionStateV2,
 } from '../agent/sessionTypes';
 import { DIFF_MAX_LINES, diffHunks, renderDiff, renderHunk } from './diff.js';
+import type { InputGate } from './stdinGate.js';
 import { planGlyph, type PlanStatus } from '../agent/plan';
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -34,6 +36,10 @@ export class Tui {
   private timer: ReturnType<typeof setInterval> | null = null;
   private frame = 0;
   private text = '';
+  /** Aprobaciones ya anunciadas: un resync no vuelve a sonar. */
+  private readonly alertedApprovals = new Set<string>();
+  /** Aprobación cuyo título está puesto ahora mismo. */
+  private activeAlertId: string | null = null;
 
   constructor(opts: TuiOptions = {}) {
     const isTTY = Boolean(process.stdout && process.stdout.isTTY);
@@ -44,6 +50,50 @@ export class Tui {
   /** ¿Se están usando secuencias ANSI? El diff lo respeta para `NO_COLOR`. */
   get color(): boolean {
     return this.useColor;
+  }
+
+  /**
+   * Aviso de aprobación pendiente: campana, título de la terminal y renglón.
+   *
+   * El renglón no se repite cuando el prompt ya pinta su propia cabecera; para
+   * ese caso está `approvalBell`, que sólo deja la campana y el título.
+   */
+  approvalAlert(approval: ApprovalRequestV2): void {
+    if (!this.markApprovalAlert(approval)) return;
+    if (this.interactive) process.stdout.write(approvalAlertText(approval));
+    this.line(
+      `${this.yellow('⚠')} ${this.bold(plainApprovalLabel(approval.tool))} ${this.gray(
+        `espera aprobación (${plainApprovalLabel(approval.id)})${approvalQueueText(approval.queueDepth)}`
+      )}`
+    );
+  }
+
+  /** Campana y título de terminal, sin renglón: el prompt pinta el aviso. */
+  approvalBell(approval: ApprovalRequestV2): void {
+    if (!this.markApprovalAlert(approval)) return;
+    if (this.interactive) process.stdout.write(approvalAlertText(approval));
+  }
+
+  /**
+   * Restaura el título cuando la aprobación deja de estar pendiente.
+   *
+   * Si llega el resultado de una aprobación anterior mientras otra sigue
+   * activa, no toca el título: el aviso vigente manda.
+   */
+  approvalResolved(approvalId?: string): void {
+    if (approvalId !== undefined && this.activeAlertId !== approvalId) return;
+    if (this.activeAlertId === null) return;
+    this.activeAlertId = null;
+    if (this.interactive) process.stdout.write(approvalTitleRestoreText());
+  }
+
+  private markApprovalAlert(approval: ApprovalRequestV2): boolean {
+    if (this.alertedApprovals.has(approval.id)) return false;
+    this.alertedApprovals.add(approval.id);
+    this.activeAlertId = approval.id;
+    // Primer aviso visible: un resync o un repintado no reescriben el instante.
+    approval.noticeAt ??= Date.now();
+    return true;
   }
 
   private wrap(code: string, s: string): string {
@@ -196,11 +246,7 @@ export class AgentRenderer {
     for (const item of state.plan) {
       this.tui.line(this.planLine(item));
     }
-    if (state.pendingApproval) {
-      this.tui.line(
-        `${this.tui.yellow('⚠')} ${this.tui.bold(state.pendingApproval.tool)} ${this.tui.gray(`espera aprobación (${state.pendingApproval.id})`)}`
-      );
-    }
+    if (state.pendingApproval) this.tui.approvalAlert(state.pendingApproval);
     for (const step of state.steps) {
       if (step.type === 'tool_call') {
         this.tui.line(
@@ -293,16 +339,20 @@ export class AgentRenderer {
       case 'approval_request':
         t.stopSpinner();
         this.closeStream();
-        t.line(
-          `${t.yellow('⚠')} ${t.bold(event.approval.tool)} ${t.gray(`espera aprobación (${event.approval.id})`)}`
-        );
+        t.approvalAlert(event.approval);
         break;
 
-      case 'approval_result':
+      case 'approval_result': {
+        t.approvalResolved(event.approvalId);
+        const desdetecla =
+          event.decisionMs !== undefined ? ` · ${event.decisionMs} ms desde la primera tecla de lectura` : '';
         t.line(
-          `      ${event.decision === 'deny' ? t.red('✗') : t.green('✓')} ${t.gray(`aprobación ${event.decision}`)}`
+          `      ${event.decision === 'deny' ? t.red('✗') : t.green('✓')} ${t.gray(
+            `aprobación ${event.decision}${event.latencyMs !== undefined ? ` · ${event.latencyMs} ms` : ''}${desdetecla}`
+          )}`
         );
         break;
+      }
 
       case 'question':
         // El prompt de la pregunta se pinta desde `bin/commander.ts`; aquí solo
@@ -325,6 +375,7 @@ export class AgentRenderer {
 
   finish(answer: string, steps: number): void {
     this.ensureHeader();
+    this.tui.approvalResolved();
     this.tui.stopSpinner();
     this.closeStream();
     this.tui.rule();
@@ -350,14 +401,119 @@ export interface ApprovalPromptOutput {
   write: (text: string) => unknown;
 }
 
+/** Fuente de `SIGWINCH`; por defecto `process`, los tests pasan un emisor falso. */
+export interface ApprovalPromptResizeSource {
+  on: (event: 'SIGWINCH', listener: () => void) => unknown;
+  removeListener: (event: 'SIGWINCH', listener: () => void) => unknown;
+}
+
+/**
+ * Cada cuánto se repinta el menú mientras espera.
+ *
+ * Una terminal puede perder lo pintado sin avisar (el caso de `CAL2-R16`: el
+ * panel quedó en blanco con el prompt abierto). El latido devuelve la imagen sin
+ * pedirle al operador que pulse `↓`/`↑`, y con una tecla pendiente no decide nada.
+ */
+export const APPROVAL_REPAINT_MS = 5_000;
+export const APPROVAL_COUNTDOWN_MS = 1_000;
+/** Aviso único cuando quedan 30 s o menos para que la aprobación caduque. */
+export const APPROVAL_EXPIRY_WARNING_MS = 30_000;
+
+/**
+ * Cuarentena de las primeras teclas del menú.
+ *
+ * Al abrir el prompt, un Enter que ya estaba en stdin puede llegar antes de que
+ * el operador vea las opciones. El prompt lo descarta durante esta ventana y lo
+ * cuenta en `quarantinedKeys`; si la tecla habría decidido, además marca
+ * `quarantinedDecision` para que la muestra se pueda revisar. Sólo se aplica sin
+ * `InputGate`: con compuerta, lo previo al prompt ya se descartó y una segunda
+ * ventana ciega sólo podría tragarse una tecla legítima.
+ */
+export const APPROVAL_KEY_QUARANTINE_MS = 150;
+
+/** Quita controles para que una tool o un id no inyecten en la terminal. */
+function plainApprovalLabel(value: unknown, max = 120): string {
+  return String(value ?? '')
+    .replace(/[\x00-\x1f\x7f]/g, '')
+    .slice(0, max);
+}
+
+/** Campana más título ANSI/OSC; el `\x07` final cierra el título. */
+export function approvalAlertText(approval: ApprovalRequestV2): string {
+  const tool = plainApprovalLabel(approval.tool, 80) || 'tool';
+  return `\x07\x1b]0;⚠ aprobación pendiente: ${tool}${approvalQueueText(approval.queueDepth)}\x07`;
+}
+
+/** Sufijo de cola del aviso; vacío cuando no hay otras aprobaciones delante. */
+export function approvalQueueText(queueDepth?: number): string {
+  return typeof queueDepth === 'number' && Number.isFinite(queueDepth) && queueDepth > 0
+    ? ` · cola: ${queueDepth}`
+    : '';
+}
+
+/**
+ * Vuelve al título de la aplicación.
+ *
+ * No hay una forma portable de leer el título anterior del terminal; el CLI
+ * usa el nombre de la app como estado seguro y evita dejar «⚠ aprobación
+ * pendiente» después de decidir.
+ */
+export function approvalTitleRestoreText(): string {
+  return '\x1b]0;commander\x07';
+}
+
+/** Texto de cuenta regresiva; vacío si el pedido no tiene expiración válida. */
+export function approvalExpiryText(expiresAt: number, now = Date.now()): string {
+  if (!Number.isFinite(expiresAt) || expiresAt <= 0) return '';
+  const remaining = Math.max(0, Math.ceil((expiresAt - now) / 1_000));
+  return ` · expira en ${remaining}s`;
+}
+
+/**
+ * Aviso único de expiración: sólo en la ventana de 30 s previos y nunca si el
+ * pedido ya venció. La cuenta regresiva normal sigue mostrando el resto.
+ */
+export function approvalExpiryWarningText(
+  expiresAt: number,
+  now = Date.now(),
+  warningMs = APPROVAL_EXPIRY_WARNING_MS
+): string {
+  if (!Number.isFinite(expiresAt) || expiresAt <= 0) return '';
+  const remaining = expiresAt - now;
+  if (remaining <= 0 || remaining > warningMs) return '';
+  return `la aprobación caduca en ${Math.max(0, Math.ceil(remaining / 1_000))}s`;
+}
+
 export interface ApprovalPromptOptions {
   tui: Tui;
   input?: ApprovalPromptInput;
   output?: ApprovalPromptOutput;
   signal?: AbortSignal;
+  /** Fuente del evento de resize (por defecto `process`). */
+  resizeSource?: ApprovalPromptResizeSource;
+  /** Latido de repintado en ms; `0` lo desactiva. */
+  repaintMs?: number;
+  /**
+   * Ventana de cuarentena inicial en ms; `0` la desactiva (tests, prompt suelto).
+   * Con `gate`, se ignora: la compuerta ya descarta lo tecleado antes del prompt.
+   */
+  quarantineMs?: number;
   /** Ctrl+C durante la elección: el llamador decide si corta la corrida. */
   onInterrupt?: () => void;
+  /**
+   * Compuerta de stdin de la corrida: descarta lo que se tecleó antes de que
+   * este prompt abriera, para que una tecla sobrante del prompt anterior no se
+   * lea como decisión. Sin ella se lee stdin directamente (tests, un prompt
+   * suelto).
+   */
+  gate?: InputGate;
 }
+
+const APPROVAL_FOOTER =
+  '  a permitir · d denegar · s en esta sesión · ?/¿/h detalle del hunk · q detener\n' +
+  '  ↑/↓ o j/k · Enter · 1/2/3 directo · Esc deja la decisión al escritorio\n';
+const APPROVAL_FOOTER_LINES = 2;
+const APPROVAL_STATUS_LINES = 1;
 
 const APPROVAL_CHOICES: ReadonlyArray<{
   value: ApprovalDecision;
@@ -389,6 +545,50 @@ function approvalDetail(approval: ApprovalRequestV2): string {
   return String(raw).replace(/\s+/g, ' ').trim().slice(0, 120);
 }
 
+/** Texto de terminal sin controles, pero conservando saltos y tabulaciones. */
+function safeShellText(value: unknown): string {
+  return String(value ?? '')
+    .replace(/\r\n?/g, '\n')
+    // Se conservan \n (0x0a) y \t (0x09); se eliminan ESC y demás C0/C1.
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
+}
+
+/** Timeout efectivo que aplica el servidor: default 30 s y techo 60 s. */
+function shellTimeoutText(input: Record<string, unknown>): string {
+  const requested = Number(input.timeoutMs);
+  if (!Number.isFinite(requested) || requested <= 0) return '30000 ms (por defecto)';
+  if (requested > 60_000) return `60000 ms (solicitado ${requested} ms; máximo)`;
+  return `${requested} ms`;
+}
+
+/** Cabecera de shell.run: comando completo, cwd, timeout y riesgo. */
+function shellApprovalLines(approval: ApprovalRequestV2): string[] {
+  const input = (approval.input ?? {}) as Record<string, unknown>;
+  const command = safeShellText(input.command);
+  const commandLines = command.length > 0 ? command.split('\n') : ['(vacío)'];
+  const cwd = safeShellText(input.cwd).replace(/\s+/g, ' ').trim() || '(raíz del workspace)';
+  const flags: string[] = [];
+  if (input.allowUnlisted === true) flags.push('fuera de la allowlist');
+  if (input.interactive === true) flags.push('stdin interactivo');
+  if (input.background === true) flags.push('segundo plano');
+  const risk = flags.length > 0
+    ? `${flags.join(' · ')}; revisá el comando completo antes de permitir`
+    : 'comando shell; revisá el comando completo antes de permitir';
+
+  return [
+    ...(approval.repeatOf
+      ? [
+          `  repetición: comando idéntico al anterior; confirmá explícitamente para volver a ejecutarlo`,
+        ]
+      : []),
+    `  comando:`,
+    ...commandLines.map((line) => `    ${line}`),
+    `  cwd: ${cwd}`,
+    `  timeout: ${shellTimeoutText(input)}`,
+    `  riesgo: ${risk}`,
+  ];
+}
+
 type ApprovalKey =
   | 'up'
   | 'down'
@@ -406,6 +606,24 @@ type ApprovalKey =
   | 'q'
   | 'detail'
   | 'other';
+
+function isDecisionKey(key: ApprovalKey): boolean {
+  return (
+    key === 'enter' ||
+    key === '1' ||
+    key === '2' ||
+    key === '3' ||
+    key === 'a' ||
+    key === 'd' ||
+    key === 's' ||
+    key === 'q'
+  );
+}
+
+/** Esc y Ctrl+C cierran el prompt, pero no son una decisión de aprobación. */
+function isExitKey(key: ApprovalKey): boolean {
+  return key === 'escape' || key === 'interrupt';
+}
 
 /** Separa un chunk de stdin en teclas, incluidas las flechas ANSI. */
 function parseApprovalKeys(data: string): ApprovalKey[] {
@@ -451,7 +669,11 @@ function parseApprovalKeys(data: string): ApprovalKey[] {
       keys.push(char);
       continue;
     }
-    if (char === '?') {
+    // `?` es la tecla documentada, pero no llega en todos los teclados: con
+    // layout español la combinación puede entregar `¿` y en algunas terminales
+    // no hay forma de escribir `?` en modo raw. `h` (hunk) es el atajo que
+    // siempre está a mano, y las tres abren el detalle igual.
+    if (char === '?' || char === '¿' || char === 'h') {
       keys.push('detail');
       continue;
     }
@@ -473,14 +695,52 @@ export function promptApprovalDecision(
   const input = opts.input ?? (process.stdin as unknown as ApprovalPromptInput);
   const output = opts.output ?? (process.stdout as unknown as ApprovalPromptOutput);
   const t = opts.tui;
+  approval.promptStartedAt = Date.now();
+  // Si el prompt es la primera superficie visible (adjuntar una sesión o
+  // `--json` con menú en stderr), el reloj del aviso arranca aquí.
+  approval.noticeAt ??= approval.promptStartedAt;
 
   return new Promise<ApprovalDecision | null>((resolve) => {
     let index = 0;
     let detailIndex = 0;
     let settled = false;
+    let detachGate: (() => void) | null = null;
+    let expiryTimer: ReturnType<typeof setTimeout> | null = null;
+    let expiryWarningTimer: ReturnType<typeof setTimeout> | null = null;
+    let repaintTimer: ReturnType<typeof setInterval> | null = null;
+    let countdownTimer: ReturnType<typeof setInterval> | null = null;
+    let expiryWarningShown = false;
+    const resizeSource = opts.resizeSource ?? (process as unknown as ApprovalPromptResizeSource);
+    /** Líneas pintadas debajo del pie desde el último repintado (aviso o detalle). */
+    let linesBelowMenu = 0;
+    /** Instante del primer pintado; 0 hasta que el menú está en pantalla. */
+    let paintedAt = 0;
+    // La compuerta ya es la autoridad sobre lo tecleado antes del prompt. Sumar
+    // una cuarentena posterior sólo abriría otra ventana ciega.
+    const quarantineMs = opts.gate ? 0 : Math.max(0, opts.quarantineMs ?? 0);
+    // Evidencia de I2 (protocolo CAL2 §12.3): qué se pintó antes de decidir.
+    const rendered: ApprovalRenderFacts = { diffShown: false, diffTruncated: false, detailOpened: false };
 
     const cleanup = (): void => {
-      input.removeListener('data', onData);
+      if (expiryTimer) {
+        clearTimeout(expiryTimer);
+        expiryTimer = null;
+      }
+      if (expiryWarningTimer) {
+        clearTimeout(expiryWarningTimer);
+        expiryWarningTimer = null;
+      }
+      if (repaintTimer) {
+        clearInterval(repaintTimer);
+        repaintTimer = null;
+      }
+      if (countdownTimer) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+      }
+      resizeSource.removeListener('SIGWINCH', repaint);
+      if (detachGate) detachGate();
+      else input.removeListener('data', onData);
       input.removeListener('end', onEnd);
       input.removeListener('close', onEnd);
       input.removeListener('error', onEnd);
@@ -490,24 +750,72 @@ export function promptApprovalDecision(
       } catch {
         /* la terminal ya se restauró */
       }
-      try {
-        input.pause?.();
-      } catch {
-        /* stdin cerrado */
+      if (!opts.gate) {
+        try {
+          input.pause?.();
+        } catch {
+          /* stdin cerrado */
+        }
       }
     };
 
     const finish = (decision: ApprovalDecision | null, note?: string): void => {
       if (settled) return;
       settled = true;
+      approval.decisionAt = Date.now();
+      // Copia, no la referencia: lo que se resuelva después no reescribe la evidencia.
+      approval.render = { ...rendered };
+      t.approvalResolved(approval.id);
       cleanup();
       if (note) output.write(`${t.gray(`  ${note}`)}\n`);
       output.write('\n');
       resolve(decision);
     };
 
+    const statusLine = (): string => {
+      const ageSeconds =
+        Number.isFinite(approval.createdAt) && approval.createdAt > 0
+          ? Math.max(0, Math.floor((Date.now() - approval.createdAt) / 1_000))
+          : 0;
+      const droppedDecision = approval.quarantinedDecision ? ' · tecla decisoria descartada' : '';
+      const expiry = approvalExpiryText(approval.expiresAt);
+      return t.gray(
+        `  esperando hace ${ageSeconds}s${approvalQueueText(approval.queueDepth)}${droppedDecision}${expiry}`
+      );
+    };
+
+    const expiryWarningLine = (): string => {
+      const warning = approvalExpiryWarningText(approval.expiresAt);
+      return warning ? `${t.yellow('⚠')} ${t.gray(warning)}` : '';
+    };
+
+    /** Pinta el aviso bajo el pie y lo cuenta para el próximo repintado. */
+    const paintExpiryWarning = (bell: boolean): boolean => {
+      const warning = expiryWarningLine();
+      if (!warning) return false;
+      output.write(`${bell ? '\x07' : ''}${warning}\n`);
+      linesBelowMenu += 1;
+      return true;
+    };
+
+    const showExpiryWarning = (): void => {
+      if (settled || expiryWarningShown) return;
+      expiryWarningShown = true;
+      // Campana sólo en el aviso puntual; en un repintado se conserva la línea,
+      // no se vuelve a sonar.
+      if (!paintExpiryWarning(true)) expiryWarningShown = false;
+    };
+
+    // Menú y pie se pintan juntos: así el repintado sabe exactamente cuántas
+    // líneas tiene que recuperar para reescribirlas en la posición correcta.
     const renderMenu = (redraw: boolean): void => {
-      if (redraw) output.write(`\x1b[${APPROVAL_CHOICES.length}A\x1b[J`);
+      if (redraw) {
+        output.write(
+          `\x1b[${APPROVAL_CHOICES.length + APPROVAL_FOOTER_LINES + APPROVAL_STATUS_LINES + linesBelowMenu}A\x1b[J`
+        );
+      }
+      linesBelowMenu = 0;
+      output.write(`${statusLine()}\n`);
       APPROVAL_CHOICES.forEach((choice, i) => {
         const selected = i === index;
         output.write(
@@ -516,6 +824,25 @@ export function promptApprovalDecision(
           }${selected ? t.gray(`  · ${choice.hint}`) : ''}\n`
         );
       });
+      output.write(t.gray(APPROVAL_FOOTER));
+      if (expiryWarningShown) paintExpiryWarning(false);
+    };
+
+    /** Repinta sin leer ninguna tecla: sirve para resize y para el latido. */
+    const repaint = (): void => {
+      if (settled) return;
+      renderMenu(true);
+    };
+
+    /**
+     * Actualiza sólo el renglón de estado. No borra el aviso ni el detalle del
+     * hunk: mueve el cursor al estado, lo reescribe y vuelve al punto donde estaba.
+     */
+    const refreshStatus = (): void => {
+      if (settled) return;
+      const above =
+        APPROVAL_CHOICES.length + APPROVAL_FOOTER_LINES + APPROVAL_STATUS_LINES + linesBelowMenu;
+      output.write(`\x1b7\x1b[${above}A\r\x1b[2K${statusLine()}\n\x1b8`);
     };
 
     const move = (delta: number): void => {
@@ -525,8 +852,33 @@ export function promptApprovalDecision(
 
     const onData = (chunk: Buffer | string): void => {
       if (settled) return;
-      for (const key of parseApprovalKeys(String(chunk))) {
+      const keys = parseApprovalKeys(String(chunk));
+      if (keys.length === 0) return;
+      const receivedAt = Date.now();
+      // Un Enter heredado puede llegar en el primer instante: se descarta antes
+      // de interpretarlo, no después de que ya aprobó la tool.
+      if (quarantineMs > 0 && receivedAt - paintedAt < quarantineMs) {
+        const droppedDecision = keys.some(isDecisionKey);
+        const firstDroppedDecision = droppedDecision && approval.quarantinedDecision !== true;
+        if (droppedDecision) approval.quarantinedDecision = true;
+        approval.quarantinedKeys = (approval.quarantinedKeys ?? 0) + keys.length;
+        if (firstDroppedDecision) {
+          output.write(`${t.yellow('⚠')} ${t.gray('tecla de decisión descartada al abrir; repetí')}\n`);
+          linesBelowMenu += 1;
+        }
+        return;
+      }
+      for (const key of keys) {
         if (settled) return;
+        if (approval.firstInputAt === undefined) approval.firstInputAt = approval.firstKeyAt ?? receivedAt;
+        if (approval.firstKeyAt === undefined) approval.firstKeyAt = approval.firstInputAt;
+        // La lectura empieza con la primera tecla que no decide. Una decisión
+        // directa no inventa `decisionMs ≈ 0`: queda marcada como tal.
+        if (isDecisionKey(key)) {
+          if (approval.firstNonDecisionKeyAt === undefined) approval.directDecision = true;
+        } else if (!isExitKey(key) && approval.firstNonDecisionKeyAt === undefined) {
+          approval.firstNonDecisionKeyAt = receivedAt;
+        }
         if (key === 'up' || key === 'k') move(-1);
         else if (key === 'down' || key === 'j') move(1);
         else if (key === 'enter') finish(APPROVAL_CHOICES[index].value);
@@ -539,11 +891,13 @@ export function promptApprovalDecision(
         } else if (key === 'detail') {
           const hunks = approval.diff ? diffHunks(approval.diff) : [];
           if (hunks.length > 0 && approval.diff) {
+            rendered.detailOpened = true;
             output.write(`${t.gray(`  hunk ${detailIndex + 1}/${hunks.length}`)}\n`);
-            for (const line of renderHunk(approval.diff, detailIndex, { color: t.color }) ?? []) {
-              output.write(`${line}\n`);
-            }
+            const hunkLines = renderHunk(approval.diff, detailIndex, { color: t.color }) ?? [];
+            for (const line of hunkLines) output.write(`${line}\n`);
             detailIndex = (detailIndex + 1) % hunks.length;
+            // Lo pintado bajo el pie se cuenta para que el repintado suba por encima.
+            linesBelowMenu += 1 + hunkLines.length;
           }
         }
         else if (key === 'escape') finish(null, 'decisión dejada al escritorio');
@@ -556,23 +910,62 @@ export function promptApprovalDecision(
     const onEnd = (): void => finish(null);
     const onAbort = (): void => finish(null);
 
-    const detail = approvalDetail(approval);
-    output.write(
-      `${t.yellow('⚠')} ${t.bold(approval.tool)}${detail ? ` ${t.gray(detail)}` : ''} ${t.gray(`· ${approval.id}`)}\n`
-    );
+    if (approval.tool === 'shell.run') {
+      output.write(`${t.yellow('⚠')} ${t.bold(approval.tool)} ${t.gray(`· ${approval.id}`)}\n`);
+      for (const line of shellApprovalLines(approval)) {
+        output.write(`${t.gray(line)}\n`);
+      }
+    } else {
+      const detail = approvalDetail(approval);
+      output.write(
+        `${t.yellow('⚠')} ${t.bold(approval.tool)}${detail ? ` ${t.gray(detail)}` : ''} ${t.gray(`· ${approval.id}`)}\n`
+      );
+    }
     if (approval.diff) {
       // Diff por hunk con números de línea; si no cabe, el propio render avisa.
-      for (const line of renderDiff(approval.diff, { color: t.color, maxLines: DIFF_MAX_LINES }).lines) {
-        output.write(`${line}\n`);
-      }
+      const block = renderDiff(approval.diff, { color: t.color, maxLines: DIFF_MAX_LINES });
+      for (const line of block.lines) output.write(`${line}\n`);
+      rendered.diffShown = block.lines.length > 0;
+      rendered.diffTruncated = block.truncated;
     }
     renderMenu(false);
-    output.write(
-      t.gray(
-        '  a permitir · d denegar · s en esta sesión · ? detalle del hunk · q detener\n' +
-          '  ↑/↓ o j/k · Enter · 1/2/3 directo · Esc deja la decisión al escritorio\n'
-      )
-    );
+    paintedAt = Date.now();
+    approval.promptPaintedAt = paintedAt;
+
+    // Aviso único a los 30 s restantes. Si el prompt se abre dentro de esa
+    // ventana (por ejemplo, después de una cola), avisa de inmediato.
+    if (Number.isFinite(approval.expiresAt) && approval.expiresAt > 0) {
+      const warningIn = approval.expiresAt - APPROVAL_EXPIRY_WARNING_MS - Date.now();
+      if (warningIn <= 0) {
+        showExpiryWarning();
+      } else {
+        expiryWarningTimer = setTimeout(showExpiryWarning, warningIn);
+        expiryWarningTimer.unref?.();
+      }
+    }
+
+    // La terminal puede perder lo pintado sin avisar: el menú se recupera solo con
+    // un cambio de tamaño y con un latido mientras espera (CAL2-R16).
+    resizeSource.on('SIGWINCH', repaint);
+    const repaintMs = opts.repaintMs ?? APPROVAL_REPAINT_MS;
+    if (repaintMs > 0) {
+      repaintTimer = setInterval(repaint, repaintMs);
+      // El latido no puede mantener vivo el proceso al cerrar el prompt.
+      repaintTimer.unref?.();
+    }
+    if (Number.isFinite(approval.expiresAt) && approval.expiresAt > 0) {
+      countdownTimer = setInterval(refreshStatus, APPROVAL_COUNTDOWN_MS);
+      countdownTimer.unref?.();
+    }
+
+    // Un prompt sin operador delante no puede quedarse abierto horas: al pasar
+    // de `expiresAt` se resuelve como `deny` y queda anotado en la evidencia.
+    if (Number.isFinite(approval.expiresAt) && approval.expiresAt > 0) {
+      expiryTimer = setTimeout(() => {
+        rendered.expired = true;
+        finish('deny', 'aprobación caducada: nadie la decidió antes de expiresAt');
+      }, Math.max(0, approval.expiresAt - Date.now()));
+    }
 
     try {
       input.setRawMode?.(true);
@@ -580,7 +973,8 @@ export function promptApprovalDecision(
       /* sin TTY real: el llamador ya comprobó canPromptApprovals */
     }
     input.resume?.();
-    input.on('data', onData);
+    if (opts.gate) detachGate = opts.gate.attach(onData);
+    else input.on('data', onData);
     input.once('end', onEnd);
     input.once('close', onEnd);
     input.once('error', onEnd);
@@ -677,13 +1071,15 @@ export function promptQuestionAnswer(
     let buffer = '';
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let detachGate: (() => void) | null = null;
 
     const cleanup = (): void => {
       if (timer) {
         clearTimeout(timer);
         timer = null;
       }
-      input.removeListener('data', onData);
+      if (detachGate) detachGate();
+      else input.removeListener('data', onData);
       input.removeListener('end', onEnd);
       input.removeListener('close', onEnd);
       input.removeListener('error', onEnd);
@@ -693,10 +1089,12 @@ export function promptQuestionAnswer(
       } catch {
         /* la terminal ya se restauró */
       }
-      try {
-        input.pause?.();
-      } catch {
-        /* stdin cerrado */
+      if (!opts.gate) {
+        try {
+          input.pause?.();
+        } catch {
+          /* stdin cerrado */
+        }
       }
     };
 
@@ -797,7 +1195,8 @@ export function promptQuestionAnswer(
       /* sin TTY real: el llamador ya comprobó canPromptApprovals */
     }
     input.resume?.();
-    input.on('data', onData);
+    if (opts.gate) detachGate = opts.gate.attach(onData);
+    else input.on('data', onData);
     input.once('end', onEnd);
     input.once('close', onEnd);
     input.once('error', onEnd);

@@ -506,7 +506,10 @@ export class AgentLoop {
       {
         goal: this.task.goal,
         cwd: this.task.cwd,
-        history: [],
+        // En JSON no hay canal de resultados aparte: el historial es lo que
+        // lleva el contenido de las tools. Sin esto el modelo relee el archivo
+        // porque sólo ve el resumen de pasos, no lo que devolvió fs.read.
+        history: this.turns.map((turn) => ({ role: turn.role, content: turn.text })) as any,
         toolSchema: JSON.stringify(
           Object.values(TOOL_REGISTRY).map((t) => ({ id: t.id, description: t.description, danger: t.danger, endsAgentStep: t.endsAgentStep !== false })),
           null,

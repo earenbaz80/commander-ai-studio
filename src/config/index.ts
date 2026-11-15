@@ -70,6 +70,26 @@ function loadEnvOverrides(): Partial<CommanderConfig> {
   if (process.env.OPENAI_API_KEY) overrides.providers = { ...(overrides.providers || {}), openai: { apiKey: process.env.OPENAI_API_KEY, defaultModel: 'gpt-4.1-mini' } } as any;
   if (process.env.NVIDIA_API_KEY) overrides.providers = { ...(overrides.providers || {}), nvidia: { apiKey: process.env.NVIDIA_API_KEY, defaultModel: 'meta/llama-3.3-70b-instruct' } } as any;
   if (process.env.OLLAMA_HOST) overrides.providers = { ...(overrides.providers || {}), ollama: { host: process.env.OLLAMA_HOST, defaultModel: 'llama3.2' } } as any;
+  // `STRATA_PORT` permite apuntar al host local sin escribir la URL completa;
+  // `STRATA_LOCAL_BASE_URL` sigue teniendo prioridad cuando existe.
+  const strataPort = Number(process.env.STRATA_PORT);
+  const strataBaseUrl =
+    process.env.STRATA_LOCAL_BASE_URL ||
+    (Number.isInteger(strataPort) && strataPort > 0 && strataPort < 65_536
+      ? `http://127.0.0.1:${strataPort}/v1`
+      : undefined);
+  // `STRATA_API_KEY` es el nombre que usa Strata; el alias histórico se acepta
+  // para no romper configuraciones anteriores de Commander.
+  const strataApiKey = process.env.STRATA_API_KEY || process.env.STRATA_LOCAL_API_KEY;
+  if (strataBaseUrl || strataApiKey) {
+    overrides.providers = {
+      ...(overrides.providers || {}),
+      'strata-local': {
+        ...(strataBaseUrl ? { baseUrl: strataBaseUrl } : {}),
+        ...(strataApiKey ? { apiKey: strataApiKey } : {}),
+      },
+    } as any;
+  }
   if (process.env.CUSTOM_BASE_URL) overrides.providers = { ...(overrides.providers || {}), custom: { baseUrl: process.env.CUSTOM_BASE_URL, defaultModel: 'custom' } } as any;
   if (process.env.CUSTOM_API_KEY) overrides.providers = { ...(overrides.providers || {}), custom: { apiKey: process.env.CUSTOM_API_KEY } } as any;
   if (process.env.XAI_API_KEY) overrides.providers = { ...(overrides.providers || {}), xai: { apiKey: process.env.XAI_API_KEY, defaultModel: 'grok-beta' } } as any;
@@ -246,7 +266,12 @@ export function writeConfig(config: DeepPartial<CommanderConfig>, target?: 'proj
   // `commander.json` las API keys que únicamente venían del entorno.
   const existing = loadFileLayers();
   const merged = deepMerge(existing, config);
-  
+  // Esta capa no conoce el vault: si un llamador intenta persistir la clave de
+  // Strata aquí, se descarta. La ruta HTTP la guarda cifrada antes de escribir.
+  if (merged?.providers?.['strata-local']?.apiKey) {
+    delete merged.providers['strata-local'].apiKey;
+  }
+
   const validated = CommanderConfigSchema.parse(merged);
   
   let filePath: string;
@@ -388,13 +413,72 @@ export function getProviderSecret(provider: string, field: string): string | und
 }
 
 /**
+ * Config de un proveedor leída sólo de los ficheros (sin variables de
+ * entorno). Sirve para migrar secretos sin confundir una clave del entorno con
+ * una que está guardada en claro.
+ */
+export function getProviderFileConfig(id: string): Record<string, unknown> {
+  try {
+    const providers = (loadFileLayers().providers || {}) as Record<string, unknown>;
+    const value = providers[id];
+    return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Borra una clave en claro de todos los ficheros de config que la contengan.
+ * No toca el entorno ni escribe una config nueva si no había nada que borrar.
+ */
+export function clearProviderFileSecret(id: string, field: string): string[] {
+  const candidates = [GLOBAL_CONFIG_FILE, findConfigFile()].filter(
+    (file): file is string => Boolean(file)
+  );
+  const cleared: string[] = [];
+  for (const filePath of [...new Set(candidates)]) {
+    if (!fs.existsSync(filePath)) continue;
+    const raw = loadConfigFile(filePath) as Record<string, any>;
+    const providers = raw.providers && typeof raw.providers === 'object' ? raw.providers : {};
+    const conf = providers[id];
+    if (!conf || typeof conf !== 'object') continue;
+    if (typeof conf[field] !== 'string') continue;
+    delete conf[field];
+    const validated = CommanderConfigSchema.parse({ ...raw, providers });
+    fs.writeFileSync(filePath, JSON.stringify(validated, null, 2), 'utf-8');
+    cleared.push(filePath);
+  }
+  if (cleared.length > 0) {
+    configCache = null;
+    configPathCache = cleared[0];
+  }
+  return cleared;
+}
+
+export function clearStrataLocalApiKey(): string[] {
+  return clearProviderFileSecret('strata-local', 'apiKey');
+}
+
+/**
  * Quita un proveedor del fichero de config.
  *
  * No toca las variables de entorno: si el proveedor también viene de ahí, el
  * GET lo seguirá marcando como configurado (`source: 'env'`).
  */
 export function removeProviderConfig(id: string): string {
-  const projectConfig = findConfigFile() || path.join(process.cwd(), 'commander.json');
+  // Las claves y hosts del panel se escriben por defecto en la config global;
+  // borrar siempre el fichero de proyecto dejaba el proveedor en la global.
+  const candidates = [GLOBAL_CONFIG_FILE, findConfigFile()].filter(
+    (file): file is string => Boolean(file)
+  );
+  const projectConfig =
+    candidates.find((file) => {
+      if (!fs.existsSync(file)) return false;
+      const raw = loadConfigFile(file) as Record<string, any>;
+      return Boolean(raw.providers && Object.prototype.hasOwnProperty.call(raw.providers, id));
+    }) ||
+    findConfigFile() ||
+    path.join(process.cwd(), 'commander.json');
   const raw = fs.existsSync(projectConfig) ? loadConfigFile(projectConfig) : {};
   const rawProviders = (raw.providers || {}) as Record<string, unknown>;
   const providers = { ...rawProviders };

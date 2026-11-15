@@ -1,5 +1,5 @@
 import { describe, test, expect, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, within } from '@testing-library/react';
 import { PreferencesModal } from '../../src/components/PreferencesModal';
 import { ATASCO_KEY, PREFERENCIAS_EVENT } from '../../src/components/subAgentSettings';
 import { NONO_MEMORY_KEY } from '../../src/features/nono/nonoMemoryStore';
@@ -37,7 +37,7 @@ describe('PreferencesModal · sección Nono', () => {
     render(<PreferencesModal isOpen onClose={() => {}} />);
     irASeccion('Nono');
 
-    expect(preview().querySelector('svg[data-variant="classic"]')).toBeTruthy();
+    expect(preview().querySelector('[data-variant="classic"]')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Orbe' }));
 
@@ -58,7 +58,7 @@ describe('PreferencesModal · sección Nono', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Clásico' }));
 
-    expect(preview().querySelector('svg[data-variant="classic"]')).toBeTruthy();
+    expect(preview().querySelector('[data-variant="classic"]')).toBeTruthy();
     expect(JSON.parse(localStorage.getItem(NONO_MEMORY_KEY) || '{}').ui.eyesOnly).toBe(false);
   });
 
@@ -92,7 +92,7 @@ describe('PreferencesModal · sección Nono', () => {
     expect(JSON.parse(localStorage.getItem(NONO_MEMORY_KEY) || '{}').ui.instantGaze).toBe(false);
   });
 
-  test('edita colores, aplica presets y guarda el acento clásico', () => {
+  test('edita colores, aplica presets y guarda el color de los ojos', () => {
     render(<PreferencesModal isOpen onClose={() => {}} />);
     irASeccion('Nono');
 
@@ -108,34 +108,120 @@ describe('PreferencesModal · sección Nono', () => {
       bottom: '#00f0d0',
     });
 
-    fireEvent.change(screen.getByLabelText('Color del contorno clásico'), {
+    fireEvent.change(screen.getByLabelText('Color de los ojos de la variante Ojos'), {
       target: { value: '#ffcc00' },
     });
-    expect(JSON.parse(localStorage.getItem(NONO_MEMORY_KEY) || '{}').ui.classicAccent).toBe('#ffcc00');
+    expect(JSON.parse(localStorage.getItem(NONO_MEMORY_KEY) || '{}').ui.eyesColor).toBe('#ffcc00');
   });
 
   test('la vista previa muestra la expresión elegida', () => {
     render(<PreferencesModal isOpen onClose={() => {}} />);
     irASeccion('Nono');
 
-    const svg = () => preview().querySelector('svg[data-expression]');
-    expect(svg()?.getAttribute('data-expression')).toBe('neutral');
+    const head = () => preview().querySelector('[data-expression]');
+    const face = () => preview().querySelector('[data-testid="nono-classic-face"]');
+    expect(head()?.getAttribute('data-expression')).toBe('neutral');
+    expect(face()).toBeTruthy();
+    expect(preview().querySelector('.nono-bothead__gif')).toBeNull();
+    expect(preview().querySelector('image')).toBeNull();
 
-    // Las 13 expresiones tienen cara propia.
     const expresiones = screen.getByTestId('nono-expressions');
     expect(within(expresiones).getAllByRole('button')).toHaveLength(13);
 
     fireEvent.click(screen.getByRole('button', { name: 'Feliz' }));
-    expect(svg()?.getAttribute('data-expression')).toBe('happy');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Enamorado' }));
-    expect(svg()?.getAttribute('data-expression')).toBe('love');
+    expect(head()?.getAttribute('data-expression')).toBe('happy');
+    expect(face()?.getAttribute('data-eye-shape')).toBe('happy');
+    expect(face()?.querySelector('[data-testid="nono-classic-eyes"]')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Observando' }));
-    expect(svg()?.getAttribute('data-expression')).toBe('watch');
+    expect(head()?.getAttribute('data-expression')).toBe('watch');
+    expect(face()?.getAttribute('data-eye-shape')).toBe('watch');
+    expect(face()?.querySelector('[data-testid="nono-classic-eyes"]')).toBeTruthy();
+    expect(face()?.querySelector('[data-mouth-style]')).toBeNull();
+    expect(preview().querySelector('[data-testid="nono-expression-face"]')).toBeNull();
+    expect(screen.getByText(/cambia los ojos en cada expresión/)).toBeTruthy();
+    expect(screen.getByTestId('nono-reduced-motion')).toHaveTextContent('Movimiento normal del sistema');
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Curioso' }));
-    expect(svg()?.getAttribute('data-expression')).toBe('curious');
+  test('la vista previa reproduce parpadeo, doble parpadeo y pensamiento', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      render(<PreferencesModal isOpen onClose={() => {}} />);
+      irASeccion('Nono');
+
+      const head = () => preview().querySelector('[data-testid="nono-bothead"]');
+      const stage = () => screen.getByTestId('nono-demo-stage');
+
+      fireEvent.click(screen.getByTestId('nono-demo-play'));
+      expect(stage()).toHaveTextContent('Parpadeo simple');
+      expect(head()?.getAttribute('data-blink')).toBe('false');
+
+      act(() => vi.advanceTimersByTime(200));
+      expect(head()?.getAttribute('data-blink')).toBe('true');
+
+      act(() => vi.advanceTimersByTime(200));
+      expect(head()?.getAttribute('data-blink')).toBe('false');
+
+      act(() => vi.advanceTimersByTime(500));
+      expect(stage()).toHaveTextContent('Doble parpadeo');
+      expect(head()?.getAttribute('data-blink')).toBe('true');
+
+      act(() => vi.advanceTimersByTime(100));
+      expect(head()?.getAttribute('data-blink')).toBe('false');
+
+      act(() => vi.advanceTimersByTime(100));
+      expect(head()?.getAttribute('data-blink')).toBe('true');
+
+      act(() => vi.advanceTimersByTime(200));
+      expect(head()?.getAttribute('data-blink')).toBe('false');
+
+      act(() => vi.advanceTimersByTime(350));
+      expect(stage()).toHaveTextContent('Pensando');
+      expect(preview().querySelector('[data-testid="nono-thinking-dots"]')).toBeTruthy();
+
+      act(() => vi.advanceTimersByTime(1800));
+      expect(screen.queryByTestId('nono-demo-stage')).toBeNull();
+      expect(preview().querySelector('[data-testid="nono-thinking-dots"]')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('indica si el sistema tiene movimiento reducido', () => {
+    const original = window.matchMedia;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: ((query: string) => ({
+        matches: query === '(prefers-reduced-motion: reduce)',
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })) as unknown as typeof window.matchMedia,
+    });
+
+    try {
+      render(<PreferencesModal isOpen onClose={() => {}} />);
+      irASeccion('Nono');
+
+      const aviso = screen.getByTestId('nono-reduced-motion');
+      expect(aviso).toHaveTextContent('Movimiento reducido del sistema');
+      expect(aviso).toHaveAttribute('data-reduced', 'true');
+    } finally {
+      if (original) {
+        Object.defineProperty(window, 'matchMedia', {
+          configurable: true,
+          writable: true,
+          value: original,
+        });
+      } else {
+        Reflect.deleteProperty(window, 'matchMedia');
+      }
+    }
   });
 });
 

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODELS, MAX_FALLBACK_MODELS } from './geminiModels';
+import { STRATA_LOCAL_DEFAULT_BASE_URL } from '../lib/strataLocal';
 
 /**
  * Filtros comunes a todos los proveedores, con el mismo criterio en todo el catálogo.
@@ -80,6 +81,17 @@ export const ProviderConfigSchema = z.object({
     baseUrl: z.string().url().optional(),
     apiKey: z.string().optional(),
     defaultModel: z.string().optional(),
+  }).optional(),
+  // Host local de Strata: habla el contrato OpenAI-compatible de `/v1`, pero
+  // tiene id y ruta propios para no mezclarlo con Custom ni con Strata Cloud.
+  'strata-local': z.object({
+    ...providerFilters,
+    baseUrl: z.string().url().default(STRATA_LOCAL_DEFAULT_BASE_URL),
+    apiKey: z.string().optional(),
+    defaultModel: z.string().optional(),
+    // Opt-in explícito para mandar credenciales a un host remoto por HTTP.
+    // Sin esto, una clave en un host no-loopback sólo se envía por HTTPS.
+    allowInsecure: z.boolean().default(false),
   }).optional(),
   // Proveedores añadidos por el usuario: cualquier endpoint OpenAI-compatible
   // con nombre propio. Se guardan por id y sus modelos llevan el prefijo

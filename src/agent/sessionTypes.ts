@@ -19,6 +19,40 @@ export type SessionMode = 'build' | 'plan' | 'readonly';
 /** Estado de la sesión en el contrato v2 (el estado interno legado se mapea). */
 export type SessionStatusV2 = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled';
 
+/**
+ * Marca de una corrida que no debe contarse como muestra válida.
+ *
+ * La sesión sigue `cancelled` porque el prompt no se decidió; `invalid` dice
+ * por qué y deja preparada la etiqueta de la repetición. No cambia el plazo de
+ * la aprobación ni el estado de la tool: sólo evita publicar una muestra que
+ * nació de una aprobación caducada.
+ */
+export interface RunInvalidation {
+  reason: 'approval_expired';
+  approvalId: string;
+  /** Etiqueta con la que debe repetirse la corrida; no se lanza sola. */
+  retryLabel: string;
+}
+
+/**
+ * Siguiente etiqueta para una repetición: `CAL2-R01` → `CAL2-R01b` y, si esa
+ * repetición también se invalida, `CAL2-R01b` → `CAL2-R01c`. No inventa una
+ * corrida ni modifica el identificador original.
+ */
+export function nextRunLabel(label: unknown): string {
+  const base =
+    typeof label === 'string'
+      ? label.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 120)
+      : '';
+  if (!base) return 'run-b';
+  const suffix = /^(.*\d)([b-y])$/.exec(base);
+  if (suffix) return `${suffix[1]}${String.fromCharCode(suffix[2].charCodeAt(0) + 1)}`;
+  return `${base}b`;
+}
+
+/** Presupuesto de visibilidad de una aprobación pendiente (estado y TUI). */
+export const APPROVAL_VISIBILITY_BUDGET_MS = 250;
+
 export type SessionStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export type SessionStepType = 'thought' | 'tool_call' | 'tool_result' | 'plan' | 'subagent';
@@ -35,7 +69,63 @@ export interface SessionStepV2 {
   durationMs?: number;
   ts: number;
   /** Decisión de aprobación que permitió/denegó la tool (F1-04). */
-  approval?: { id: string; decision: ApprovalDecision; reason?: string };
+  approval?: {
+    id: string;
+    decision: ApprovalDecision;
+    reason?: string;
+    latencyMs?: number;
+    /**
+     * Ms desde la **primera tecla no decisoria** hasta la decisión.
+     *
+     * Es la latencia que mide lectura real: `latencyMs` arranca cuando se crea
+     * la aprobación y arrastra el tiempo en que nadie miraba el panel. Alias
+     * compatible de `readMs`; una decisión directa (`a`, `1`…) no produce
+     * ninguno de los dos y queda marcada con `directDecision`. Ausente si el
+     * prompt no recibió ninguna tecla (caducó, se abortó o no había TTY).
+     */
+    decisionMs?: number;
+    /** Epoch ms en que la aprobación quedó pendiente en el estado. */
+    pendingInStateAt?: number;
+    /** Epoch ms en que el prompt empezó a preparar el menú. */
+    promptStartedAt?: number;
+    /** Epoch ms en que el menú quedó pintado por primera vez. */
+    promptPaintedAt?: number;
+    /** Aprobaciones por delante al entrar a la cola, incluida la que está en curso. */
+    queueDepth?: number;
+    /** Ms desde `createdAt` hasta `pendingInStateAt` (aparición en el estado). */
+    stateMs?: number;
+    /** Ms desde `pendingInStateAt` hasta `promptStartedAt`. */
+    queueMs?: number;
+    /** Epoch ms del primer aviso visible en la TUI (campana, título o renglón). */
+    noticeAt?: number;
+    /** Ms desde `createdAt` hasta `noticeAt`. */
+    noticeMs?: number;
+    /** La aprobación apareció en el estado dentro del presupuesto de 250 ms. */
+    stateWithin250Ms?: boolean;
+    /** El aviso apareció en la TUI dentro del presupuesto de 250 ms. */
+    noticeWithin250Ms?: boolean;
+    /** Epoch ms del primer input aceptado, haya decidido o no. */
+    firstInputAt?: number;
+    /** Epoch ms de la primera tecla que no decidió (flecha, `?`/`h`, etc.). */
+    firstNonDecisionKeyAt?: number;
+    /** Epoch ms en que se resolvió la aprobación. */
+    decisionAt?: number;
+    /** Ms desde `promptStartedAt` hasta `promptPaintedAt` (sólo pintado). */
+    paintMs?: number;
+    /** Ms desde `promptPaintedAt` hasta `firstInputAt`. */
+    attentionMs?: number;
+    /** Ms desde `firstNonDecisionKeyAt` hasta `decisionAt`. */
+    readMs?: number;
+    /** La primera tecla aceptada ya decidió: no hubo lectura previa. */
+    directDecision?: boolean;
+    /** Teclas descartadas por la cuarentena inicial del menú. */
+    quarantinedKeys?: number;
+    /** La cuarentena descartó al menos una tecla que decidía. */
+    quarantinedDecision?: boolean;
+    render?: ApprovalRenderFacts;
+    /** La aprobación era una confirmación de un `shell.run` idéntico repetido. */
+    repeatOf?: string;
+  };
 }
 
 export interface SessionPlanItemV2 {
@@ -66,6 +156,26 @@ export interface QuestionV2 {
 export type ApprovalDecision = 'allow' | 'deny' | 'allow-session';
 
 /** Aprobación pendiente (F1-04). */
+/**
+ * Qué enseñó el prompt de aprobación antes de decidir.
+ *
+ * Lo rellena la TUI al pintar el menú (`promptApprovalDecision`) y viaja con la
+ * aprobación hasta el paso de la sesión. Es la evidencia con la que se decide
+ * la condición I2 del protocolo CAL2
+ * (`docs/parity/g1-approval-remeasure.md` §12.3), sin depender de leer el log
+ * del PTY a ojo.
+ */
+export interface ApprovalRenderFacts {
+  /** El menú imprimió el diff de la tool. */
+  diffShown: boolean;
+  /** El render avisó de que el diff no cabía completo (`DIFF_MAX_LINES`). */
+  diffTruncated: boolean;
+  /** Se abrió el detalle de algún hunk con `?`/`¿`/`h`. */
+  detailOpened: boolean;
+  /** El prompt caducó sin decisión: se resolvió como `deny`. Sólo aparece si es `true`. */
+  expired?: boolean;
+}
+
 export interface ApprovalRequestV2 {
   id: string;
   sessionId: string;
@@ -73,8 +183,61 @@ export interface ApprovalRequestV2 {
   input: unknown;
   diff?: string;
   hunks?: unknown[];
+  /**
+   * Id de la ejecución idéntica anterior que exige confirmación explícita.
+   * `'session'` cuando la anterior se ejecutó por `allow-session` sin prompt.
+   */
+  repeatOf?: string;
   createdAt: number;
   expiresAt: number;
+  /** Epoch ms en que la aprobación quedó pendiente (estado local o sincronizado). */
+  pendingInStateAt?: number;
+  /** Epoch ms en que `promptApprovalDecision` empezó a preparar el menú. */
+  promptStartedAt?: number;
+  /** Aprobaciones por delante al entrar a la cola (0 = inmediata). */
+  queueDepth?: number;
+  /** Epoch ms del primer aviso visible en la TUI. Lo escribe el anuncio. */
+  noticeAt?: number;
+  /** Lo escribe el prompt al resolver; un pedido que no pasó por la TUI no lo trae. */
+  render?: ApprovalRenderFacts;
+  /**
+   * Epoch ms de la primera tecla que recibió el prompt.
+   *
+   * Alias histórico de `firstInputAt`; se sigue escribiendo para no romper a
+   * quien ya lee este campo. El nombre nuevo es `firstInputAt`.
+   */
+  firstKeyAt?: number;
+  /**
+   * Epoch ms del primer input aceptado, antes de interpretarlo.
+   *
+   * Incluye flechas, `?`/`h` y la propia decisión: marca que el operador estaba
+   * delante. Sin input —caducidad, aborto o cuarentena— no existe.
+   */
+  firstInputAt?: number;
+  /** Epoch ms en que el prompt resolvió la aprobación (decisión, aborto o caducidad). */
+  decisionAt?: number;
+  /**
+   * Epoch ms en que el menú quedó pintado por primera vez.
+   *
+   * Es la referencia de la cuarentena inicial: lo que llegue antes de que pase
+   * `APPROVAL_KEY_QUARANTINE_MS` se descarta para no leer un Enter heredado.
+   */
+  promptPaintedAt?: number;
+  /**
+   * Epoch ms de la primera tecla aceptada que **no** decide.
+   *
+   * Flechas, `j`/`k`, `?`/`¿`/`h` y teclas desconocidas abren la lectura. Las
+   * teclas que deciden (`a`, `d`, `s`, `1`–`3`, Enter, `q`) no cuentan: si la
+   * primera tecla aceptada decide, este campo queda ausente y `directDecision`
+   * se marca. Esc y Ctrl+C tampoco cuentan: cierran sin decidir.
+   */
+  firstNonDecisionKeyAt?: number;
+  /** La primera tecla aceptada decidió; no hay `firstNonDecisionKeyAt`. */
+  directDecision?: boolean;
+  /** Teclas descartadas al abrir el menú para no leer un Enter heredado. */
+  quarantinedKeys?: number;
+  /** La cuarentena descartó una tecla que habría decidido; la muestra no es limpia. */
+  quarantinedDecision?: boolean;
 }
 
 /**
@@ -82,8 +245,48 @@ export interface ApprovalRequestV2 {
  *
  * `pendingApproval` es la primera aprobación pendiente de la sesión (puede
  * haber varias tools esperando a la vez); se expone en el estado y en el stream
- * mientras la corrida sigue en este proceso.
+ * mientras la corrida sigue en este proceso. Cuando el bucle corre en el CLI,
+ * el cliente la anuncia en su checkpoint y el servidor la conserva mientras la
+ * sesión está `running`: es informativa y se resuelve en el proceso del CLI.
  */
+/**
+ * Propuesta de cambio guardada en la sesión. El diff no se aplicó: queda para
+ * que `applyProposalToFile` lo aplique tras un reinicio o para contarlo en el
+ * dogfooding.
+ */
+export interface SessionProposalV2 {
+  proposalId: string;
+  path: string;
+  diff: string;
+  /** Hash del contenido base sobre el que se calculó el diff. */
+  baseHash: string;
+  /** Hash del contenido que debe quedar tras aplicar el diff. */
+  afterHash: string;
+  /** Se marca al aplicar; una propuesta aplicada es idempotente. */
+  applied: boolean;
+  tool: string;
+  createdAt: number;
+  /** Primera vez que el usuario abrió su diff. */
+  reviewedAt?: number;
+  /** Momento en que se descartó explícitamente. */
+  discardedAt?: number;
+  /** Momento de la aplicación, si la hubo. */
+  appliedAt?: number;
+  /** Checkpoint creado antes de escribir, para poder deshacer. */
+  checkpointId?: string;
+}
+
+/** Contadores acumulados del embudo de propuestas. */
+export interface ProposalStatsV2 {
+  created: number;
+  duplicatesDropped: number;
+  perFileCapDropped: number;
+  totalCapDropped: number;
+  reviewed: number;
+  applied: number;
+  discarded: number;
+}
+
 export interface SessionStateV2 {
   schemaVersion: 2;
   id: string;
@@ -108,6 +311,22 @@ export interface SessionStateV2 {
   answer?: string;
   /** Último error, si la sesión falló. */
   error?: string;
+  /** La corrida no es válida para medir y queda preparada su repetición. */
+  invalid?: RunInvalidation;
+  /**
+   * Corte por llamadas idénticas, si lo hubo: qué guarda lo disparó, con qué
+   * tool y en qué intento. Se guarda aparte de `error` para que el próximo
+   * dogfooding lo cuente desde el archivo en vez de leer el PTY.
+   */
+  loopCut?: {
+    guard: 'mutations' | 'reads';
+    tool: string;
+    attempts: number;
+  };
+  /** Propuestas generadas por `fs.propose.*`, para aplicar o auditar. */
+  proposals?: SessionProposalV2[];
+  /** Embudo acumulado; los contadores no se recalculan al deduplicar. */
+  proposalStats?: ProposalStatsV2;
 }
 
 /** Datos mínimos de la sesión que viajan en el primer evento. */
@@ -142,11 +361,57 @@ export type CliEventPayload =
       approvalId: string;
       decision: ApprovalDecision;
       reason?: string;
+      /** Tiempo desde `approval_request.createdAt` hasta la decisión. */
+      latencyMs?: number;
+      /** Alias compatible de `readMs`: primera tecla no decisoria → decisión. */
+      decisionMs?: number;
+      /** Epoch ms en que la aprobación quedó pendiente en el estado. */
+      pendingInStateAt?: number;
+      /** Epoch ms en que el prompt empezó a preparar el menú. */
+      promptStartedAt?: number;
+      /** Epoch ms en que el menú quedó pintado por primera vez. */
+      promptPaintedAt?: number;
+      /** Aprobaciones por delante al entrar a la cola, incluida la que está en curso. */
+      queueDepth?: number;
+      /** Ms desde `createdAt` hasta `pendingInStateAt` (aparición en el estado). */
+      stateMs?: number;
+      /** Ms desde `pendingInStateAt` hasta `promptStartedAt`. */
+      queueMs?: number;
+      /** Epoch ms del primer aviso visible en la TUI. */
+      noticeAt?: number;
+      /** Ms desde `createdAt` hasta `noticeAt`. */
+      noticeMs?: number;
+      /** La aprobación apareció en el estado dentro del presupuesto de 250 ms. */
+      stateWithin250Ms?: boolean;
+      /** El aviso apareció en la TUI dentro del presupuesto de 250 ms. */
+      noticeWithin250Ms?: boolean;
+      /** Epoch ms del primer input aceptado, haya decidido o no. */
+      firstInputAt?: number;
+      /** Epoch ms de la primera tecla que no decidió. */
+      firstNonDecisionKeyAt?: number;
+      /** Epoch ms en que se resolvió la aprobación. */
+      decisionAt?: number;
+      /** Ms desde `promptStartedAt` hasta `promptPaintedAt` (sólo pintado). */
+      paintMs?: number;
+      /** Ms desde `promptPaintedAt` hasta `firstInputAt`. */
+      attentionMs?: number;
+      /** Ms desde `firstNonDecisionKeyAt` hasta `decisionAt`. */
+      readMs?: number;
+      /** La primera tecla aceptada ya decidió: no hubo lectura previa. */
+      directDecision?: boolean;
+      /** Teclas descartadas por la cuarentena inicial del menú. */
+      quarantinedKeys?: number;
+      /** La cuarentena descartó al menos una tecla que decidía. */
+      quarantinedDecision?: boolean;
+      /** Qué se pintó antes de decidir (I2 del protocolo CAL2). */
+      render?: ApprovalRenderFacts;
+      /** La aprobación era una confirmación de un `shell.run` idéntico repetido. */
+      repeatOf?: string;
     }
   | { type: 'question'; question: QuestionV2 }
   | { type: 'answer'; text: string }
   | { type: 'error'; text: string }
-  | { type: 'done'; answer: string; steps: number };
+  | { type: 'done'; answer: string; steps: number; invalid?: RunInvalidation };
 
 export type CliEventType = CliEventPayload['type'];
 
@@ -306,6 +571,43 @@ function turnFrom(raw: unknown): SessionTurnV2 | null {
   return { role, text: text(obj.text, 8_000), ts: timestamp(obj.ts, 0) };
 }
 
+/**
+ * Latencia de una aprobación ya resuelta.
+ *
+ * Sólo se acepta una medida no negativa: un `latencyMs` ausente es «no se midió»
+ * y uno inválido no se convierte en 0, porque 0 es una medida legítima.
+ */
+function latencyFrom(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+/** Instante opcional: igual que una latencia, 0 no se confunde con ausencia. */
+function momentFrom(value: unknown): number | undefined {
+  return latencyFrom(value);
+}
+
+/** Contador opcional de teclas descartadas: entero no negativo. */
+function countFrom(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
+/**
+ * Evidencia de render de una aprobación.
+ *
+ * Sólo se acepta si trae `diffShown` booleano: un `render` a medias no se
+ * completa con `false`, porque eso afirmaría que no se pintó el diff.
+ */
+export function renderFactsFrom(value: unknown): ApprovalRenderFacts | undefined {
+  const obj = asRecord(value);
+  if (!obj || typeof obj.diffShown !== 'boolean') return undefined;
+  return {
+    diffShown: obj.diffShown,
+    diffTruncated: obj.diffTruncated === true,
+    detailOpened: obj.detailOpened === true,
+    ...(obj.expired === true ? { expired: true } : {}),
+  };
+}
+
 function stepFrom(raw: unknown): SessionStepV2 | null {
   const obj = asRecord(raw);
   if (!obj || typeof obj.id !== 'string' || !obj.id) return null;
@@ -335,13 +637,75 @@ function stepFrom(raw: unknown): SessionStepV2 | null {
     typeof approval.id === 'string' &&
     (approval.decision === 'allow' || approval.decision === 'deny' || approval.decision === 'allow-session')
   ) {
+    const latencyMs = latencyFrom(approval.latencyMs);
+    const decisionMs = latencyFrom(approval.decisionMs);
+    const pendingInStateAt = momentFrom(approval.pendingInStateAt);
+    const promptStartedAt = momentFrom(approval.promptStartedAt);
+    const promptPaintedAt = momentFrom(approval.promptPaintedAt);
+    const queueDepth = countFrom(approval.queueDepth);
+    const stateMs = latencyFrom(approval.stateMs);
+    const queueMs = latencyFrom(approval.queueMs);
+    const noticeAt = momentFrom(approval.noticeAt);
+    const noticeMs = latencyFrom(approval.noticeMs);
+    const firstInputAt = momentFrom(approval.firstInputAt) ?? momentFrom(approval.firstKeyAt);
+    const firstNonDecisionKeyAt = momentFrom(approval.firstNonDecisionKeyAt);
+    const decisionAt = momentFrom(approval.decisionAt);
+    const paintMs = latencyFrom(approval.paintMs);
+    const attentionMs = latencyFrom(approval.attentionMs);
+    const readMs = latencyFrom(approval.readMs);
+    const quarantinedKeys = countFrom(approval.quarantinedKeys);
+    const repeatOf = typeof approval.repeatOf === 'string' ? text(approval.repeatOf, 200) : '';
+    const render = renderFactsFrom(approval.render);
     step.approval = {
       id: approval.id,
       decision: approval.decision,
       ...(typeof approval.reason === 'string' ? { reason: approval.reason } : {}),
+      ...(latencyMs === undefined ? {} : { latencyMs }),
+      ...(decisionMs === undefined ? {} : { decisionMs }),
+      ...(pendingInStateAt === undefined ? {} : { pendingInStateAt }),
+      ...(promptStartedAt === undefined ? {} : { promptStartedAt }),
+      ...(promptPaintedAt === undefined ? {} : { promptPaintedAt }),
+      ...(queueDepth === undefined ? {} : { queueDepth }),
+      ...(stateMs === undefined ? {} : { stateMs }),
+      ...(queueMs === undefined ? {} : { queueMs }),
+      ...(noticeAt === undefined ? {} : { noticeAt }),
+      ...(noticeMs === undefined ? {} : { noticeMs }),
+      ...(typeof approval.stateWithin250Ms === 'boolean'
+        ? { stateWithin250Ms: approval.stateWithin250Ms }
+        : {}),
+      ...(typeof approval.noticeWithin250Ms === 'boolean'
+        ? { noticeWithin250Ms: approval.noticeWithin250Ms }
+        : {}),
+      ...(firstInputAt === undefined ? {} : { firstInputAt }),
+      ...(firstNonDecisionKeyAt === undefined ? {} : { firstNonDecisionKeyAt }),
+      ...(decisionAt === undefined ? {} : { decisionAt }),
+      ...(paintMs === undefined ? {} : { paintMs }),
+      ...(attentionMs === undefined ? {} : { attentionMs }),
+      ...(readMs === undefined ? {} : { readMs }),
+      ...(approval.directDecision === true ? { directDecision: true } : {}),
+      ...(quarantinedKeys === undefined ? {} : { quarantinedKeys }),
+      ...(approval.quarantinedDecision === true ? { quarantinedDecision: true } : {}),
+      ...(repeatOf ? { repeatOf } : {}),
+      ...(render === undefined ? {} : { render }),
     };
   }
   return step;
+}
+
+function invalidationFrom(raw: unknown): RunInvalidation | undefined {
+  const obj = asRecord(raw);
+  if (
+    !obj ||
+    obj.reason !== 'approval_expired' ||
+    typeof obj.approvalId !== 'string' ||
+    typeof obj.retryLabel !== 'string'
+  ) {
+    return undefined;
+  }
+  const approvalId = text(obj.approvalId, 200);
+  const retryLabel = text(obj.retryLabel, 200);
+  if (!approvalId || !retryLabel) return undefined;
+  return { reason: 'approval_expired', approvalId, retryLabel };
 }
 
 function planItemFrom(raw: unknown): SessionPlanItemV2 | null {
@@ -374,6 +738,11 @@ function planItemFrom(raw: unknown): SessionPlanItemV2 | null {
 function approvalFrom(raw: unknown): ApprovalRequestV2 | null {
   const obj = asRecord(raw);
   if (!obj || typeof obj.id !== 'string' || !obj.id) return null;
+  const pendingInStateAt = momentFrom(obj.pendingInStateAt);
+  const promptStartedAt = momentFrom(obj.promptStartedAt);
+  const queueDepth = countFrom(obj.queueDepth);
+  const noticeAt = momentFrom(obj.noticeAt);
+  const repeatOf = typeof obj.repeatOf === 'string' ? text(obj.repeatOf, 200) : '';
   return {
     id: obj.id,
     sessionId: typeof obj.sessionId === 'string' ? obj.sessionId : '',
@@ -381,8 +750,13 @@ function approvalFrom(raw: unknown): ApprovalRequestV2 | null {
     input: obj.input,
     ...(typeof obj.diff === 'string' ? { diff: obj.diff } : {}),
     ...(Array.isArray(obj.hunks) ? { hunks: obj.hunks } : {}),
+    ...(repeatOf ? { repeatOf } : {}),
     createdAt: timestamp(obj.createdAt, 0),
     expiresAt: timestamp(obj.expiresAt, 0),
+    ...(pendingInStateAt === undefined ? {} : { pendingInStateAt }),
+    ...(promptStartedAt === undefined ? {} : { promptStartedAt }),
+    ...(queueDepth === undefined ? {} : { queueDepth }),
+    ...(noticeAt === undefined ? {} : { noticeAt }),
   };
 }
 
@@ -463,5 +837,8 @@ export function decodeSessionState(input: string | unknown): SessionStateV2 | nu
   if (pendingApprovals.length > 0) state.pendingApprovals = pendingApprovals;
   if (typeof obj.answer === 'string') state.answer = obj.answer;
   if (typeof obj.error === 'string') state.error = obj.error;
+  const invalid = invalidationFrom(obj.invalid);
+  if (invalid) state.invalid = invalid;
+  else delete state.invalid;
   return state;
 }

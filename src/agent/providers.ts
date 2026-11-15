@@ -20,8 +20,14 @@ export type ToolDialect = 'gemini' | 'openai' | 'anthropic' | 'json-text';
 export function toolDialectForModel(model?: string): ToolDialect {
   if (!model) return 'gemini';
   if (/^ollama\//.test(model)) return 'openai';
+  // DeepSeek R1 local no anuncia tool_use en LM Studio y devuelve un bloque
+  // JSON como texto; el camino nativo lo tomaba por una respuesta final.
+  if (/^lmstudio\/.*deepseek[-_]?r1/i.test(model)) return 'json-text';
   // LM Studio también es OpenAI-compatible.
   if (/^lmstudio\//.test(model)) return 'openai';
+  if (/^strata-local\//.test(model)) return 'openai';
+  // llama-server expone Chat Completions con tools; el proxy local las reenvía.
+  if (/^local\//.test(model)) return 'openai';
   if (/^openrouter\//.test(model)) return 'openai';
   if (/^custom\//.test(model)) return 'openai';
   if (/^openai\//.test(model)) return 'openai';
@@ -38,6 +44,42 @@ export function toolDialectForModel(model?: string): ToolDialect {
   // Los ids de HuggingFace contienen '/' y se ejecutan en local/API sin tool-calling nativo.
   if (model.includes('/')) return 'json-text';
   return 'gemini'; // ids planos de Gemini
+}
+
+/**
+ * ¿El modelo gasta el presupuesto de salida en razonar antes de responder?
+ *
+ * Nemotron, QwQ y las o-series escriben su `reasoning_content` dentro de
+ * `max_tokens`: con 2 048 el turno se corta en `finish_reason: "length"` y
+ * `content: ""`, que el agente leía como un cierre sin trabajo
+ * (`G1-EMPTY-TURN`).
+ */
+export function isReasoningModel(model?: string): boolean {
+  if (!model) return false;
+  const m = model.toLowerCase();
+  return /(nemotron|deepseek[-_]?r1|qwq|qwen3|gpt-oss|\bo[1-4]\b|reason)/.test(m);
+}
+
+/** Presupuesto de salida por turno; el doble para los que razonan. */
+export function agentMaxTokens(model?: string): number {
+  return isReasoningModel(model) ? 4096 : 2048;
+}
+
+/**
+ * Un turno cortado por presupuesto y sin nada dentro no es una respuesta.
+ *
+ * Devuelve el motivo para responder `success:false` en vez de `text:''`; si el
+ * turno trae texto o tool calls, o el corte es por otra razón, devuelve `null`.
+ */
+export function truncatedTurnError(
+  finishReason: unknown,
+  text: unknown,
+  toolCalls: unknown
+): string | null {
+  if (String(finishReason ?? '') !== 'length') return null;
+  if (String(text ?? '').trim()) return null;
+  if (Array.isArray(toolCalls) && toolCalls.length > 0) return null;
+  return 'respuesta truncada por max_tokens (finish_reason: length)';
 }
 
 /** ¿Este modelo puede usar tool-calling nativo del agente? */

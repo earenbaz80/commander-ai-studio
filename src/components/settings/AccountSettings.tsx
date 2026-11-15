@@ -9,9 +9,10 @@ import {
   Mail,
   ShieldCheck,
   Unplug,
-  User as UserIcon,
 } from 'lucide-react';
 import type { Language } from '../../i18n/translations';
+import { AvatarPicker } from './AvatarPicker';
+import { UserAvatarBadge } from '../UserAvatar';
 
 /**
  * Cuenta de usuario dentro de Configuración.
@@ -103,7 +104,6 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
     guestName?.trim() ||
     t('Invitado', 'Guest', 'Gast');
   const profileEmail = currentUser?.email || '';
-  const initial = (profileName || '?').charAt(0).toUpperCase();
   const signedIn = !!currentUser;
 
   const describeError = (e: any, providerLabel: string) => {
@@ -341,22 +341,17 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
 
   return (
     <div className="space-y-2" data-testid="account-settings">
+      <AvatarPicker lang={lang} uid={currentUser?.uid} />
       {signedIn ? (
         <div
           className="flex items-center gap-2 border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] px-2 py-2"
           data-testid="account-profile"
         >
-          {currentUser?.photoURL ? (
-            <img
-              src={currentUser.photoURL}
-              alt=""
-              className="w-9 h-9 rounded-full border border-[var(--nc-border-light)] object-cover"
-            />
-          ) : (
-            <div className="w-9 h-9 rounded-full bg-[var(--nc-highlight-bg)] text-black font-bold text-sm flex items-center justify-center">
-              {initial}
-            </div>
-          )}
+          <UserAvatarBadge
+            uid={currentUser?.uid}
+            photoURL={currentUser?.photoURL}
+            size={36}
+          />
           <div className="min-w-0 flex-1">
             <div className="text-[11px] font-bold text-[var(--nc-text-accent)] truncate">{profileName}</div>
             {profileEmail && <div className="text-[9px] font-mono truncate opacity-80">{profileEmail}</div>}
@@ -371,9 +366,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
       ) : (
         <div className="border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] px-2 py-2 space-y-2">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-full bg-[var(--nc-bg-deep)] border border-[var(--nc-border-light)] flex items-center justify-center">
-              <UserIcon className="w-4 h-4 opacity-70" />
-            </div>
+            <UserAvatarBadge size={36} />
             <div className="min-w-0">
               <div className="text-[11px] font-bold text-[var(--nc-text-accent)] truncate">{profileName}</div>
               <div className="text-[9px] opacity-70">

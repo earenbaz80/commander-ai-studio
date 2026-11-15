@@ -135,9 +135,13 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   // apagados no aparecen, pero un proveedor configurado sí aunque no tenga
   // modelos ahora: el grupo queda visible con su estado.
   const offlineIds = new Set(offline.map((provider) => provider.id));
+  // Los GGUF nativos no pasan por la configuración de proveedores: si hay
+  // modelos en disco, su grupo debe estar visible aunque `local` no figure en
+  // la lista de proveedores configurados.
+  const hasNativeModels = (group: ModelGroup) => group.id === 'local' && group.models.length > 0;
   const baseGroups = providersFailed || !providersLoaded
     ? modelGroups
-    : modelGroups.filter((group) => configuredIds.has(group.id));
+    : modelGroups.filter((group) => configuredIds.has(group.id) || hasNativeModels(group));
   const visibleGroups = providersFailed || !providersLoaded
     ? baseGroups
     : [

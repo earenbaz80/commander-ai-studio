@@ -1,13 +1,15 @@
 /**
  * Tests de regresión visual de Nono (asistente flotante).
- * Verifica que las expresiones, los ojos cuadrados, los tapones y la sombra
- * vectorial se mantengan estables.
+ * La variante clásica es una cara SVG pura: cada expresión cambia sólo los ojos.
+ * El orbe y la variante de solo ojos conservan su propia geometría.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NonoHead, type NonoExpression } from '../src/components/FloatingAssistant';
 import { loadNonoPosition, saveNonoPosition, clearNonoPosition, type NonoPosition } from '../src/utils/nonoStorage';
+import { readNonoMemory, NONO_MEMORY_KEY } from '../src/features/nono/nonoMemoryStore';
 
 // Mock mínimo de localStorage para Node
 const store = new Map<string, string>();
@@ -20,477 +22,239 @@ const store = new Map<string, string>();
   length: 0,
 };
 
-/** Extrae la posición de los ojos cuadrados de la variante clásica. */
-const getSquareEyePositions = (markup: string): Array<{ x: number; y: number }> => {
-  const eyes: Array<{ x: number; y: number }> = [];
-  for (const tag of markup.match(/<rect[^>]*class="nono-eye-square(?:\s[^"]*)?"[^>]*>/g) || []) {
-    const x = /\bx="([\d.-]+)"/.exec(tag);
-    const y = /\by="([\d.-]+)"/.exec(tag);
-    if (x && y) eyes.push({ x: parseFloat(x[1]), y: parseFloat(y[1]) });
-  }
-  return eyes;
+const renderClassic = (
+  expression: NonoExpression = 'neutral',
+  options: { blink?: boolean; busy?: boolean; eyeOffset?: { x: number; y: number }; idleGaze?: boolean } = {}
+) =>
+  renderToStaticMarkup(
+    <NonoHead
+      expression={expression}
+      eyeOffset={options.eyeOffset ?? { x: 0, y: 0 }}
+      blink={options.blink ?? false}
+      busy={options.busy ?? false}
+      idleGaze={options.idleGaze ?? false}
+      size={64}
+    />
+  );
+
+const renderOrb = (
+  expression: NonoExpression = 'neutral',
+  options: { blink?: boolean; busy?: boolean; eyeOffset?: { x: number; y: number }; idleGaze?: boolean } = {}
+) =>
+  renderToStaticMarkup(
+    <NonoHead
+      variant="orb"
+      expression={expression}
+      eyeOffset={options.eyeOffset ?? { x: 0, y: 0 }}
+      blink={options.blink ?? false}
+      busy={options.busy ?? false}
+      idleGaze={options.idleGaze ?? false}
+      size={64}
+    />
+  );
+
+/** Extrae el grupo que desplaza los ojos del orbe con el puntero. */
+const orbGazeOf = (markup: string) => {
+  const tag = /<g[^>]*data-testid="nono-orb-gaze"[^>]*>/.exec(markup)?.[0] ?? '';
+  const style = /style="([^"]*)"/.exec(tag)?.[1] ?? '';
+  const match = /transform:\s*translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(style);
+  return match ? { x: Number(match[1]), y: Number(match[2]) } : null;
 };
 
-test('NonoHead: renderiza con las expresiones correctas', () => {
-  const expressions: NonoExpression[] = [
-    'neutral', 'happy', 'sad', 'surprised', 'angry',
-    'wink', 'sleepy', 'thinking', 'error', 'love', 'cool', 'watch'
-  ];
+test('NonoHead clásico: usa una cara SVG pura sin gif', () => {
+  const markup = renderClassic();
 
-  for (const exp of expressions) {
-    const markup = renderToStaticMarkup(
-      <NonoHead expression={exp} eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} />
-    );
-    assert.ok(markup.length > 0, `Expresión ${exp} no debe renderizarse vacía`);
-    // Todas las expresiones deben contener al menos el contenedor SVG
-    assert.ok(markup.includes('<svg'), `Expresión ${exp} debe contener svg root`);
+  assert.ok(markup.includes('data-testid="nono-classic-face"'), 'Debe dibujar la cara clásica en SVG');
+  assert.ok(markup.includes('data-testid="nono-bothead"'), 'Debe marcar el contenedor del bot');
+  assert.ok(markup.includes('data-variant="classic"'), 'Debe conservar la variante clásica');
+  assert.ok(markup.includes('viewBox="0 0 64 64"'), 'Debe usar el lienzo propio de la cara');
+  assert.ok(markup.includes('data-testid="nono-classic-brackets"'), 'Debe dibujar los corchetes del GIF');
+  assert.ok(markup.includes('data-testid="nono-classic-eyes"'), 'Debe dibujar los ojos');
+  assert.ok(!markup.includes('nono-classic-mouth'), 'No debe dibujar boca');
+  assert.ok(!markup.includes('data-mouth-style'), 'No debe haber estilos de boca');
+  // Coordenadas medidas sobre el fotograma del GIF: dos puntos circulares
+  // separados y centrados entre los corchetes.
+  assert.ok(markup.includes('cx="22.4" cy="31.8" r="3.5"'), 'El ojo izquierdo debe ocupar su posición del GIF');
+  assert.ok(markup.includes('cx="41.5" cy="31.8" r="3.5"'), 'El ojo derecho debe ocupar su posición del GIF');
+  assert.ok(!markup.includes('bothead2.gif'), 'No debe cargar el gif antiguo');
+  assert.ok(!markup.includes('<image'), 'No debe incrustar una imagen como cara');
+  assert.ok(!markup.includes('feColorMatrix'), 'No debe depender del filtro de transparencia del gif');
+
+  for (const stale of [
+    '/nono-bothead.gif',
+    '/nono-bothead.png',
+    '/nono-faces/',
+    'nono-antenna-led',
+    'nono-expression-face',
+    'nono-expression-overlay',
+    'nono-bothead__expression-layer',
+    'nono-bothead__scan',
+  ]) {
+    assert.ok(!markup.includes(stale), `No debe conservar la capa antigua ${stale}`);
   }
+  assert.doesNotMatch(markup, /perspective\(|rotateX\(|rotateY\(|translate3d\(/);
 });
 
-test('NonoHead: ojos cuadrados sin pupilas negras', () => {
-  const squareEyeExpressions: NonoExpression[] = ['neutral', 'surprised', 'thinking', 'watch', 'curious'];
-
-  for (const exp of squareEyeExpressions) {
-    const markup = renderToStaticMarkup(
-      <NonoHead expression={exp} eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} />
-    );
-    const eyes = getSquareEyePositions(markup);
-    assert.strictEqual(eyes.length, 2, `Expresión ${exp} debe tener 2 ojos cuadrados`);
-    assert.ok(!markup.includes('fill="#000000"'), `Expresión ${exp} no debe tener pupilas negras`);
-  }
-});
-
-test('NonoHead: los ojos cuadrados se mueven horizontalmente', () => {
-  const center = renderToStaticMarkup(
-    <NonoHead expression="neutral" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} />
-  );
-  const right = renderToStaticMarkup(
-    <NonoHead expression="neutral" eyeOffset={{ x: 1, y: 0 }} blink={false} size={64} />
-  );
-
-  const centerEyes = getSquareEyePositions(center);
-  const rightEyes = getSquareEyePositions(right);
-
-  assert.strictEqual(centerEyes.length, 2);
-  assert.strictEqual(rightEyes.length, 2);
-  for (let i = 0; i < centerEyes.length; i++) {
-    assert.ok(
-      rightEyes[i].x > centerEyes[i].x,
-      `Ojo ${i} debe moverse a la derecha cuando eyeOffset.x cambia`
-    );
-  }
-});
-
-test('NonoHead: los ojos cuadrados se mueven verticalmente', () => {
-  const top = renderToStaticMarkup(
-    <NonoHead expression="neutral" eyeOffset={{ x: 0, y: -1 }} blink={false} size={64} />
-  );
-  const bottom = renderToStaticMarkup(
-    <NonoHead expression="neutral" eyeOffset={{ x: 0, y: 1 }} blink={false} size={64} />
-  );
-
-  const topEyes = getSquareEyePositions(top);
-  const bottomEyes = getSquareEyePositions(bottom);
-
-  assert.strictEqual(topEyes.length, 2);
-  assert.strictEqual(bottomEyes.length, 2);
-  for (let i = 0; i < topEyes.length; i++) {
-    assert.ok(
-      topEyes[i].y < bottomEyes[i].y,
-      `Ojo ${i} debe estar más arriba cuando eyeOffset.y es negativo`
-    );
-  }
-});
-
-test('NonoHead: la cara es una pantalla y al procesar sólo muestra binario', () => {
-  const idle = renderToStaticMarkup(
-    <NonoHead expression="thinking" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} />
-  );
-  const busy = renderToStaticMarkup(
-    <NonoHead expression="thinking" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} busy />
-  );
-
-  assert.ok(idle.includes('nono-face-screen'), 'La pantalla debe existir siempre');
-  assert.ok(idle.includes('nonoScanlines'), 'La pantalla debe incluir scanlines');
-  assert.ok(idle.includes('nono-face-eyes'), 'Sin proceso deben verse los ojos');
-  assert.ok(idle.includes('nono-face-mouth'), 'Sin proceso debe verse la boca');
-  assert.ok(!idle.includes('nono-face-process'), 'Sin proceso no debe haber binario');
-  assert.ok(busy.includes('nono-face-process'), 'Con proceso debe aparecer la pantalla de trabajo');
-  assert.ok(busy.includes('nono-binary-column'), 'El proceso debe mostrar columnas de binario');
-  assert.ok(!busy.includes('nono-face-eyes'), 'Procesando no deben verse los ojos');
-  assert.ok(!busy.includes('nono-face-mouth'), 'Procesando no debe verse la boca');
-});
-
-test('NonoHead: incluye filtro de sombra vectorial feDropShadow', () => {
-  const markup = renderToStaticMarkup(
-    <NonoHead expression="neutral" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} />
-  );
-  assert.ok(markup.includes('feDropShadow'), 'Debe incluir el filtro de sombra SVG');
-  assert.ok(markup.includes('nonoShadow'), 'Debe referenciar el filtro nonoShadow');
-});
-
-test('NonoHead: el parpadeo recoge los ojos cuadrados como una persiana', () => {
-  const squareEyeExpressions: NonoExpression[] = ['neutral', 'surprised', 'thinking', 'watch', 'curious'];
-
-  for (const exp of squareEyeExpressions) {
-    const blink = renderToStaticMarkup(
-      <NonoHead expression={exp} eyeOffset={{ x: 0, y: 0 }} blink={true} size={64} />
-    );
-    const shutterEyes = blink.match(/<rect[^>]*class="nono-eye-square nono-eye-shutter"[^>]*>/g) || [];
-    assert.strictEqual(
-      getSquareEyePositions(blink).length,
-      2,
-      `Al parpadear ${exp} debe conservar sus dos ojos cuadrados`
-    );
-    assert.strictEqual(
-      shutterEyes.length,
-      2,
-      `Al parpadear ${exp} los ojos deben recogerse con la persiana`
-    );
-  }
-});
-
-test('NonoHead: las expresiones de trazo conservan el parpadeo de línea', () => {
-  const blink = renderToStaticMarkup(
-    <NonoHead expression="happy" eyeOffset={{ x: 0, y: 0 }} blink={true} size={64} />
-  );
-
-  assert.ok(!blink.includes('nono-eye-square'), 'Las expresiones de trazo no usan ojos cuadrados');
-  assert.ok(
-    blink.includes('x1="14" y1="38" x2="26" y2="38"'),
-    'Las expresiones de trazo mantienen su cierre de línea'
-  );
-});
-
-test('NonoHead: expresiones producen salidas distintas', () => {
-  const happy = renderToStaticMarkup(
-    <NonoHead expression="happy" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} />
-  );
-  const angry = renderToStaticMarkup(
-    <NonoHead expression="angry" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} />
-  );
-  const error = renderToStaticMarkup(
-    <NonoHead expression="error" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} />
-  );
-
-  assert.notStrictEqual(happy, angry, 'happy y angry deben renderizarse diferente');
-  assert.notStrictEqual(happy, error, 'happy y error deben renderizarse diferente');
-  assert.notStrictEqual(angry, error, 'angry y error deben renderizarse diferente');
-});
-
-test('NonoHead: la variante orbe pinta esfera y ojos de barra', () => {
-  const orb = renderToStaticMarkup(
-    <NonoHead expression="neutral" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} variant="orb" />
-  );
-
-  assert.ok(orb.includes('data-variant="orb"'), 'Debe marcar la variante orbe');
-  assert.ok(orb.includes('nonoOrbBody'), 'Debe usar el degradado turquesa→verde');
-  assert.ok(orb.includes('nono-orb-eyes'), 'Debe incluir el grupo de ojos del orbe');
-  assert.ok(!orb.includes('nono-antenna-led'), 'El orbe no lleva antena');
-
-  const bars = orb.match(/<rect[^>]*rx="2.5"[^>]*fill="#ffffff"/g) || [];
-  assert.ok(bars.length >= 2, `Debe haber dos ojos de barra: ${bars.length}`);
-});
-
-test('NonoHead: el orbe procesando mira arriba, asiente y no usa el binario del clásico', () => {
-  const busy = renderToStaticMarkup(
-    <NonoHead expression="thinking" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} variant="orb" busy />
-  );
-  const idle = renderToStaticMarkup(
-    <NonoHead expression="neutral" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} variant="orb" />
-  );
-  const failed = renderToStaticMarkup(
-    <NonoHead expression="error" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} variant="orb" busy />
-  );
-
-  assert.ok(busy.includes('nono-orb-busy-face'), 'Procesando debe pintar la cara satisfecha');
-  assert.ok(busy.includes('data-look="up"'), 'La cara mira hacia el chat');
-  assert.ok(busy.includes('nono-orb-affirm'), 'La cara puede asentir');
-  assert.ok(!busy.includes('M27 39 Q32 43 37 39'), 'El orbe no debe mostrar boca');
-  assert.ok(!busy.includes('nono-orb-processing'), 'Procesando ya no gira');
-  assert.ok(!busy.includes('nono-orb-rotor'), 'No debe quedar el rotor');
-  assert.ok(!busy.includes('nono-orb-latitudes'), 'No debe quedar la superficie 3D');
-  assert.ok(!busy.includes('nono-orb-eyes'), 'La cara de proceso sustituye a los ojos normales');
-  assert.ok(!busy.includes('nono-binary-column'), 'El orbe no usa la pantalla de binario');
-  assert.ok(failed.includes('nono-orb-eyes'), 'Un error recupera los ojos del orbe');
-  assert.ok(!failed.includes('nono-orb-busy-face'), 'Un error no muestra la cara satisfecha');
-  assert.ok(!idle.includes('nono-orb-processing'), 'En reposo no hay rotor');
-  assert.ok(!idle.includes('nono-orb-rotor'), 'En reposo no se pinta el rotor');
-});
-
-test('NonoHead: el orbe no dibuja boca en ninguna expresión', () => {
-  const expressions: NonoExpression[] = [
-    'neutral', 'happy', 'sad', 'surprised', 'angry',
-    'wink', 'sleepy', 'thinking', 'error', 'love', 'cool', 'watch', 'curious',
-  ];
+test('NonoHead clásico: cada expresión cambia sólo los ojos', () => {
+  const expressions = [
+    'neutral',
+    'happy',
+    'love',
+    'sad',
+    'surprised',
+    'angry',
+    'wink',
+    'sleepy',
+    'thinking',
+    'watch',
+    'curious',
+    'error',
+    'cool',
+  ] as const;
+  const eyes = new Set<string>();
 
   for (const expression of expressions) {
-    for (const busy of [false, true]) {
-      const markup = renderToStaticMarkup(
-        <NonoHead
-          expression={expression}
-          eyeOffset={{ x: 0, y: 0 }}
-          blink={false}
-          size={64}
-          variant="orb"
-          busy={busy}
-        />
-      );
-      assert.ok(
-        !markup.includes('M27 39 Q32 43 37 39'),
-        `El orbe no debe dibujar boca en ${expression}${busy ? ' (procesando)' : ''}`
-      );
-      assert.ok(
-        !markup.includes('data-testid="nono-face-mouth"'),
-        `El orbe no debe incluir la boca clásica en ${expression}${busy ? ' (procesando)' : ''}`
-      );
-    }
-  }
-});
-
-test('NonoHead: el orbe parpadea y cambia de expresión', () => {
-  const open = renderToStaticMarkup(
-    <NonoHead expression="neutral" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} variant="orb" />
-  );
-  const blink = renderToStaticMarkup(
-    <NonoHead expression="neutral" eyeOffset={{ x: 0, y: 0 }} blink={true} size={64} variant="orb" />
-  );
-  const happy = renderToStaticMarkup(
-    <NonoHead expression="happy" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} variant="orb" />
-  );
-  const angry = renderToStaticMarkup(
-    <NonoHead expression="angry" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} variant="orb" />
-  );
-
-  assert.notStrictEqual(open, blink, 'Al parpadear los ojos deben cerrarse');
-  assert.ok(blink.includes('height="2.5"'), 'El parpadeo usa barras finas');
-  assert.notStrictEqual(happy, angry, 'Las expresiones deben cambiar los ojos');
-});
-
-test('NonoHead: la variante clásica sigue siendo el valor por defecto', () => {
-  const classic = renderToStaticMarkup(
-    <NonoHead expression="neutral" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} />
-  );
-  const orb = renderToStaticMarkup(
-    <NonoHead expression="neutral" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} variant="orb" />
-  );
-
-  assert.ok(classic.includes('data-variant="classic"'));
-  assert.ok(classic.includes('nono-antenna-led'), 'La clásica conserva su antena');
-  assert.notStrictEqual(classic, orb);
-});
-
-test('NonoHead: la clásica lleva dos tapones laterales y el orbe no', () => {
-  const classic = renderToStaticMarkup(
-    <NonoHead expression="neutral" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} />
-  );
-  const orb = renderToStaticMarkup(
-    <NonoHead expression="neutral" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} variant="orb" />
-  );
-
-  assert.ok(classic.includes('data-testid="nono-side-caps"'), 'La clásica debe tener tapones');
-  assert.strictEqual(
-    (classic.match(/class="nono-side-cap"/g) || []).length,
-    2,
-    'Debe haber un tapón a cada lado'
-  );
-  assert.ok(!orb.includes('nono-side-caps'), 'El orbe no lleva tapones');
-});
-
-test('NonoHead: los tapones laterales son cortos y quedan centrados', () => {
-  const markup = renderToStaticMarkup(
-    <NonoHead expression="neutral" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} />
-  );
-  const caps = [...markup.matchAll(/<rect class="nono-side-cap"[^>]*>/g)].map(([tag]) => ({
-    x: Number(/\bx="([\d.]+)"/.exec(tag)?.[1]),
-    y: Number(/\by="([\d.]+)"/.exec(tag)?.[1]),
-    width: Number(/\bwidth="([\d.]+)"/.exec(tag)?.[1]),
-    height: Number(/\bheight="([\d.]+)"/.exec(tag)?.[1]),
-  }));
-
-  assert.strictEqual(caps.length, 2, 'Debe haber un tapón a cada lado');
-  for (const cap of caps) {
-    assert.strictEqual(cap.height, 9, 'Los tapones deben ser más cortos que la carcasa');
-    assert.strictEqual(cap.y, 29.5, 'Los tapones deben quedar centrados verticalmente');
-    assert.ok(cap.y >= 12 && cap.y + cap.height <= 56, 'Los tapones no deben salir de la cabeza');
+    const markup = renderClassic(expression);
+    assert.ok(markup.includes(`data-eye-style="${expression}"`), `${expression} debe tener ojos propios`);
+    assert.ok(!markup.includes('data-mouth-style'), `${expression} no debe añadir boca`);
+    const eyeMarkup =
+      /<g[^>]*data-testid="nono-classic-eyes"[^>]*>([\s\S]*?)<\/g>/.exec(markup)?.[1] ?? '';
+    assert.ok(eyeMarkup.length > 0, `${expression} debe dibujar sus ojos`);
+    eyes.add(eyeMarkup);
   }
 
-  const [left, right] = caps.sort((a, b) => a.x - b.x);
-  assert.strictEqual(left.width, right.width, 'Los tapones deben medir lo mismo');
-  assert.strictEqual(left.height, right.height, 'Los tapones deben medir lo mismo');
-  assert.strictEqual(left.y, right.y, 'Los tapones deben estar a la misma altura');
-  assert.strictEqual(64 - (right.x + right.width), left.x, 'Los tapones deben quedar simétricos');
+  assert.equal(eyes.size, expressions.length, 'Cada expresión debe tener ojos distintos');
 });
 
-test('NonoHead: acepta paletas y acento propios', () => {
-  const orb = renderToStaticMarkup(
-    <NonoHead
-      expression="neutral"
-      eyeOffset={{ x: 0, y: 0 }}
-      blink={false}
-      size={64}
-      variant="orb"
-      orbColors={{ top: '#112233', mid: '#445566', bottom: '#778899', eyes: '#abcdef' }}
-    />
-  );
-  assert.ok(
-    orb.includes('#112233') && orb.includes('#445566') && orb.includes('#778899'),
-    'El degradado usa la paleta elegida'
-  );
-  assert.ok(orb.includes('#abcdef'), 'Los ojos usan el color elegido');
+test('NonoHead clásico: pensando y procesando muestran tres puntos', () => {
+  for (const markup of [renderClassic('thinking'), renderClassic('neutral', { busy: true })]) {
+    assert.ok(markup.includes('data-testid="nono-thinking-dots"'), 'Debe mostrar los puntos de proceso');
+    assert.equal((markup.match(/class="nono-thinking-dot"/g) ?? []).length, 3, 'Deben ser tres puntos');
+    assert.ok(markup.includes('data-eye-style="thinking"'));
+    assert.ok(!markup.includes('data-mouth-style'), 'Los puntos no añaden boca');
+  }
 
-  const classic = renderToStaticMarkup(
-    <NonoHead
-      expression="neutral"
-      eyeOffset={{ x: 0, y: 0 }}
-      blink={false}
-      size={64}
-      classicAccent="#ffcc00"
-    />
-  );
-  assert.ok(classic.includes('#ffcc00'), 'El clásico usa su acento');
+  assert.ok(!renderClassic('error', { busy: true }).includes('nono-thinking-dots'), 'El error no se tapa con puntos');
 });
 
-test('NonoHead: el orbe distingue observación y curiosidad', () => {
-  const render = (expression: 'neutral' | 'watch' | 'curious') =>
-    renderToStaticMarkup(
-      <NonoHead expression={expression} eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} variant="orb" />
-    );
-
-  const neutral = render('neutral');
-  const watch = render('watch');
-  const curious = render('curious');
-
-  // Antes ambas expresiones caían en la cara neutral y el orbe parecía no mirar.
-  assert.notStrictEqual(watch, neutral, 'watch debe cambiar los ojos del orbe');
-  assert.notStrictEqual(curious, neutral, 'curious debe cambiar los ojos del orbe');
-  assert.notStrictEqual(curious, watch, 'curious y watch deben ser distintos');
-});
-
-test('NonoHead: las 13 expresiones se ven distintas en ambas variantes', () => {
-  const expressions = [
-    'neutral',
-    'happy',
-    'sad',
-    'surprised',
-    'angry',
-    'wink',
-    'sleepy',
-    'thinking',
-    'error',
-    'love',
-    'cool',
-    'watch',
-    'curious',
+test('NonoHead clásico: microanimaciones de una sola vez por expresión', () => {
+  const motions = [
+    ['surprised', 'pop'],
+    ['curious', 'tilt'],
+    ['angry', 'squeeze'],
+    ['error', 'shake'],
   ] as const;
 
-  for (const variant of ['classic', 'orb'] as const) {
-    const rendered = expressions.map((expression) =>
-      renderToStaticMarkup(
-        <NonoHead
-          expression={expression}
-          eyeOffset={{ x: 0, y: 0 }}
-          blink={false}
-          size={64}
-          variant={variant}
-        />
-      )
-    );
-    assert.strictEqual(
-      new Set(rendered).size,
-      expressions.length,
-      `Las 13 expresiones deben tener cara propia en la variante ${variant}`
-    );
+  for (const [expression, motion] of motions) {
+    const markup = renderClassic(expression);
+    assert.ok(markup.includes(`data-eye-motion="${motion}"`), `${expression} debe usar ${motion}`);
+    assert.ok(!markup.includes('data-mouth-style'), `${expression} no debe añadir boca`);
+    assert.ok(!markup.includes('data-testid="nono-brow'), `${expression} no debe añadir cejas`);
+    assert.ok(!markup.includes('data-testid="nono-pupil'), `${expression} no debe añadir pupilas`);
   }
-});
 
-test('NonoHead: love y watch llevan su propia animación', () => {
-  const render = (expression: 'love' | 'watch', variant: 'classic' | 'orb') =>
-    renderToStaticMarkup(
-      <NonoHead expression={expression} eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} variant={variant} />
-    );
+  for (const expression of ['neutral', 'happy', 'love', 'sad', 'wink', 'sleepy', 'thinking', 'watch', 'cool'] as const) {
+    assert.ok(!renderClassic(expression).includes('data-eye-motion'), `${expression} no tiene microanimación`);
+  }
 
-  for (const variant of ['classic', 'orb'] as const) {
-    assert.ok(render('love', variant).includes('nono-heart'), `love late en ${variant}`);
+  const css = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8');
+  for (const motion of motions) {
     assert.ok(
-      render('watch', variant).includes('nono-watch-eyes'),
-      `watch parpadea en ${variant}`
+      css.includes(`[data-eye-motion='${motion[1]}']`),
+      `El CSS debe definir ${motion[1]} una sola vez`
     );
   }
+  assert.match(
+    css,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\[data-eye-motion\][\s\S]*?nono-classic-eye-emphasis/
+  );
 });
 
-test('NonoHead: ninguna variante dibuja cejas', () => {
-  // Trayectos que dibujaban cejas en watch y curious. Ninguna expresión, en
-  // ninguna variante, puede volver a incluirlos.
-  const eyebrowPaths = [
-    'M14 29 Q20 26.5 26 29',
-    'M38 29 Q44 26.5 50 29',
-    'M20.5 26.5 Q24 24.5 27.5 26.5',
-    'M34.5 26.5 Q38 24.5 41.5 26.5',
-    'M34.5 22.5 Q38 20.5 42 21.5',
-  ];
-  const expressions = [
-    'neutral',
-    'happy',
-    'sad',
-    'surprised',
-    'angry',
-    'wink',
-    'sleepy',
-    'thinking',
-    'error',
-    'love',
-    'cool',
-    'watch',
-    'curious',
-  ] as const;
+test('NonoHead clásico: error en rojo y enfadado con medias lunas', () => {
+  const eyesOf = (markup: string) =>
+    /<g[^>]*data-testid="nono-classic-eyes"[^>]*>([\s\S]*?)<\/g>/.exec(markup)?.[1] ?? '';
 
-  for (const variant of ['classic', 'orb'] as const) {
-    for (const expression of expressions) {
-      const markup = renderToStaticMarkup(
-        <NonoHead expression={expression} eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} variant={variant} />
-      );
-      for (const d of eyebrowPaths) {
-        assert.ok(
-          !markup.includes(d),
-          `La expresión ${expression} (${variant}) volvió a dibujar una ceja: ${d}`
-        );
-      }
-    }
-  }
+  const error = eyesOf(renderClassic('error'));
+  assert.equal(
+    (error.match(/stroke="var\(--nono-danger\)"/g) ?? []).length,
+    4,
+    'Las dos X deben usar el token de error'
+  );
+  // El token conserva el rojo del GIF: pasar de literal a token no cambia el color.
+  const palette = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8');
+  assert.match(palette, /--nono-danger:\s*#ff5555\b/i, 'El token de error debe ser rojo');
 
-  // En watch y curious los ojos son círculos o barras; en la clásica la boca
-  // es una línea o elipse. Cualquier <path> nuevo en esas caras sería una ceja.
-  for (const variant of ['classic', 'orb'] as const) {
-    for (const expression of ['watch', 'curious'] as const) {
-      const markup = renderToStaticMarkup(
-        <NonoHead expression={expression} eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} variant={variant} />
-      );
-      assert.ok(
-        !markup.includes('<path'),
-        `La expresión ${expression} (${variant}) añadió un path: posible ceja`
-      );
-    }
+  const angry = eyesOf(renderClassic('angry'));
+  assert.equal((angry.match(/<path/g) ?? []).length, 2, 'Cada ojo enfadado es una forma');
+  assert.ok(angry.includes('Z'), 'Las medias lunas deben ser formas cerradas');
+  assert.ok(!angry.includes('stroke='), 'Los ojos enfadados no deben ser simples rayas');
+
+  const love = renderClassic('love');
+  assert.ok(love.includes('class="nono-heart"'), 'El corazón izquierdo debe latir');
+  assert.ok(love.includes('nono-heart-right'), 'El corazón derecho debe latir desfasado');
+});
+
+test('NonoHead clásico: el párpado conserva los ojos y no tapa error ni proceso', () => {
+  const busy = renderClassic('thinking', { busy: true });
+  const idle = renderClassic('neutral', { idleGaze: true });
+  const blink = renderClassic('happy', { blink: true });
+  const right = renderClassic('neutral', { eyeOffset: { x: 1, y: 1 } });
+
+  assert.ok(busy.includes('nono-bothead--busy'));
+  assert.ok(busy.includes('nono-bothead--thinking'));
+  assert.ok(busy.includes('data-eye-style="thinking"'));
+  assert.ok(!busy.includes('nono-face-process'));
+  assert.ok(!busy.includes('nono-bothead__scan'));
+  assert.ok(idle.includes('nono-bothead--idle'));
+
+  // El párpado recorta los ojos de la expresión, no los sustituye por arcos.
+  assert.ok(blink.includes('data-testid="nono-classic-eyelid"'), 'Debe dibujar el párpado');
+  assert.ok(blink.includes('data-eyelid="true"'));
+  assert.ok(blink.includes('data-eye-style="happy"'), 'La expresión sigue debajo del párpado');
+  assert.ok(!blink.includes('data-eye-style="blink"'), 'No debe cambiar los ojos por arcos');
+  assert.ok(blink.includes('M18.8 33 Q22.4 28.4 26 33'), 'Los ojos felices siguen dibujados');
+  assert.ok(!blink.includes('data-mouth-style'), 'Parpadear no añade boca');
+
+  const loveBlink = renderClassic('love', { blink: true });
+  assert.ok(loveBlink.includes('nono-heart'), 'El corazón sigue presente durante el parpadeo');
+  assert.ok(loveBlink.includes('nono-heart-right'), 'El segundo corazón sigue presente');
+
+  const errorBlink = renderClassic('error', { blink: true });
+  assert.ok(!errorBlink.includes('nono-classic-eyelid'), 'El error no parpadea');
+  assert.equal(
+    (errorBlink.match(/stroke="var\(--nono-danger\)"/g) ?? []).length,
+    4,
+    'Las X rojas siguen visibles'
+  );
+
+  const busyBlink = renderClassic('neutral', { blink: true, busy: true });
+  assert.ok(busyBlink.includes('nono-thinking-dots'), 'Procesando siguen los puntos');
+  assert.ok(!busyBlink.includes('nono-classic-eyelid'), 'Procesando no parpadea');
+
+  assert.ok(
+    !renderClassic('sleepy', { blink: true }).includes('nono-classic-eyelid'),
+    'Dormido ya tiene los ojos cerrados'
+  );
+  assert.ok(right.includes('translate(1.8px, 1.2px)'), 'La mirada desplaza el grupo de ojos');
+});
+
+test('NonoHead orbe: la mirada se aplica a barras y curvas', () => {
+  // El grupo de mirada envuelve todas las expresiones; con una de barras y
+  // otra de curvas basta para detectar que no se vuelva a mover por expresión.
+  for (const expression of ['neutral', 'happy'] as const) {
+    const gaze = orbGazeOf(renderOrb(expression, { eyeOffset: { x: 1, y: 1 } }));
+    assert.deepEqual(gaze, { x: 6, y: 4 }, `La expresión ${expression} debe seguir el puntero`);
   }
 });
 
-test('NonoHead: el orbe mira a los lados en reposo', () => {
-  const idle = renderToStaticMarkup(
-    <NonoHead
-      expression="neutral"
-      eyeOffset={{ x: 0, y: 0 }}
-      blink={false}
-      size={64}
-      variant="orb"
-      idleGaze
-    />
-  );
-  const active = renderToStaticMarkup(
-    <NonoHead expression="neutral" eyeOffset={{ x: 0, y: 0 }} blink={false} size={64} variant="orb" />
-  );
+test('NonoHead orbe: en reposo centra la mirada y al procesar mira arriba', () => {
+  const idle = orbGazeOf(renderOrb('happy', { eyeOffset: { x: 1, y: 1 }, idleGaze: true }));
+  const busy = orbGazeOf(renderOrb('neutral', { busy: true, eyeOffset: { x: 1, y: 1 } }));
+  const busyError = orbGazeOf(renderOrb('error', { busy: true, eyeOffset: { x: 1, y: 1 } }));
 
-  assert.ok(idle.includes('nono-orb-gaze'), 'En reposo el orbe barre la mirada');
-  assert.ok(!active.includes('nono-orb-gaze'), 'Con el puntero activo no se añade el barrido');
+  assert.deepEqual(idle, { x: 0, y: 0 }, 'El barrido automático debe partir del centro');
+  assert.deepEqual(busy, { x: 0, y: -3 }, 'Procesando mira hacia el chat');
+  assert.deepEqual(busyError, { x: 6, y: 4 }, 'El error no oculta la mirada del puntero');
 });
 
 // ==================
@@ -532,4 +296,13 @@ test('clearNonoPosition elimina la posición guardada', () => {
   clearNonoPosition();
   const loaded = loadNonoPosition();
   assert.strictEqual(loaded, null, 'Tras limpiar no debe quedar posición');
+});
+
+test('readNonoMemory migra el antiguo color de antena a eyesColor', () => {
+  store.clear();
+  store.set(NONO_MEMORY_KEY, JSON.stringify({ ui: { classicAccent: '#ffcc00' } }));
+
+  const memory = readNonoMemory();
+  assert.equal(memory.ui.eyesColor, '#ffcc00', 'La variante Ojos conserva el color guardado');
+  assert.ok(!('classicAccent' in memory.ui), 'El campo de la antena no debe sobrevivir en memoria');
 });

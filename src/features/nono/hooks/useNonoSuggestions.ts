@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
 import type { Language, FloatingAssistantProps, NonoExpression } from '../../../components/nono/content';
 import { buildHoverQuestions, generateProjectSuggestions } from '../../../components/nono/content';
 
@@ -15,7 +14,7 @@ interface UseNonoSuggestionsOptions {
    * se durmió, antes de que React re-renderice.
    */
   isAsleepRef?: { current: boolean };
-  setExpression: Dispatch<SetStateAction<NonoExpression>>;
+  setExpression: (expression: NonoExpression, durationMs?: number) => void;
 }
 
 interface UseNonoSuggestionsReturn {
@@ -108,7 +107,7 @@ export function useNonoSuggestions({
           clearTimeout(chatTypingTimerRef.current);
           chatTypingTimerRef.current = null;
         }
-        setExpression((prev) => (prev === 'curious' ? 'neutral' : prev));
+        setExpression('neutral');
       }
     };
 
@@ -132,9 +131,7 @@ export function useNonoSuggestions({
         chatTypingTimerRef.current = null;
         chatTypingRef.current = false;
         setIsChatTyping(false);
-        setExpression((prev) =>
-          prev === 'curious' ? (watchingChatRef.current ? 'watch' : 'neutral') : prev
-        );
+        setExpression(watchingChatRef.current ? 'watch' : 'neutral');
       }, 1000);
     };
 
@@ -183,13 +180,15 @@ export function useNonoSuggestions({
         const suggestion = suggestions[Math.floor(Math.random() * suggestions.length)];
         setProjectSuggestion(suggestion);
         setShowProjectSuggestion(true);
-        setExpression('thinking');
+        // Es una transitoria decorativa: no debe confundirse con el
+        // procesamiento real ni quedar bloqueada por él.
+        setExpression('thinking', 5000);
         
         setTimeout(() => {
           setShowProjectSuggestion(false);
           setProjectSuggestion('');
-          // Si mientras tanto se durmió, la limpieza de la sugerencia no lo despierta.
-          setExpression((prev) => (prev === 'sleepy' ? prev : 'neutral'));
+          // La expresión vuelve sola a su fondo: su temporizador lo controla la
+          // máquina, no este temporizador de la frase.
         }, 5000);
       }
     };

@@ -8,8 +8,8 @@ import { FloatingAssistant } from '../../src/components/FloatingAssistant';
 
 /** Nono busca la cabeza por su aria-label ("Nono"). */
 const getHead = () => screen.getByLabelText('Nono') as HTMLElement;
-const getSvg = () => document.querySelector('svg[data-expression]') as SVGElement;
-const getExpression = () => getSvg()?.getAttribute('data-expression');
+const getHeadVisual = () => document.querySelector('[data-variant][data-expression]') as HTMLElement | null;
+const getExpression = () => getHeadVisual()?.getAttribute('data-expression');
 
 describe('FloatingAssistant (Nono)', () => {
   let unexpectedFetches: string[] = [];
@@ -44,7 +44,7 @@ describe('FloatingAssistant (Nono)', () => {
     test('la cabeza se muestra siempre (sin clic previo)', () => {
       render(<FloatingAssistant lang="es" />);
       expect(getHead()).toBeInTheDocument();
-      expect(getSvg()).toBeTruthy();
+      expect(getHeadVisual()).toBeTruthy();
     });
 
     test('arranca con expresión neutral', () => {
@@ -52,22 +52,23 @@ describe('FloatingAssistant (Nono)', () => {
       expect(['neutral', 'happy']).toContain(getExpression());
     });
 
-    test('mientras el chat procesa, Nono muestra el binario en la cara sin chip aparte', () => {
+    test('mientras el chat procesa, Nono mantiene la cara SVG sin capas aparte', () => {
       const { rerender } = render(<FloatingAssistant lang="es" busy />);
 
       expect(getExpression()).toBe('thinking');
       expect(screen.queryByTestId('nono-working')).toBeNull();
-      expect(screen.getByTestId('nono-face-process')).toBeInTheDocument();
+      expect(screen.queryByTestId('nono-face-process')).toBeNull();
       expect(screen.queryByTestId('nono-face-eyes')).toBeNull();
       expect(screen.queryByTestId('nono-face-mouth')).toBeNull();
       expect(getHead().className).toContain('nono-busy');
 
-      // Al terminar, el proceso desaparece, vuelve la cara y Nono celebra un instante.
+      // Al terminar, el estado de proceso desaparece, vuelve la cara SVG y Nono celebra un instante.
       rerender(<FloatingAssistant lang="es" busy={false} />);
       expect(screen.queryByTestId('nono-working')).toBeNull();
       expect(screen.queryByTestId('nono-face-process')).toBeNull();
-      expect(screen.getByTestId('nono-face-eyes')).toBeInTheDocument();
-      expect(screen.getByTestId('nono-face-mouth')).toBeInTheDocument();
+      expect(screen.getByTestId('nono-bothead')).toBeInTheDocument();
+      expect(screen.getByTestId('nono-classic-face')).toBeInTheDocument();
+      expect(document.querySelector('.nono-bothead__gif')).toBeNull();
       expect(getHead().className).not.toContain('nono-busy');
       // Terminar bien se celebra con gafas de sol.
       expect(getExpression()).toBe('cool');
@@ -404,19 +405,19 @@ describe('FloatingAssistant (Nono)', () => {
       chatInput.remove();
     });
 
-    test('el SVG se remonta al empezar a escribir (rebote)', () => {
+    test('la cabeza se remonta al empezar a escribir (rebote)', () => {
       const chatInput = document.createElement('textarea');
       chatInput.setAttribute('data-chat-input', '');
       document.body.appendChild(chatInput);
 
       render(<FloatingAssistant lang="es" />);
-      const before = getSvg();
+      const before = getHeadVisual();
 
       act(() => {
         chatInput.dispatchEvent(new InputEvent('input', { bubbles: true }));
       });
-      const after = getSvg();
-      // Remontar el SVG reinicia la animación de rebote de Nono
+      const after = getHeadVisual();
+      // Remontar la cabeza reinicia la animación de rebote de Nono
       expect(after).not.toBe(before);
       expect(document.querySelector('.nono-lean-chat')).toBeTruthy();
 
@@ -424,7 +425,7 @@ describe('FloatingAssistant (Nono)', () => {
       act(() => {
         chatInput.dispatchEvent(new InputEvent('input', { bubbles: true }));
       });
-      expect(getSvg()).toBe(after);
+      expect(getHeadVisual()).toBe(after);
 
       chatInput.remove();
     });
@@ -441,124 +442,161 @@ describe('FloatingAssistant (Nono)', () => {
     });
   });
 
-  describe('ojos que siguen el puntero', () => {
-    /** Coloca el centro de la cabeza en (500, 300): jsdom mide todo en 0. */
-    const stubHeadRect = () => {
-      getHead().getBoundingClientRect = () =>
-        ({ left: 480, top: 280, right: 520, bottom: 320, width: 40, height: 40, x: 480, y: 280 }) as DOMRect;
-    };
+  describe('cara clásica', () => {
+    test('parpadea una vez sin contexto y no encadena doble', () => {
+      const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+      try {
+        render(<FloatingAssistant lang="es" />);
+        const head = () => document.querySelector('[data-testid="nono-bothead"]') as HTMLElement;
+        expect(head().getAttribute('data-blink')).toBe('false');
 
-    const getEye = () =>
-      document.querySelector('svg[data-expression] rect.nono-eye-square') as SVGRectElement | null;
+        act(() => { vi.advanceTimersByTime(3500); });
+        expect(head().getAttribute('data-blink')).toBe('true');
 
-    test('los ojos siguen el puntero con una interpolación corta', () => {
-      render(<FloatingAssistant lang="es" />);
-      stubHeadRect();
+        act(() => { vi.advanceTimersByTime(150); });
+        expect(head().getAttribute('data-blink')).toBe('false');
 
-      // Sin movimiento, el ojo está centrado en (20, 38); el tamaño lo decide
-      // la expresión, así que se mide en vez de fijarlo.
-      const initial = getEye() as SVGRectElement;
-      const size = Number(initial.getAttribute('width'));
-      const initialX = Number(initial.getAttribute('x'));
-      const initialY = Number(initial.getAttribute('y'));
-      const centerX = initialX + size / 2;
-      const centerY = initialY + size / 2;
-      expect(centerX).toBe(20);
-      expect(centerY).toBe(38);
+        act(() => { vi.advanceTimersByTime(90); });
+        expect(head().getAttribute('data-blink')).toBe('false');
 
-      // El primer frame sólo recorre una parte del camino: no salta al cursor.
-      fireEvent.mouseMove(window, { clientX: 1000, clientY: 300 });
-      act(() => { vi.advanceTimersByTime(16); });
-      const firstStepX = Number(getEye()?.getAttribute('x')) + size / 2;
-      expect(firstStepX).toBeGreaterThan(centerX);
-      expect(firstStepX).toBeLessThan(centerX + 0.5);
-
-      // En unos cientos de milisegundos alcanza el tope horizontal.
-      act(() => { vi.advanceTimersByTime(400); });
-      expect(Number(getEye()?.getAttribute('x')) + size / 2).toBeCloseTo(centerX + 0.5, 1);
-
-      // Un salto al eje vertical también se interpola desde la posición actual.
-      fireEvent.mouseMove(window, { clientX: 500, clientY: 800 });
-      act(() => { vi.advanceTimersByTime(16); });
-      const firstStepY = Number(getEye()?.getAttribute('y')) + size / 2;
-      expect(firstStepY).toBeGreaterThan(centerY);
-      expect(firstStepY).toBeLessThan(centerY + 0.5);
-
-      act(() => { vi.advanceTimersByTime(400); });
-      expect(Number(getEye()?.getAttribute('y')) + size / 2).toBeCloseTo(centerY + 0.5, 1);
+        act(() => { vi.advanceTimersByTime(150); });
+        expect(head().getAttribute('data-blink')).toBe('false');
+      } finally {
+        random.mockRestore();
+      }
     });
 
-    test('con la mirada instantánea el ojo salta al puntero en el mismo evento', () => {
-      localStorage.setItem('nono-memory-v1', JSON.stringify({ ui: { instantGaze: true } }));
-      render(<FloatingAssistant lang="es" />);
-      stubHeadRect();
+    test('hace el doble parpadeo después de una sorpresa', () => {
+      // Un valor no nulo evita que dos mensajes creados en el mismo milisegundo
+      // compartan id; después fijamos el azar para medir el parpadeo.
+      const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+      try {
+        render(<FloatingAssistant lang="es" />);
+        fireEvent.click(getHead());
+        act(() => { vi.advanceTimersByTime(1); });
 
-      const initial = getEye() as SVGRectElement;
-      const size = Number(initial.getAttribute('width'));
-      const centerX = Number(initial.getAttribute('x')) + size / 2;
-      const centerY = Number(initial.getAttribute('y')) + size / 2;
+        const input = screen.getByPlaceholderText('Escribe...');
+        fireEvent.change(input, { target: { value: '¿?' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(getExpression()).toBe('surprised');
+        random.mockReturnValue(0);
 
-      // Sin avanzar el reloj: la mirada ya está en el tope tras el evento.
-      fireEvent.mouseMove(window, { clientX: 1000, clientY: 300 });
-      expect(Number(getEye()?.getAttribute('x')) + size / 2).toBeCloseTo(centerX + 0.5, 5);
+        const head = () => document.querySelector('[data-testid="nono-bothead"]') as HTMLElement;
+        act(() => { vi.advanceTimersByTime(300); });
+        expect(head().getAttribute('data-blink')).toBe('true');
 
-      fireEvent.mouseMove(window, { clientX: 500, clientY: 800 });
-      expect(Number(getEye()?.getAttribute('y')) + size / 2).toBeCloseTo(centerY + 0.5, 5);
+        act(() => { vi.advanceTimersByTime(150); });
+        expect(head().getAttribute('data-blink')).toBe('false');
+
+        act(() => { vi.advanceTimersByTime(90); });
+        expect(head().getAttribute('data-blink')).toBe('true');
+
+        act(() => { vi.advanceTimersByTime(150); });
+        expect(head().getAttribute('data-blink')).toBe('false');
+      } finally {
+        random.mockRestore();
+      }
     });
 
-    test('los ojos cuadrados parpadean con un cierre de persiana', () => {
-      const randomSpy = vi.spyOn(Math, 'random')
-        .mockReturnValueOnce(0) // primer parpadeo a 3500 ms
-        .mockReturnValueOnce(0) // siguiente a 7000 ms
-        .mockReturnValue(0.99); // sin doble parpadeo
-      render(<FloatingAssistant lang="es" />);
+    test('hace el doble parpadeo al volver al reposo desde un error', () => {
+      const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+      try {
+        render(<FloatingAssistant lang="es" status={{ type: 'error' }} />);
+        expect(getExpression()).toBe('error');
 
-      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(false);
+        act(() => { vi.advanceTimersByTime(4500); });
+        expect(getExpression()).toBe('neutral');
 
-      // El primer parpadeo llega a los 3500 ms, después de que el saludo haya
-      // devuelto la expresión a neutral.
-      act(() => { vi.advanceTimersByTime(3500); });
-      expect(getEye()).not.toBeNull();
-      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(true);
-      expect(getSvg().getAttribute('data-blink')).toBe('true');
+        const head = () => document.querySelector('[data-testid="nono-bothead"]') as HTMLElement;
+        act(() => { vi.advanceTimersByTime(300); });
+        expect(head().getAttribute('data-blink')).toBe('true');
 
-      // El cierre dura 180 ms y luego el ojo vuelve a abrirse.
-      act(() => { vi.advanceTimersByTime(180); });
-      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(false);
-      expect(getSvg().getAttribute('data-blink')).toBe('false');
+        act(() => { vi.advanceTimersByTime(150); });
+        expect(head().getAttribute('data-blink')).toBe('false');
 
-      // Con esta tirada no hay segundo cierre.
-      act(() => { vi.advanceTimersByTime(90); });
-      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(false);
+        act(() => { vi.advanceTimersByTime(90); });
+        expect(head().getAttribute('data-blink')).toBe('true');
 
-      // La cadencia normal vuelve a disparar el parpadeo a los 7000 ms.
-      act(() => { vi.advanceTimersByTime(3230); });
-      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(true);
-
-      randomSpy.mockRestore();
+        act(() => { vi.advanceTimersByTime(150); });
+        expect(head().getAttribute('data-blink')).toBe('false');
+      } finally {
+        random.mockRestore();
+      }
     });
 
-    test('a veces encadena un segundo parpadeo', () => {
-      const randomSpy = vi.spyOn(Math, 'random')
-        .mockReturnValueOnce(0) // primer parpadeo a 3500 ms
-        .mockReturnValueOnce(0) // siguiente a 7000 ms
-        .mockReturnValue(0); // probabilidad de doble parpadeo
+    test('no repite el doble si vuelve al reposo dentro del enfriamiento', () => {
+      const random = vi.spyOn(Math, 'random').mockReturnValue(1);
+      try {
+        const { rerender } = render(<FloatingAssistant lang="es" status={{ type: 'error' }} />);
+        act(() => { vi.advanceTimersByTime(4500); });
+        expect(getExpression()).toBe('neutral');
+
+        const head = () => document.querySelector('[data-testid="nono-bothead"]') as HTMLElement;
+        act(() => { vi.advanceTimersByTime(300); });
+        expect(head().getAttribute('data-blink')).toBe('true');
+        act(() => { vi.advanceTimersByTime(230); });
+        act(() => { vi.advanceTimersByTime(90); });
+        expect(head().getAttribute('data-blink')).toBe('true');
+        act(() => { vi.advanceTimersByTime(230); });
+        expect(head().getAttribute('data-blink')).toBe('false');
+
+        // Otra vuelta al reposo, ahora desde «love», demasiado pronto.
+        rerender(<FloatingAssistant lang="es" status={{ type: 'success' }} />);
+        act(() => { vi.advanceTimersByTime(3000); });
+        expect(getExpression()).toBe('neutral');
+        act(() => { vi.advanceTimersByTime(300); });
+        expect(head().getAttribute('data-blink')).toBe('false');
+      } finally {
+        random.mockRestore();
+      }
+    });
+
+    test('no parpadea mientras procesa', () => {
+      const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+      try {
+        render(<FloatingAssistant lang="es" busy />);
+        const head = () => document.querySelector('[data-testid="nono-bothead"]') as HTMLElement;
+
+        act(() => { vi.advanceTimersByTime(3500); });
+
+        expect(head().getAttribute('data-blink')).toBe('false');
+        expect(document.querySelector('[data-testid="nono-classic-eyelid"]')).toBeNull();
+        expect(document.querySelector('[data-testid="nono-thinking-dots"]')).toBeTruthy();
+      } finally {
+        random.mockRestore();
+      }
+    });
+
+    test('no parpadea durante un error', () => {
+      const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+      try {
+        render(<FloatingAssistant lang="es" status={{ type: 'error' }} />);
+        const head = () => document.querySelector('[data-testid="nono-bothead"]') as HTMLElement;
+
+        act(() => { vi.advanceTimersByTime(3500); });
+
+        expect(getExpression()).toBe('error');
+        expect(head().getAttribute('data-blink')).toBe('false');
+        expect(document.querySelector('[data-testid="nono-classic-eyelid"]')).toBeNull();
+        expect(
+          document.querySelectorAll('[data-testid="nono-classic-face"] path[stroke="var(--nono-danger)"]')
+        ).toHaveLength(4);
+      } finally {
+        random.mockRestore();
+      }
+    });
+
+    test('es SVG y no carga el gif antiguo', () => {
       render(<FloatingAssistant lang="es" />);
+      const svg = document.querySelector('svg.nono-bothead__svg');
+      expect(svg?.querySelector('image')).toBeNull();
+      expect(screen.getByTestId('nono-classic-face')).toBeInTheDocument();
+      expect(document.querySelector('.nono-bothead__gif')).toBeNull();
 
-      act(() => { vi.advanceTimersByTime(3500); });
-      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(true);
+      fireEvent.mouseMove(window, { clientX: 1000, clientY: 800 });
 
-      act(() => { vi.advanceTimersByTime(180); });
-      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(false);
-
-      // Breve pausa y segundo cierre: el doble parpadeo dura 180 ms más.
-      act(() => { vi.advanceTimersByTime(90); });
-      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(true);
-
-      act(() => { vi.advanceTimersByTime(180); });
-      expect(getEye()?.classList.contains('nono-eye-shutter')).toBe(false);
-
-      randomSpy.mockRestore();
+      expect(svg?.querySelector('image')).toBeNull();
+      expect(screen.getByTestId('nono-classic-face')).toBeInTheDocument();
     });
   });
 
@@ -717,27 +755,6 @@ describe('FloatingAssistant (Nono)', () => {
     act(() => {
       vi.advanceTimersByTime(IDLE_SLEEP_MS + 1000);
     });
-
-  describe('LED de la antena', () => {
-    test('el único indicador parpadeante es el de la antena', () => {
-      render(<FloatingAssistant lang="es" />);
-      const led = document.querySelector('.nono-antenna-led');
-      expect(led).toBeTruthy();
-      expect(led?.getAttribute('data-led')).toBe('active');
-      // El antiguo badge de notificación (otro LED) ya no existe
-      expect(document.querySelector('.absolute.-top-1.-right-1')).toBeNull();
-    });
-
-    test('en reposo (dormido) cambia de color a verde', () => {
-      render(<FloatingAssistant lang="es" />);
-      advancePastIdle();
-      expect(getExpression()).toBe('sleepy');
-      const led = document.querySelector('.nono-antenna-led');
-      expect(led?.getAttribute('data-led')).toBe('resting');
-      const core = led?.querySelectorAll('circle')[1] as SVGCircleElement;
-      expect(core.getAttribute('fill')).toBe('#00ff66');
-    });
-  });
 
   describe('sueño (Zzz de cómic)', () => {
     test('no muestra Zzz despierto', () => {

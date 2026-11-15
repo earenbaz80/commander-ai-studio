@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import {
+  applyMeasuredContextTokens,
   computeContextStats,
   estimateTokens,
   formatTokens,
@@ -79,6 +80,19 @@ describe('contextStats', () => {
     expect(stats.overLimit).toBe(false);
   });
 
+  test('descuenta también la reserva de herramientas del espacio libre', () => {
+    const stats = computeContextStats({
+      messages: [message('a'.repeat(4100))],
+      parameters: parameters({ maxTokens: 1000 }),
+      model: model('4K tokens'),
+      toolTokens: 2048,
+    });
+
+    expect(stats.reservedToolTokens).toBe(2048);
+    expect(stats.remainingTokens).toBe(0);
+    expect(stats.overLimit).toBe(true);
+  });
+
   test('sin ventana conocida informa el total pero no un porcentaje falso', () => {
     const stats = computeContextStats({ messages: [message('hola')], parameters: parameters() });
     expect(stats.limit).toBeNull();
@@ -104,6 +118,21 @@ describe('contextStats', () => {
     });
     expect(stats.percent).toBeGreaterThan(90);
     expect(stats.overLimit).toBe(true);
+  });
+
+  test('aplica el total real sin perder la ventana ni la respuesta reservada', () => {
+    const stats = computeContextStats({
+      messages: [message('a'.repeat(3600))],
+      parameters: parameters({ maxTokens: 1000, systemInstruction: 'c'.repeat(400) }),
+      model: model('4K tokens'),
+    });
+    const measured = applyMeasuredContextTokens(stats, 2000);
+
+    expect(measured.totalTokens).toBe(2000);
+    expect(measured.conversationTokens).toBe(1900);
+    expect(measured.percent).toBe(50);
+    expect(measured.remainingTokens).toBe(1000);
+    expect(measured.overLimit).toBe(false);
   });
 
   test('acorta las cifras del indicador', () => {

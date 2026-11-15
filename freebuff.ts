@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { FREEBUFF_DEFAULT_MODEL } from './src/config/freebuffModels';
 import { getApiKey } from './apiKeys';
+import { truncatedChatCompletions } from './src/agent/providerResponses';
 
 /**
  * Proxy de Freebuff: `/api/freebuff/generate`.
@@ -116,9 +117,15 @@ export async function handleFreebuffGenerate(req: Request, res: Response) {
           .filter((tc: any) => typeof tc.name === 'string' && tc.name)
       : [];
 
+    // `finish_reason: "length"` sin contenido ni tool calls es un turno
+    // truncado, no una respuesta (`G1-EMPTY-TURN`).
+    const truncado = truncatedChatCompletions(data, maxTokens);
+    if (truncado) return res.json({ success: false, ok: false, error: truncado });
+
     return res.json({
       success: true,
       text: typeof message.content === 'string' ? message.content : '',
+      finishReason: data?.choices?.[0]?.finish_reason,
       toolCalls,
       // Quién contestó de verdad, como en Gemini: el agente lo deja como paso.
       model: data?.model || wanted,

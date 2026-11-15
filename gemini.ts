@@ -16,6 +16,7 @@ import {
   normalizeFallbackChain,
 } from './src/config/geminiModels';
 import { getGoogleFallbackModels, getProviderSecret, setGoogleFallbackModels } from './src/config/index';
+import { truncatedGemini } from './src/agent/providerResponses';
 
 /**
  * Cadena de respaldo efectiva para una petición.
@@ -72,17 +73,21 @@ function toolsCanBeDropped(tools: any[]): boolean {
   return JSON.stringify(toolsWithoutBuiltins(tools) ?? null) !== JSON.stringify(tools);
 }
 
-const getGenAIClient = (overrideApiKey?: string) => {
+const getGenAIClient = (overrideApiKey?: string, baseUrl?: unknown) => {
   const apiKey = overrideApiKey || process.env.GEMINI_API_KEY;
   // Nunca inventamos una key "dummy": enviarla a Google producía un error
   // confuso ("API key not valid") en lugar de un mensaje claro y accionable.
   if (!apiKey) throw new MissingApiKeyError();
+  // `baseUrl` en el cuerpo permite apuntar a un proxy Gemini-compatible (y a un
+  // upstream falso en los tests), como `baseURL` en custom y OpenRouter.
+  const base = typeof baseUrl === 'string' && baseUrl.trim() ? baseUrl.trim().replace(/\/+$/, '') : '';
   return new GoogleGenAI({
     apiKey,
     httpOptions: {
       headers: {
         'User-Agent': 'aistudio-build',
       },
+      ...(base ? { baseUrl: base } : {}),
     },
   });
 };
@@ -105,6 +110,7 @@ export async function handleGeminiGenerate(req: Request, res: Response) {
       tools,
       stopSequences,
       fallbackModels,
+      baseUrl,
     } = req.body;
 
     if (model.includes('/') || model.includes('deepseek') || model.includes('llama') || model.includes('qwen') || model.includes('whisper')) {
@@ -133,7 +139,7 @@ export async function handleGeminiGenerate(req: Request, res: Response) {
     // hace falta para recordar qué keys no admiten las herramientas integradas.
     const effectiveKey =
       userApiKey || geminiApiKey || cookieKey || process.env.GEMINI_API_KEY || getProviderSecret('google', 'apiKey') || '';
-    const ai = getGenAIClient(effectiveKey);
+    const ai = getGenAIClient(effectiveKey, baseUrl);
     const activeModel = mapGeminiModel(model);
 
     let mappedThinkingLevel: ThinkingLevel | undefined = undefined;
@@ -276,6 +282,15 @@ export async function handleGeminiGenerate(req: Request, res: Response) {
 
     console.log('Gemini API Response received');
     const latencyMs = Date.now() - startTime;
+    // `MAX_TOKENS` con texto vacío y sin function calls es un turno truncado, no
+    // una respuesta (`G1-EMPTY-TURN`): se devuelve error como en el resto de rutas.
+    const truncado = truncatedGemini(
+      response.candidates?.[0]?.finishReason,
+      response.text || '',
+      response.functionCalls,
+      maxTokens
+    );
+    if (truncado) return res.json({ success: false, ok: false, error: truncado });
     let textOutput = response.text || '';
     if (fallbackUsed) {
       textOutput = `⚡ *[Aviso: ${activeModel} no respondió (cuota agotada o modelo retirado). Respuesta generada con ${fallbackModelName}]*\n\n` + textOutput;
@@ -401,6 +416,7 @@ export async function handleGeminiStream(req: Request, res: Response) {
       tools,
       stopSequences,
       fallbackModels,
+      baseUrl,
     } = req.body;
 
     if (model.includes('/') || model.includes('deepseek') || model.includes('llama') || model.includes('qwen') || model.includes('whisper')) {
@@ -441,7 +457,7 @@ export async function handleGeminiStream(req: Request, res: Response) {
     // hace falta para recordar qué keys no admiten las herramientas integradas.
     const effectiveKey =
       userApiKey || geminiApiKey || cookieKey || process.env.GEMINI_API_KEY || getProviderSecret('google', 'apiKey') || '';
-    const ai = getGenAIClient(effectiveKey);
+    const ai = getGenAIClient(effectiveKey, baseUrl);
     const activeModel = mapGeminiModel(model);
 
     let mappedThinkingLevel: ThinkingLevel | undefined = undefined;

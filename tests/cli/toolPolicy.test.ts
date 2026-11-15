@@ -1,0 +1,221 @@
+import { describe, test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  isTestPath,
+  normalizeTestCommand,
+  requiresTestChange,
+  runAgent,
+} from '../../src/cli/agentClient.js';
+import type { CliEventV2, SessionStateV2 } from '../../src/agent/sessionTypes.js';
+import { startFakeAgentServer } from '../helpers/fakeAgentServer.js';
+
+describe('política de herramientas para tests en el CLI', () => {
+  test('normaliza node <test> a la forma canónica node --test', () => {
+    assert.equal(normalizeTestCommand('node math.test.mjs'), 'node --test math.test.mjs');
+    assert.equal(normalizeTestCommand('node "math.test.mjs"'), 'node --test "math.test.mjs"');
+    assert.equal(
+      normalizeTestCommand('./node_modules/.bin/x'),
+      './node_modules/.bin/x'
+    );
+    assert.equal(
+      normalizeTestCommand('node ./nested/slug.spec.ts'),
+      'node --test ./nested/slug.spec.ts'
+    );
+    assert.equal(normalizeTestCommand('node --test math.test.mjs'), 'node --test math.test.mjs');
+    assert.equal(normalizeTestCommand('node server.js'), 'node server.js');
+    assert.equal(normalizeTestCommand('npm test'), 'npm test');
+  });
+
+  test('detecta cuándo el objetivo exige un test nuevo', () => {
+    assert.equal(requiresTestChange('Añade un test que cubra la opción.'), true);
+    assert.equal(requiresTestChange('Agrega cobertura para maxLength.'), true);
+    assert.equal(
+      requiresTestChange('El test de math.mjs falla; corrige math.mjs sin tocar math.test.mjs.'),
+      false
+    );
+    assert.equal(isTestPath('slug.test.mjs'), true);
+    assert.equal(isTestPath('src/slug.spec.ts'), true);
+    assert.equal(isTestPath('slug.mjs'), false);
+  });
+
+  test('rechaza una respuesta final sin test editado y ejecutado', async (t) => {
+    const fake = await startFakeAgentServer();
+    t.after(() => fake.close());
+    const events: CliEventV2[] = [];
+
+    const result = await runAgent({
+      serverUrl: fake.baseUrl,
+      task: 'SCENARIO:test-mandatory-source-only Añade un test que cubra la opción.',
+      cwd: '/workspace/demo',
+      model: 'gemini-2.5-flash',
+      maxSteps: 3,
+      stream: false,
+      sessionId: 'sess_mandatory_missing',
+      requestApproval: async () => 'allow',
+      onEvent: (event) => events.push(event),
+    });
+
+    assert.equal(result.answer, '');
+    assert.ok(events.some((event) => event.type === 'error' && /test obligatorio/i.test(event.text)));
+    assert.equal(
+      fake.requests.some((request) => request.path === '/api/agent/run-tool' && request.body?.toolId === 'shell.run'),
+      false,
+      'no ejecuta el test si el test no fue editado'
+    );
+  });
+
+  test('el tercer aviso de test obligatorio cierra la sesión en vez de agotar maxSteps', async (t) => {
+    const fake = await startFakeAgentServer();
+    t.after(() => fake.close());
+    const events: CliEventV2[] = [];
+
+    const result = await runAgent({
+      serverUrl: fake.baseUrl,
+      task: 'SCENARIO:test-mandatory-source-only Añade un test que cubra la opción.',
+      cwd: '/workspace/demo',
+      model: 'gemini-2.5-flash',
+      maxSteps: 10,
+      stream: false,
+      // Sesión persistida para comprobar que el cierre queda en el estado.
+      persistSession: true,
+      requestApproval: async () => 'allow',
+      onEvent: (event) => events.push(event),
+    });
+
+    assert.match(result.answer, /Política de test obligatorio: 3 avisos/);
+    assert.match(result.answer, /se corta la corrida/);
+    assert.equal(result.steps, 4, 'una tool, dos recordatorios y el cierre; no llega a maxSteps');
+    assert.equal(
+      events.some((event) => event.type === 'error' && /3 avisos/.test(event.text)),
+      true,
+      'el motivo se emite como error visible'
+    );
+
+    const res = await fetch(
+      `${fake.baseUrl}/api/agent/sessions/${encodeURIComponent(result.sessionId)}`
+    );
+    const { state } = (await res.json()) as { state?: SessionStateV2 };
+    assert.equal(state?.status, 'failed');
+    assert.match(String(state?.error), /Política de test obligatorio: 3 avisos/);
+    assert.equal(
+      state?.steps.filter((step) => step.title === 'Test obligatorio').length,
+      2,
+      'los dos avisos previos quedan en el timeline'
+    );
+    assert.ok(state?.steps.some((step) => step.title === 'Corte por política de test'));
+  });
+
+  test('la política de fs.propose cambia con el modo', async (t) => {
+    const fake = await startFakeAgentServer();
+    t.after(() => fake.close());
+
+    const systemFor = async (mode: 'build' | 'plan'): Promise<string> => {
+      await runAgent({
+        serverUrl: fake.baseUrl,
+        task: 'SCENARIO:final Cambia la opción.',
+        cwd: '/workspace/demo',
+        model: 'gemini-2.5-flash',
+        maxSteps: 2,
+        mode,
+        stream: false,
+        requestApproval: async () => 'allow',
+      });
+      const request = [...fake.requests]
+        .reverse()
+        .find(
+          (item) =>
+            typeof (item.body as { systemInstruction?: unknown })?.systemInstruction === 'string'
+        );
+      assert.ok(request, `el turno de ${mode} llegó al proveedor`);
+      return String((request.body as { systemInstruction: string }).systemInstruction);
+    };
+
+    const build = await systemFor('build');
+    assert.match(build, /no hay fs\.apply/);
+    assert.match(build, /no cierres una propuesta como aplicada/);
+    assert.doesNotMatch(build, /proponer es la vía/);
+
+    const plan = await systemFor('plan');
+    assert.match(plan, /MODO PLAN/);
+    assert.match(plan, /proponer es la vía/);
+    assert.match(plan, /no intentes aplicar cambios/);
+    assert.doesNotMatch(plan, /no hay fs\.apply/);
+  });
+
+  test('acepta la respuesta final después de editar el test y ejecutar node --test', async (t) => {
+    const fake = await startFakeAgentServer();
+    t.after(() => fake.close());
+    const events: CliEventV2[] = [];
+
+    const result = await runAgent({
+      serverUrl: fake.baseUrl,
+      task: 'SCENARIO:test-mandatory-complete Añade un test que cubra la opción.',
+      cwd: '/workspace/demo',
+      model: 'gemini-2.5-flash',
+      maxSteps: 5,
+      stream: false,
+      sessionId: 'sess_mandatory_complete',
+      requestApproval: async () => 'allow',
+      onEvent: (event) => events.push(event),
+    });
+
+    assert.equal(result.answer, 'Listo: el faro funciona.');
+    assert.equal(events.some((event) => event.type === 'error' && /test obligatorio/i.test(event.text)), false);
+    assert.equal(
+      fake.requests.some(
+        (request) => request.path === '/api/agent/run-tool' && request.body?.toolId === 'shell.run'
+      ),
+      true,
+      'el test se ejecutó después de editarlo'
+    );
+  });
+
+  test('no ofrece code_run y normaliza el test antes de pedir aprobación', async (t) => {
+    const fake = await startFakeAgentServer();
+    t.after(() => fake.close());
+    const events: CliEventV2[] = [];
+    let approvalCommand: string | null = null;
+
+    const result = await runAgent({
+      serverUrl: fake.baseUrl,
+      task: 'SCENARIO:shell-run-node-test Verifica el test.',
+      cwd: '/workspace/demo',
+      model: 'gemini-2.5-flash',
+      maxSteps: 3,
+      stream: false,
+      sessionId: 'sess_tool_policy',
+      requestApproval: async (approval) => {
+        const input = approval.input as Record<string, unknown> | null | undefined;
+        approvalCommand = typeof input?.command === 'string' ? input.command : null;
+        return 'allow';
+      },
+      onEvent: (event) => events.push(event),
+    });
+
+    assert.equal(result.answer, 'Listo: el faro funciona.');
+    assert.equal(approvalCommand, 'node --test math.test.mjs', 'la aprobación ve el comando canónico');
+
+    const toolRequest = fake.requests.find((request) => request.path === '/api/agent/run-tool');
+    assert.equal(toolRequest?.body?.toolId, 'shell.run');
+    assert.equal(toolRequest?.body?.input?.command, 'node --test math.test.mjs');
+
+    const generate = fake.requests.find((request) => request.path === '/api/gemini/generate');
+    assert.match(String(generate?.body?.systemInstruction ?? ''), /POLÍTICA DE HERRAMIENTAS/);
+    assert.match(String(generate?.body?.systemInstruction ?? ''), /node --test/);
+    const declarations = generate?.body?.tools?.[0]?.functionDeclarations as
+      | Array<{ name: string }>
+      | undefined;
+    assert.ok(declarations, 'el payload incluye declaraciones de tools');
+    const names = declarations.map((declaration) => declaration.name);
+    assert.equal(names.includes('code_run'), false, 'code.run no se ofrece en el CLI');
+    assert.equal(names.includes('shell_run'), true, 'shell.run sigue disponible');
+
+    const approval = events.find((event) => event.type === 'approval_request');
+    assert.equal(approval?.type, 'approval_request');
+    if (approval?.type === 'approval_request') {
+      assert.equal(approval.approval.tool, 'shell.run');
+      const input = approval.approval.input as Record<string, unknown>;
+      assert.equal(input.command, 'node --test math.test.mjs');
+    }
+  });
+});

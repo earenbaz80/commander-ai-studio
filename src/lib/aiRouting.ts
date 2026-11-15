@@ -22,8 +22,8 @@ export interface DownloadedModelRef {
 /** Proveedores que sirven un modelo local sin pasar por la nube. */
 // El prefijo `freebuff/` entra aquí para que no lo reclame HuggingFace por
 // llevar '/' en el id; no dice nada sobre si el proveedor es gratis.
-const FREE_PROVIDERS = ['ollama', 'lmstudio', 'openrouter', 'pollinations', 'freebuff'] as const;
-const FREE_MODEL_PREFIXES = ['ollama/', 'lmstudio/', 'openrouter/', 'pollinations/', 'freebuff/'] as const;
+const FREE_PROVIDERS = ['ollama', 'lmstudio', 'strata-local', 'openrouter', 'pollinations', 'freebuff'] as const;
+const FREE_MODEL_PREFIXES = ['ollama/', 'lmstudio/', 'strata-local/', 'openrouter/', 'pollinations/', 'freebuff/'] as const;
 
 export interface RouteInput {
   /** Id del modelo activo, p. ej. `ollama/llama3`, `local/mistral`, o un id plano de Gemini. */
@@ -44,6 +44,8 @@ export interface ResolvedRoute {
   isCustom: boolean;
   isLocal: boolean;
   isHf: boolean;
+  /** Strata local tiene stream propio (SSE OpenAI-compatible). */
+  isStrataLocal: boolean;
 }
 
 const startsWithAny = (value: string, prefixes: readonly string[]) =>
@@ -75,6 +77,7 @@ export function resolveChatRoute({
   const isNvidia = provider ? provider === 'nvidia' : modelId.startsWith('nvidia/');
 
   const isLocal = provider === 'local' || modelId.startsWith('local/');
+  const isStrataLocal = provider === 'strata-local' || modelId.startsWith('strata-local/');
 
   const isFreeProvider =
     FREE_PROVIDERS.includes(provider as (typeof FREE_PROVIDERS)[number]) ||
@@ -117,6 +120,8 @@ export function resolveChatRoute({
       endpoint = '/api/openrouter/generate';
     } else if (provider === 'lmstudio' || modelId.startsWith('lmstudio/')) {
       endpoint = '/api/lmstudio/generate';
+    } else if (provider === 'strata-local' || modelId.startsWith('strata-local/')) {
+      endpoint = '/api/strata-local/generate';
     } else if (provider === 'pollinations' || modelId.startsWith('pollinations/')) {
       endpoint = '/api/pollinations/generate';
     } else if (isLocal) {
@@ -130,11 +135,16 @@ export function resolveChatRoute({
 
   return {
     endpoint,
-    streamEndpoint: isAnthropic ? '/api/anthropic/stream' : '/api/gemini/stream',
+    streamEndpoint: isStrataLocal
+      ? '/api/strata-local/stream'
+      : isAnthropic
+        ? '/api/anthropic/stream'
+        : '/api/gemini/stream',
     isAnthropic,
     isFreeProvider,
     isCustom,
     isLocal,
     isHf,
+    isStrataLocal,
   };
 }

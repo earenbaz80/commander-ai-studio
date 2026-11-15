@@ -25,17 +25,22 @@ import { ChatLiveAppViewerModal, ChatCodeSnippet } from './ChatLiveAppViewerModa
 import { MentionItem, filterMentions } from '../data/contextMentions';
 import { searchFiles } from '../utils/codeSearchApi';
 import { copyTextToClipboard } from '../utils/clipboard';
-import { ChatMessage, ParameterConfig, StudioMode, RunMode } from '../types/studio';
+import { ChatMessage, ParameterConfig, StudioMode, RunMode, DownloadedLocalModel } from '../types/studio';
 import { Language } from '../i18n/translations';
 import { ComposerToolbar } from './chat/ComposerToolbar';
 import { ContextMeter } from './chat/ContextMeter';
 import { applyEffort, type EffortLevel } from './chat/effortProfiles';
 import { MentionHelpModal } from './chat/MentionHelpModal';
+import { computeContextStats, formatTokens } from '../lib/contextStats';
+import { estimateMessageTokens, fitDraft, measureContextFromServer } from '../lib/contextFit';
+import { computeStrataContextBudget, strataToolReserveTokens } from '../lib/strataContextBudget';
 import { buildModelGroups, findModel } from './chat/modelGroups';
 import { useModelsCatalog } from '../data/modelsLoader';
 import { useDictation } from '../hooks/useDictation';
 import { mergeDictationText } from '../lib/dictation';
 import { readChatQueue, writeChatQueue } from './chat/chatQueue';
+import { compactStrataThread } from '../lib/strataLocal';
+import { splitGgufParts } from '../lib/ggufName';
 
 export interface ChatPlaygroundProps {
   messages: ChatMessage[];
@@ -51,7 +56,13 @@ export interface ChatPlaygroundProps {
   /** Retoma la corrida que se detuvo, si el hook la conserva. */
   onResume?: () => void;
   resumable?: boolean;
-  onSendMessage: (userText: string, attachments?: any[], modelOverride?: string, runMode?: RunMode) => void;
+  onSendMessage: (
+    userText: string,
+    attachments?: any[],
+    modelOverride?: string,
+    runMode?: RunMode,
+    history?: ChatMessage[]
+  ) => void;
   /** Reintenta la última respuesta fallida; recibe su id. */
   onRetryMessage?: (messageId: string) => void;
   onClearChat: () => void;
@@ -65,6 +76,8 @@ export interface ChatPlaygroundProps {
   isAuthenticated?: boolean;
   /** Sesión dueña de la cola; cada pestaña/conversación conserva la suya. */
   queueKey?: string;
+  /** GGUF nativos descargados, para que aparezcan en el selector al momento. */
+  downloadedModels?: DownloadedLocalModel[];
 }
 
 /** Mensaje escrito mientras el chat estaba ocupado; se envía al terminar. */
@@ -122,6 +135,7 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
   onOpenLocalLlmConfig,
   isAuthenticated,
   queueKey = 'default',
+  downloadedModels = [],
 }) => {
   const [inputText, setInputText] = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);
@@ -150,6 +164,8 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
   );
   // Contador, no booleano: cada envío inmediato reinicia el aviso y su tiempo.
   const [instantSendNotice, setInstantSendNotice] = useState(0);
+  const [contextFitNotice, setContextFitNotice] = useState<string | null>(null);
+  const [fittingContext, setFittingContext] = useState(false);
 
   // La cola pertenece a una sesión: al cambiar de pestaña o de conversación se
   // cambia de cola en el mismo render, sin enseñar durante un frame la de la
@@ -175,6 +191,11 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
     const timer = setTimeout(() => setInstantSendNotice(0), INSTANT_SEND_NOTICE_MS);
     return () => clearTimeout(timer);
   }, [instantSendNotice]);
+  useEffect(() => {
+    if (!contextFitNotice) return;
+    const timer = setTimeout(() => setContextFitNotice(null), 8_000);
+    return () => clearTimeout(timer);
+  }, [contextFitNotice]);
   const flushingQueue = useRef(false);
 
   // Menciones `@` con archivos reales del proyecto activo
@@ -257,13 +278,46 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
   // Catálogo vivo: incluye proveedores configurados después de arrancar
   // (OpenAI, NVIDIA, LM Studio) y sus modelos reales.
   const { models: catalog, providers } = useModelsCatalog();
+  // Los GGUF nativos viven en disco, no en `/api/models/live`: se añaden al
+  // catálogo para que estén en el selector en cuanto termina la descarga.
+  const nativeCatalog = React.useMemo(() => {
+    const seen = new Set(catalog.map((model) => model.id));
+    return downloadedModels
+      .filter((model) => {
+        if (!model.id.startsWith('local/') || seen.has(model.id)) return false;
+        // Las partes 2..N de un GGUF no se pueden cargar solas: sólo la primera
+        // representa el modelo en el selector.
+        const split = splitGgufParts(model.id);
+        return !split || split.index === 1;
+      })
+      .map((model) => ({
+        id: model.id,
+        name: model.name,
+        provider: 'local' as const,
+        description: `GGUF local · ${model.quantization || 'llama.cpp'}`,
+        contextWindow: '8K tokens',
+        contextLength: 8_192,
+        supportsTools: false,
+        hfRepoId: model.hfRepoId,
+        isDownloaded: true,
+        sizeMb: model.sizeMb,
+        tags: ['local', 'gguf'],
+      }));
+  }, [catalog, downloadedModels]);
+  const effectiveCatalog = React.useMemo(
+    () => [...nativeCatalog, ...catalog],
+    [nativeCatalog, catalog]
+  );
   // El estado por proveedor viaja al selector: conectado, guardado o caído.
-  const modelGroups = React.useMemo(() => buildModelGroups(catalog, providers), [catalog, providers]);
+  const modelGroups = React.useMemo(
+    () => buildModelGroups(effectiveCatalog, providers),
+    [effectiveCatalog, providers]
+  );
 
   // Modelo activo en el catálogo (puede ser undefined si fue descargado de HF).
   const currentModel = React.useMemo(
-    () => catalog.find((m) => m.id === selectedModel) ?? findModel(selectedModel),
-    [catalog, selectedModel]
+    () => effectiveCatalog.find((m) => m.id === selectedModel) ?? findModel(selectedModel),
+    [effectiveCatalog, selectedModel]
   );
 
   const getMentionToken = (value: string, caret: number): { start: number; query: string } | null => {
@@ -344,13 +398,17 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
   };
 
   /**
-   * Envía el borrador. `forceInterrupt` lo usa Ctrl/Cmd+Enter: corta la acción
-   * en curso aunque la preferencia «Interrumpir» esté apagada.
+   * Saca el mensaje del compositor y lo envía o lo encola. `clear` sólo borra
+   * el borrador si sigue siendo el mismo que se quiso enviar: mientras se mide
+   * el contexto el usuario puede haber empezado a escribir otra cosa.
    */
-  const submitMessage = (forceInterrupt: boolean) => {
-    const text = inputText.trim();
-    if (!text && attachments.length === 0) return;
-    setMentionOpen(false);
+  const dispatchMessage = (
+    text: string,
+    files: File[],
+    forceInterrupt: boolean,
+    clear?: { input: string; files: File[] },
+    history?: ChatMessage[]
+  ) => {
     // Con «Interrumpir» activo o con el atajo, enviar corta la acción actual y
     // sale ya; si no, el mensaje espera en la cola como siempre.
     const interruptCurrent = isGenerating && (interruptOnSend || forceInterrupt);
@@ -358,14 +416,271 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
       queuedSeq.current += 1;
       setQueuedMessages((prev) => [
         ...prev,
-        { id: `queued-${Date.now()}-${queuedSeq.current}`, text, attachments, runMode },
+        { id: `queued-${Date.now()}-${queuedSeq.current}`, text, attachments: files, runMode },
       ]);
     } else {
       if (interruptCurrent) onStop?.();
-      onSendMessage(text, attachments.length > 0 ? attachments : undefined, undefined, runMode);
+      if (history) onSendMessage(text, files.length > 0 ? files : undefined, undefined, runMode, history);
+      else onSendMessage(text, files.length > 0 ? files : undefined, undefined, runMode);
     }
-    setInputText('');
-    setAttachments([]);
+    if (!clear) return;
+    setInputText((prev) => (prev.trim() === clear.input.trim() ? '' : prev));
+    setAttachments((prev) => (prev === clear.files ? [] : prev));
+  };
+
+  const fitNotice = (kind: 'measuring' | 'compacting' | 'compacted' | 'shortened' | 'too-large' | 'history', omitted = 0): string => {
+    if (lang === 'es') {
+      if (kind === 'measuring') return 'Midiendo el contexto con el tokenizador del proveedor…';
+      if (kind === 'compacting') return 'El presupuesto de contexto llega al 80 %: resumiendo los turnos antiguos con Strata…';
+      if (kind === 'compacted') return 'Historial resumido: se conservaron los últimos turnos y el resumen del resto.';
+      if (kind === 'shortened') return `Mensaje acortado: se omitieron ${omitted} caracteres para que quepa en la ventana del modelo.`;
+      if (kind === 'history') return 'La conversación ya ocupa el presupuesto útil: el mensaje cabría sin el historial. Inicia un chat nuevo o acorta el historial.';
+      return 'El mensaje no cabe en la ventana del modelo. Acórtalo o elige un modelo con más contexto.';
+    }
+    if (lang === 'de') {
+      if (kind === 'measuring') return 'Kontext wird mit dem Tokenizer des Anbieters gemessen…';
+      if (kind === 'compacting') return 'Das Kontextbudget erreicht 80 %: ältere Turns werden mit Strata zusammengefasst…';
+      if (kind === 'compacted') return 'Verlauf zusammengefasst: die letzten Turns und die Zusammenfassung des Rests bleiben erhalten.';
+      if (kind === 'shortened') return `Nachricht gekürzt: ${omitted} Zeichen wurden ausgelassen, damit sie in das Modellfenster passt.`;
+      if (kind === 'history') return 'Die Unterhaltung füllt das nutzbare Budget bereits: Die Nachricht würde ohne den Verlauf passen. Starte einen neuen Chat oder kürze den Verlauf.';
+      return 'Die Nachricht passt nicht in das Modellfenster. Kürze sie oder wähle ein Modell mit mehr Kontext.';
+    }
+    if (kind === 'measuring') return 'Measuring context with the provider tokenizer…';
+    if (kind === 'compacting') return 'The context budget reached 80%: summarizing older turns with Strata…';
+    if (kind === 'compacted') return 'History summarized: the latest turns and a summary of the rest were kept.';
+    if (kind === 'shortened') return `Message shortened: ${omitted} characters were omitted so it fits the model window.`;
+    if (kind === 'history') return 'The conversation already fills the usable budget: the message would fit without the history. Start a new chat or trim the history.';
+    return 'The message does not fit the model window. Shorten it or choose a model with more context.';
+  };
+
+  /** Aviso persistente y legible del antes/después de compactar. */
+  const compactionNotice = (beforeTokens: number, afterTokens: number): string => {
+    if (!(beforeTokens > 0) || !(afterTokens >= 0)) return fitNotice('compacted');
+    const percent = Math.max(0, Math.round(((beforeTokens - afterTokens) / beforeTokens) * 100));
+    if (lang === 'es') {
+      return `Historial compactado: ${formatTokens(beforeTokens)} → ${formatTokens(afterTokens)} tokens (${percent}% menos).`;
+    }
+    if (lang === 'de') {
+      return `Verlauf zusammengefasst: ${formatTokens(beforeTokens)} → ${formatTokens(afterTokens)} Token (${percent}% weniger).`;
+    }
+    return `History compacted: ${formatTokens(beforeTokens)} → ${formatTokens(afterTokens)} tokens (${percent}% smaller).`;
+  };
+
+  /**
+   * Envía el borrador. `forceInterrupt` lo usa Ctrl/Cmd+Enter: corta la acción
+   * en curso aunque la preferencia «Interrumpir» esté apagada.
+   *
+   * Los mensajes cortos siguen el camino síncrono de siempre. Sólo los que
+   * están cerca del límite (o superan 3.000 caracteres) pagan el conteo real;
+   * si el proveedor no puede contar, `measureContextFromServer` devuelve la
+   * estimación y el recorte se decide igualmente.
+   */
+  const submitMessage = (forceInterrupt: boolean) => {
+    const text = inputText.trim();
+    if (!text && attachments.length === 0) return;
+    if (fittingContext) return;
+    setMentionOpen(false);
+
+    const draftInput = inputText;
+    const filesSnapshot = attachments;
+    const toolTokens = strataToolReserveTokens(currentModel);
+    const stats = computeContextStats({ messages, parameters, model: currentModel, toolTokens });
+    const draftTokens = estimateMessageTokens(text);
+    const initialBudget = computeStrataContextBudget({
+      windowTokens: stats.limit,
+      outputTokens: stats.reservedTokens,
+      toolTokens,
+      systemTokens: stats.systemTokens,
+      historyTokens: stats.conversationTokens,
+      draftTokens,
+    });
+    const nearLimit =
+      stats.limit !== null &&
+      (currentModel?.provider === 'strata-local'
+        ? initialBudget.shouldCompact
+        : stats.totalTokens + draftTokens + stats.reservedTokens > stats.limit * 0.8);
+
+    if (!stats.limit || (!nearLimit && text.length < 3_000)) {
+      dispatchMessage(text, filesSnapshot, forceInterrupt, { input: draftInput, files: filesSnapshot });
+      return;
+    }
+
+    setFittingContext(true);
+    setContextFitNotice(fitNotice('measuring'));
+    void (async () => {
+      try {
+        const measurement =
+          currentModel?.id && currentModel.provider
+            ? await measureContextFromServer({
+                provider: currentModel.provider,
+                model: currentModel.id,
+                messages: [
+                  ...messages.map((message) => ({ role: message.role, content: message.content })),
+                  { role: 'user', content: text },
+                ],
+                systemInstruction: parameters.systemInstruction,
+                examples: parameters.examples,
+              })
+            : null;
+
+        const measuredTotal =
+          measurement?.source === 'provider' ? measurement.tokens : stats.totalTokens + draftTokens;
+        const historyTokens = Math.max(0, measuredTotal - stats.systemTokens - draftTokens);
+        const fitted = fitDraft({
+          windowTokens: stats.limit,
+          systemTokens: stats.systemTokens,
+          historyTokens,
+          messageText: text,
+          reservedTokens: stats.reservedTokens,
+          toolTokens,
+        });
+        const budget = computeStrataContextBudget({
+          windowTokens: stats.limit,
+          outputTokens: stats.reservedTokens,
+          toolTokens,
+          systemTokens: stats.systemTokens,
+          historyTokens,
+          draftTokens,
+        });
+
+        /** Resume el historial y devuelve la nueva lista, sin tocar la UI. */
+        const compactForContext = async () => {
+          if (currentModel?.provider !== 'strata-local' || !currentModel.id) return null;
+          const compacted = await compactStrataThread({
+            model: currentModel.id,
+            messages: messages.map((message) => ({ role: message.role, content: message.content })),
+            keepRecent: 6,
+            systemInstruction: parameters.systemInstruction,
+            ...(stats.limit ? { contextWindow: stats.limit } : {}),
+            ...(stats.reservedTokens ? { reservedTokens: stats.reservedTokens } : {}),
+            ...(toolTokens ? { toolTokens } : {}),
+            ...(draftTokens ? { draftTokens } : {}),
+          });
+          if (!compacted.summary) return null;
+          const summaryMessage: ChatMessage = {
+            id: `summary-${Date.now()}`,
+            role: 'model',
+            content: `${lang === 'es' ? 'Resumen de la conversación anterior' : lang === 'de' ? 'Zusammenfassung des bisherigen Gesprächs' : 'Summary of the earlier conversation'}:\n\n${compacted.summary}`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            providerUsed: 'strata-local',
+            modelUsed: currentModel.id,
+            isSummary: true,
+            ...(compacted.beforeTokens > 0
+              ? {
+                  contextCompaction: {
+                    beforeTokens: compacted.beforeTokens,
+                    afterTokens: compacted.afterTokens,
+                    savedTokens: compacted.savedTokens,
+                  },
+                }
+              : {}),
+          };
+          return {
+            compacted,
+            nextHistory: [summaryMessage, ...messages.slice(-compacted.kept)],
+          };
+        };
+
+        /** Envía con el historial compactado y publica el antes/después. */
+        const sendCompacted = (
+          compacted: Awaited<ReturnType<typeof compactForContext>>
+        ): boolean => {
+          if (!compacted) return false;
+          let history = compacted.nextHistory;
+          let afterFit = fitDraft({
+            windowTokens: stats.limit,
+            systemTokens: stats.systemTokens,
+            historyTokens: history.reduce(
+              (sum, message) => sum + estimateMessageTokens(message.content),
+              0
+            ),
+            messageText: text,
+            reservedTokens: stats.reservedTokens,
+            toolTokens,
+          });
+          // Si el resumen no basta con todos los recientes, se conserva el
+          // resumen y se van soltando recientes hasta que el nuevo turno quepa.
+          while (afterFit.action === 'drop-history' && history.length > 1) {
+            history = [history[0], ...history.slice(2)];
+            afterFit = fitDraft({
+              windowTokens: stats.limit,
+              systemTokens: stats.systemTokens,
+              historyTokens: history.reduce(
+                (sum, message) => sum + estimateMessageTokens(message.content),
+                0
+              ),
+              messageText: text,
+              reservedTokens: stats.reservedTokens,
+              toolTokens,
+            });
+          }
+          if (afterFit.action === 'too-large' || afterFit.action === 'drop-history') {
+            setContextFitNotice(fitNotice('history'));
+            return true;
+          }
+          setMessages(history);
+          setContextFitNotice(
+            compactionNotice(compacted.compacted.beforeTokens, compacted.compacted.afterTokens)
+          );
+          dispatchMessage(
+            afterFit.action === 'shorten' ? afterFit.text : text,
+            filesSnapshot,
+            forceInterrupt,
+            { input: draftInput, files: filesSnapshot },
+            history
+          );
+          return true;
+        };
+
+        // Compactación proactiva: al 80 % del espacio útil (ya descontadas
+        // salida y herramientas), no cuando el prompt ya no cabe.
+        let compactAttempted = false;
+        if (
+          currentModel?.provider === 'strata-local' &&
+          currentModel.id &&
+          messages.length > 6 &&
+          budget.shouldCompact &&
+          fitted.action !== 'too-large'
+        ) {
+          compactAttempted = true;
+          setContextFitNotice(fitNotice('compacting'));
+          try {
+            if (sendCompacted(await compactForContext())) return;
+          } catch {
+            // Si el resumen falla, se conserva la ruta normal de recorte.
+          }
+        }
+
+        if (fitted.action === 'send') {
+          setContextFitNotice(null);
+          dispatchMessage(text, filesSnapshot, forceInterrupt, { input: draftInput, files: filesSnapshot });
+          return;
+        }
+        if (fitted.action === 'shorten') {
+          setContextFitNotice(fitNotice('shortened', fitted.omittedChars));
+          dispatchMessage(fitted.text, filesSnapshot, forceInterrupt, { input: draftInput, files: filesSnapshot });
+          return;
+        }
+        if (fitted.action === 'drop-history') {
+          // Si la compactación proactiva no se intentó (por ejemplo, porque
+          // el historial aún no superaba el 80 %), se intenta ahora.
+          if (!compactAttempted && currentModel?.provider === 'strata-local' && currentModel.id) {
+            compactAttempted = true;
+            setContextFitNotice(fitNotice('compacting'));
+            try {
+              if (sendCompacted(await compactForContext())) return;
+            } catch {
+              // Se conserva el aviso de historial y no se envía a medias.
+            }
+          }
+          setContextFitNotice(fitNotice('history'));
+          return;
+        }
+        setContextFitNotice(fitNotice('too-large'));
+      } finally {
+        setFittingContext(false);
+      }
+    })();
   };
 
   /** Envío normal: respeta la preferencia de interrumpir o encolar. */
@@ -825,6 +1140,27 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
                     {msg.role === 'user' ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
                     {msg.role === 'user' ? 'TÚ' : 'AI'}
                   </span>
+                  {msg.isSummary && (
+                    <span className="border border-[var(--nc-text-accent)]/40 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-[var(--nc-text-accent)]">
+                      {lang === 'es' ? 'Resumen' : lang === 'de' ? 'Zusammenfassung' : 'Summary'}
+                    </span>
+                  )}
+                  {msg.isSummary && msg.contextCompaction && (
+                    <span
+                      data-testid="summary-context-change"
+                      title={
+                        lang === 'es'
+                          ? 'Tokens del prompt antes y después de compactar'
+                          : lang === 'de'
+                            ? 'Prompt-Token vor und nach dem Komprimieren'
+                            : 'Prompt tokens before and after compaction'
+                      }
+                      className="border border-[var(--nc-border-mid)]/60 px-1.5 py-0.5 font-mono text-[9px] tabular-nums text-[var(--nc-text-dim)]"
+                    >
+                      {formatTokens(msg.contextCompaction.beforeTokens)} →{' '}
+                      {formatTokens(msg.contextCompaction.afterTokens)}
+                    </span>
+                  )}
                   {msg.modelUsed && (
                     <span className="text-[10px] text-[var(--nc-text-dim)]">{msg.modelUsed}</span>
                   )}
@@ -948,6 +1284,16 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
 
       {/* Input Area */}
       <div data-chat-divider className="border-t border-[var(--nc-border-mid)]/40 bg-[var(--nc-bg-deep)] p-2 sm:p-4">
+        {contextFitNotice && (
+          <div
+            role="status"
+            aria-live="polite"
+            data-testid="context-fit-notice"
+            className="mb-2 rounded border border-[var(--nc-border-mid)]/60 bg-black/30 px-2 py-1.5 font-mono text-[11px] text-[var(--nc-text)]"
+          >
+            {contextFitNotice}
+          </div>
+        )}
         {instantSendNotice > 0 && (
           <div
             key={instantSendNotice}

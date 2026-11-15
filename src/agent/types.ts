@@ -117,6 +117,8 @@ export interface AgentStep {
     id: string;
     decision: ApprovalDecision;
     reason?: string;
+    /** Tiempo desde que se pidió la aprobación hasta que se decidió. */
+    latencyMs?: number;
     /** Patch revisado en el modal; sólo existe para tools que escriben. */
     diff?: string;
   };
