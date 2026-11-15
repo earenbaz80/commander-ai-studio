@@ -23,6 +23,7 @@ import {
 import {
   createSessionState,
   type SessionMode,
+  type SessionProposalV2,
   type SessionStateV2,
   type SessionTurnV2,
 } from '../agent/sessionTypes.js';
@@ -43,11 +44,18 @@ import {
 } from './agentClient.js';
 import {
   AgentRenderer,
+  APPROVAL_KEY_QUARANTINE_MS,
   canPromptApprovals,
+  promptApprovalDecision,
   promptQuestionAnswer,
   Tui,
-  type QuestionPromptResult,
+    type QuestionPromptResult,
 } from './tui.js';
+import { createInputGate, type InputGateSource } from './stdinGate.js';
+import { groupPendingProposals } from './proposals.js';
+import { exportProposalPatch } from './proposalPatch.js';
+import { renderDiff } from './diff.js';
+import { proposalStatsFor } from '../agent/proposals.js';
 
 export interface CheckpointListResult {
   checkpoints: CheckpointMeta[];
@@ -137,6 +145,9 @@ const HELP_LINES = [
   '/review               cambia a modo revisión (sólo lectura)',
   '/compact              resume el historial con el presupuesto de contexto',
   '/undo                 revierte el último checkpoint de escritura',
+  '/proposals [n|id]     lista las propuestas pendientes o revisa su diff',
+  '/proposals export n   valida con git apply --check y exporta un .patch',
+  '/proposals discard n descarta una propuesta pendiente',
   '/resume [id]          reanuda una sesión; sin id lista las últimas',
   '/fork [id]            bifurca una sesión; sin id lista las últimas',
   '/model [id]           muestra o cambia el modelo',
@@ -146,6 +157,14 @@ const HELP_LINES = [
   'Multilínea: termina la línea con \\',
   'Ctrl+C cancela el turno en vuelo; Ctrl+D sale.',
 ];
+
+function proposalAge(createdAt: number): string {
+  const minutes = Math.max(0, Math.floor((Date.now() - createdAt) / 60_000));
+  if (minutes < 1) return 'ahora';
+  if (minutes < 60) return `hace ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `hace ${hours} h` : `hace ${Math.floor(hours / 24)} d`;
+}
 
 function normalizeSessionSummary(s: ServerSessionSummary): ServerSessionSummary | null {
   if (!s || typeof s.id !== 'string' || !s.id) return null;
@@ -326,12 +345,31 @@ export class ReplSession {
     });
     const onProcessSigint = (): void => this.cancelTurn();
     process.on('SIGINT', onProcessSigint);
+    // Compuerta única del turno: lo que se teclee entre un prompt y el siguiente
+    // se descarta y no decide por el operador.
+    const promptGate =
+      this.tui.interactive && canPromptApprovals()
+        ? createInputGate(process.stdin as unknown as InputGateSource)
+        : null;
     const askUser =
       this.tui.interactive && canPromptApprovals()
         ? (question: Parameters<NonNullable<RunAgentOptions['askUser']>>[0]) =>
             this.deps.promptQuestion(question, {
               tui: this.tui,
               signal: controller.signal,
+              onInterrupt: () => controller.abort(),
+              ...(promptGate ? { gate: promptGate } : {}),
+            })
+        : undefined;
+    const requestApproval =
+      this.tui.interactive && canPromptApprovals()
+        ? (approval: Parameters<typeof promptApprovalDecision>[0]) =>
+            promptApprovalDecision(approval, {
+              tui: this.tui,
+              signal: controller.signal,
+              onInterrupt: () => controller.abort(),
+              ...(promptGate ? { gate: promptGate } : {}),
+              quarantineMs: APPROVAL_KEY_QUARANTINE_MS,
             })
         : undefined;
 
@@ -350,11 +388,22 @@ export class ReplSession {
         persistSession: !this.state,
         signal: controller.signal,
         askUser,
+        requestApproval,
         onEvent: (event) => renderer.handle(event),
       });
       if (result.state) this.state = result.state;
       this.turns += 1;
       if (!result.cancelled) renderer.finish(result.answer, result.steps);
+      const pending =
+        this.state?.proposals?.filter(
+          (proposal) => !proposal.applied && proposal.discardedAt === undefined
+        ).length ?? 0;
+      if (pending > 0) {
+        const label = pending === 1 ? '1 propuesta pendiente' : `${pending} propuestas pendientes`;
+        this.tui.line(
+          `${this.tui.yellow('⚠')} ${this.tui.gray(`${label} · /proposals para revisarlas`)}`
+        );
+      }
     } catch (error) {
       if (!controller.signal.aborted) {
         renderer.handle({
@@ -366,6 +415,7 @@ export class ReplSession {
         });
       }
     } finally {
+      promptGate?.close();
       process.removeListener('SIGINT', onProcessSigint);
       this.running = false;
       this.controller = null;
@@ -412,6 +462,10 @@ export class ReplSession {
 
       case 'undo':
         await this.undo();
+        return true;
+
+      case 'proposals':
+        await this.handleProposals(arg);
         return true;
 
       case 'resume':
@@ -547,6 +601,150 @@ export class ReplSession {
     this.tui.line(
       `${this.tui.green('✔')} ${this.tui.gray(`deshecho ${candidate.label || candidate.id}${files.length ? `: ${files.join(', ')}` : paths.length ? `: ${paths.join(', ')}` : ''}`)}`
     );
+  }
+
+  /** Lista propuestas agrupadas por archivo, revisa el diff o descarta una. */
+  private async handleProposals(arg: string): Promise<void> {
+    const groups = groupPendingProposals(this.state?.proposals, this.state?.cwd || this.cwd);
+    const discard = /^discard\s+(.+)$/i.exec(arg);
+    const exportMatch = /^export\s+(.+)$/i.exec(arg);
+    const selector = exportMatch ? exportMatch[1].trim() : discard ? discard[1].trim() : arg;
+    if (/^export$/i.test(arg)) {
+      this.tui.line(this.tui.gray('usa /proposals export <n|id|ruta>'));
+      return;
+    }
+    if (groups.length === 0) {
+      this.tui.line(this.tui.gray('no hay propuestas pendientes'));
+      return;
+    }
+
+    const all = groups.flatMap((group) => group.items);
+    if (selector) {
+      const index = Number(selector);
+      const target =
+        (Number.isInteger(index) && index > 0 ? all[index - 1] : undefined) ??
+        all.find((item) => item.proposal.proposalId === selector) ??
+        all.find((item) => item.proposal.path === selector);
+      if (!target) {
+        this.tui.line(`${this.tui.red('✗')} ${this.tui.gray(
+          `propuesta no encontrada: ${selector} · usa /proposals para ver los índices`
+        )}`);
+        return;
+      }
+      if (discard) {
+        await this.discardProposal(target.proposal);
+        return;
+      }
+      if (exportMatch) {
+        this.exportProposal(target.proposal);
+        return;
+      }
+      this.printProposalDiff(target.proposal, target.stale);
+      if (target.proposal.reviewedAt === undefined) {
+        // Sembrar el embudo antes de marcar: si no, el estado antiguo cuenta
+        // la propuesta como ya revisada y el incremento la duplicaría.
+        const stats = this.proposalStats();
+        target.proposal.reviewedAt = Date.now();
+        stats.reviewed += 1;
+        this.state!.proposalStats = stats;
+        await this.persistProposals();
+      }
+      return;
+    }
+
+    const stats = this.proposalStats();
+    this.tui.line(
+      `${this.tui.cyan('propuestas')} ${this.tui.bold(String(all.length))} ${this.tui.gray(
+        `pendiente(s) en ${groups.length === 1 ? '1 archivo' : `${groups.length} archivos`}`
+      )}`
+    );
+    this.tui.line(
+      this.tui.gray(
+        `  embudo: ${stats.created} creadas · ${stats.duplicatesDropped} duplicadas descartadas · ` +
+          `${stats.perFileCapDropped} por tope de archivo · ${stats.totalCapDropped} por tope de sesión · ` +
+          `${stats.reviewed} revisadas · ${stats.applied} aplicadas · ${stats.discarded} descartadas`
+      )
+    );
+    let position = 0;
+    for (const group of groups) {
+      this.tui.line(
+        `  ${this.tui.bold(group.path)} ${this.tui.gray(`· ${group.items.length}`)}`
+      );
+      for (const item of group.items) {
+        position += 1;
+        const status = item.stale ? this.tui.yellow('obsoleta') : this.tui.green('aplicable');
+        this.tui.line(
+          `    ${this.tui.cyan(String(position))}. ${this.tui.bold(item.proposal.proposalId)} ` +
+            `${status} ${this.tui.gray(`· ${proposalAge(item.proposal.createdAt)}`)}`
+        );
+      }
+    }
+    this.tui.line(
+      this.tui.gray(
+        '  /proposals <n> para revisar el diff · /proposals export <n> para exportar · /proposals discard <n> para descartar'
+      )
+    );
+  }
+
+  private exportProposal(proposal: SessionProposalV2): void {
+    const result = exportProposalPatch(proposal, this.state?.cwd || this.cwd);
+    if (!result.ok) {
+      this.tui.line(
+        `${this.tui.red('✗')} ${this.tui.gray(
+          `no se exportó ${proposal.proposalId}: ${result.error ?? 'error desconocido'}`
+        )}`
+      );
+      return;
+    }
+    this.tui.line(
+      `${this.tui.green('✔')} ${this.tui.gray(
+        `parche validado con git apply --check · ${result.path}`
+      )}`
+    );
+  }
+
+  private proposalStats() {
+    return proposalStatsFor(this.state?.proposals ?? [], this.state?.proposalStats);
+  }
+
+  private async persistProposals(): Promise<void> {
+    if (!this.state) return;
+    try {
+      await this.deps.saveState(this.serverUrl, this.state);
+    } catch {
+      /* el siguiente turno reintenta el checkpoint */
+    }
+  }
+
+  private async discardProposal(proposal: SessionProposalV2): Promise<void> {
+    if (proposal.discardedAt !== undefined) {
+      this.tui.line(this.tui.gray(`la propuesta ${proposal.proposalId} ya estaba descartada`));
+      return;
+    }
+    const stats = this.proposalStats();
+    proposal.discardedAt = Date.now();
+    stats.discarded += 1;
+    this.state!.proposalStats = stats;
+    await this.persistProposals();
+    this.tui.line(
+      `${this.tui.green('✔')} ${this.tui.gray(
+        `descartada ${proposal.proposalId} · ${proposal.path}`
+      )}`
+    );
+  }
+
+  private printProposalDiff(proposal: SessionProposalV2, stale: boolean): void {
+    const status = stale ? this.tui.yellow('obsoleta (baseHash no coincide)') : this.tui.green('aplicable');
+    this.tui.line(
+      `${this.tui.cyan('propuesta')} ${this.tui.bold(proposal.proposalId)} ` +
+        `${this.tui.gray(`· ${proposal.path}`)} · ${status}`
+    );
+    if (!proposal.diff) {
+      this.tui.line(this.tui.gray('  sin diff: no hay cambios que mostrar'));
+      return;
+    }
+    const rendered = renderDiff(proposal.diff, { color: this.tui.color, maxLines: 200 });
+    for (const line of rendered.lines) this.tui.line(line);
   }
 
   private async switchSession(arg: string, fork: boolean): Promise<void> {

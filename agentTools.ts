@@ -10,6 +10,7 @@ import {
   sanitizeGitMessage,
 } from './security';
 import { diffLines, toUnifiedDiff } from './src/utils/patch';
+import { hashContent } from './src/agent/proposalHash';
 import { diagnoseProposed } from './src/agent/proposedDiagnostics';
 import { analyzeSource, findReferences, invalidateCodeIntel, planRename, rulesFor } from './src/agent/codeIntel';
 import { newViolations } from './src/agent/projectRules';
@@ -27,7 +28,7 @@ import { uid } from './src/agent/id';
 import { invalidateIndex } from './repoIndex';
 import { getPermissions, enforceTool, enforcePath } from './permissions';
 import { decide } from './src/agent/permissionRules';
-import { executeTask, getSession } from './agentSession';
+import { executeTask, getSession, reinforceClosingContract } from './agentSession';
 import { listServerTools, callServerTool } from './src/mcp/client';
 import { runBrowserAction } from './browserSession';
 import { checkPreview, listPreviews, openPreview, stopPreview } from './previewServer';
@@ -342,8 +343,22 @@ export interface ToolResult {
   ok: boolean;
   data?: any;
   error?: string;
+  /** Código estable para que el cliente decida sin parsear el mensaje. */
+  code?: string;
+  /** Pista accionable; el CLI la muestra junto al error. */
+  hint?: string;
   /** Status HTTP a usar (403/400/500). Default 200. */
   status?: number;
+}
+
+/** Error específico cuando el cambio pedido ya está en el archivo. */
+function alreadyAppliedError(context: string): ToolResult {
+  return {
+    ok: false,
+    code: 'ALREADY_APPLIED',
+    error: `${context}; el newString ya está en el archivo`,
+    hint: 'Posiblemente ya aplicado: el newString ya está en el archivo; no hace falta releerlo.',
+  };
 }
 
 /**
@@ -377,10 +392,14 @@ export function checkShellSegments(
     // `allowUnlisted` salta SÓLO la lista de prefijos. Los patrones bloqueados,
     // los operadores prohibidos y las rutas siguen aplicando, y el cliente ya
     // exigió aprobación para un comando que no está en la allowlist.
-    if (!opts.allowUnlisted && !SHELL_ALLOW_PREFIX.some((a) => lower.startsWith(a))) {
+    // El prefijo `node --test ` exige archivo; la forma exacta `node --test`
+    // usa el descubrimiento del runner y también es válida para T1. No se usa
+    // un prefijo sin espacio porque abriría variantes como `node --testevil`.
+    const exactAllowed = lower === 'node --test';
+    if (!opts.allowUnlisted && !exactAllowed && !SHELL_ALLOW_PREFIX.some((a) => lower.startsWith(a))) {
       return {
         ok: false,
-        error: `Comando no permitido: ${segment.slice(0, 80)}. Usa npm/npx/node/python/git/ls/cat/echo/tsc/vite.`,
+        error: `Comando no permitido: ${segment.slice(0, 80)}. Usa npm test, npm run <script>, node --test [archivo], git, ls, echo, tsc o vite.`,
         status: 403,
       };
     }
@@ -506,6 +525,27 @@ function proposal(p: string, before: string, after: string, exists: boolean) {
     additions: result.additions,
     deletions: result.deletions,
     diff: toUnifiedDiff(p, result, { exists }),
+  };
+}
+
+/**
+ * El modo no se decide aquí: en plan/readonly aplicar está bloqueado, así que
+ * el hint sólo dice que el diff quedó pendiente. La vía concreta la pone el
+ * prompt de cada modo.
+ */
+const PROPOSAL_NOT_APPLIED =
+  'Propuesta no aplicada: no se escribió en disco; el diff queda pendiente de aplicar.';
+
+/** Resultado de `fs.propose.*`: diff + identidad y marca de no aplicada. */
+function proposalResult(p: string, before: string, after: string, exists: boolean) {
+  const data: any = proposal(p, before, after, exists);
+  return {
+    ...data,
+    applied: false as const,
+    proposalId: uid('prop'),
+    baseHash: hashContent(before),
+    afterHash: hashContent(after),
+    hint: data.hint ?? PROPOSAL_NOT_APPLIED,
   };
 }
 
@@ -783,12 +823,15 @@ async function executeAgentToolCore(
         };
       }
       if (!updated.includes(edit.oldString)) {
-        return {
-          ok: false,
-          error: edits.length > 1
-            ? `replacements[${i}]: oldString no encontrado (no se escribió nada)`
-            : 'oldString no encontrado en el archivo',
-        };
+        const context = edits.length > 1
+          ? `replacements[${i}]: oldString no encontrado (no se escribió nada)`
+          : 'oldString no encontrado en el archivo';
+        // El newString ya presente sugiere que la edición se aplicó antes: sin
+        // esta pista el modelo relee el archivo entero para averiguarlo.
+        if (edit.newString.length > 0 && updated.includes(edit.newString)) {
+          return alreadyAppliedError(context);
+        }
+        return { ok: false, error: context };
       }
       // split/join en vez de RegExp: el texto es literal, así que un `$&` o un
       // `$1` dentro del reemplazo no se interpreta como referencia.
@@ -829,11 +872,15 @@ async function executeAgentToolCore(
     const target = agentSafePath(p, rootHint);
     if (!fs.existsSync(target)) return { ok: false, error: `No existe: ${p}` };
     const before = fs.readFileSync(target, 'utf8');
-    if (!before.includes(oldStr)) return { ok: false, error: 'oldString no encontrado en el archivo' };
+    if (!before.includes(oldStr)) {
+      return newStr.length > 0 && before.includes(newStr)
+        ? alreadyAppliedError('oldString no encontrado en el archivo')
+        : { ok: false, error: 'oldString no encontrado en el archivo' };
+    }
     const after = input.replaceAll
       ? before.split(oldStr).join(newStr)
       : before.replace(oldStr, () => newStr);
-    const data: any = proposal(p, before, after, true);
+    const data: any = proposalResult(p, before, after, true);
     if (data.changed && input.diagnose !== false) {
       data.diagnostics = diagnoseProposed(permRoot, p, after);
       // Sólo las reglas que el cambio INTRODUCE: la deuda previa del archivo no
@@ -853,7 +900,7 @@ async function executeAgentToolCore(
     const target = agentSafePath(p, rootHint);
     const isFile = fs.existsSync(target) && !fs.statSync(target).isDirectory();
     const before = isFile ? fs.readFileSync(target, 'utf8') : '';
-    const data: any = proposal(p, before, content, isFile);
+    const data: any = proposalResult(p, before, content, isFile);
     if (data.changed && input.diagnose !== false) {
       data.diagnostics = diagnoseProposed(permRoot, p, content);
       data.rules = newViolations(rulesFor(permRoot, p, before), rulesFor(permRoot, p, content));
@@ -1976,7 +2023,10 @@ async function executeAgentToolCore(
     const results = await Promise.allSettled(
       capped.map((a: any) => executeTask(parentSessionId, {
         goal: String(a.goal || ''),
-        instructions: a.instructions,
+        // El cierre se exige en el encargo además del prompt del hijo: si el
+        // padre parafrasea el objetivo y se olvida de pedirlo, el hijo igual
+        // sabe que debe informar archivos y denegaciones (G1-SUBAGENT-CLOSE).
+        instructions: reinforceClosingContract(a.instructions),
         model: a.model,
         allowedTools: a.allowedTools,
         mode: a.mode,
@@ -2117,6 +2167,8 @@ export async function handleAgentRunTool(req: Request, res: Response) {
     const body: Record<string, unknown> = { ok: result.ok };
     if (result.data !== undefined) body.data = result.data;
     if (result.error) body.error = result.error;
+    if (result.code) body.code = result.code;
+    if (result.hint) body.hint = result.hint;
     return res.status(result.status || 200).json(body);
   } catch (error: any) {
     // Violación del sandbox = error del cliente (403), no del servidor.

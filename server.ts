@@ -22,6 +22,7 @@ import { createSession, forkSession, getOrLoadSession, listSessions as listAgent
 import { isValidSessionId } from './src/agent/sessionStore';
 import { decodeSessionState, type ApprovalDecision } from './src/agent/sessionTypes';
 import { normalizeOpenAIToolCalls } from './src/agent/providers';
+import { truncatedChatCompletions, truncatedOllama } from './src/agent/providerResponses';
 import { attachSessionStream, parseStreamCursor } from './src/agent/sessionStream';
 import { cancelSubAgents, clearSubAgents, listSubAgents, subscribeSubAgents } from './subAgents';
 import { stopJobsForSession } from './shellJobs';
@@ -37,20 +38,50 @@ import {
   handleSetFallbackModels,
 } from './gemini';
 import { handleAnthropicGenerate, handleAnthropicStream } from './anthropic';
-import { executeLocalHfModel } from './localModels';
+import { executeLocalHfModel, mapGeminiModel } from './localModels';
+import { countProviderTokens, estimateContextTokens } from './src/lib/contextFit';
 import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList, apiKeyMiddleware, getApiKey as getRequestApiKey } from './apiKeys';
 import { isAllowedHost, allowedHostsFromEnv } from './hostGuard';
 import { CONTENT_SECURITY_POLICY } from './security';
-import { getConfig, getConfigPath, getEnvProviderIds, getGlobalConfigPath, getProviderSecret, loadConfig, removeOpenAiCompatibleProvider, removeProviderConfig } from './src/config/index';
-import { PROVIDER_SPECS, buildProviderList, customProviderSpecs, describeProvider, getAllProviderCatalog, getProviderCatalog } from './src/providers/registry';
+import { clearStrataLocalApiKey, getConfig, getConfigPath, getEnvProviderIds, getGlobalConfigPath, getProviderFileConfig, getProviderSecret, loadConfig, removeOpenAiCompatibleProvider, removeProviderConfig } from './src/config/index';
+import { PROVIDER_SPECS, NVIDIA_DEFAULT_MODEL, buildProviderList, customProviderSpecs, describeProvider, getAllProviderCatalog, getProviderCatalog } from './src/providers/registry';
 import { parseCompatibleModelId, slugifyProviderId } from './src/lib/openaiCompatibleProviders';
+import { filterModelIds } from './src/lib/providerFilters';
 import { probeLocalProvider } from './src/providers/localProbe';
+import {
+  normalizeStrataLocalBaseUrl,
+  probeStrataLocal,
+  strataLocalEndpointInfo,
+  strataLocalModelId,
+  strataLocalModelName,
+  STRATA_LOCAL_PROVIDER_ID,
+  type StrataLocalModelInfo,
+} from './src/lib/strataLocal';
+import { mergeStrataToolCallFragment, normalizeStrataToolCalls } from './src/lib/strataTools';
+import { StrataLifecycleManager } from './src/lib/strataLifecycle';
+import { deleteStrataApiKey, getStrataApiKey, normalizeStrataApiKey, saveStrataApiKey } from './src/lib/strataKeyStore';
+import { redactStrataSecret } from './src/lib/strataRedaction';
+import {
+  classifyStrataFailure,
+  fetchStrataWithRetry,
+  isStrataIntegrationError,
+  parseRetryAfter,
+  strataError,
+  strataErrorPayload,
+  type StrataIntegrationError,
+} from './src/lib/strataErrors';
 import skillsRouter from './skills/api';
 import { forkSessionWorkspace, deleteSessionWorkspace, listSessions, createGitWorktree } from './sessionWorkspace';
 import { handleOAuthLogin, handleOAuthCallback, handleLogout, getCurrentUser } from './oauth';
 import { executeWithFallback, getProviderMetrics, checkAllProvidersHealth, resetCircuitBreaker, setProviderEnabled } from './fallbackRouter';
 import { isDeprecatedGeminiModel } from './src/config/geminiModels';
-import { TRANSCRIPTION_MODELS, isRetryableTranscriptionError } from './src/lib/transcription';
+import {
+  INVALID_AUDIO_MESSAGE,
+  TRANSCRIPTION_FAILED_MESSAGE,
+  TRANSCRIPTION_MODELS,
+  isInvalidAudioError,
+  isRetryableTranscriptionError,
+} from './src/lib/transcription';
 import { handleFreebuffGenerate } from './freebuff';
 import { listProjectPrompts } from './promptsApi';
 import { LMSTUDIO_LOAD_TIMEOUT_MS, lmStudioContextLength, normalizeLmStudioHost, parseLmStudioContextLengths, parseLmStudioModels, toLmStudioContextLength } from './src/lib/lmStudio';
@@ -69,8 +100,26 @@ import { createDeployRouter } from './deploy/routes';
 import { createBrowserRouter } from './browserRoutes';
 import { createIntegrationsRouter } from './src/integrations/router';
 import { createTenantBackendRouter } from './backend/routes';
+import { safeFetch } from './ssrf';
+import {
+  LocalModelDownloadManager,
+  hubDownloadUrl,
+  listLocalModelRecords,
+  parseHubGgufFiles,
+  parseHubSearchResults,
+  removeLocalModel,
+  sanitizeGgufFilename,
+  splitGgufParts,
+} from './src/lib/localModelHub';
+import {
+  LocalLlamaRuntimeManager,
+  findLlamaBinaries,
+  localModelPath,
+} from './src/lib/localLlamaRuntime';
 
 dotenv.config();
+
+const strataLifecycle = new StrataLifecycleManager();
 
 const currentDir = typeof __dirname !== 'undefined' && __dirname
   ? __dirname
@@ -420,24 +469,27 @@ app.post('/api/transcribe', async (req, res) => {
         break;
       } catch (modelError: any) {
         lastError = modelError;
-        console.warn(`[transcribe] ${model} falló:`, modelError?.message || modelError);
         if (!isRetryableTranscriptionError(modelError)) throw modelError;
       }
     }
 
     if (lastError) {
-      return res.status(503).json({
-        success: false,
-        error: `Ningún modelo de Gemini pudo transcribir el audio ahora mismo (${lastError?.message || '503'}). Prueba de nuevo en unos segundos.`,
-      });
+      return res.status(503).json({ success: false, error: TRANSCRIPTION_FAILED_MESSAGE });
     }
 
     return res.json({ success: true, text: transcribed.trim(), model: usedModel });
   } catch (error: any) {
-    console.error('Error en /api/transcribe:', error);
-    return res.status(500).json({
+    const invalidAudio = isInvalidAudioError(error);
+    console.error('[transcribe] fallo', {
+      status: invalidAudio ? 400 : 500,
+      mimeType: typeof req.body?.mimeType === 'string' ? req.body.mimeType : 'audio/webm',
+      audioBytes: typeof req.body?.audioData === 'string' ? Buffer.byteLength(req.body.audioData, 'base64') : 0,
+      body: error?.message || error,
+    });
+    return res.status(invalidAudio ? 400 : 500).json({
       success: false,
-      error: error.message || 'Error al transcribir el audio.',
+      error: invalidAudio ? INVALID_AUDIO_MESSAGE : TRANSCRIPTION_FAILED_MESSAGE,
+      ...(invalidAudio ? { retryWithWav: true } : {}),
     });
   }
 });
@@ -542,6 +594,38 @@ app.get('/api/agent/sessions/:id', (req, res) => {
     // que dejó un CLI interrumpido: el segundo sí se puede reanudar.
     res.json({ success: true, running: session.isRunning(), state: session.toState() });
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message }); }
+});
+
+// Aplicar una propuesta guardada. La sesión valida hashes y crea el checkpoint;
+// el endpoint no recibe el diff ni el contenido, sólo el id.
+app.post('/api/agent/sessions/:id/proposals/:proposalId/apply', (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!isValidSessionId(id)) return res.status(400).json({ success: false, error: 'id inválido' });
+    const proposalId = String(req.params.proposalId || '').trim();
+    if (!proposalId || proposalId.length > 200) {
+      return res.status(400).json({ success: false, error: 'proposalId inválido' });
+    }
+    const session = getOrLoadSession(id);
+    if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    const result = session.applyProposal(proposalId, { dryRun: req.body?.dryRun === true });
+    const status = result.ok
+      ? 200
+      : result.code === 'PROPOSAL_NOT_FOUND'
+        ? 404
+        : result.code === 'PATH_INVALID'
+          ? 403
+          : result.code === 'WRITE_FAILED'
+            ? 500
+            : result.code === 'STALE_BASE' ||
+                result.code === 'SESSION_RUNNING' ||
+                result.code === 'PROPOSAL_DISCARDED'
+              ? 409
+              : 422;
+    return res.status(status).json({ success: result.ok, ...result, state: session.toState() });
+  } catch (e: any) {
+    return res.status(500).json({ success: false, error: e?.message || 'no se pudo aplicar la propuesta' });
+  }
 });
 
 // Stream reanudable (F1-03). El cursor sale de `?after=` o de `Last-Event-ID`.
@@ -956,6 +1040,24 @@ function permissionsRoot(input: unknown): string {
   return resolveProjectPath('.', hint).abs;
 }
 
+/**
+ * Root de un panel que acepta una pista del cliente.
+ *
+ * Sin pista se usa el cwd (el proyecto del servidor). Con pista, se resuelve
+ * contra los proyectos permitidos y **se lanza** si no se puede, para que el
+ * handler responda 400 igual que `/api/permissions` y `/api/publish/*`.
+ *
+ * checkpoints y plugins se tragaban ese error y caían a cwd: un root inválido
+ * (un path borrado, uno que escapa de los proyectos) operaba en silencio sobre
+ * otro proyecto en vez de avisar.
+ */
+function panelRoot(rootHint?: unknown): string {
+  if (typeof rootHint === 'string' && rootHint.trim()) {
+    return resolveProjectPath('.', rootHint.slice(0, 1024)).root;
+  }
+  return process.cwd();
+}
+
 app.get('/api/permissions', (req, res) => {
   try {
     const root = permissionsRoot(req.query.root);
@@ -1181,11 +1283,43 @@ app.post('/api/providers', async (req, res) => {
     // Por defecto, global: `commander.json` está versionado en este repo y una
     // API key guardada ahí acabaría en el próximo commit. `target: 'project'`
     // sigue disponible para quien lo pida explícitamente.
+    const providerConfig: Record<string, unknown> = { ...(config || {}) };
+    let keyStoredInVault = false;
+    if (id === STRATA_LOCAL_PROVIDER_ID) {
+      const legacyKey = normalizeStrataApiKey(getProviderFileConfig(id).apiKey);
+      if (legacyKey) {
+        if (!getStrataApiKey()) saveStrataApiKey(legacyKey);
+        clearStrataLocalApiKey();
+      }
+      const nextKey = normalizeStrataApiKey(providerConfig.apiKey);
+      if (nextKey) {
+        const targetBase = normalizeStrataLocalBaseUrl(
+          (typeof providerConfig.baseUrl === 'string' && providerConfig.baseUrl) ||
+            (typeof getProviderFileConfig(id).baseUrl === 'string' && getProviderFileConfig(id).baseUrl) ||
+            process.env.STRATA_LOCAL_BASE_URL ||
+            ''
+        );
+        const security = strataLocalKeyTransportError(targetBase, nextKey, providerConfig.allowInsecure);
+        if (security) return sendStrataError(res, security);
+        saveStrataApiKey(nextKey);
+        delete providerConfig.apiKey;
+        // `writeConfig` parte del fichero: hay que retirar la copia antigua o
+        // volvería a escribirla aunque el patch no la incluya.
+        clearStrataLocalApiKey();
+        keyStoredInVault = true;
+      }
+    }
     const { writeConfig } = await import('./src/config/index');
     const writeTarget: 'project' | 'global' = target === 'project' ? 'project' : 'global';
-    const configPath = writeConfig({ providers: { [id]: config } }, writeTarget);
+    const configPath = writeConfig({ providers: { [id]: providerConfig } }, writeTarget);
 
-    res.json({ success: true, configPath, target: writeTarget });
+    res.json({
+      success: true,
+      configPath,
+      target: writeTarget,
+      ...(keyStoredInVault ? { keyStorage: 'vault' } : {}),
+      ...(id === STRATA_LOCAL_PROVIDER_ID ? { allowInsecure: providerConfig.allowInsecure === true } : {}),
+    });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e?.message || 'Error creando proveedor' });
   }
@@ -1207,11 +1341,59 @@ app.get('/api/providers', async (req, res) => {
       ollama: process.env.OLLAMA_HOST || config?.ollama?.host || 'http://localhost:11434',
       lmstudio: await resolveLmstudioHost(req),
       custom: process.env.CUSTOM_BASE_URL || config?.custom?.baseUrl || '',
+      [STRATA_LOCAL_PROVIDER_ID]: resolveStrataLocalBaseUrl(),
     };
     providers = await Promise.all(
       providers.map(async (provider) => {
         const host = localHosts[provider.id];
         if (!host) return provider;
+        // Strata Serving puede exigir API key: la sonda genérica no la manda y
+        // marcaría como caído un host que sí responde.
+        if (provider.id === STRATA_LOCAL_PROVIDER_ID) {
+          const endpoint = strataLocalEndpointInfo(host);
+          const configuredKey = resolveStrataLocalApiKey();
+          const allowInsecure = strataLocalSettings().allowInsecure;
+          const apiKey = safeStrataLocalApiKey(host, configuredKey, allowInsecure);
+          const probe = await probeStrataLocal(host, apiKey, { timeoutMs: 1_500 });
+          // El gestor también enseña los modelos que existen ahora en el host,
+          // incluido el cargado que sólo aparezca en `/v1/status`.
+          const liveModels = probe.entries.map((entry) => ({
+            id: strataLocalModelId(entry.id),
+            name: entry.name || entry.id,
+            provider: STRATA_LOCAL_PROVIDER_ID,
+            ...(entry.contextWindow
+              ? { contextWindow: `${Math.round(entry.contextWindow / 1000)}K tokens` }
+              : {}),
+            ...(entry.supportsTools !== undefined ? { supportsTools: entry.supportsTools } : {}),
+            ...(entry.inputModalities?.includes('image') ? { supportsImage: true } : {}),
+          }));
+          const visibleModels = filterModelIds(liveModels, {
+            whitelist: provider.whitelist,
+            blacklist: provider.blacklist,
+          });
+          return {
+            ...provider,
+            ...(liveModels.length > 0
+              ? {
+                  models: visibleModels,
+                  allModels: liveModels,
+                  modelCount: visibleModels.length,
+                  totalModels: liveModels.length,
+                }
+              : {}),
+            host,
+            allowInsecure: allowInsecure === true,
+            ...(endpoint.insecureRemote && !apiKey && configuredKey ? { keyBlocked: true } : {}),
+            reachable: probe.ok,
+            identity: probe.identity,
+            ...(probe.status === 'auth' ? { auth: true } : {}),
+            ...(probe.monitor ? { monitor: probe.monitor } : {}),
+            ...(typeof probe.loaded === 'boolean' ? { loaded: probe.loaded } : {}),
+            ...(probe.model ? { model: probe.model } : {}),
+            ...(endpoint.warning ? { warning: endpoint.warning } : {}),
+            ...(probe.ok ? {} : { probeError: probe.error || `HTTP ${probe.httpStatus ?? 0}` }),
+          };
+        }
         const probe = await probeLocalProvider(provider.id, host);
         return {
           ...provider,
@@ -1338,6 +1520,744 @@ async function probeOpenAiCompatibility(baseURL: string, apiKey?: string): Promi
   }
 }
 
+/** Clave del host de Strata: la oficial es `STRATA_API_KEY`; se acepta el alias histórico. */
+function strataEnvApiKey(): string | undefined {
+  return process.env.STRATA_API_KEY || process.env.STRATA_LOCAL_API_KEY || undefined;
+}
+
+/**
+ * Migra una clave antigua que quedó en claro en `config.json` al vault cifrado.
+ * Si el vault no está disponible se conserva la clave para no perder acceso; el
+ * guardado nuevo sí falla en vez de volver a escribirla en claro.
+ */
+function migrateStrataLocalApiKey(fileKey?: string): void {
+  if (!fileKey) return;
+  try {
+    if (!getStrataApiKey()) saveStrataApiKey(fileKey);
+    clearStrataLocalApiKey();
+  } catch {
+    /* el vault no está disponible: se sigue leyendo la copia antigua */
+  }
+}
+
+/** Ajustes guardados de Strata local, sin mezclar su id con Strata Cloud. */
+function strataLocalSettings(): {
+  baseUrl: string;
+  apiKey?: string;
+  defaultModel?: string;
+  allowInsecure: boolean;
+} {
+  const conf = ((getConfig().providers as any)?.[STRATA_LOCAL_PROVIDER_ID] || {}) as Record<string, unknown>;
+  const fileConf = getProviderFileConfig(STRATA_LOCAL_PROVIDER_ID);
+  const fileKey = normalizeStrataApiKey(fileConf.apiKey);
+  if (fileKey) migrateStrataLocalApiKey(fileKey);
+  const envKey = strataEnvApiKey();
+  return {
+    baseUrl: normalizeStrataLocalBaseUrl(
+      (typeof conf.baseUrl === 'string' && conf.baseUrl.trim()) || process.env.STRATA_LOCAL_BASE_URL || ''
+    ),
+    apiKey: envKey || getStrataApiKey() || fileKey,
+    defaultModel:
+      typeof conf.defaultModel === 'string' && conf.defaultModel.trim() ? conf.defaultModel.trim() : undefined,
+    allowInsecure: conf.allowInsecure === true || fileConf.allowInsecure === true,
+  };
+}
+
+function resolveStrataLocalBaseUrl(override?: unknown): string {
+  return normalizeStrataLocalBaseUrl(
+    (typeof override === 'string' && override.trim()) || process.env.STRATA_LOCAL_BASE_URL || strataLocalSettings().baseUrl
+  );
+}
+
+function resolveStrataLocalApiKey(override?: unknown): string | undefined {
+  return (
+    normalizeStrataApiKey(override) ||
+    strataEnvApiKey() ||
+    getStrataApiKey() ||
+    normalizeStrataApiKey(getProviderFileConfig(STRATA_LOCAL_PROVIDER_ID).apiKey)
+  );
+}
+
+/** La confirmación puede venir de la petición o de la config guardada. */
+function strataAllowsInsecure(override?: unknown): boolean {
+  return override === true || strataLocalSettings().allowInsecure === true;
+}
+
+/**
+ * Una API key sólo viaja a un host remoto por HTTP con confirmación explícita.
+ * Loopback y HTTPS no necesitan permiso adicional.
+ */
+function strataLocalKeyTransportError(
+  baseUrl: string,
+  apiKey: string | undefined,
+  allowInsecure?: unknown
+): StrataIntegrationError | null {
+  const key = normalizeStrataApiKey(apiKey);
+  if (!key) return null;
+  const endpoint = strataLocalEndpointInfo(baseUrl);
+  if (!endpoint.insecureRemote || strataAllowsInsecure(allowInsecure)) return null;
+  return strataError('STRATA_INSECURE_REMOTE', {
+    details: { hostname: endpoint.hostname || undefined, protocol: endpoint.protocol || 'http' },
+    secret: key,
+  });
+}
+
+/** Clave que se puede usar en una sonda interna sin saltarse la política. */
+function safeStrataLocalApiKey(
+  baseUrl: string,
+  apiKey: string | undefined,
+  allowInsecure?: unknown
+): string | undefined {
+  return strataLocalKeyTransportError(baseUrl, apiKey, allowInsecure) ? undefined : normalizeStrataApiKey(apiKey);
+}
+
+/**
+ * Comprueba credencial, modelo cargado y coincidencia antes de enviar el
+ * turno. Devuelve un error tipificado cuando ya se sabe que el host fallará;
+ * los hosts antiguos que no publican `/v1/status` siguen pasando.
+ */
+interface StrataPreflightResult {
+  failure: StrataIntegrationError | null;
+  info?: StrataLocalModelInfo;
+}
+
+async function strataLocalPreflight(
+  requested: string,
+  baseUrl: string,
+  apiKey?: string
+): Promise<StrataPreflightResult> {
+  try {
+    const probe = await probeStrataLocal(baseUrl, apiKey, { timeoutMs: 2_500 });
+    if (probe.status === 'auth') {
+      return {
+        failure: strataError('STRATA_INVALID_API_KEY', {
+          message: redactStrataSecret(probe.error || 'Strata rechazó la API key.', apiKey),
+          upstreamStatus: probe.httpStatus,
+          secret: apiKey,
+        }),
+      };
+    }
+    if (probe.status === 'unreachable') {
+      return {
+        failure: classifyStrataFailure({
+          message: probe.error || 'No se pudo conectar con Strata.',
+          timedOut: /sin respuesta|timeout|tiempo/i.test(String(probe.error || '')),
+          secret: apiKey,
+        }),
+      };
+    }
+    if (!probe.ok || !probe.loaded || !probe.model) {
+      if (probe.ok && probe.loaded === false) {
+        return {
+          failure: strataError('STRATA_MODEL_NOT_LOADED', {
+            message: 'Strata no tiene un modelo cargado.',
+          }),
+        };
+      }
+      return { failure: null };
+    }
+
+    const activeModel = probe.model;
+    const requestedEntry = probe.entries.find(
+      (entry) => entry.id === requested || entry.name === requested || entry.aliases?.includes(requested)
+    );
+    const activeEntry = probe.entries.find(
+      (entry) => entry.id === activeModel || entry.aliases?.includes(activeModel)
+    );
+    const canonical = requestedEntry?.id || requested;
+    if (canonical === activeModel) {
+      return { failure: null, info: requestedEntry || activeEntry };
+    }
+    if (activeEntry?.id === canonical || activeEntry?.aliases?.includes(requested)) {
+      return { failure: null, info: activeEntry || requestedEntry };
+    }
+    return {
+      failure: strataError('STRATA_MODEL_MISMATCH', {
+        message: `Strata tiene cargado "${activeModel}", no "${requested}". Cambia el modelo desde el panel de Strata antes de enviar.`,
+        details: { requestedModel: requested, activeModel },
+      }),
+    };
+  } catch {
+    // Si no se puede verificar, se deja que el host responda con su propio error.
+    return { failure: null };
+  }
+}
+
+function sendStrataError(res: any, error: StrataIntegrationError) {
+  return res.status(error.httpStatus).json(strataErrorPayload(error));
+}
+
+/** Si el modelo declara que no soporta tools, no se le manda el esquema. */
+function strataToolsRequestError(
+  body: any,
+  info?: StrataLocalModelInfo
+): StrataIntegrationError | null {
+  if (!Array.isArray(body?.tools) || body.tools.length === 0) return null;
+  if (info?.supportsTools !== false) return null;
+  return strataError('STRATA_TOOLS_UNSUPPORTED', {
+    message: `El modelo "${info?.id || 'Strata'}" no declara soporte de tool calling.`,
+    details: { model: info?.id, supportsTools: false },
+  });
+}
+
+function strataLocalLifecyclePayload(baseUrlOverride?: unknown) {
+  const availability = strataLifecycle.getAvailability();
+  return {
+    success: true,
+    ...strataLifecycle.getStatus(),
+    baseUrl: resolveStrataLocalBaseUrl(baseUrlOverride),
+    defaultModel: strataLocalSettings().defaultModel,
+    available: availability.available,
+  };
+}
+
+// Health y catálogo de Strata local. `/v1/status` confirma que el host es
+// Strata (no un OpenAI-compatible cualquiera) y dice si hay modelo cargado;
+// `/v1/models` aporta contexto, instancia y GPUs. La sonda nunca falla por que
+// una versión antigua no tenga `/v1/status`: queda como «compatible».
+async function strataLocalHealth(body: any = {}) {
+  const baseUrl = resolveStrataLocalBaseUrl(body.baseUrl || body.baseURL);
+  const endpoint = strataLocalEndpointInfo(baseUrl);
+  const requestedKey = resolveStrataLocalApiKey(body.apiKey);
+  const keyError = strataLocalKeyTransportError(baseUrl, requestedKey, body.allowInsecure);
+  const probe = await probeStrataLocal(
+    baseUrl,
+    keyError ? undefined : requestedKey
+  );
+  return {
+    success: probe.ok,
+    ok: probe.ok,
+    ...(keyError
+      ? {
+          keyBlocked: true,
+          code: keyError.code,
+          error: keyError.message,
+          hint: keyError.hint,
+        }
+      : {}),
+    status: probe.status,
+    baseUrl,
+    models: probe.models,
+    entries: probe.entries,
+    count: probe.models.length,
+    identity: probe.identity,
+    ...(probe.monitor ? { monitor: probe.monitor } : {}),
+    loaded: probe.loaded,
+    model: probe.model,
+    contextWindow: probe.contextWindow,
+    ...(probe.statusInfo ? { statusInfo: probe.statusInfo } : {}),
+    remote: endpoint.remote,
+    insecureRemote: endpoint.insecureRemote,
+    ...(endpoint.warning ? { warning: endpoint.warning } : {}),
+    latencyMs: probe.latencyMs,
+    ...(probe.httpStatus ? { httpStatus: probe.httpStatus } : {}),
+    ...(probe.error && !keyError ? { error: redactStrataSecret(probe.error, requestedKey) } : {}),
+  };
+}
+
+/** Una sonda con clave bloqueada se rechaza con el mismo contrato tipado. */
+function sendStrataHealth(res: any, health: any) {
+  if (health?.keyBlocked === true) {
+    return res.status(422).json({
+      ok: false,
+      success: false,
+      status: 'insecure',
+      code: health.code,
+      error: health.error,
+      ...(health.hint ? { hint: health.hint } : {}),
+      keyBlocked: true,
+      baseUrl: health.baseUrl,
+      remote: health.remote,
+      insecureRemote: health.insecureRemote,
+    });
+  }
+  return res.json(health);
+}
+
+app.get('/api/strata-local/health', async (req, res) => {
+  try {
+    return sendStrataHealth(
+      res,
+      await strataLocalHealth({
+        baseUrl: req.query.baseUrl,
+        allowInsecure: req.query.allowInsecure === 'true',
+      })
+    );
+  } catch (e: any) {
+    return res.json({ success: false, ok: false, status: 'unreachable', models: [], error: e?.message || 'Strata no responde' });
+  }
+});
+
+app.post('/api/strata-local/health', async (req, res) => {
+  try {
+    return sendStrataHealth(res, await strataLocalHealth(req.body || {}));
+  } catch (e: any) {
+    return res.json({ success: false, ok: false, status: 'unreachable', models: [], error: e?.message || 'Strata no responde' });
+  }
+});
+
+app.get('/api/strata-local/lifecycle', (req, res) => {
+  try {
+    return res.json(strataLocalLifecyclePayload(req.query.baseUrl));
+  } catch (e: any) {
+    return res.json({ success: false, state: 'error', error: e?.message || 'Strata lifecycle no disponible' });
+  }
+});
+
+// Arranca, reinicia (con el modelo/contexto indicados) o detiene el host.
+// El `start` no responde hasta que `/v1/status` confirma el modelo cargado.
+app.post('/api/strata-local/lifecycle', async (req, res) => {
+  const body = req.body || {};
+  const baseUrl = resolveStrataLocalBaseUrl(body.baseURL || body.baseUrl);
+  const apiKey = resolveStrataLocalApiKey(body.apiKey);
+  const security = strataLocalKeyTransportError(baseUrl, apiKey, body.allowInsecure);
+  if (security) return sendStrataError(res, security);
+  try {
+    if (body.action === 'stop') {
+      const result = await strataLifecycle.stop({ baseUrl, apiKey });
+      return res.status(result.success ? 200 : 409).json(result);
+    }
+    if (body.action !== 'start' && body.action !== 'restart') {
+      return res.status(400).json({ success: false, error: 'Acción de ciclo de vida inválida' });
+    }
+    const model = String(
+      body.model ||
+        strataLocalSettings().defaultModel ||
+        (await resolveStrataLocalModel(undefined, baseUrl, apiKey)) ||
+        ''
+    ).trim();
+    if (!model) return res.status(400).json({ success: false, error: 'Modelo de Strata requerido' });
+    const context = body.context == null ? 32_768 : Number(body.context);
+    const result = await strataLifecycle.start({ model, context, baseUrl, apiKey });
+    return res.status(result.success ? 200 : 409).json(result);
+  } catch (e: any) {
+    return res.status(500).json({ success: false, error: e?.message || 'Strata lifecycle falló' });
+  }
+});
+
+/**
+ * Compacta el historial de una conversación local: conserva los últimos
+ * turnos y resume los anteriores con el mismo modelo. La UI sólo reemplaza el
+ * historial cuando recibe un resumen; si falla, no se pierde nada.
+ */
+app.post('/api/strata-local/compact', async (req, res) => {
+  const body = req.body || {};
+  const messages = Array.isArray(body.messages)
+    ? body.messages
+        .filter((message: any) => message && typeof message.content === 'string' && message.content.trim())
+        .slice(-120)
+        .map((message: any) => ({
+          role: message.role === 'model' ? 'assistant' : String(message.role || 'user'),
+          content: String(message.content).slice(0, 20_000),
+        }))
+    : [];
+  const keepRecent = Math.max(2, Math.min(12, Number(body.keepRecent) || 6));
+  if (messages.length <= keepRecent) {
+    return res.json({ success: true, summary: '', kept: messages.length, removed: 0 });
+  }
+  const baseUrl = resolveStrataLocalBaseUrl(body.baseURL || body.baseUrl);
+  const key = resolveStrataLocalApiKey(body.apiKey);
+  const security = strataLocalKeyTransportError(baseUrl, key, body.allowInsecure);
+  if (security) return sendStrataError(res, security);
+  const abort = requestAbort(req, res, 5 * 60_000);
+  try {
+    const model = await resolveStrataLocalModel(
+      body.model,
+      baseUrl,
+      key
+    );
+    if (!model) return res.json({ success: false, error: 'Modelo de Strata requerido' });
+    const system = String(body.systemInstruction || '').trim();
+    const beforeTokens = estimateContextTokens({ messages, systemInstruction: system });
+    const contextWindow = Math.max(0, Number(body.contextWindow) || 0);
+    const reservedTokens = Math.max(0, Number(body.reservedTokens) || 0);
+    const toolTokens = Math.max(0, Number(body.toolTokens) || 0);
+    const draftTokens = Math.max(0, Number(body.draftTokens) || 0);
+    // El siguiente turno también tiene que caber: reservamos salida, tools y
+    // el borrador antes de decidir cuántos turnos recientes se conservan.
+    const targetTokens =
+      contextWindow > 0
+        ? Math.max(0, contextWindow - reservedTokens - toolTokens - draftTokens)
+        : 0;
+    let recent = messages.slice(-keepRecent);
+    const old = messages.slice(0, -keepRecent);
+    let transcript = old
+      .map((message: { role: string; content: string }) => `${message.role.toUpperCase()}: ${message.content}`)
+      .join('\n\n');
+    if (transcript.length > 24_000) {
+      transcript = `${transcript.slice(0, 14_000)}\n\n[…turnos intermedios omitidos…]\n\n${transcript.slice(-8_000)}`;
+    }
+    const instruction = [
+      'Resume la conversación anterior para que otro turno pueda continuar sin leerla completa.',
+      'Conserva decisiones, nombres de archivos, rutas, errores, comandos y pendientes; no inventes datos.',
+      'Responde sólo el resumen, en el idioma de la conversación.',
+      system ? `Instrucciones del sistema que siguen vigentes:\n${system.slice(0, 4_000)}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        ...(key ? { Authorization: `Bearer ${key}` } : {}),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: instruction },
+          { role: 'user', content: transcript },
+        ],
+        temperature: 0.2,
+        max_tokens: 800,
+        stream: false,
+      }),
+      signal: abort.signal,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(errorText(error, `Strata HTTP ${response.status}`));
+    }
+    const data = await response.json();
+    const summary = String(data?.choices?.[0]?.message?.content || '').trim();
+    if (!summary) throw new Error('El modelo devolvió un resumen vacío');
+    const summaryMessage = { role: 'assistant', content: summary };
+    const tokensAfter = () =>
+      estimateContextTokens({ messages: [summaryMessage, ...recent], systemInstruction: system });
+    let afterTokens = tokensAfter();
+    // Si el resumen + los turnos recientes todavía no dejan sitio para el
+    // siguiente turno, se van soltando los recientes más antiguos. El resumen
+    // conserva las decisiones y el último turno sigue siendo el más reciente.
+    while (targetTokens > 0 && afterTokens > targetTokens && recent.length > 1) {
+      recent = recent.slice(1);
+      afterTokens = tokensAfter();
+    }
+    return res.json({
+      success: true,
+      summary,
+      kept: recent.length,
+      removed: Math.max(0, messages.length - recent.length),
+      model,
+      beforeTokens,
+      afterTokens,
+      savedTokens: Math.max(0, beforeTokens - afterTokens),
+      savedPercent:
+        beforeTokens > 0
+          ? Math.max(0, Math.round(((beforeTokens - afterTokens) / beforeTokens) * 100))
+          : 0,
+      ...(targetTokens > 0 ? { budgetTokens: targetTokens } : {}),
+    });
+  } catch (error: any) {
+    if (res.writableEnded) return;
+    return res.json({
+      success: false,
+      error: abort.signal.aborted
+        ? 'Resumen cancelado'
+        : redactStrataSecret(error?.message || 'No se pudo resumir el historial', key),
+    });
+  } finally {
+    abort.cleanup();
+  }
+});
+
+/**
+ * Modelos de Strata para el selector. Si el host está apagado se conserva la
+ * última detección, igual que con Ollama y LM Studio.
+ */
+async function strataLocalCatalog(): Promise<{
+  live: boolean;
+  baseUrl: string;
+  loaded?: boolean;
+  model?: string;
+  identity: 'verified' | 'unverified';
+  warning?: string;
+  entries: Array<{
+    id: string;
+    name: string;
+    provider: string;
+    context_window?: number;
+    context_length?: number;
+    supportsTools?: boolean;
+    supportsParallelTools?: boolean;
+    tags: string[];
+  }>;
+}> {
+  const baseUrl = resolveStrataLocalBaseUrl();
+  const endpoint = strataLocalEndpointInfo(baseUrl);
+  let liveModels: string[] = [];
+  let liveEntries: StrataLocalModelInfo[] = [];
+  let identity: 'verified' | 'unverified' = 'unverified';
+  let loaded: boolean | undefined;
+  let model: string | undefined;
+  try {
+    const probe = await probeStrataLocal(
+      baseUrl,
+      safeStrataLocalApiKey(baseUrl, resolveStrataLocalApiKey(), strataLocalSettings().allowInsecure),
+      { timeoutMs: 2_000 }
+    );
+    liveModels = probe.models;
+    liveEntries = probe.entries;
+    identity = probe.identity;
+    loaded = probe.loaded;
+    model = probe.model;
+    if (probe.ok) rememberLocalModels(STRATA_LOCAL_PROVIDER_ID, baseUrl, probe.models);
+  } catch {
+    /* se usa la caché */
+  }
+  const ids = liveModels.length > 0 ? liveModels : cachedLocalModels(STRATA_LOCAL_PROVIDER_ID, baseUrl).models;
+  const metadata = new Map(liveEntries.map((entry) => [entry.id, entry]));
+  return {
+    live: liveModels.length > 0,
+    baseUrl,
+    ...(typeof loaded === 'boolean' ? { loaded } : {}),
+    ...(model ? { model } : {}),
+    identity,
+    ...(endpoint.warning ? { warning: endpoint.warning } : {}),
+    entries: ids.map((id) => {
+      const info = metadata.get(id);
+      return {
+        id: strataLocalModelId(id),
+        name: info?.name || id,
+        provider: STRATA_LOCAL_PROVIDER_ID,
+        ...(info?.contextWindow
+          ? {
+              context_window: info.contextWindow,
+              context_length: info.contextWindow,
+            }
+          : {}),
+        ...(info?.supportsTools !== undefined ? { supportsTools: info.supportsTools } : {}),
+        ...(info?.supportsParallelTools !== undefined
+          ? { supportsParallelTools: info.supportsParallelTools }
+          : {}),
+        tags: liveModels.length > 0 ? ['local'] : ['local', 'guardado'],
+      };
+    }),
+  };
+}
+
+app.post('/api/strata-local/models', async (req, res) => {
+  try {
+    const health = await strataLocalHealth(req.body || {});
+    if (health.keyBlocked) return sendStrataHealth(res, health);
+    return res.json({
+      success: health.ok,
+      models: health.models,
+      entries: health.entries,
+      baseUrl: health.baseUrl,
+      status: health.status,
+      identity: health.identity,
+      loaded: health.loaded,
+      model: health.model,
+      contextWindow: health.contextWindow,
+      ...(health.warning ? { warning: health.warning } : {}),
+      ...(health.error ? { error: health.error } : {}),
+    });
+  } catch (e: any) {
+    return res.json({ success: false, models: [], error: e?.message || 'Strata no responde' });
+  }
+});
+
+/**
+ * Telemetría de runtime del host de Strata. El contrato real es `/metrics`
+ * (lo que muestra la pestaña Monitor) y `/status` (estado ligero); `/slots`
+ * queda como detalle opcional. Se leen en paralelo y cualquier fallo degrada a
+ * `null` sin romper el panel.
+ */
+async function fetchStrataHostJson(root: string, path: string, apiKey?: string): Promise<any | null> {
+  try {
+    const response = await fetch(`${root}${path}`, {
+      headers: {
+        Accept: 'application/json',
+        ...(apiKey?.trim() ? { Authorization: `Bearer ${apiKey.trim()}` } : {}),
+      },
+      signal: AbortSignal.timeout(2_500),
+    });
+    if (!response.ok) return null;
+    return await response.json().catch(() => null);
+  } catch {
+    return null;
+  }
+}
+
+async function strataLocalRuntime(body: any = {}) {
+  const baseUrl = resolveStrataLocalBaseUrl(body.baseUrl || body.baseURL);
+  const apiKey = safeStrataLocalApiKey(
+    baseUrl,
+    resolveStrataLocalApiKey(body.apiKey),
+    body.allowInsecure
+  );
+  const health = await strataLocalHealth({ ...body, baseUrl });
+  const root = baseUrl.replace(/\/v1$/, '');
+  const [metrics, state] = await Promise.all([
+    fetchStrataHostJson(root, '/metrics', apiKey),
+    fetchStrataHostJson(root, '/status', apiKey),
+  ]);
+
+  const first = (...values: unknown[]): number | undefined => {
+    for (const value of values) {
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+    }
+    return undefined;
+  };
+  const round = (value: number | undefined, digits = 1): number | undefined =>
+    value === undefined ? undefined : Number(value.toFixed(digits));
+
+  const live = metrics?.live && typeof metrics.live === 'object' ? metrics.live : {};
+  const engine = metrics?.engine && typeof metrics.engine === 'object' ? metrics.engine : {};
+  const hardware = metrics?.hardware && typeof metrics.hardware === 'object' ? metrics.hardware : {};
+  const hardwareStatic =
+    metrics?.hardware_static && typeof metrics.hardware_static === 'object' ? metrics.hardware_static : {};
+  const statusGpu = health.statusInfo?.machine?.gpu;
+  const contextWindow =
+    first(health.contextWindow, engine.max_context, health.statusInfo?.contextWindow) || null;
+  const usedTokens = first(live.prompt_tokens, state?.prompt_tokens);
+  const runState = typeof live.state === 'string' ? live.state : state?.busy ? 'generating' : undefined;
+  const running = first(
+    live.running,
+    runState && runState !== 'idle' && runState !== 'unloaded' ? 1 : 0,
+    state?.busy ? 1 : 0
+  );
+  const waiting = first(live.queued, live.waiting, state?.queued, 0);
+
+  const vramUsedBytes = first(hardware.gpu_mem_used);
+  const vramTotalBytes = first(hardware.gpu_mem_total);
+  const vramUsedGb =
+    vramUsedBytes !== undefined
+      ? round(vramUsedBytes / 2 ** 30)
+      : round(statusGpu?.usedMib !== undefined ? statusGpu.usedMib / 1024 : undefined);
+  const vramTotalGb =
+    vramTotalBytes !== undefined
+      ? round(vramTotalBytes / 2 ** 30)
+      : round(statusGpu?.totalMib !== undefined ? statusGpu.totalMib / 1024 : undefined);
+  const ramUsedBytes = first(hardware.ram_used);
+  const ramTotalBytes = first(hardware.ram_total);
+  const ramUsedGb =
+    ramUsedBytes !== undefined
+      ? round(ramUsedBytes / 2 ** 30)
+      : round(health.statusInfo?.machine?.ram?.usedGib);
+  const ramTotalGb =
+    ramTotalBytes !== undefined
+      ? round(ramTotalBytes / 2 ** 30)
+      : round(health.statusInfo?.machine?.ram?.totalGib);
+
+  const slots = Array.isArray(live.slots) ? live.slots : [];
+  const instances = (
+    slots.length > 0
+      ? slots
+      : runState || usedTokens !== undefined
+        ? [{ slot: 0, state: runState, prompt_tokens: usedTokens, tok_s: live.tok_s }]
+        : []
+  )
+    .slice(0, 8)
+    .map((slot: any, index: number) => ({
+      id: slot?.slot ?? index,
+      model: health.model || engine.model,
+      status: slot?.state || runState,
+      phase: typeof live.phase === 'string' ? live.phase : undefined,
+      context: {
+        ...(contextWindow ? { maxTokens: contextWindow } : {}),
+        ...(first(slot?.prompt_tokens, slot?.held_tokens, usedTokens) !== undefined
+          ? { usedTokens: first(slot?.prompt_tokens, slot?.held_tokens, usedTokens) }
+          : {}),
+      },
+      gpus: statusGpu?.name ? [statusGpu.name] : [],
+      outputTps: first(slot?.tok_s),
+      promptTps: first(live.prefill_tok_s_mean, hardware.prefill_tok_s_mean),
+    }));
+
+  const monitorContext =
+    contextWindow !== null || usedTokens !== undefined
+      ? {
+          usedTokens: usedTokens ?? 0,
+          maxTokens: contextWindow,
+          ...(contextWindow && usedTokens !== undefined
+            ? { pct: Math.round((usedTokens / contextWindow) * 100) }
+            : {}),
+        }
+      : null;
+
+  return {
+    success: health.ok,
+    ok: health.ok,
+    status: health.status,
+    baseUrl,
+    identity: health.identity,
+    loaded: health.loaded,
+    model: health.model,
+    contextWindow,
+    models: health.entries || [],
+    ...(health.statusInfo ? { statusInfo: health.statusInfo } : {}),
+    runtime:
+      metrics || state
+        ? {
+            mode:
+              (first(live.parallel, health.statusInfo?.concurrency?.serving) || 1) > 1
+                ? 'parallel'
+                : 'single',
+            defaultId: engine.model || health.model,
+            memory: {
+              ...(engine.vram && typeof engine.vram === 'object' ? engine.vram : {}),
+              ...(health.statusInfo?.vram || {}),
+            },
+            instances,
+          }
+        : null,
+    monitor:
+      metrics || state
+        ? {
+            phase: runState,
+            // `/status` puede conservar la fase del último request aun estando
+            // idle; cuando `/metrics` está disponible, manda su `live.phase`.
+            phaseLabel: metrics ? (typeof live.phase === 'string' ? live.phase : undefined) : state?.phase,
+            context: monitorContext,
+            queue: { running: running ?? 0, waiting: waiting ?? 0 },
+            hardware: {
+              gpuName: hardwareStatic.gpu_name || statusGpu?.name,
+              vramUsedGb,
+              vramTotalGb,
+              gpuUtilPct: first(hardware.gpu_util, statusGpu?.utilPct),
+              gpuTempC: first(hardware.gpu_temp, statusGpu?.tempC),
+              powerW: first(hardware.gpu_power, statusGpu?.powerW),
+              ramUsedGb,
+              ramTotalGb,
+            },
+            totals: metrics?.totals || null,
+            generation: {
+              tokS: first(live.tok_s, hardware.tok_s),
+              tokSMean: first(live.tok_s_mean, hardware.tok_s_mean),
+              promptTps: first(live.prefill_tok_s_mean, hardware.prefill_tok_s_mean),
+              generated: first(live.generated),
+              maxTokens: first(live.max_tokens),
+              elapsedS: first(live.elapsed_s),
+            },
+          }
+        : null,
+    remote: health.remote,
+    insecureRemote: health.insecureRemote,
+    ...(health.warning ? { warning: health.warning } : {}),
+    ...(health.error ? { error: health.error } : {}),
+    ...(health.keyBlocked
+      ? { keyBlocked: true, code: health.code, hint: health.hint }
+      : {}),
+    latencyMs: health.latencyMs,
+  };
+}
+
+app.get('/api/strata-local/runtime', async (req, res) => {
+  try {
+    return res.json(await strataLocalRuntime({ baseUrl: req.query.baseUrl }));
+  } catch (e: any) {
+    return res.json({ success: false, ok: false, error: e?.message || 'Strata runtime no disponible' });
+  }
+});
+
+app.post('/api/strata-local/runtime', async (req, res) => {
+  try {
+    return res.json(await strataLocalRuntime(req.body || {}));
+  } catch (e: any) {
+    return res.json({ success: false, ok: false, error: e?.message || 'Strata runtime no disponible' });
+  }
+});
+
 // Comprueba la compatibilidad antes de dar de alta: el formulario puede pedir
 // confirmación explícita (`force`) para endpoints que no exponen `/models`.
 app.post('/api/providers/detect', async (req, res) => {
@@ -1442,6 +2362,7 @@ app.patch('/api/providers/:id', async (req, res) => {
 app.delete('/api/providers/:id', (req, res) => {
   try {
     const id = String(req.params.id || '');
+    const vaultKeyRemoved = id === STRATA_LOCAL_PROVIDER_ID ? deleteStrataApiKey() : false;
     if (!PROVIDER_SPECS.some((s) => s.id === id)) {
       if (!(getConfig().providers as any)?.openaiCompatible?.[id]) {
         return res.status(400).json({ success: false, error: 'Proveedor desconocido' });
@@ -1450,7 +2371,12 @@ app.delete('/api/providers/:id', (req, res) => {
       return res.json({ success: true, configPath, stillFromEnv: false });
     }
     const configPath = removeProviderConfig(id);
-    return res.json({ success: true, configPath, stillFromEnv: getEnvProviderIds().includes(id) });
+    return res.json({
+      success: true,
+      configPath,
+      stillFromEnv: getEnvProviderIds().includes(id),
+      ...(id === STRATA_LOCAL_PROVIDER_ID ? { vaultKeyRemoved } : {}),
+    });
   } catch (e: any) {
     return res.status(400).json({ success: false, error: e?.message || 'Error eliminando proveedor' });
   }
@@ -1474,11 +2400,9 @@ app.use('/api/plugins', pluginMarketRouter);
 
 const PLUGINS_DIR = '.commander/plugins';
 
+/** Root de `.commander/plugins`; un root inválido lanza (ver `panelRoot`). */
 function getPluginsRoot(rootHint?: unknown): string {
-  if (typeof rootHint === 'string' && rootHint.trim()) {
-    try { return resolveProjectPath('.', rootHint.slice(0, 1024)).root; } catch { /* cae a cwd */ }
-  }
-  return process.cwd();
+  return panelRoot(rootHint);
 }
 
 // Asegura que el directorio de plugins exista
@@ -1614,16 +2538,12 @@ import {
   isGitRepo,
 } from './checkpoints';
 
-/** Resuelve el root canónico de forma segura (mismo patrón que agentTools). */
+/**
+ * Root de los checkpoints. Delega en `panelRoot`: un root inválido lanza y el
+ * endpoint responde 400, igual que `/api/permissions` y `/api/publish/*`.
+ */
 function checkpointsRoot(rootHint?: unknown): string {
-  if (typeof rootHint === 'string' && rootHint.trim()) {
-    try {
-      return resolveProjectPath('.', rootHint.slice(0, 1024)).root;
-    } catch {
-      /* cae a cwd */
-    }
-  }
-  return process.cwd();
+  return panelRoot(rootHint);
 }
 
 app.get('/api/checkpoints', (req, res) => {
@@ -1967,7 +2887,74 @@ app.use('/published/:slug/:env', (req, res) => {
 
 // ==================== RESTO DE RUTAS ====================
 
-// Endpoint to estimate token count
+// Conteo de contexto con el tokenizador real del proveedor cuando existe.
+// Google, Anthropic, OpenAI y Strata local exponen un contador; el resto cae
+// a la estimación local sin bloquear el envío.
+app.post('/api/context/count', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const provider = String(body.provider || '').trim().toLowerCase();
+    const model = String(body.model || '').trim();
+    const messages = Array.isArray(body.messages)
+      ? body.messages
+          .filter((message: any) => message && typeof message.content === 'string')
+          .slice(-200)
+          .map((message: any) => ({
+            role: String(message.role || 'user'),
+            content: String(message.content).slice(0, 200_000),
+          }))
+      : [];
+    const examples = Array.isArray(body.examples)
+      ? body.examples
+          .filter((example: any) => example && typeof example === 'object')
+          .slice(0, 20)
+          .map((example: any) => ({ input: String(example.input || ''), output: String(example.output || '') }))
+      : [];
+
+    const keyFor = (name: string): string | undefined => {
+      const fromBody = typeof body.apiKey === 'string' ? body.apiKey : undefined;
+      return (
+        fromBody ||
+        getRequestApiKey(req, name) ||
+        process.env[name] ||
+        getProviderSecret(provider, 'apiKey')
+      );
+    };
+
+    const apiKey =
+      provider === 'google'
+        ? body.geminiApiKey || keyFor('GEMINI_API_KEY')
+        : provider === 'anthropic'
+          ? body.anthropicApiKey || keyFor('ANTHROPIC_API_KEY')
+          : provider === 'openai'
+            ? keyFor('OPENAI_API_KEY')
+            : provider === 'strata-local'
+              ? body.apiKey || resolveStrataLocalApiKey()
+              : undefined;
+
+    const result = await countProviderTokens({
+      provider,
+      model: provider === 'google' ? mapGeminiModel(model) : model,
+      messages,
+      systemInstruction: typeof body.systemInstruction === 'string' ? body.systemInstruction : '',
+      examples,
+      apiKey,
+      baseUrl:
+        provider === 'google'
+          ? (typeof body.baseUrl === 'string' ? body.baseUrl : undefined)
+          : provider === 'strata-local'
+            ? resolveStrataLocalBaseUrl(body.baseUrl || body.baseURL)
+            : undefined,
+    });
+
+    return res.json({ success: true, ...result });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error?.message || 'No se pudo medir el contexto' });
+  }
+});
+
+// Endpoint heredado: conserva la estimación histórica para clientes antiguos.
+// El medidor nuevo usa `/api/context/count`, que sí consulta al proveedor.
 app.post('/api/gemini/countTokens', async (req, res) => {
   const { contents, systemInstruction } = req.body;
   const contentString = (typeof contents === 'string' ? contents : JSON.stringify(contents)) || '';
@@ -2718,38 +3705,192 @@ try {
   console.warn('No se pudo crear local_models/runtime:', e);
 }
 
+const localModelDownloads = new LocalModelDownloadManager(localModelsDir);
+const localLlamaRuntime = new LocalLlamaRuntimeManager({
+  findBinaries: () => findLlamaBinaries(runtimeDir),
+});
+
 function detectLlamaBinary(): string | null {
-  if (fs.existsSync(runtimeDir)) {
-    for (const name of ['llama-cli', 'llama-cli.exe', 'llama-server', 'llama-server.exe']) {
-      const full = path.join(runtimeDir, name);
-      if (fs.existsSync(full)) return full;
-    }
-  }
-  const candidates = ['llama-cli', 'llama.cpp', 'llama-server'];
-  for (const bin of candidates) {
-    try {
-      execFileSync(bin, ['--version'], { stdio: 'ignore', timeout: 2000 });
-      return bin;
-    } catch (e) {
-      // try
-    }
-  }
-  return null;
+  const binaries = findLlamaBinaries(runtimeDir);
+  return binaries.server || binaries.cli || null;
 }
 
 app.get('/api/local-models', (_req, res) => {
   try {
-    const files = fs.existsSync(localModelsDir)
-      ? fs.readdirSync(localModelsDir).filter((f) => f.toLowerCase().endsWith('.gguf')).map((f) => {
-          const p = path.join(localModelsDir, f);
-          const st = fs.statSync(p);
-          return { name: f, size: st.size, sizeMb: Math.round(st.size / 1024 / 1024) };
-        })
-      : [];
-    res.json({ success: true, models: files, hasLlamaRuntime: !!detectLlamaBinary(), dir: localModelsDir, runtimeDir });
+    const library = listLocalModelRecords(localModelsDir);
+    const files = library.map((model) => ({
+      name: model.filename,
+      size: model.sizeBytes,
+      sizeMb: model.sizeMb,
+      quantization: model.quantization,
+      repoId: model.repoId,
+      downloadedAt: model.downloadedAt,
+    }));
+    const runtime = localLlamaRuntime.getStatus();
+    res.json({
+      success: true,
+      models: files,
+      library,
+      downloads: localModelDownloads.list(),
+      runtime,
+      runtimeAvailable: localLlamaRuntime.getAvailability(),
+      hasLlamaRuntime: !!detectLlamaBinary(),
+      dir: localModelsDir,
+      runtimeDir,
+    });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message || 'scan failed', models: [] });
   }
+});
+
+// ==================== HUGGING FACE → GGUF NATIVO ====================
+
+const hfHubBase = () =>
+  String(process.env.COMMANDER_HF_HUB_BASE || 'https://huggingface.co').replace(/\/+$/, '');
+
+app.get('/api/local-models/hub/search', async (req, res) => {
+  try {
+    const query = String(req.query.q || '').trim().slice(0, 200);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 24, 1), 50);
+    const params = new URLSearchParams({
+      limit: String(limit),
+      sort: 'downloads',
+      direction: '-1',
+      filter: 'gguf',
+    });
+    if (query) params.set('search', query);
+    const response = await safeFetch(`${hfHubBase()}/api/models?${params.toString()}`, {
+      headers: { Accept: 'application/json', 'User-Agent': 'CommanderAIStudio/2.5' },
+    });
+    if (!response.ok) throw new Error(`Hugging Face HTTP ${response.status}`);
+    const payload = await response.json();
+    return res.json({ success: true, models: parseHubSearchResults(payload) });
+  } catch (error: any) {
+    return res.status(502).json({ success: false, error: error?.message || 'No se pudo consultar Hugging Face' });
+  }
+});
+
+app.get('/api/local-models/hub/files', async (req, res) => {
+  try {
+    const repoId = String(req.query.repoId || '').trim();
+    if (!repoId || !/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/.test(repoId) || repoId.includes('..')) {
+      return res.status(400).json({ success: false, error: 'repoId inválido' });
+    }
+    const parts = repoId.split('/').map(encodeURIComponent);
+    const response = await safeFetch(`${hfHubBase()}/api/models/${parts.join('/')}?blobs=true`, {
+      headers: { Accept: 'application/json', 'User-Agent': 'CommanderAIStudio/2.5' },
+    });
+    if (!response.ok) throw new Error(`Hugging Face HTTP ${response.status}`);
+    const payload = await response.json();
+    const files = parseHubGgufFiles(payload, repoId).map((file) => ({
+      ...file,
+      downloadUrl: file.downloadUrl || hubDownloadUrl(repoId, file.filename),
+    }));
+    return res.json({ success: true, repoId, files });
+  } catch (error: any) {
+    return res.status(502).json({ success: false, error: error?.message || 'No se pudieron listar los GGUF' });
+  }
+});
+
+app.post('/api/local-models/hub/download', async (req, res) => {
+  try {
+    const { repoId, filename, sizeBytes, quantization } = req.body || {};
+    if (!sanitizeGgufFilename(filename)) {
+      return res.status(400).json({ success: false, error: 'filename GGUF inválido' });
+    }
+    const job = localModelDownloads.start({
+      repoId: String(repoId || ''),
+      filename: String(filename),
+      sizeBytes: Number(sizeBytes) || 0,
+      quantization: String(quantization || ''),
+    });
+    return res.status(202).json({ success: true, job });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, error: error?.message || 'No se pudo iniciar la descarga' });
+  }
+});
+
+app.get('/api/local-models/jobs', (_req, res) => {
+  res.json({ success: true, jobs: localModelDownloads.list() });
+});
+
+app.get('/api/local-models/jobs/:id', (req, res) => {
+  const job = localModelDownloads.get(req.params.id);
+  if (!job) return res.status(404).json({ success: false, error: 'Trabajo no encontrado' });
+  return res.json({ success: true, job });
+});
+
+app.post('/api/local-models/jobs/:id/:action', (req, res) => {
+  const action = String(req.params.action || '');
+  const id = String(req.params.id || '');
+  const job =
+    action === 'pause'
+      ? localModelDownloads.pause(id)
+      : action === 'resume'
+        ? localModelDownloads.resume(id)
+        : action === 'cancel'
+          ? localModelDownloads.cancel(id)
+          : action === 'retry'
+            ? localModelDownloads.retry(id)
+            : null;
+  if (!job) return res.status(404).json({ success: false, error: 'Trabajo o acción no válidos' });
+  return res.json({ success: true, job });
+});
+
+app.delete('/api/local-models/file/:filename', (req, res) => {
+  try {
+    const requested = String(req.params.filename || '');
+    const split = splitGgufParts(requested);
+    // Borrar una parte de un GGUF multiparte borra el modelo completo: dejar
+    // las otras partes sueltas ocupa disco y no se puede ejecutar.
+    const base = split ? requested.replace(/-\d{5}-of-\d{5}\.gguf$/i, '') : requested;
+    const names = split
+      ? listLocalModelRecords(localModelsDir)
+          .filter((record) => record.filename === requested || record.filename.startsWith(`${base}-`))
+          .map((record) => record.filename)
+      : [requested];
+    let removed = false;
+    for (const name of names) removed = removeLocalModel(localModelsDir, name) || removed;
+    if (!removed) return res.status(404).json({ success: false, error: 'Modelo no encontrado' });
+    const activePath = localLlamaRuntime.getStatus().modelPath;
+    if (activePath && names.some((name) => activePath === localModelPath(localModelsDir, name))) {
+      void localLlamaRuntime.stop();
+    }
+    return res.json({ success: true });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error?.message || 'No se pudo borrar el modelo' });
+  }
+});
+
+app.get('/api/local-models/runtime', (_req, res) => {
+  res.json({
+    success: true,
+    ...localLlamaRuntime.getStatus(),
+    availability: localLlamaRuntime.getAvailability(),
+  });
+});
+
+app.post('/api/local-models/runtime/start', async (req, res) => {
+  try {
+    const modelPath = localModelPath(localModelsDir, req.body?.model);
+    if (!modelPath || !fs.existsSync(modelPath)) {
+      return res.status(404).json({ success: false, error: 'Modelo GGUF no encontrado' });
+    }
+    const result = await localLlamaRuntime.start({
+      modelPath,
+      modelName: path.basename(modelPath),
+      context: Number(req.body?.context) || 8_192,
+      gpuLayers: req.body?.gpuLayers == null ? 99 : Number(req.body.gpuLayers),
+    });
+    return res.status(result.success ? 200 : 503).json(result);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error?.message || 'No se pudo arrancar el runtime' });
+  }
+});
+
+app.post('/api/local-models/runtime/stop', async (_req, res) => {
+  const result = await localLlamaRuntime.stop();
+  return res.status(result.success ? 200 : 500).json(result);
 });
 
 app.post('/api/local-models/download', async (req, res) => {
@@ -2765,7 +3906,7 @@ app.post('/api/local-models/download', async (req, res) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30 * 60 * 1000);
 
-    const fetchRes = await fetch(url, { signal: controller.signal });
+    const fetchRes = await safeFetch(String(url), { signal: controller.signal });
     if (!fetchRes.ok || !fetchRes.body) throw new Error(`Download HTTP ${fetchRes.status}`);
     const tmp = target + '.part';
     const file = fs.createWriteStream(tmp);
@@ -2793,40 +3934,120 @@ app.post('/api/local-models/download', async (req, res) => {
 
 app.post('/api/local-models/generate', async (req, res) => {
   try {
-    const { model, prompt, temperature = 0.7, maxTokens = 1024 } = req.body || {};
+    const {
+      model,
+      prompt,
+      messages,
+      systemInstruction = '',
+      temperature = 0.7,
+      maxTokens = 2048,
+      contextLength,
+      gpuLayers,
+      tools,
+    } = req.body || {};
     if (!model) return res.status(400).json({ success: false, error: 'model required' });
 
-    const bin = detectLlamaBinary();
-    if (!bin) return res.status(503).json({ success: false, error: 'llama.cpp runtime not found in PATH or runtime/llama' });
+    const modelPath = localModelPath(localModelsDir, model);
+    if (!modelPath || !fs.existsSync(modelPath)) {
+      return res.status(404).json({ success: false, error: 'model file not found' });
+    }
 
-    const modelPath = path.join(localModelsDir, model);
-    if (!fs.existsSync(modelPath)) return res.status(404).json({ success: false, error: 'model file not found' });
+    const binaries = findLlamaBinaries(runtimeDir);
+    // El server es el camino normal: mantiene el modelo cargado entre turnos y
+    // expone Chat Completions. Sin server, se conserva el CLI de una pasada.
+    if (binaries.server) {
+      const current = localLlamaRuntime.getStatus();
+      const wantedPath = path.resolve(modelPath);
+      if (current.state !== 'running' || current.modelPath !== wantedPath) {
+        const started = await localLlamaRuntime.start({
+          modelPath,
+          modelName: path.basename(modelPath),
+          context: Number(contextLength) || 8_192,
+          gpuLayers: gpuLayers == null ? 99 : Number(gpuLayers),
+        });
+        if (!started.success) {
+          return res.status(503).json({
+            success: false,
+            error: started.error || 'No se pudo arrancar el runtime de llama.cpp',
+          });
+        }
+      }
+      const runtime = localLlamaRuntime.getStatus();
+      if (!runtime.baseUrl) {
+        return res.status(503).json({ success: false, error: 'El runtime de llama.cpp no tiene endpoint' });
+      }
+      const history = Array.isArray(messages) && messages.length > 0
+        ? messages.map((message: any) => ({ role: String(message?.role || 'user'), content: String(message?.content || '') }))
+        : [
+            ...(String(systemInstruction || '').trim()
+              ? [{ role: 'system', content: String(systemInstruction) }]
+              : []),
+            { role: 'user', content: String(prompt || '') },
+          ];
+      const upstream = await fetch(`${runtime.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: path.basename(modelPath),
+          messages: history,
+          temperature: Number(temperature),
+          max_tokens: Number(maxTokens),
+          stream: false,
+          ...(Array.isArray(tools) && tools.length > 0 ? { tools } : {}),
+        }),
+      });
+      if (!upstream.ok) {
+        const detail = await upstream.text().catch(() => '');
+        throw new Error(`llama-server HTTP ${upstream.status}${detail ? `: ${detail.slice(0, 300)}` : ''}`);
+      }
+      const data = await upstream.json();
+      const truncated = truncatedChatCompletions(data, Number(maxTokens));
+      if (truncated) return res.json({ success: false, ok: false, error: truncated });
+      const choice = data?.choices?.[0];
+      return res.json({
+        success: true,
+        text: choice?.message?.content || '',
+        toolCalls: normalizeOpenAIToolCalls(choice?.message?.tool_calls || []),
+        finishReason: choice?.finish_reason,
+        metrics: {
+          promptTokens: data?.usage?.prompt_tokens || 0,
+          responseTokens: data?.usage?.completion_tokens || 0,
+          totalTokens: data?.usage?.total_tokens || 0,
+          latencyMs: 0,
+        },
+      });
+    }
+
+    if (!binaries.cli) {
+      return res.status(503).json({
+        success: false,
+        error: 'llama.cpp runtime not found. Descarga el runtime de llama.cpp o instala llama-server/llama-cli en el PATH.',
+      });
+    }
 
     const args = [
       '-m', modelPath,
       '-p', String(prompt || ''),
       '--temp', String(temperature),
       '-n', String(maxTokens),
-      '-ngl', '0',
+      '-c', String(Number(contextLength) || 8_192),
+      '-ngl', String(gpuLayers == null ? 0 : Number(gpuLayers)),
     ];
-
-    const proc = spawn(bin, args, { windowsHide: true });
+    const proc = spawn(binaries.cli, args, { windowsHide: true });
     let stdout = '';
     let stderr = '';
-    const chunks: Buffer[] = [];
-
     proc.stdout.on('data', (d: Buffer) => {
-      chunks.push(d);
       stdout += d.toString();
     });
     proc.stderr.on('data', (d: Buffer) => {
       stderr += d.toString();
     });
 
-    const timeoutMs = 120000;
+    // Los modelos grandes en CPU pueden tardar; el límite anterior de 2 min
+    // cortaba cualquier generación útil. El cliente puede abortar la petición.
     const timer = setTimeout(() => {
       try { proc.kill('SIGTERM'); } catch {}
-    }, timeoutMs);
+    }, 10 * 60_000);
 
     proc.on('close', () => {
       clearTimeout(timer);
@@ -2836,11 +4057,10 @@ app.post('/api/local-models/generate', async (req, res) => {
         const promptText = String(prompt || '');
         if (output.startsWith(promptText)) output = output.slice(promptText.length);
       } catch {}
-
       res.json({
         success: true,
         text: output.trim() || (stderr ? `ERROR: ${stderr}` : ''),
-        binary: bin,
+        binary: binaries.cli,
         hasErrors: !!stderr,
       });
     });
@@ -2863,22 +4083,61 @@ app.get('/api/local-models/runtime-release-info', async (_req, res) => {
     const osKey = process.platform === 'win32' ? 'win' : process.platform === 'darwin' ? 'macos' : 'linux';
     const primaryAssetPattern = osKey === 'win' ? 'win' : osKey === 'macos' ? 'macos' : 'ubuntu';
 
-    const relRes = await fetch('https://api.github.com/repos/ggml-org/llama.cpp/releases/latest', {
+    // El release marcado como `latest` puede ser un tag sin binarios (por
+    // ejemplo v1.0.0 solo publica nightly-tag.txt). Se recorren los releases
+    // recientes y se elige el primero que sí tenga un asset para esta
+    // plataforma.
+    const relRes = await fetch('https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=20', {
       headers: { 'User-Agent': 'CommanderAIStudio/2.5', 'Accept': 'application/vnd.github+json' },
     });
     if (!relRes.ok) {
       return res.status(502).json({ success: false, error: `GitHub HTTP ${relRes.status}` });
     }
-    const rel = await relRes.json();
-    const assets = Array.isArray(rel.assets) ? rel.assets : [];
-    const matched = assets.filter((a: any) => {
-      const name = String(a?.name || '').toLowerCase();
-      if (!name.match(/\.(zip|tar\.gz|tgz)$/)) return false;
-      if (!name.includes(primaryAssetPattern)) return false;
-      if (!name.includes(arch)) return false;
-      return true;
-    });
-    const picked = matched[0] || assets.find((a: any) => String(a?.name || '').toLowerCase().includes(primaryAssetPattern) && String(a?.name || '').toLowerCase().match(/\.(zip|tar\.gz|tgz)$/));
+    const releaseList = await relRes.json();
+    const releases = Array.isArray(releaseList) ? releaseList : [];
+    // Preferir CPU evita bajar el runtime CUDA (cientos de MB) en equipos sin
+    // GPU; Vulkan es la siguiente opción razonable.
+    const assetScore = (asset: any): number => {
+      const name = String(asset?.name || '').toLowerCase();
+      let score = 0;
+      if (name.includes('cudart')) score -= 100;
+      if (name.includes('-cpu-')) score += 50;
+      if (name.includes('vulkan')) score += 20;
+      if (name.startsWith('llama-')) score += 10;
+      return score;
+    };
+    let rel: any = null;
+    let matched: any[] = [];
+    let picked: any = null;
+    for (const candidate of releases) {
+      const assets = Array.isArray(candidate?.assets) ? candidate.assets : [];
+      const candidateMatches = assets.filter((a: any) => {
+        const name = String(a?.name || '').toLowerCase();
+        if (!name.match(/\.(zip|tar\.gz|tgz)$/)) return false;
+        if (!name.includes(primaryAssetPattern)) return false;
+        if (!name.includes(arch)) return false;
+        return true;
+      });
+      if (candidateMatches.length === 0) continue;
+      rel = candidate;
+      matched = candidateMatches;
+      picked = [...candidateMatches].sort((a, b) => assetScore(b) - assetScore(a))[0];
+      break;
+    }
+    if (!picked) {
+      return res.json({
+        success: false,
+        platform: osKey,
+        arch,
+        url: null,
+        filename: null,
+        releaseTag: null,
+        runtimeDir,
+        hasLlamaRuntime: !!detectLlamaBinary(),
+        allMatches: [],
+        error: 'No hay binarios de llama.cpp para esta plataforma en los releases recientes',
+      });
+    }
     res.json({
       success: !!picked,
       platform: osKey,
@@ -2907,7 +4166,7 @@ app.post('/api/local-models/download-runtime', async (req, res) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60 * 60 * 1000);
 
-    const fetchRes = await fetch(url, { signal: controller.signal });
+    const fetchRes = await safeFetch(String(url), { signal: controller.signal });
     if (!fetchRes.ok || !fetchRes.body) throw new Error(`Download HTTP ${fetchRes.status}`);
 
     const file = fs.createWriteStream(archivePath);
@@ -2922,11 +4181,25 @@ app.post('/api/local-models/download-runtime', async (req, res) => {
     file.end();
     await new Promise<void>((resolve, reject) => file.on('finish', resolve).on('error', reject));
 
-    // Extract (requires tar - Windows 10+ ships tar.exe)
+    // En Windows el `tar` que resuelve Git Bash es GNU tar y no abre ZIP;
+    // PowerShell sí. En el resto se mantiene tar (o unzip para ZIP).
     const wantsZip = safeName.toLowerCase().endsWith('.zip') || safeName.toLowerCase().includes('.zip');
     const args = wantsZip ? ['-xf', safeName, '-C', runtimeDir] : ['-xzf', safeName, '-C', runtimeDir];
+    const psQuote = (value: string) => `'${value.replace(/'/g, "''")}'`;
     try {
-      execFileSync('tar', args, { cwd: runtimeDir, stdio: 'ignore', timeout: 120000 });
+      if (wantsZip && process.platform === 'win32') {
+        execFileSync(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-Command',
+            `Expand-Archive -LiteralPath ${psQuote(archivePath)} -DestinationPath ${psQuote(runtimeDir)} -Force`,
+          ],
+          { stdio: 'ignore', timeout: 120000 }
+        );
+      } else {
+        execFileSync('tar', args, { cwd: runtimeDir, stdio: 'ignore', timeout: 120000 });
+      }
       try { fs.unlinkSync(archivePath); } catch {}
     } catch (extractErr: any) {
       return res.json({ success: true, downloaded: true, archive: safeName, extracted: false, hint: 'Archivo descargado; descomprímelo manualmente.', error: extractErr?.message });
@@ -3316,28 +4589,31 @@ app.post('/api/lmstudio/generate', async (req, res) => {
     }
 
     const data = await response.json();
+    // Mismo corte que en las demás rutas: `finish_reason: "length"` sin nada es
+    // error, no un éxito con texto vacío (`G1-EMPTY-TURN`).
+    const truncado = truncatedChatCompletions(data, maxTokens);
+    if (truncado) return res.json({ success: false, ok: false, error: truncado });
+    const message = data.choices?.[0]?.message || {};
+    // Mismo formato que los handlers de OpenAI/NVIDIA: `src/agent/llm.ts` lee
+    // `toolCalls` con { name, args }, y LM Studio las devuelve como
+    // `tool_calls[].function.arguments` en texto JSON.
+    const calls = (Array.isArray(message.tool_calls) ? message.tool_calls : [])
+      .map((tc: any) => {
+        const fn = tc?.function || {};
+        let args: Record<string, unknown> = {};
+        try {
+          args = typeof fn.arguments === 'string' ? JSON.parse(fn.arguments) : fn.arguments || {};
+        } catch {
+          args = {};
+        }
+        return { id: tc?.id, name: fn.name, args };
+      })
+      .filter((tc: any) => typeof tc.name === 'string' && tc.name.length > 0);
     return res.json({
       success: true,
-      text: data.choices?.[0]?.message?.content || '',
-      // Mismo formato que los handlers de OpenAI/NVIDIA: `src/agent/llm.ts` lee
-      // `toolCalls` con { name, args }, y LM Studio las devuelve como
-      // `tool_calls[].function.arguments` en texto JSON.
-      ...(() => {
-        const message = data.choices?.[0]?.message || {};
-        const calls = (Array.isArray(message.tool_calls) ? message.tool_calls : [])
-          .map((tc: any) => {
-            const fn = tc?.function || {};
-            let args: Record<string, unknown> = {};
-            try {
-              args = typeof fn.arguments === 'string' ? JSON.parse(fn.arguments) : fn.arguments || {};
-            } catch {
-              args = {};
-            }
-            return { id: tc?.id, name: fn.name, args };
-          })
-          .filter((tc: any) => typeof tc.name === 'string' && tc.name.length > 0);
-        return calls.length > 0 ? { toolCalls: calls } : {};
-      })(),
+      text: message.content || '',
+      finishReason: data.choices?.[0]?.finish_reason,
+      ...(calls.length > 0 ? { toolCalls: calls } : {}),
       metrics: {
         promptTokens: data.usage?.prompt_tokens || 0,
         responseTokens: data.usage?.completion_tokens || 0,
@@ -3541,7 +4817,7 @@ async function fetchModelsDevCatalog(): Promise<ModelsDevModel[]> {
 
 app.get('/api/models/live', async (req, res) => {
   try {
-    const [modelsDevModels, ollamaModels, lmstudioResult, nvidiaModels] = await Promise.all([
+    const [modelsDevModels, ollamaModels, lmstudioResult, nvidiaModels, strataLocalResult] = await Promise.all([
       fetchModelsDevCatalog(),
       (async () => {
         try {
@@ -3593,6 +4869,7 @@ app.get('/api/models/live', async (req, res) => {
         };
       })(),
       fetchNvidiaLiveModels(),
+      strataLocalCatalog(),
     ]);
 
     // Proveedores añadidos por el usuario: sus modelos no están en models.dev,
@@ -3632,6 +4909,24 @@ app.get('/api/models/live', async (req, res) => {
         })
       )
     ).flat();
+
+    // GGUF nativos descargados por Commander: no dependen de ningún daemon
+    // externo, así que se listan siempre que el archivo exista en disco.
+    const nativeLocalEntries = listLocalModelRecords(localModelsDir)
+      .filter((record) => {
+        const split = splitGgufParts(record.filename);
+        return !split || split.index === 1;
+      })
+      .map((record) => ({
+        id: `local/${record.filename}`,
+        name: record.filename,
+        provider: 'local' as const,
+        contextWindow: '8K tokens',
+        contextLength: 8_192,
+        description: `GGUF local · ${record.quantization}`,
+        supportsTools: false,
+        tags: ['local', 'gguf'],
+      }));
 
     // Un servidor local apagado no vacía el selector: se listan los modelos de
     // la última detección guardada. Ollama tiene un solo host; LM Studio une
@@ -3678,21 +4973,45 @@ app.get('/api/models/live', async (req, res) => {
       })),
       ...ollamaList,
       ...lmstudioResult.entries,
+      ...strataLocalResult.entries.map((entry) => ({
+        ...entry,
+        name: entry.name || entry.id,
+        contextLength: entry.context_length,
+        ...(entry.context_window
+          ? { contextWindow: `${Math.round(entry.context_window / 1000)}K tokens` }
+          : {}),
+      })),
       ...nvidiaModels,
+      ...nativeLocalEntries,
       ...compatibleEntries,
     ];
 
     // Estado por proveedor: `available` dice si tiene modelos listados y
     // `configured` si hay credenciales. Antes ambos eran lo mismo (count > 0),
     // así que todo aparecía «disponible» aunque no hubiera ni una clave.
-    const providerStatus: Record<string, { available: boolean; count: number; configured: boolean; source: string; error?: string; cached?: boolean; name?: string }> = {};
+    const providerStatus: Record<string, { available: boolean; count: number; configured: boolean; source: string; error?: string; cached?: boolean; name?: string; loaded?: boolean; model?: string; identity?: string; warning?: string }> = {};
     const envIds = new Set(getEnvProviderIds());
     const specs = new Map([...PROVIDER_SPECS, ...addedProviders].map((s) => [s.id, s]));
     for (const p of new Set(allEntries.map((m) => m.provider))) {
       const count = allEntries.filter((m) => m.provider === p).length;
       const spec = specs.get(p);
       const st = spec ? describeProvider(spec, getConfig().providers as any, envIds) : { configured: true, source: 'none' };
-      providerStatus[p] = { available: count > 0, count, configured: st.configured, source: st.source, name: spec?.name || p };
+      providerStatus[p] = {
+        available: count > 0,
+        count,
+        configured: st.configured,
+        source: st.source,
+        name: spec?.name || p,
+        ...(p === STRATA_LOCAL_PROVIDER_ID
+          ? {
+              ...(typeof strataLocalResult.loaded === 'boolean' ? { loaded: strataLocalResult.loaded } : {}),
+              ...(strataLocalResult.model ? { model: strataLocalResult.model } : {}),
+              identity: strataLocalResult.identity,
+              cached: !strataLocalResult.live,
+              ...(strataLocalResult.warning ? { warning: strataLocalResult.warning } : {}),
+            }
+          : {}),
+      };
     }
     // Los proveedores sin entradas en el catálogo (HF, custom, freebuff) deben
     // salir igualmente: su disponibilidad es tener credenciales, no modelos.
@@ -3703,6 +5022,20 @@ app.get('/api/models/live', async (req, res) => {
     }
     providerStatus.ollama = { available: ollamaList.length > 0, count: ollamaList.length, configured: true, source: 'local', ...(ollamaLive ? {} : { cached: true }) };
     providerStatus.lmstudio = { available: lmstudioResult.entries.length > 0, count: lmstudioResult.entries.length, configured: true, source: 'local', name: 'LM Studio', ...(lmstudioLive ? {} : { cached: true }) };
+    providerStatus.local = { available: nativeLocalEntries.length > 0, count: nativeLocalEntries.length, configured: true, source: 'local', name: 'Commander (GGUF)' };
+    providerStatus[STRATA_LOCAL_PROVIDER_ID] = {
+      ...(providerStatus[STRATA_LOCAL_PROVIDER_ID] || {}),
+      available: strataLocalResult.entries.length > 0,
+      count: strataLocalResult.entries.length,
+      configured: true,
+      source: 'local',
+      name: 'Strata (local)',
+      identity: strataLocalResult.identity,
+      ...(typeof strataLocalResult.loaded === 'boolean' ? { loaded: strataLocalResult.loaded } : {}),
+      ...(strataLocalResult.model ? { model: strataLocalResult.model } : {}),
+      ...(strataLocalResult.entries.length > 0 && !strataLocalResult.live ? { cached: true } : {}),
+      ...(strataLocalResult.warning ? { warning: strataLocalResult.warning } : {}),
+    };
     // Los añadidos están configurados por definición: existen porque se guardó
     // su URL base, aunque ahora no respondan.
     for (const spec of addedProviders) {
@@ -3760,6 +5093,9 @@ app.post('/api/ollama/generate', async (req, res) => {
 
     if (!response.ok) throw new Error(`Ollama HTTP ${response.status}`);
     const data = await response.json();
+    // Ollama corta por `num_predict` con `done_reason: "length"`.
+    const truncado = truncatedOllama(data, maxTokens);
+    if (truncado) return res.json({ success: false, ok: false, error: truncado });
     return res.json({
       success: true,
       text: data.response || '',
@@ -3828,11 +5164,14 @@ app.post('/api/xai/generate', async (req, res) => {
 
 app.post('/api/openrouter/generate', async (req, res) => {
   try {
-    const { prompt, model = 'openai/gpt-4o-mini', systemInstruction = '', temperature = 0.7, maxTokens = 2048, apiKey } = req.body;
+    const { prompt, model = 'openai/gpt-4o-mini', systemInstruction = '', temperature = 0.7, maxTokens = 2048, apiKey, baseURL } = req.body;
     const key = apiKey || process.env.OPENROUTER_API_KEY || getProviderSecret('openrouter', 'apiKey');
     if (!key) return res.json({ ok: false, error: 'OPENROUTER_API_KEY requerida' });
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    // `baseURL` en el cuerpo permite apuntar a un proxy OpenRouter-compatible
+    // (y a un upstream falso en los tests), igual que en `/api/custom/generate`.
+    const base = String(baseURL || 'https://openrouter.ai/api/v1').replace(/\/+$/, '');
+    const response = await fetch(`${base}/chat/completions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${key}`,
@@ -3856,9 +5195,13 @@ app.post('/api/openrouter/generate', async (req, res) => {
 
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content || '';
+    // Un turno cortado por presupuesto no es una respuesta (`G1-EMPTY-TURN`).
+    const truncado = truncatedChatCompletions(data, maxTokens);
+    if (truncado) return res.json({ success: false, ok: false, error: truncado });
     return res.json({
       success: true,
       text,
+      finishReason: data.choices?.[0]?.finish_reason,
       metrics: {
         promptTokens: data.usage?.prompt_tokens || 0,
         responseTokens: data.usage?.completion_tokens || 0,
@@ -3924,9 +5267,137 @@ app.post('/api/custom/models', async (req, res) => {
   }
 });
 
-app.post('/api/custom/generate', async (req, res) => {
+/**
+ * Historial que entiende Chat Completions. La app manda `messages` (incluido el
+ * turno nuevo) y `prompt`; el prompt queda como respaldo para clientes viejos y
+ * para el agente. Antes se ignoraba `messages`, así que una conversación local
+ * sólo veía el último mensaje.
+ */
+type OpenAiHistoryMessage = Record<string, unknown>;
+
+/**
+ * Normaliza los `tool_calls` de un turno assistant para reenviarlos como
+ * historial. Strata usa el contrato OpenAI: `arguments` debe ser un string
+ * JSON, aunque algunos clientes lo manden ya parseado.
+ */
+function openAiHistoryToolCalls(raw: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(raw)) return [];
+  const calls: Array<Record<string, unknown>> = [];
+  for (const call of raw) {
+    const fn = call?.function;
+    if (!fn || typeof fn.name !== 'string' || !fn.name) continue;
+    const args = fn.arguments == null
+      ? '{}'
+      : typeof fn.arguments === 'string'
+        ? fn.arguments
+        : JSON.stringify(fn.arguments);
+    calls.push({
+      ...(typeof call?.id === 'string' && call.id ? { id: call.id } : {}),
+      type: 'function',
+      function: { name: fn.name, arguments: args },
+    });
+  }
+  return calls;
+}
+
+function openAiChatMessages(body: any): OpenAiHistoryMessage[] {
+  const source = Array.isArray(body?.messages) ? body.messages : [];
+  const messages: OpenAiHistoryMessage[] = [];
+  for (const item of source.slice(-200)) {
+    if (!item || typeof item !== 'object') continue;
+    const role = item.role === 'model' ? 'assistant' : String(item.role || 'user');
+
+    // El resultado de una tool viaja con su `tool_call_id`; sin conservarlo el
+    // modelo no puede relacionarlo con la llamada anterior.
+    if (role === 'tool') {
+      if (typeof item.tool_call_id !== 'string' || !item.tool_call_id) continue;
+      messages.push({
+        role: 'tool',
+        tool_call_id: item.tool_call_id,
+        content: typeof item.content === 'string' ? item.content : String(item.content ?? ''),
+        ...(typeof item.name === 'string' && item.name ? { name: item.name } : {}),
+      });
+      continue;
+    }
+
+    if (!['system', 'user', 'assistant'].includes(role)) continue;
+    const content = typeof item.content === 'string' ? item.content : '';
+    const toolCalls = role === 'assistant' ? openAiHistoryToolCalls(item.tool_calls) : [];
+    // Un assistant que sólo pide tools no tiene texto: es un turno válido y hay
+    // que conservarlo para que el `tool` posterior tenga contexto.
+    if (!content.trim() && toolCalls.length === 0) continue;
+    messages.push({
+      role,
+      content: role === 'assistant' && !content.trim() ? null : content,
+      ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+    });
+  }
+  if (messages.length === 0) {
+    messages.push({ role: 'user', content: String(body?.prompt || '') });
+  }
+  const system = String(body?.systemInstruction || '').trim();
+  if (system && !messages.some((message) => message.role === 'system' && String(message.content || '').trim())) {
+    messages.unshift({ role: 'system', content: system });
+  }
+  return messages;
+}
+
+function openAiTools(body: any): { tools?: unknown[]; toolChoice?: unknown } {
+  return Array.isArray(body?.tools) && body.tools.length > 0
+    ? { tools: body.tools, toolChoice: body.toolChoice || 'auto' }
+    : {};
+}
+
+/** Cancela el `fetch` si el cliente se va o si el modelo se queda colgado. */
+function requestAbort(_req: any, res: any, timeoutMs = 15 * 60_000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error('El modelo local no respondió a tiempo')), timeoutMs);
+  timeout.unref?.();
+  const close = () => {
+    if (!res.writableEnded) controller.abort(new Error('Generación cancelada'));
+  };
+  res.on?.('close', close);
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timeout);
+      res.off?.('close', close);
+    },
+  };
+}
+
+function errorText(payload: any, fallback: string): string {
+  return String(payload?.error?.message || payload?.error || fallback).slice(0, 500);
+}
+
+async function generateCustom(
+  req: any,
+  res: any,
+  overrides?: {
+    baseURL?: string;
+    apiKey?: string;
+    model?: string;
+    label?: string;
+    /** Activa los códigos y el reintento seguro propios de Strata. */
+    strata?: boolean;
+    /** Permite inyectar el fetch con reintento sin duplicar la ruta. */
+    fetcher?: typeof fetch;
+    /** Capacidades del modelo Strata para no mandar tools que no soporta. */
+    strataTools?: { supportsParallelTools?: boolean };
+  }
+) {
+  const started = Date.now();
+  const abort = requestAbort(req, res);
+  let requestKey: string | undefined;
   try {
-    const { prompt, model, systemInstruction = '', temperature = 0.7, maxTokens = 2048, baseURL, apiKey, tools, toolChoice } = req.body;
+    const {
+      model: requestedModel,
+      temperature = 0.7,
+      maxTokens = 2048,
+      baseURL: requestedBaseURL,
+      apiKey: requestedApiKey,
+    } = req.body;
+    const model = overrides?.model || requestedModel;
 
     // Los proveedores añadidos comparten esta ruta: el prefijo del id dice
     // cuál es y aquí se resuelven URL y clave guardadas en el servidor.
@@ -3938,60 +5409,383 @@ app.post('/api/custom/generate', async (req, res) => {
 
     const key = added
       ? addedEntry?.apiKey
-      : apiKey || process.env.CUSTOM_API_KEY || process.env.OPENCODE_API_KEY || getProviderSecret('custom', 'apiKey');
+      : overrides?.apiKey || requestedApiKey || process.env.CUSTOM_API_KEY || process.env.OPENCODE_API_KEY || getProviderSecret('custom', 'apiKey');
+    requestKey = key;
     const url = added
       ? String(addedEntry.baseUrl).replace(/\/+$/, '')
-      : baseURL || process.env.CUSTOM_BASE_URL || getProviderSecret('custom', 'baseUrl');
+      : overrides?.baseURL || requestedBaseURL || process.env.CUSTOM_BASE_URL || getProviderSecret('custom', 'baseUrl');
     const targetModel = added ? added.modelId : model;
+    const errorPrefix = overrides?.label || 'Custom';
 
-    if (!url) return res.json({ ok: false, error: 'CUSTOM_BASE_URL requerido' });
-    if (!key && !added) return res.json({ ok: false, error: 'CUSTOM_API_KEY requerida' });
+    if (!url) return res.json({ ok: false, error: overrides?.baseURL ? 'URL base requerida' : 'CUSTOM_BASE_URL requerido' });
+    if (!key && !added && !overrides?.baseURL) return res.json({ ok: false, error: 'CUSTOM_API_KEY requerida' });
 
+    const toolPayload = openAiTools(req.body);
     const payload: Record<string, unknown> = {
       model: targetModel || 'gpt-4o-mini',
-      messages: [
-        ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
-        { role: 'user', content: prompt },
-      ],
+      messages: openAiChatMessages(req.body),
       temperature,
       max_tokens: maxTokens,
+      ...(toolPayload.tools
+        ? {
+            tools: toolPayload.tools,
+            tool_choice: toolPayload.toolChoice,
+            ...(overrides?.strataTools?.supportsParallelTools !== undefined
+              ? { parallel_tool_calls: overrides.strataTools.supportsParallelTools }
+              : {}),
+          }
+        : {}),
     };
-    if (Array.isArray(tools) && tools.length > 0) {
-      payload.tools = tools;
-      payload.tool_choice = toolChoice || 'auto';
-    }
 
-    const response = await fetch(`${url}/chat/completions`, {
+    const doFetch = overrides?.fetcher ?? fetch;
+    const response = await doFetch(`${url}/chat/completions`, {
       method: 'POST',
       headers: {
         ...(key ? { 'Authorization': `Bearer ${key}` } : {}),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
+      signal: abort.signal,
     });
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      throw new Error(err?.error?.message || `Custom HTTP ${response.status}`);
+      if (overrides?.strata) {
+        throw classifyStrataFailure({
+          status: response.status,
+          payload: err,
+          message: errorText(err, `${errorPrefix} HTTP ${response.status}`),
+          retryAfterMs: parseRetryAfter(response.headers.get('retry-after')),
+          secret: key,
+        });
+      }
+      throw new Error(errorText(err, `${errorPrefix} HTTP ${response.status}`));
     }
 
     const data = await response.json();
     const message = data.choices?.[0]?.message || {};
     const text = message.content || '';
-    const toolCalls = normalizeOpenAIToolCalls(Array.isArray(message.tool_calls) ? message.tool_calls : []);
+    const rawToolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+    const toolCalls = overrides?.strata
+      ? normalizeStrataToolCalls(rawToolCalls, { tools: req.body?.tools })
+      : normalizeOpenAIToolCalls(rawToolCalls);
+    const finishReason = data.choices?.[0]?.finish_reason;
+    // Un turno cortado por `max_tokens` y sin contenido ni tool calls no es una
+    // respuesta: devolverlo como éxito hacía que el agente cerrara en vacío
+    // (G1-EMPTY-TURN).
+    const truncado = truncatedChatCompletions(data, maxTokens);
+    if (truncado) {
+      return res.json({ success: false, ok: false, error: truncado });
+    }
     return res.json({
       success: true,
       text,
+      finishReason,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       metrics: {
         promptTokens: data.usage?.prompt_tokens || 0,
         responseTokens: data.usage?.completion_tokens || 0,
         totalTokens: data.usage?.total_tokens || 0,
-        latencyMs: 0,
+        latencyMs: Date.now() - started,
       },
     });
   } catch (error: any) {
-    return res.json({ ok: false, error: error.message || 'Custom generate falló' });
+    if (res.writableEnded) return;
+    if (overrides?.strata) {
+      const reason = abort.signal.reason;
+      const message = abort.signal.aborted
+        ? String((reason as any)?.message || reason || 'Generación cancelada')
+        : error?.message || `${overrides.label || 'Strata'} generate falló`;
+      return sendStrataError(
+        res,
+        isStrataIntegrationError(error)
+          ? error
+          : classifyStrataFailure({
+              message,
+              aborted: abort.signal.aborted,
+              timedOut: /tiempo|timeout|timed?\s*out/i.test(message),
+              secret: requestKey,
+            })
+      );
+    }
+    const message = abort.signal.aborted
+      ? 'Generación cancelada'
+      : error?.message || `${overrides?.label || 'Custom'} generate falló`;
+    return res.json({ ok: false, error: message });
+  } finally {
+    abort.cleanup();
+  }
+}
+
+app.post('/api/custom/generate', (req, res) => generateCustom(req, res));
+
+/**
+ * Modelo efectivo de Strata. Si la petición no trae uno y no hay
+ * `defaultModel`, se usa el que el host declara cargado o el primero del
+ * catálogo. Strata sólo resuelve solo cuando hay un modelo; aquí se evita el
+ * error innecesario «Modelo de Strata requerido» tras cargar el primero.
+ */
+async function resolveStrataLocalModel(
+  requested?: unknown,
+  baseUrlOverride?: unknown,
+  apiKey?: string
+): Promise<string | null> {
+  const direct = strataLocalModelName(String(requested || '')).trim();
+  if (direct) return direct;
+  const configured = strataLocalModelName(String(strataLocalSettings().defaultModel || '')).trim();
+  if (configured) return configured;
+  try {
+    const health = await strataLocalHealth({
+      baseUrl: baseUrlOverride || undefined,
+      apiKey,
+    });
+    return health.model || strataLocalModelName(health.entries?.[0]?.id || '') || null;
+  } catch {
+    return null;
+  }
+}
+
+// Strata local reutiliza el mismo contrato: sólo cambia de dónde salen la URL,
+// la clave y el modelo por defecto, y quita el prefijo del selector.
+app.post('/api/strata-local/generate', async (req, res) => {
+  const body = req.body || {};
+  const baseUrl = resolveStrataLocalBaseUrl(body.baseURL || body.baseUrl);
+  const apiKey = resolveStrataLocalApiKey(body.apiKey);
+  const security = strataLocalKeyTransportError(baseUrl, apiKey, body.allowInsecure);
+  if (security) return sendStrataError(res, security);
+  const model = await resolveStrataLocalModel(body.model, baseUrl, apiKey);
+  if (!model) {
+    return sendStrataError(
+      res,
+      strataError('STRATA_MODEL_NOT_LOADED', {
+        message: 'Strata no tiene un modelo cargado o no se pudo resolver el modelo solicitado.',
+      })
+    );
+  }
+  const preflight = await strataLocalPreflight(model, baseUrl, apiKey);
+  if (preflight.failure) return sendStrataError(res, preflight.failure);
+  const toolsError = strataToolsRequestError(body, preflight.info);
+  if (toolsError) return sendStrataError(res, toolsError);
+  return generateCustom(req, res, {
+    baseURL: baseUrl,
+    apiKey,
+    model,
+    label: 'Strata local',
+    strata: true,
+    strataTools: { supportsParallelTools: preflight.info?.supportsParallelTools },
+    fetcher: (input, init) => fetchStrataWithRetry(fetch, input, init ?? {}, { secret: apiKey }),
+  });
+});
+
+/**
+ * Streaming de Strata con el mismo sobre SSE que Gemini/Anthropic: `chunk`,
+ * `done` y `error`. El `fetch` se cancela al cerrar la pestaña, y el parseo
+ * tolera un host que conteste JSON en vez de SSE (modelo sin stream).
+ */
+app.post('/api/strata-local/stream', async (req, res) => {
+  const started = Date.now();
+  const abort = requestAbort(req, res);
+  let key: string | undefined;
+  try {
+    const body = req.body || {};
+    const baseUrl = resolveStrataLocalBaseUrl(body.baseURL || body.baseUrl);
+    key = resolveStrataLocalApiKey(body.apiKey);
+    const security = strataLocalKeyTransportError(baseUrl, key, body.allowInsecure);
+    if (security) return sendStrataError(res, security);
+    const model = await resolveStrataLocalModel(body.model, baseUrl, key);
+    if (!model) {
+      return sendStrataError(
+        res,
+        strataError('STRATA_MODEL_NOT_LOADED', {
+          message: 'Strata no tiene un modelo cargado o no se pudo resolver el modelo solicitado.',
+        })
+      );
+    }
+    const preflight = await strataLocalPreflight(model, baseUrl, key);
+    if (preflight.failure) return sendStrataError(res, preflight.failure);
+    const toolsError = strataToolsRequestError(body, preflight.info);
+    if (toolsError) return sendStrataError(res, toolsError);
+    const toolPayload = openAiTools(body);
+    const upstream = await fetchStrataWithRetry(fetch, `${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        ...(key ? { Authorization: `Bearer ${key}` } : {}),
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream, application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: openAiChatMessages(body),
+        temperature: body.temperature ?? 0.7,
+        max_tokens: body.maxTokens ?? 2048,
+        stream: true,
+        stream_options: { include_usage: true },
+        ...(toolPayload.tools
+          ? {
+              tools: toolPayload.tools,
+              tool_choice: toolPayload.toolChoice,
+              ...(preflight.info?.supportsParallelTools !== undefined
+                ? { parallel_tool_calls: preflight.info.supportsParallelTools }
+                : {}),
+            }
+          : {}),
+      }),
+      signal: abort.signal,
+    }, { secret: key });
+    if (!upstream.ok) {
+      const err = await upstream.json().catch(() => ({}));
+      return sendStrataError(
+        res,
+        classifyStrataFailure({
+          status: upstream.status,
+          payload: err,
+          message: errorText(err, `Strata HTTP ${upstream.status}`),
+          retryAfterMs: parseRetryAfter(upstream.headers.get('retry-after')),
+          secret: key,
+        })
+      );
+    }
+
+    res.status(200);
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+    const send = (payload: unknown) => {
+      if (res.writableEnded) return;
+      try {
+        res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      } catch {
+        /* el cliente cerró el socket */
+      }
+    };
+
+    const usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+    const toolCalls = new Map<number, { id?: string; name?: string; arguments?: string }>();
+    let text = '';
+    let finishReason: string | null = null;
+
+    const finish = () => {
+      try {
+        const raw = [...toolCalls.entries()]
+          .sort(([a], [b]) => a - b)
+          .map(([index, call]) => ({
+            id: call.id || `strata-call-${index}`,
+            type: 'function',
+            function: { name: call.name || '', arguments: call.arguments || '{}' },
+          }));
+        const normalized = normalizeStrataToolCalls(raw, { tools: body.tools });
+        send({
+          type: 'done',
+          fullText: text,
+          finishReason,
+          ...(normalized.length > 0 ? { toolCalls: normalized } : {}),
+          metrics: {
+            promptTokens: usage.prompt_tokens,
+            responseTokens: usage.completion_tokens,
+            totalTokens: usage.total_tokens,
+            latencyMs: Date.now() - started,
+          },
+        });
+      } catch (error: any) {
+        const typed = isStrataIntegrationError(error)
+          ? error
+          : strataError('STRATA_TOOL_ARGUMENTS_INVALID', { message: error?.message });
+        send({ type: 'error', ...strataErrorPayload(typed) });
+      }
+      if (!res.writableEnded) res.end();
+    };
+
+    // Un host sin stream puede devolver el JSON completo; se convierte al mismo
+    // sobre SSE para que la UI no se quede en blanco.
+    const contentType = String(upstream.headers.get('content-type') || '');
+    if (!contentType.includes('text/event-stream')) {
+      const data = await upstream.json().catch(() => null);
+      const message = data?.choices?.[0]?.message || {};
+      text = String(message.content || '');
+      finishReason = data?.choices?.[0]?.finish_reason || null;
+      if (data?.usage) Object.assign(usage, data.usage);
+      // Un host sin stream también puede devolver tool_calls; se conservan en
+      // el `done` con el mismo formato que el camino SSE.
+      if (Array.isArray(message.tool_calls)) {
+        message.tool_calls.forEach((call: any, index: number) => {
+          toolCalls.set(index, mergeStrataToolCallFragment(undefined, call));
+        });
+      }
+      if (text) send({ type: 'chunk', text });
+      finish();
+      return;
+    }
+
+    const reader = upstream.body?.getReader();
+    if (!reader) throw new Error('Strata no devolvió cuerpo de streaming');
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (reader) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line.startsWith('data:')) continue;
+        const raw = line.slice(5).trim();
+        if (!raw || raw === '[DONE]') continue;
+        let chunk: any = null;
+        try {
+          chunk = JSON.parse(raw);
+        } catch {
+          continue;
+        }
+        if (chunk?.usage) Object.assign(usage, chunk.usage);
+        const choice = chunk?.choices?.[0];
+        if (!choice) continue;
+        if (choice.finish_reason) finishReason = choice.finish_reason;
+        const delta = choice.delta || {};
+        if (typeof delta.content === 'string' && delta.content) {
+          text += delta.content;
+          send({ type: 'chunk', text: delta.content });
+        }
+        if (Array.isArray(delta.tool_calls)) {
+          for (const call of delta.tool_calls) {
+            const rawIndex = Number(call?.index);
+            const hasIndex = call?.index != null && Number.isInteger(rawIndex);
+            const index = hasIndex
+              ? rawIndex
+              : typeof call?.id === 'string' && call.id
+                ? toolCalls.size
+                : Math.max(0, toolCalls.size - 1);
+            toolCalls.set(index, mergeStrataToolCallFragment(toolCalls.get(index), call));
+          }
+        }
+      }
+    }
+    finish();
+  } catch (error: any) {
+    if (res.writableEnded) return;
+    const reason = abort.signal.reason;
+    const message = abort.signal.aborted
+      ? String((reason as any)?.message || reason || 'Generación cancelada')
+      : error?.message || 'Strata stream falló';
+    const typed = isStrataIntegrationError(error)
+      ? error
+      : classifyStrataFailure({
+          message,
+          aborted: abort.signal.aborted,
+          timedOut: /tiempo|timeout|timed?\s*out/i.test(message),
+          secret: key,
+        });
+    if (!res.headersSent) return sendStrataError(res, typed);
+    try {
+      res.write(`data: ${JSON.stringify({ type: 'error', ...strataErrorPayload(typed) })}\n\n`);
+      res.end();
+    } catch {
+      /* socket cerrado */
+    }
+  } finally {
+    abort.cleanup();
   }
 });
 
@@ -4007,8 +5801,12 @@ async function generateOpenAiCompatible(req: any, res: any, provider: 'openai' |
       getProviderSecret(provider, 'apiKey');
     if (!key) return res.json({ ok: false, error: `${isOpenAI ? 'OPENAI_API_KEY' : 'NVIDIA_API_KEY'} requerida` });
 
-    const base = isOpenAI ? 'https://api.openai.com/v1' : 'https://integrate.api.nvidia.com/v1';
-    const fallbackModel = isOpenAI ? 'gpt-4.1-mini' : 'meta/llama-3.3-70b-instruct';
+    // `baseURL` en el cuerpo permite apuntar a un proxy OpenAI-compatible (y a un
+    // upstream falso en los tests), igual que en custom y OpenRouter.
+    const base = typeof body.baseURL === 'string' && body.baseURL.trim()
+      ? body.baseURL.trim().replace(/\/+$/, '')
+      : isOpenAI ? 'https://api.openai.com/v1' : 'https://integrate.api.nvidia.com/v1';
+    const fallbackModel = isOpenAI ? 'gpt-4.1-mini' : NVIDIA_DEFAULT_MODEL;
     const model = String(body.model || getProviderSecret(provider, 'defaultModel') || fallbackModel).replace(
       new RegExp(`^${provider}/`),
       ''
@@ -4058,9 +5856,17 @@ async function generateOpenAiCompatible(req: any, res: any, provider: 'openai' |
       })
       .filter((tc: any) => typeof tc.name === 'string' && tc.name.length > 0);
 
+    const text = message.content || '';
+    const finishReason = data.choices?.[0]?.finish_reason;
+    // Misma regla que en `/api/custom/generate`: truncado y vacío es error.
+    const truncado = truncatedChatCompletions(data, Number(payload.max_tokens));
+    if (truncado) {
+      return res.json({ success: false, ok: false, error: truncado });
+    }
     return res.json({
       success: true,
-      text: message.content || '',
+      text,
+      finishReason,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       metrics: {
         promptTokens: data.usage?.prompt_tokens || 0,
@@ -4087,6 +5893,16 @@ app.post('/api/freebuff/generate', handleFreebuffGenerate);
 // Bootstrap asíncrono (sin top-level await) para que server.ts siga siendo
 // empaquetable a CJS con esbuild (electron/server.cjs, el que carga main.cjs).
 async function bootstrap() {
+  // Si una instalación antigua dejó la clave de Strata en config.json, se
+  // mueve al vault antes de aceptar peticiones. Si el vault no está disponible
+  // se conserva para no perder acceso; el siguiente guardado sí exigirá vault.
+  try {
+    migrateStrataLocalApiKey(
+      normalizeStrataApiKey(getProviderFileConfig(STRATA_LOCAL_PROVIDER_ID).apiKey)
+    );
+  } catch {
+    /* se reintenta al leer los ajustes de Strata */
+  }
   const PORT = Number(process.env.PORT || loadConfig().server?.port || 3280);
   const HOST = '127.0.0.1';
   // Servidor HTTP explícito (no `app.listen`) para compartirlo con Vite: el

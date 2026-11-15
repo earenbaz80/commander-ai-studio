@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   TRANSCRIPTION_MODELS,
+  isInvalidAudioError,
   isRetryableTranscriptionError,
 } from '../../src/lib/transcription';
 
@@ -23,3 +24,19 @@ describe('respaldo de transcripción', () => {
     expect(new Set(TRANSCRIPTION_MODELS).size).toBe(TRANSCRIPTION_MODELS.length);
   });
 });
+
+describe('detección de audio inválido', () => {
+  test('sólo marca el 400 de argumento inválido, no una clave rechazada', () => {
+    const invalidAudio = new Error(
+      JSON.stringify({ error: { code: 400, message: 'Request contains an invalid argument.' } })
+    );
+    const invalidKey = new Error(
+      JSON.stringify({ error: { code: 400, message: 'API key not valid.' } })
+    );
+
+    expect(isInvalidAudioError(invalidAudio)).toBe(true);
+    expect(isInvalidAudioError(invalidKey)).toBe(false);
+    expect(isInvalidAudioError({ status: 503, message: 'overloaded' })).toBe(false);
+  });
+});
+

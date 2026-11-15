@@ -21,17 +21,29 @@ import { resolveEndpoint, resolveStreamEndpoint } from '../lib/aiProviders';
 import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
 import { uid } from '../agent/id';
 import {
+  normalizeProposals,
+  proposalStatsFor,
+  type ProposalDropStats,
+} from '../agent/proposals';
+import {
+  APPROVAL_VISIBILITY_BUDGET_MS,
   EventSequencer,
   decodeEvent,
   type ApprovalDecision,
+  type ApprovalRenderFacts,
+  type ApprovalRequestV2,
   type CliEventPayload,
   type CliEventV2,
   type QuestionV2,
+  type RunInvalidation,
   type SessionMode,
   type SessionStateV2,
   type SessionStepV2,
   type SessionTurnV2,
+  nextRunLabel,
 } from '../agent/sessionTypes';
+import { approvalDiffFor } from './approvalDiff.js';
+import { LoopGuard, WORKSPACE_WRITE_TOOLS } from '../agent/identicalCalls';
 
 /**
  * Nombre heredado del contrato. A partir de F1-01 es el evento v2 completo
@@ -75,12 +87,19 @@ export interface RunAgentOptions {
    * ejemplo en `--json` o sin TTY) la pregunta se cancela sin abrir un prompt.
    */
   askUser?: AskUserHandler;
+  /**
+   * Decide una tool mutante antes de ejecutarla. Sin callback se deniega
+   * (headless/--json); el REPL y la TUI pasan el menú interactivo.
+   */
+  requestApproval?: (approval: ApprovalRequestV2) => Promise<ApprovalDecision | null>;
   /** Cancela el turno en vuelo (Ctrl+C del REPL). */
   signal?: AbortSignal;
   /** Modo del turno; plan/readonly no ofrecen tools que mutan el workspace. */
   mode?: SessionMode;
   /** Plantilla de agente visible en el prompt (F1-08). */
   agent?: string;
+  /** Etiqueta legible de la corrida; si falta se usa el id de sesión. */
+  runLabel?: string;
 }
 
 /** Resultado de una corrida, con el estado final para encadenar turnos. */
@@ -91,6 +110,8 @@ export interface RunAgentResult {
   seq: number;
   state?: SessionStateV2;
   cancelled?: boolean;
+  /** La aprobación caducó: la corrida no debe contarse y ya tiene etiqueta de repetición. */
+  invalid?: RunInvalidation;
 }
 
 /** Respuesta que el cliente da a una pregunta de `ask_user`. */
@@ -134,7 +155,13 @@ export async function runTool(
   toolId: string,
   input: unknown,
   signal?: AbortSignal
-): Promise<{ ok: boolean; data?: unknown; error?: string }> {
+): Promise<{ ok: boolean; data?: unknown; error?: string; code?: string; hint?: string }> {
+  const failed = (body: Record<string, unknown>, fallback: string) => ({
+    ok: false as const,
+    error: String(body.error ?? fallback),
+    ...(typeof body.code === 'string' ? { code: body.code } : {}),
+    ...(typeof body.hint === 'string' ? { hint: body.hint } : {}),
+  });
   try {
     const res = await fetch(`${normalizeServerUrl(serverUrl)}/api/agent/run-tool`, {
       method: 'POST',
@@ -142,12 +169,41 @@ export async function runTool(
       body: JSON.stringify({ toolId, input }),
       signal,
     });
-    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    if (!res.ok) return { ok: false, error: String(data.error ?? `HTTP ${res.status}`) };
+    const raw = await res.text().catch(() => '');
+    let parsed: unknown = null;
+    try {
+      parsed = raw ? JSON.parse(raw) : null;
+    } catch {
+      parsed = null;
+    }
+    const data = isRecord(parsed) ? parsed : {};
+    if (!res.ok) return failed(data, `HTTP ${res.status}`);
+    // Un 200 sin JSON no es una tool que fue bien: puede ser un proxy, una
+    // página de error o un cuerpo vacío. Antes se devolvía `{ok:true,data:{}}`.
+    if (!isRecord(parsed)) {
+      return { ok: false, error: raw.trim() ? 'HTTP 200 con JSON inválido' : 'HTTP 200 sin cuerpo' };
+    }
+    // Un 200 puede traer `ok:false` (p. ej. un `fs.edit` que no encontró el
+    // `oldString`): sin esto el paso quedaba `completed`.
+    if (data.ok === false) return failed(data, 'la tool devolvió ok:false');
     return { ok: true, data };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/** Plazo normal de una aprobación: no se toca fuera del arnés de tests. */
+const APPROVAL_TTL_MS = 5 * 60_000;
+
+/**
+ * TTL de la aprobación. El override sólo existe para el arnés E2E, que necesita
+ * caducar un prompt sin esperar cinco minutos; nunca alarga el plazo normal.
+ */
+function approvalTtlMs(): number {
+  if (process.env.COMMANDER_TEST_MODE !== '1') return APPROVAL_TTL_MS;
+  const requested = Number(process.env.COMMANDER_TEST_APPROVAL_TTL_MS);
+  if (!Number.isFinite(requested) || requested <= 0) return APPROVAL_TTL_MS;
+  return Math.min(requested, APPROVAL_TTL_MS);
 }
 
 /** Ruta de generación del servidor según el dialecto del modelo. */
@@ -208,6 +264,125 @@ const MUTATING_TOOLS = new Set([
   'github.comment',
 ]);
 
+/**
+ * ¿Esta llamada concreta pasa por el prompt de aprobación?
+ *
+ * `git.worktree action=list` sólo consulta (`git worktree list`), así que no
+ * pide permiso; `add`/`remove` crean o borran directorios y siguen pasando por
+ * el gate. En modo plan/readonly la tool entera sigue bloqueada (ver el filtro
+ * de `mode !== 'build'`).
+ */
+function needsApproval(tool: string, input: Record<string, unknown>): boolean {
+  if (!MUTATING_TOOLS.has(tool)) return false;
+  if (tool === 'git.worktree') {
+    return String(input.action ?? '').trim().toLowerCase() !== 'list';
+  }
+  return true;
+}
+
+
+/** Archivo de test que el CLI acepta en la forma canónica de `node --test`. */
+const TEST_FILE_PATTERN = /(?:^|[\\/])[^\\/]+\.(?:test|spec)\.[cm]?[jt]sx?$/i;
+
+/**
+ * Política de herramientas del CLI: los tests se verifican con `shell.run` y
+ * la forma `node --test <archivo>`. Si el modelo propone `node <test>`, se
+ * normaliza antes de pedir aprobación para que el comando ejecutado sea el
+ * canónico y esté dentro de la allowlist.
+ */
+export function normalizeTestCommand(command: unknown): string {
+  const text = typeof command === 'string' ? command.trim() : '';
+  if (!text || /^node\s+--test(?:\s|$)/i.test(text)) return text;
+  const match = text.match(/^node\s+("([^"]+)"|'([^']+)'|(\S+))$/i);
+  if (!match) return text;
+  const target = (match[2] ?? match[3] ?? match[4] ?? '').replace(/\\/g, '/');
+  return TEST_FILE_PATTERN.test(target) ? `node --test ${match[1]}` : text;
+}
+
+/**
+ * Huella estable de un `shell.run`. Incluye cwd, timeout y flags: dos comandos
+ * con el mismo texto pero distinto contexto no son la misma ejecución.
+ */
+function shellRunFingerprint(input: Record<string, unknown>): string {
+  return JSON.stringify(input, Object.keys(input).sort());
+}
+
+/**
+ * Reconstruye las ejecuciones de `shell.run` que ya están en el estado.
+ *
+ * Al reanudar, el mapa en memoria nace vacío; sin esto la primera repetición
+ * del comando ya ejecutado volvería a pedir una aprobación normal. Se recorre
+ * en orden para que una mutación posterior borre la huella, igual que durante
+ * la corrida original.
+ */
+function reconstructExecutedShellRuns(steps: SessionStepV2[]): Map<string, string> {
+  const executed = new Map<string, string>();
+  for (const step of steps) {
+    if (step.type !== 'tool_result' || !step.toolId) continue;
+    if (step.toolId !== 'shell.run') {
+      // Una mutación posterior invalida las verificaciones anteriores. Un
+      // shell.run no se limpia a sí mismo: su propia huella debe sobrevivir
+      // para exigir confirmación si se repite.
+      if (step.status === 'completed' && WORKSPACE_WRITE_TOOLS.has(step.toolId)) {
+        executed.clear();
+      }
+      continue;
+    }
+    // Un deny no ejecutó la tool; un allow/allow-session sí, aunque el
+    // resultado haya fallado. Los estados viejos sin approval se aceptan si
+    // el paso quedó completado.
+    if (step.approval?.decision === 'deny') continue;
+    const approvedId = step.approval?.id ?? (step.status === 'completed' ? 'session' : undefined);
+    if (!approvedId) continue;
+    const input =
+      step.input && typeof step.input === 'object'
+        ? { ...(step.input as Record<string, unknown>) }
+        : null;
+    if (!input || typeof input.command !== 'string') continue;
+    input.command = normalizeTestCommand(input.command);
+    executed.set(shellRunFingerprint(input), approvedId);
+  }
+  return executed;
+}
+
+const TEST_CHANGE_PATTERN =
+  /(?:\bañade|\bañadir|\bagrega|\bagregar|\bcrea|\bcrear|\bincluye|\bincluir|\bescribe|\bescribir|\badd|\bcreate|\binclude|\bwrite)\b[^.\n]{0,80}\b(?:test|prueba|spec|cobertura)\b|\b(?:test|prueba)\b[^.\n]{0,60}\b(?:cubra|cubrir|cobertura|cover)\b/i;
+
+const TEST_PATH_PATTERN = /(?:^|[\\/])[^\\/]+\.(?:test|spec)\.[cm]?[jt]sx?$/i;
+
+/**
+ * Avisos de «test obligatorio» antes de cerrar la corrida. El modelo que ignora
+ * la política y sigue intentando cerrar sin test no debe gastar `maxSteps`
+ * repitiendo el recordatorio (G1-T2-READ-LOOP).
+ */
+const MAX_TEST_POLICY_REMINDERS = 2;
+
+/** ¿El objetivo pide añadir o cubrir un test nuevo? */
+export function requiresTestChange(goal: unknown): boolean {
+  return TEST_CHANGE_PATTERN.test(String(goal ?? ''));
+}
+
+/** ¿La ruta corresponde a un archivo de test? */
+export function isTestPath(value: unknown): boolean {
+  return typeof value === 'string' && TEST_PATH_PATTERN.test(value);
+}
+
+const CLI_TOOL_POLICY =
+  ' POLÍTICA DE HERRAMIENTAS: para verificar tests usa siempre shell.run con la forma exacta ' +
+  '`node --test <archivo>`; no uses code.run para tests ni `node <archivo>`. code.run no está ' +
+  'disponible en el CLI. Si el objetivo pide añadir o cubrir un test, edita un archivo de test y ejecuta ' +
+  '`node --test` después; no cierres sin ambos.';
+
+/** En build no hay fs.apply: la propuesta no cambia nada y hay que decirlo. */
+const CLI_BUILD_PROPOSE_POLICY =
+  ' En el CLI no hay fs.apply: fs.propose.* devuelve un diff pero no aplica; para cambiar archivos usa ' +
+  'fs.edit/fs.write y no cierres una propuesta como aplicada.';
+
+/** En plan/revisión proponer es la salida: el cambio se revisa, no se aplica. */
+const CLI_REVIEW_PROPOSE_POLICY =
+  ' En este modo proponer es la vía: usa fs.propose.write/fs.propose.edit para devolver el diff; no ' +
+  'intentes aplicar cambios.';
+
 /** Cuerpo común de la petición al LLM (compartido por streaming y no-streaming). */
 function buildPayload(
   opts: RunAgentOptions,
@@ -237,6 +412,8 @@ function buildPayload(
   if (opts.agent) {
     systemInstruction += ` PLANTILLA DE AGENTE: ${opts.agent}.`;
   }
+  systemInstruction += CLI_TOOL_POLICY;
+  systemInstruction += mode === 'build' ? CLI_BUILD_PROPOSE_POLICY : CLI_REVIEW_PROPOSE_POLICY;
 
   const payload: Record<string, unknown> = {
     contents: user,
@@ -250,7 +427,10 @@ function buildPayload(
   // no le ofrecemos `update_plan`, que aquí no existe como tool. En plan y
   // readonly tampoco se ofrecen las tools que mutan.
   const declarations = AGENT_FUNCTION_DECLARATIONS.filter(
-    (d) => d.name !== PLAN_TOOL && (mode === 'build' || !MUTATING_FUNCTIONS.has(d.name))
+    (d) =>
+      d.name !== PLAN_TOOL &&
+      d.name !== 'code_run' &&
+      (mode === 'build' || !MUTATING_FUNCTIONS.has(d.name))
   );
   payload.tools =
     dialect === 'gemini'
@@ -384,6 +564,74 @@ function summarize(data: unknown, max = 500): string {
   if (data == null) return '(sin datos)';
   const text = typeof data === 'string' ? data : JSON.stringify(data);
   return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/** Tope del diff de una propuesta en el historial; el resto de tools sigue en 500. */
+const PROPOSAL_HISTORY_LIMIT = 12_000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Guarda la propuesta en el checkpoint para que sobreviva al proceso. */
+function rememberProposal(state: SessionStateV2 | null, tool: string, data: unknown): void {
+  if (!state || !isRecord(data) || !isRecord(data.data)) return;
+  const proposal = data.data;
+  if (
+    typeof proposal.proposalId !== 'string' ||
+    typeof proposal.path !== 'string' ||
+    typeof proposal.diff !== 'string' ||
+    typeof proposal.baseHash !== 'string'
+  ) return;
+  const known = state.proposals ?? [];
+  if (known.some((item) => item.proposalId === proposal.proposalId)) return;
+  const drops: ProposalDropStats = { duplicates: 0, perFileCap: 0, totalCap: 0 };
+  const stats = proposalStatsFor(known, state.proposalStats);
+  state.proposals = normalizeProposals(
+    [
+      ...known,
+      {
+        proposalId: proposal.proposalId,
+        path: proposal.path,
+        diff: proposal.diff,
+        baseHash: proposal.baseHash,
+        afterHash: typeof proposal.afterHash === 'string' ? proposal.afterHash : '',
+        applied: false,
+        tool,
+        createdAt: Date.now(),
+      },
+    ],
+    drops
+  );
+  state.proposalStats = {
+    ...stats,
+    created: stats.created + 1,
+    duplicatesDropped: stats.duplicatesDropped + drops.duplicates,
+    perFileCapDropped: stats.perFileCapDropped + drops.perFileCap,
+    totalCapDropped: stats.totalCapDropped + drops.totalCap,
+  };
+}
+
+/**
+ * Texto del resultado que recibe el modelo. Un resultado con `diff` (propuesta)
+ * lleva el diff entero hasta el tope; `summarize` lo cortaba a 500 caracteres
+ * dentro del JSON y el modelo decidía sobre un diff incompleto.
+ */
+function historyResult(data: unknown): string {
+  const inner = isRecord(data) && isRecord(data.data) ? data.data : null;
+  // Sólo las propuestas: `git.diff` también trae `diff`, pero no es un cambio
+  // pendiente de revisar y no debe ocupar 12 KB de historial.
+  if (inner && typeof inner.diff === 'string' && typeof inner.proposalId === 'string') {
+    const { diff, ...rest } = inner;
+    const header = JSON.stringify(rest);
+    const room = Math.max(0, PROPOSAL_HISTORY_LIMIT - header.length - 80);
+    if (diff.length <= room) return `${header}\n--- DIFF ---\n${diff}`;
+    return (
+      `${header}\n--- DIFF ---\n${diff.slice(0, room)}\n` +
+      `[diff truncado: ${room} de ${diff.length} caracteres]`
+    );
+  }
+  return summarize(data);
 }
 
 /** Respuesta de la API de sesiones; el estado siempre es v2. */
@@ -801,6 +1049,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const resumed = opts.resumeFrom
     ? (JSON.parse(JSON.stringify(opts.resumeFrom)) as SessionStateV2)
     : null;
+  // Un turno reanudado no hereda el corte del turno anterior: si vuelve a
+  // cortarse, `loopCut` tiene que describir el corte nuevo.
+  if (resumed) delete resumed.loopCut;
   const requestedMode = opts.mode ?? resumed?.mode ?? 'build';
   opts = { ...opts, mode: requestedMode };
   let sessionId = resumed?.id || opts.sessionId || '';
@@ -824,15 +1075,30 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const sequencer = new EventSequencer(sessionId, state?.steps.length ?? 0);
   const onEvent = opts.onEvent ?? (() => {});
   const emit = (payload: CliEventPayload) => onEvent(sequencer.next(payload));
-  const done = (answer: string, steps: number): RunAgentResult => ({
+  const done = (
+    answer: string,
+    steps: number,
+    invalid?: RunInvalidation
+  ): RunAgentResult => ({
     answer,
     steps,
     sessionId: sequencer.sessionId,
     seq: sequencer.lastSeq,
     ...(state ? { state } : {}),
     ...(cancelled ? { cancelled: true } : {}),
+    ...(invalid ? { invalid } : {}),
   });
   const maxSteps = Math.max(1, opts.maxSteps ?? 25);
+  const approvedForSession = new Set<string>();
+  // shell.run ejecutado → id de la aprobación que lo permitió (o 'session').
+  // Una repetición idéntica exige confirmación explícita, nunca reutiliza la
+  // aprobación anterior; una mutación exitosa del workspace limpia la huella.
+  const executedShellRuns = reconstructExecutedShellRuns(state?.steps ?? []);
+  let testEditStep = 0;
+  let testRunStep = 0;
+  let testPolicyReminders = 0;
+  // Escalada común: la 2.ª repetición avisa, la 3.ª falla y la 4.ª corta.
+  const loopGuard = new LoopGuard();
   const goal = state?.goal || opts.goal || opts.task;
   const model = opts.model || state?.model || GEMINI_DEFAULT_MODEL;
   const mode = opts.mode ?? state?.mode ?? 'build';
@@ -866,13 +1132,31 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     if (state.turns.length > 20) state.turns = state.turns.slice(-20);
     state.updatedAt = Date.now();
   };
-  const markCancelled = async (): Promise<void> => {
+  /**
+   * Retira del estado la aprobación que se acaba de resolver.
+   *
+   * El servidor persiste el checkpoint tal cual llega, así que borrarla aquí es
+   * lo que evita que un `GET` siga anunciando un prompt que ya no existe.
+   */
+  const clearPendingApproval = async (): Promise<void> => {
+    if (!state) return;
+    const announced = state.pendingApproval !== null || Boolean(state.pendingApprovals?.length);
+    state.pendingApproval = null;
+    delete state.pendingApprovals;
+    if (!announced) return;
+    state.updatedAt = Date.now();
+    await sync();
+  };
+  const markCancelled = async (text = 'Turno cancelado.'): Promise<void> => {
     if (cancelled) return;
     cancelled = true;
-    emit({ type: 'error', text: 'Turno cancelado.' });
+    emit({ type: 'error', text });
     if (state) {
       state.status = 'cancelled';
-      state.error = 'Turno cancelado.';
+      state.error = text;
+      // Abortar o caducar cierra el prompt: no puede quedar anunciado.
+      state.pendingApproval = null;
+      delete state.pendingApprovals;
       state.updatedAt = Date.now();
       await sync();
     }
@@ -883,6 +1167,13 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     state.status = 'running';
     delete state.answer;
     delete state.error;
+    // Una corrida nueva sobre la misma sesión no hereda la invalidez anterior.
+    delete state.invalid;
+    // Una aprobación que dejó abierta la corrida anterior no sigue pendiente al
+    // reanudar: el prompt que la esperaba murió con aquel proceso. Si hace
+    // falta, este turno la vuelve a pedir.
+    state.pendingApproval = null;
+    delete state.pendingApprovals;
     state.updatedAt = Date.now();
     await sync();
   }
@@ -945,6 +1236,39 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     if (thought && !streamed) emit({ type: 'thought', text: thought });
 
     if (calls.length === 0) {
+      if (requiresTestChange(goal) && !(testEditStep > 0 && testRunStep > testEditStep)) {
+        testPolicyReminders += 1;
+        if (testPolicyReminders > MAX_TEST_POLICY_REMINDERS) {
+          const text =
+            `Política de test obligatorio: ${MAX_TEST_POLICY_REMINDERS + 1} avisos sin editar un test ` +
+            'y ejecutar `node --test`; se corta la corrida para no gastar los pasos que quedan. La ' +
+            'tarea queda sin verificar.';
+          emit({ type: 'error', text });
+          history.push(`SISTEMA: ${text}`);
+          await addStep({
+            type: 'thought',
+            title: 'Corte por política de test',
+            content: text,
+            status: 'failed',
+          });
+          if (state) {
+            state.answer = text;
+            state.status = 'failed';
+            state.error = text;
+            state.updatedAt = Date.now();
+            await sync();
+          }
+          emit({ type: 'answer', text });
+          return done(text, steps);
+        }
+        const text =
+          'Política de test obligatorio: edita un archivo de test y ejecuta `node --test` después ' +
+          'antes de cerrar la tarea.';
+        emit({ type: 'error', text });
+        history.push(`SISTEMA: ${text}`);
+        await addStep({ type: 'thought', title: 'Test obligatorio', content: text, status: 'failed' });
+        continue;
+      }
       const answer = thought || '(el modelo no devolvió respuesta)';
       addTurn({ role: 'assistant', text: answer });
       await addStep({ type: 'thought', title: 'Finalizado', content: answer, status: 'completed' });
@@ -987,6 +1311,316 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         });
         continue;
       }
+      if (mapped.tool === 'code.run') {
+        const text =
+          'Política del CLI: code.run no está disponible; verifica tests con shell.run y ' +
+          '`node --test <archivo>`.';
+        emit({ type: 'error', text });
+        history.push(`TOOL ${mapped.tool} → ERROR: ${text}`);
+        await addStep({ type: 'thought', title: 'Política de tools', content: text, status: 'failed' });
+        continue;
+      }
+      if (mapped.tool === 'shell.run' && typeof input.command === 'string') {
+        input.command = normalizeTestCommand(input.command);
+      }
+      const shellRunKey = mapped.tool === 'shell.run' ? shellRunFingerprint(input) : undefined;
+      // `repeatOf` es la ejecución previa: su presencia ya marca la repetición.
+      const repeatOf = shellRunKey ? executedShellRuns.get(shellRunKey) : undefined;
+      const repeat = loopGuard.repeat(mapped.tool, input);
+      if (repeat) {
+        if (repeat.action === 'cut') {
+          const text = repeat.message;
+          emit({ type: 'error', text });
+          addTurn({ role: 'tool', text: `TOOL ${mapped.tool} → ERROR: ${text}` });
+          await addStep({
+            type: 'tool_result',
+            toolId: mapped.tool,
+            title: mapped.tool,
+            content: text,
+            input: mapped.input,
+            output: { skipped: 'loop', ...repeat.cut },
+            status: 'failed',
+          });
+          await addStep({ type: 'thought', title: 'Bucle de tool detectado', content: text, status: 'failed' });
+          if (state) {
+            state.answer = text;
+            state.status = 'failed';
+            state.error = text;
+            state.loopCut = repeat.cut;
+            state.updatedAt = Date.now();
+            await sync();
+          }
+          emit({ type: 'answer', text });
+          return done(text, steps);
+        }
+        // La sesión sigue, que `maxSteps` ya acota el resto.
+        const summary = repeat.message;
+        const warned = repeat.action === 'warn';
+        emit({ type: 'tool_result', tool: mapped.tool, ok: warned, summary });
+        history.push(`TOOL ${mapped.tool} → ${summary}`);
+        addTurn({ role: 'tool', text: `TOOL ${mapped.tool} → ${summary}` });
+        await addStep({
+          type: 'tool_result',
+          toolId: mapped.tool,
+          title: mapped.tool,
+          content: summary,
+          input: mapped.input,
+          output: { skipped: 'duplicate' },
+          status: warned ? 'completed' : 'failed',
+        });
+        if (!warned) {
+          await addStep({
+            type: 'thought',
+            title: 'Bucle de tool detectado',
+            content: summary,
+            status: 'completed',
+          });
+        }
+        continue;
+      }
+      let approval:
+        | {
+            id: string;
+            decision: ApprovalDecision;
+            reason?: string;
+            latencyMs?: number;
+            decisionMs?: number;
+            pendingInStateAt?: number;
+            promptStartedAt?: number;
+            promptPaintedAt?: number;
+            queueDepth?: number;
+            stateMs?: number;
+            queueMs?: number;
+            noticeAt?: number;
+            noticeMs?: number;
+            stateWithin250Ms?: boolean;
+            noticeWithin250Ms?: boolean;
+            firstInputAt?: number;
+            firstNonDecisionKeyAt?: number;
+            decisionAt?: number;
+            paintMs?: number;
+            attentionMs?: number;
+            readMs?: number;
+            directDecision?: boolean;
+            quarantinedKeys?: number;
+            quarantinedDecision?: boolean;
+            render?: ApprovalRenderFacts;
+            repeatOf?: string;
+          }
+        | undefined;
+      // `fs.propose.write`/`fs.propose.edit` no están aquí a propósito: devuelven
+      // un diff y no tocan disco (G1-D3 §6.3). Pedir aprobación sin enseñar el
+      // diff sólo añade ruido; lo que escribe de verdad es `fs.write`, que sí
+      // pasa por este prompt.
+      if (needsApproval(mapped.tool, input)) {
+        const approvalKey = `${goal}\u0000${mapped.tool}`;
+        // `allow-session` no puede auto-permitir una repetición idéntica: el
+        // mismo comando ya ejecutado vuelve a pasar por confirmación explícita.
+        if (repeatOf !== undefined || !approvedForSession.has(approvalKey)) {
+          const requestedAt = Date.now();
+          // Sin `diff` el menú no pinta el hunk y `approval.render` queda en `false`.
+          const diff = approvalDiffFor(mapped.tool, input, opts.cwd);
+          const request: ApprovalRequestV2 = {
+            id: uid('apr'),
+            sessionId: sequencer.sessionId,
+            tool: mapped.tool,
+            input: mapped.input,
+            ...(diff === undefined ? {} : { diff }),
+            ...(repeatOf === undefined ? {} : { repeatOf }),
+            createdAt: requestedAt,
+            expiresAt: requestedAt + approvalTtlMs(),
+            // El bucle local no usa ApprovalQueue: el prompt es el único que
+            // puede abrirse y no hay otra aprobación delante.
+            queueDepth: 0,
+          };
+          // La aprobación queda pendiente aunque no haya una sesión persistida
+          // (corridas directas/goldens): ese instante es el inicio de la cola.
+          request.pendingInStateAt = Date.now();
+          emit({ type: 'approval_request', approval: request });
+          // Quien no está delante del menú sólo ve el estado: un `attach`, el
+          // escritorio o el `GET` de la sesión. Sin esto el prompt queda abierto
+          // sin que nadie lo sepa (G1-D4-05 esperó 801 s). La decisión sigue
+          // viviendo en la promesa de este proceso: esto la anuncia, no la resuelve.
+          if (state) {
+            state.pendingApproval = request;
+            state.updatedAt = request.pendingInStateAt;
+            await sync();
+          }
+          let decision: ApprovalDecision | null = null;
+          let reason: string | undefined;
+          try {
+            if (opts.requestApproval) decision = await opts.requestApproval(request);
+            else reason = 'sin terminal interactiva';
+          } catch (e) {
+            decision = 'deny';
+            reason = e instanceof Error ? e.message : String(e);
+          }
+          if (opts.signal?.aborted) {
+            await markCancelled();
+            return done('', steps);
+          }
+          // `render` lo escribe el prompt al resolver: qué se pintó y si caducó
+          // (I2 del protocolo CAL2). Lo caducado no se puede aprobar después.
+          const expired = request.render?.expired === true;
+          // En una repetición, `allow-session` sólo vale para esta confirmación:
+          // no amplía el permiso de sesión ni auto-permite la próxima.
+          const finalDecision = expired
+            ? 'deny'
+            : repeatOf !== undefined && decision === 'allow-session'
+              ? 'allow'
+              : (decision ?? 'deny');
+          if (expired) reason = 'expired';
+          else if (!decision && !reason) reason = 'sin decisión';
+          const decidedAt = Date.now();
+          const latencyMs = Math.max(0, decidedAt - requestedAt);
+          // La bitácora separa los tres tramos del ciclo. `latencyMs` sigue
+          // midiendo desde `createdAt` y no se toca; `decisionMs`/`readMs`
+          // arrancan en la primera tecla no decisoria.
+          const pendingInStateAt =
+            typeof request.pendingInStateAt === 'number' && Number.isFinite(request.pendingInStateAt)
+              ? request.pendingInStateAt
+              : undefined;
+          const promptStartedAt =
+            typeof request.promptStartedAt === 'number' && Number.isFinite(request.promptStartedAt)
+              ? request.promptStartedAt
+              : undefined;
+          const promptPaintedAt =
+            typeof request.promptPaintedAt === 'number' && Number.isFinite(request.promptPaintedAt)
+              ? request.promptPaintedAt
+              : undefined;
+          const noticeAt =
+            typeof request.noticeAt === 'number' && Number.isFinite(request.noticeAt)
+              ? request.noticeAt
+              : undefined;
+          const firstInputAt =
+            typeof request.firstInputAt === 'number' && Number.isFinite(request.firstInputAt)
+              ? request.firstInputAt
+              : typeof request.firstKeyAt === 'number' && Number.isFinite(request.firstKeyAt)
+                ? request.firstKeyAt
+                : undefined;
+          const firstNonDecisionKeyAt =
+            typeof request.firstNonDecisionKeyAt === 'number' &&
+            Number.isFinite(request.firstNonDecisionKeyAt)
+              ? request.firstNonDecisionKeyAt
+              : undefined;
+          const decisionAt =
+            typeof request.decisionAt === 'number' && Number.isFinite(request.decisionAt)
+              ? request.decisionAt
+              : decidedAt;
+          request.decisionAt = decisionAt;
+          const stateMs =
+            pendingInStateAt === undefined || requestedAt <= 0
+              ? undefined
+              : Math.max(0, pendingInStateAt - requestedAt);
+          const noticeMs =
+            noticeAt === undefined || requestedAt <= 0 ? undefined : Math.max(0, noticeAt - requestedAt);
+          const stateWithin250Ms =
+            stateMs === undefined ? undefined : stateMs <= APPROVAL_VISIBILITY_BUDGET_MS;
+          const noticeWithin250Ms =
+            noticeMs === undefined ? undefined : noticeMs <= APPROVAL_VISIBILITY_BUDGET_MS;
+          const queueMs =
+            pendingInStateAt === undefined || promptStartedAt === undefined
+              ? undefined
+              : Math.max(0, promptStartedAt - pendingInStateAt);
+          const paintMs =
+            promptStartedAt === undefined || promptPaintedAt === undefined
+              ? undefined
+              : Math.max(0, promptPaintedAt - promptStartedAt);
+          const attentionMs =
+            promptPaintedAt === undefined || firstInputAt === undefined
+              ? undefined
+              : Math.max(0, firstInputAt - promptPaintedAt);
+          const readMs =
+            firstNonDecisionKeyAt === undefined
+              ? undefined
+              : Math.max(0, decisionAt - firstNonDecisionKeyAt);
+          // CAL2: la latencia que describe lectura se mide desde la primera
+          // tecla que no decide. `latencyMs` se conserva (incluye el tiempo sin
+          // nadie delante) para no romper las muestras ya publicadas. `readMs`
+          // es el nombre de la bitácora y `decisionMs` su alias compatible:
+          // ambos sólo existen si hubo una tecla de lectura previa. Una decisión
+          // directa se marca con `directDecision` y no inventa 0 ms.
+          if (finalDecision === 'allow-session') approvedForSession.add(approvalKey);
+          const render = request.render ? { render: request.render } : {};
+          const mediciones = {
+            ...(stateMs === undefined ? {} : { stateMs, stateWithin250Ms }),
+            ...(queueMs === undefined ? {} : { queueMs }),
+            ...(noticeMs === undefined ? {} : { noticeMs, noticeWithin250Ms }),
+            ...(paintMs === undefined ? {} : { paintMs }),
+            ...(attentionMs === undefined ? {} : { attentionMs }),
+            ...(readMs === undefined ? {} : { readMs, decisionMs: readMs }),
+          };
+          const instrumentacion = {
+            ...(repeatOf === undefined ? {} : { repeatOf }),
+            ...(pendingInStateAt === undefined ? {} : { pendingInStateAt }),
+            ...(promptStartedAt === undefined ? {} : { promptStartedAt }),
+            ...(promptPaintedAt === undefined ? {} : { promptPaintedAt }),
+            ...(typeof request.queueDepth === 'number' && Number.isFinite(request.queueDepth)
+              ? { queueDepth: request.queueDepth }
+              : {}),
+            ...(noticeAt === undefined ? {} : { noticeAt }),
+            ...(firstInputAt === undefined ? {} : { firstInputAt }),
+            ...(firstNonDecisionKeyAt === undefined ? {} : { firstNonDecisionKeyAt }),
+            decisionAt,
+            ...(request.directDecision === true ? { directDecision: true } : {}),
+            ...(typeof request.quarantinedKeys === 'number' && Number.isFinite(request.quarantinedKeys)
+              ? { quarantinedKeys: request.quarantinedKeys }
+              : {}),
+            ...(request.quarantinedDecision === true ? { quarantinedDecision: true } : {}),
+          };
+          approval = {
+            id: request.id,
+            decision: finalDecision,
+            ...(reason ? { reason } : {}),
+            latencyMs,
+            ...mediciones,
+            ...instrumentacion,
+            ...render,
+          };
+          emit({
+            type: 'approval_result',
+            approvalId: request.id,
+            decision: finalDecision,
+            ...(reason ? { reason } : {}),
+            latencyMs,
+            ...mediciones,
+            ...instrumentacion,
+            ...render,
+          });
+          await clearPendingApproval();
+          if (finalDecision === 'deny') {
+            const text = `ERROR: aprobación denegada${reason ? ` (${reason})` : ''}: ${mapped.tool}`;
+            emit({ type: 'tool_result', tool: mapped.tool, ok: false, summary: text });
+            history.push(`TOOL ${mapped.tool} → ${text}`);
+            addTurn({ role: 'tool', text: `TOOL ${mapped.tool} → ${text}` });
+            await addStep({
+              type: 'tool_result',
+              toolId: mapped.tool,
+              title: mapped.tool,
+              content: text,
+              input: mapped.input,
+              status: 'failed',
+              approval,
+            });
+            // Una aprobación que caduca no deja la sesión esperando otro intento.
+            // La corrida se marca `invalid` (no se publica como muestra) y se
+            // deja preparada la etiqueta de repetición; no se relanza sola.
+            if (expired) {
+              const invalid: RunInvalidation = {
+                reason: 'approval_expired',
+                approvalId: request.id,
+                retryLabel: nextRunLabel(opts.runLabel?.trim() || sequencer.sessionId),
+              };
+              if (state) state.invalid = invalid;
+              await markCancelled(
+                `Aprobación caducada: nadie la decidió antes de expiresAt. Corrida invalid; repetir con etiqueta ${invalid.retryLabel}.`
+              );
+              return done('', steps, invalid);
+            }
+            continue;
+          }
+        }
+      }
       emit({ type: 'tool_call', tool: mapped.tool, input: mapped.input });
       await addStep({
         type: 'tool_call',
@@ -995,6 +1629,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         content: summarize(mapped.input ?? {}, 500),
         input: mapped.input,
         status: 'running',
+        ...(approval ? { approval } : {}),
       });
       if (mapped.tool === 'ask_user') {
         const question = questionFromInput(input);
@@ -1055,25 +1690,56 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         }
         continue;
       }
-      const result = await runTool(
-        opts.serverUrl,
-        mapped.tool,
-        { ...input, root: opts.cwd },
-        opts.signal
-      );
+      // `task` y `spawn_agents` los lanza la app, no el modelo: el servidor
+      // necesita el id de la sesión padre y el modelo no puede conocerlo (el
+      // bucle del servidor hace lo mismo en `agentSession.runOne`). Sin esto el
+      // CLI recibía «parentSessionId requerido» en el tercer paso de T10.
+      const toolInput: Record<string, unknown> = { ...input, root: opts.cwd };
+      if (mapped.tool === 'task' || mapped.tool === 'spawn_agents') {
+        toolInput.parentSessionId = sessionId;
+      }
+      const result = await runTool(opts.serverUrl, mapped.tool, toolInput, opts.signal);
+      if (shellRunKey) {
+        executedShellRuns.set(shellRunKey, approval?.id ?? 'session');
+      }
+      if (result.ok && mapped.tool !== 'shell.run' && WORKSPACE_WRITE_TOOLS.has(mapped.tool)) {
+        // El workspace cambió: la misma verificación vuelve a ser legítima.
+        executedShellRuns.clear();
+      }
       if (opts.signal?.aborted) {
         await markCancelled();
         return done('', steps);
       }
-      const summary = result.ok ? summarize(result.data) : `ERROR: ${result.error}`;
+      // El `hint` del servidor (p. ej. «posiblemente ya aplicado») tiene que
+      // llegar al modelo: es lo que evita que relea el archivo para averiguarlo.
+      const failure = `ERROR: ${result.error}${result.hint ? ` — ${result.hint}` : ''}`;
+      const summary = result.ok ? summarize(result.data) : failure;
+      const historyText = result.ok ? historyResult(result.data) : failure;
+      if (result.ok) {
+        loopGuard.succeeded(mapped.tool, input);
+        rememberProposal(state, mapped.tool, result.data);
+        if ((mapped.tool === 'fs.edit' || mapped.tool === 'fs.write') && isTestPath(input.path)) {
+          testEditStep = steps;
+          testPolicyReminders = 0;
+        }
+        if (
+          mapped.tool === 'shell.run' &&
+          typeof input.command === 'string' &&
+          /^node\s+--test(?:\s|$)/i.test(input.command)
+        ) {
+          testRunStep = steps;
+          testPolicyReminders = 0;
+        }
+      }
       emit({ type: 'tool_result', tool: mapped.tool, ok: result.ok, summary });
-      history.push(`TOOL ${mapped.tool} → ${summary}`);
+      history.push(`TOOL ${mapped.tool} → ${historyText}`);
+      // `turns` es estado para attach/UI: no duplicamos ahí el diff completo.
       addTurn({ role: 'tool', text: `TOOL ${mapped.tool} → ${summary}` });
       await addStep({
         type: 'tool_result',
         toolId: mapped.tool,
         title: mapped.tool,
-        content: result.ok ? summarize(result.data, 2_000) : `ERROR: ${result.error}`,
+        content: result.ok ? summarize(result.data, 2_000) : failure,
         input: mapped.input,
         output: result.data,
         status: result.ok ? 'completed' : 'failed',

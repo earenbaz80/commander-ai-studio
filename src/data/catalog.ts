@@ -54,6 +54,14 @@ export interface LiveProviderStatus {
   /** `true` si la lista viene de la caché porque el servidor no respondió. */
   cached?: boolean;
   error?: string;
+  /** Strata: hay un modelo cargado (no sólo modelos disponibles). */
+  loaded?: boolean;
+  /** Strata: modelo cargado ahora mismo. */
+  model?: string;
+  /** Strata: `/v1/status` confirmó la identidad del host. */
+  identity?: 'verified' | 'unverified' | string;
+  /** Aviso de seguridad del host (p. ej. Strata remoto por HTTP). */
+  warning?: string;
 }
 
 export type ProviderStatus = Record<string, LiveProviderStatus>;

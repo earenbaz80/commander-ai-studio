@@ -3,7 +3,7 @@
  * de esfuerzo que salen del `thinkingLevel` vigente.
  */
 import { beforeEach, describe, test, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ContextMeter } from '../../src/components/chat/ContextMeter';
 import type { AIModel, ChatMessage, ParameterConfig } from '../../src/types/studio';
 
@@ -34,6 +34,9 @@ const messages: ChatMessage[] = [
 describe('ContextMeter', () => {
   beforeEach(() => {
     localStorage.clear();
+    // El medidor intenta el conteo real; sin servidor en jsdom la petición
+    // debe fallar y dejar la estimación, sin ruido ni peticiones reales.
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('sin servidor')) as unknown as typeof fetch;
   });
 
   test('muestra el porcentaje y el total estimados', () => {
@@ -44,6 +47,24 @@ describe('ContextMeter', () => {
     expect(screen.getByTestId('context-meter').textContent).toContain('1K/4K');
     expect(screen.getByTestId('context-meter').textContent).toContain('1 msg');
     expect(screen.queryByTestId('context-details')).toBeNull();
+  });
+
+  test('usa el conteo real del proveedor cuando responde', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ success: true, tokens: 2000, source: 'provider', tokenizer: 'gemini' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    ) as unknown as typeof fetch;
+
+    render(<ContextMeter messages={messages} parameters={params} model={model} lang="es" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('context-percent').textContent).toBe('50%');
+    });
+    fireEvent.click(screen.getByRole('button', { expanded: false, name: /CTX/ }));
+    expect(screen.getByTestId('context-details').textContent).toContain('Total medido');
+    expect(screen.getByTestId('context-source').textContent).toContain('tokenizador real');
   });
 
   test('el desglose aparece al pulsar el indicador', () => {
@@ -57,6 +78,25 @@ describe('ContextMeter', () => {
     expect(details.textContent).toContain('Ventana del modelo');
     expect(details.textContent).toContain('Reservado a la respuesta');
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  test('en Strata muestra la reserva de salida y herramientas', () => {
+    const strata: AIModel = {
+      ...model,
+      id: 'strata-local/strata-demo',
+      provider: 'strata-local',
+      contextWindow: '8K tokens',
+      contextLength: 8192,
+      supportsTools: true,
+    };
+    render(<ContextMeter messages={messages} parameters={params} model={strata} lang="es" />);
+
+    fireEvent.click(screen.getByRole('button', { expanded: false, name: /CTX/ }));
+    const details = screen.getByTestId('context-details');
+    expect(details.textContent).toContain('Reservado a herramientas');
+    expect(details.textContent).toContain('2K');
+    expect(details.textContent).toContain('Presupuesto útil');
+    expect(details.textContent).toContain('5.1K');
   });
 
   test('marca el perfil vigente y avisa del elegido', () => {

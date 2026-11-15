@@ -23,6 +23,11 @@ export class ApprovalQueue {
   /** Encola y arranca el drenaje; nunca lanza hacia el stream SSE. */
   push(approval: ApprovalRequestV2): void {
     if (this.closed) return;
+    // Cuántas aprobaciones esperaban ya: 0 significa que el prompt puede abrir
+    // de inmediato. Si hay una en curso, también cuenta como delante. No pisar
+    // valores que vengan del estado/servidor.
+    approval.pendingInStateAt ??= Date.now();
+    approval.queueDepth ??= this.draining ? this.queue.length + 1 : this.queue.length;
     this.queue.push(approval);
     void this.drain();
   }

@@ -18,6 +18,7 @@ import {
   encodeEvent,
   encodeSessionState,
   makeEventV2,
+  nextRunLabel,
   normalizeSessionStatus,
   type CliEventPayload,
   type CliEventType,
@@ -56,6 +57,7 @@ const SAMPLES: Record<CliEventType, CliEventPayload> = {
       sessionId: 'sess_demo',
       tool: 'fs.write',
       input: { path: 'a.ts' },
+      repeatOf: 'apr_previo',
       createdAt: 1_700_000_000_000,
       expiresAt: 1_700_000_300_000,
     },
@@ -65,6 +67,7 @@ const SAMPLES: Record<CliEventType, CliEventPayload> = {
     approvalId: 'apr_1',
     decision: 'allow',
     reason: 'revisado',
+    repeatOf: 'apr_previo',
   },
   question: {
     type: 'question',
@@ -72,7 +75,12 @@ const SAMPLES: Record<CliEventType, CliEventPayload> = {
   },
   answer: { type: 'answer', text: 'Listo: el faro funciona.' },
   error: { type: 'error', text: 'LLM HTTP 500' },
-  done: { type: 'done', answer: 'Listo: el faro funciona.', steps: 2 },
+  done: {
+    type: 'done',
+    answer: 'Listo: el faro funciona.',
+    steps: 2,
+    invalid: { reason: 'approval_expired', approvalId: 'apr_1', retryLabel: 'CAL2-R01b' },
+  },
 };
 
 function fullState(): SessionStateV2 {
@@ -123,6 +131,7 @@ function fullState(): SessionStateV2 {
     tool: 'fs.write',
     input: { path: 'a.ts', content: 'x' },
     diff: '+x',
+    repeatOf: 'apr_previo',
     createdAt: 1_700_000_000_700,
     expiresAt: 1_700_000_300_700,
   };
@@ -240,5 +249,25 @@ describe('SessionStateV2', () => {
     assert.equal(decodeSessionState('{ roto'), null);
     assert.equal(decodeSessionState(JSON.stringify({ goal: 'sin id' })), null);
     assert.equal(decodeSessionState(JSON.stringify({ id: '' })), null);
+  });
+
+  test('una corrida invalid conserva el motivo y la etiqueta de repetición', () => {
+    const state = createSessionState({ id: 'sess_invalid', goal: 'repetir', cwd: '/tmp' });
+    state.invalid = {
+      reason: 'approval_expired',
+      approvalId: 'apr_1',
+      retryLabel: 'CAL2-R01b',
+    };
+
+    const decoded = decodeSessionState(encodeSessionState(state));
+    assert.deepEqual(decoded?.invalid, state.invalid);
+    assert.equal(nextRunLabel('CAL2-R01'), 'CAL2-R01b');
+    assert.equal(nextRunLabel('CAL2-R01b'), 'CAL2-R01c');
+    assert.equal(nextRunLabel(''), 'run-b');
+
+    const malformed = decodeSessionState(
+      JSON.stringify({ ...state, invalid: { reason: 'otra', approvalId: 'apr_1', retryLabel: 'x' } })
+    );
+    assert.equal(malformed?.invalid, undefined, 'un invalid desconocido no se publica');
   });
 });

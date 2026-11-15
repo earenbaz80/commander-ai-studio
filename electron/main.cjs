@@ -50,35 +50,43 @@ try {
 
 async function startEmbeddedServer() {
   if (app.isPackaged || !process.env.ELECTRON_START_URL) {
+    // Log de arranque best-effort: vive en userData, que Electron ya creó.
+    // Si igual falla (permisos, disco), el servidor embebido sigue igual.
+    const debugLog = (message, truncate = false) => {
+      try {
+        const logFile = path.join(app.getPath('userData'), 'electron-debug.log');
+        fs.mkdirSync(path.dirname(logFile), { recursive: true });
+        if (truncate) fs.writeFileSync(logFile, message);
+        else fs.appendFileSync(logFile, message);
+      } catch {
+        /* sin log de debug, la app sigue */
+      }
+    };
     try {
       process.env.PORT = String(SERVER_PORT);
       process.env.NODE_ENV = 'production';
       const base = app.isPackaged
-        ? (require('fs').existsSync(require('path').join(__dirname, 'server.cjs')) ? __dirname : (require('fs').existsSync(require('path').join(process.resourcesPath, 'server.cjs')) ? process.resourcesPath : __dirname))
+        ? (fs.existsSync(path.join(__dirname, 'server.cjs')) ? __dirname : (fs.existsSync(path.join(process.resourcesPath, 'server.cjs')) ? process.resourcesPath : __dirname))
         : __dirname;
-      const fs = require('fs');
-      const path = require('path');
-      const logFile = 'C:\\temp\\electron-debug.log';
-      fs.writeFileSync(logFile, 'isPackaged: ' + app.isPackaged + '\n__dirname: ' + __dirname + '\nbase: ' + base + '\nserver.cjs exists: ' + fs.existsSync(path.join(base, 'server.cjs')) + '\n');
+      debugLog('isPackaged: ' + app.isPackaged + '\n__dirname: ' + __dirname + '\nbase: ' + base + '\nserver.cjs exists: ' + fs.existsSync(path.join(base, 'server.cjs')) + '\n', true);
       const cjsScript = path.join(base, 'server.cjs');
       const mjsScript = path.join(base, 'server.mjs');
       if (fs.existsSync(cjsScript)) {
         try {
           require(cjsScript);
-          fs.appendFileSync(logFile, 'Server loaded OK\n');
+          debugLog('Server loaded OK\n');
         } catch (reqErr) {
-          fs.appendFileSync(logFile, 'require error: ' + reqErr.message + '\n' + reqErr.stack + '\n');
+          debugLog('require error: ' + reqErr.message + '\n' + reqErr.stack + '\n');
         }
       } else if (fs.existsSync(mjsScript)) {
         await import(`file://${mjsScript.replace(/\\/g, '/')}`);
-        fs.appendFileSync(logFile, 'Server loaded MJS OK\n');
+        debugLog('Server loaded MJS OK\n');
       } else {
-        fs.appendFileSync(logFile, 'No server.cjs or server.mjs found\n');
+        debugLog('No server.cjs or server.mjs found\n');
       }
     } catch (err) {
-      const fs = require('fs');
-      const logFile = 'C:\\temp\\electron-debug.log';
-      fs.appendFileSync(logFile, 'ERROR: ' + err.message + '\n' + err.stack + '\n');
+      debugLog('ERROR: ' + err.message + '\n' + err.stack + '\n');
+      console.error('[Electron] Fallo arrancando el servidor embebido:', err);
     }
   }
 }

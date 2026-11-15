@@ -13,7 +13,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-export type LocalModelsProvider = 'lmstudio' | 'ollama';
+export type LocalModelsProvider = 'lmstudio' | 'ollama' | 'strata-local';
 
 export interface LocalModelsEntry {
   models: string[];

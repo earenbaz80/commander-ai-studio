@@ -16,6 +16,7 @@ export type ProviderType =
   | 'anthropic'
   | 'ollama'
   | 'lmstudio'
+  | 'strata-local'
   | 'openrouter'
   | 'openai'
   | 'nvidia'
@@ -159,6 +160,14 @@ export interface ChatMessage {
   failed?: boolean;
   /** Modo de ejecución original de la petición fallida. */
   retryRunMode?: RunMode;
+  /** Mensaje sintético que resume turnos anteriores (compactación local). */
+  isSummary?: boolean;
+  /** Antes/después de la compactación que creó este mensaje. */
+  contextCompaction?: {
+    beforeTokens: number;
+    afterTokens: number;
+    savedTokens: number;
+  };
   // AI Studio Advanced Capabilities
   variants?: string[];
   activeVariantIndex?: number;

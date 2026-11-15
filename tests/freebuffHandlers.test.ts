@@ -317,6 +317,28 @@ test('un cuerpo de error que no es JSON cae en `Freebuff HTTP <status>`', async 
   });
 });
 
+test('un turno cortado por presupuesto responde error, no éxito con texto vacío', async () => {
+  // `finish_reason: "length"` con contenido vacío: el proveedor agotó
+  // `max_tokens` razonando. Antes viajaba como `success:true` con `text:''` y el
+  // agente lo leía como un cierre sin trabajo (G1-EMPTY-TURN).
+  const { impl } = stubFetch(() =>
+    upstreamOk({
+      choices: [{ finish_reason: 'length', message: { content: '' } }],
+      usage: { completion_tokens: 2048 },
+    })
+  );
+
+  await conFetch(impl, async () => {
+    const res = mockRes();
+    await handleFreebuffGenerate(mockReq({ prompt: 'hola', apiKey: 'k' }), res);
+
+    assert.equal(res.body?.success, false, 'no puede viajar como éxito');
+    assert.equal(res.body?.ok, false);
+    assert.match(String(res.body?.error), /truncada por max_tokens/);
+    assert.equal(res.body?.text, undefined, 'ni texto vacío que el agente lea como cierre');
+  });
+});
+
 test('un fallo de red devuelve el error y no deja la respuesta vacía', async () => {
   const { impl } = stubFetch(() => { throw new TypeError('fetch failed'); });
 

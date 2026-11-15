@@ -7,6 +7,7 @@ import { resolveNonoSkin } from '../features/nono/nonoMemoryStore';
 import {
   useNonoDrag,
   useNonoChat,
+  useNonoExpression,
   useNonoSuggestions,
   useNonoMemory,
   useNonoContext,
@@ -20,22 +21,28 @@ const IDLE_SLEEP_MS = 5 * 60 * 1000;
 const IDLE_DRIFT_MS = 15 * 1000;
 /** Con el puntero quieto, el orbe empieza a mirar a los lados por su cuenta. */
 const IDLE_GAZE_MS = 2200;
-/** Duración de cada cierre de párpado; debe coincidir con `.nono-eye-shutter`. */
-const BLINK_DURATION_MS = 180;
+/** Cada cierre dura un poco distinto para que el gesto no sea mecánico. */
+const BLINK_MIN_DURATION_MS = 150;
+const BLINK_MAX_DURATION_MS = 230;
 /** Pausa breve entre los dos cierres de un parpadeo doble. */
 const DOUBLE_BLINK_GAP_MS = 90;
-/** Probabilidad de encadenar un segundo cierre. */
-const DOUBLE_BLINK_CHANCE = 0.2;
+/** Un doble parpadeo contextual se pide poco después del gesto. */
+const CONTEXT_BLINK_DELAY_MS = 300;
+/** Evita que volver al reposo dispare dobles continuamente. */
+const DOUBLE_BLINK_COOLDOWN_MS = 20_000;
+/** Sólo las vueltas al reposo desde estos estados piden doble parpadeo. */
+const DOUBLE_BLINK_RETURN_FROM = new Set<NonoExpression>([
+  'error',
+  'thinking',
+  'surprised',
+  'love',
+  'angry',
+  'sad',
+  'cool',
+]);
 /** Cadencia normal entre parpadeos: 3,5–8,5 s. */
 const BLINK_MIN_DELAY_MS = 3500;
 const BLINK_DELAY_RANGE_MS = 5000;
-/** Cadencia de la interpolación de la mirada (~60 fps). */
-const EYE_FOLLOW_FRAME_MS = 16;
-/** Constante de tiempo del seguimiento ocular: llega al puntero en una fracción de segundo. */
-const EYE_FOLLOW_MS = 70;
-/** Distancia al objetivo por debajo de la cual la mirada se da por asentada. */
-const EYE_FOLLOW_EPSILON = 0.01;
-
 /**
  * Nono - Asistente flotante (versión slim ~400 líneas).
  * Orquesta hooks especializados:
@@ -101,11 +108,20 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
     headRef,
   });
 
+  // Una sola máquina de estados decide qué capa se ve. Los hooks de chat y
+  // sugerencias piden cambios, pero no compiten con temporizadores propios.
+  const {
+    expression,
+    setExpression,
+    beginProcessing,
+    finishProcessing,
+    clearProcessing,
+    showError,
+  } = useNonoExpression();
+
   const {
     isOpen,
     setIsOpen,
-    expression,
-    setExpression,
     messages,
     inputValue,
     setInputValue,
@@ -134,6 +150,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
     projectInfo,
     inputRef,
     ref,
+    setExpression,
   });
 
   const {
@@ -168,8 +185,8 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
    *
    * El CSS apaga lo agitado bajo `prefers-reduced-motion: reduce`; esta clase
    * en :root desactiva ese bloque. Va por clase y no por estilos en línea para
-   * que el SVG no se remonte al cambiar la preferencia (remontarlo reiniciaría
-   * el rebote y el parpadeo).
+   * que la cabeza no se remonte al cambiar la preferencia (remontarla
+   * reiniciaría el rebote y el parpadeo).
    */
   useEffect(() => {
     const root = document.documentElement;
@@ -231,15 +248,17 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
   useEffect(() => {
     if (!status) return;
     const t = status.type;
-    if (t === 'generating') setExpression('thinking');
-    else if (t === 'done') { setExpression('happy'); setTimeout(() => setExpression('neutral'), 2500); }
-    else if (t === 'error') { setExpression('error'); showContextPhrase(lang === 'es' ? '⚠️ Algo falló. ¿Reviso?' : '⚠️ Something failed. Check?'); setTimeout(() => setExpression('neutral'), 4500); }
-    else if (t === 'success') { setExpression('love'); setTimeout(() => setExpression('neutral'), 3000); }
-    else if (t === 'new_prompt') { setExpression('happy'); setTimeout(() => setExpression('neutral'), 2500); }
+    if (t === 'generating') beginProcessing('thinking');
+    else if (t === 'done') finishProcessing('happy', 2500);
+    else if (t === 'error') {
+      showError('error', 4500);
+      showContextPhrase(lang === 'es' ? '⚠️ Algo falló. ¿Reviso?' : '⚠️ Something failed. Check?');
+    } else if (t === 'success') setExpression('love', 3000);
+    else if (t === 'new_prompt') setExpression('happy', 2500);
     else if (t === 'mode' && status.detail) {
       showContextPhrase(lang === 'es' ? `🔄 Modo ${status.detail}` : `🔄 Mode ${status.detail}`, 3000);
     }
-  }, [status, lang, setExpression, showContextPhrase]);
+  }, [status, lang, setExpression, beginProcessing, finishProcessing, showError, showContextPhrase]);
 
   // Procesamiento en curso (respuesta del chat o corrida del agente): Nono
   // acompaña la espera con una cara propia y una frase corta; al terminar
@@ -251,7 +270,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
     wasBusyRef.current = busy;
     if (busy) {
       if (isOpen || asleepRef.current) return;
-      setExpression('thinking');
+      beginProcessing('thinking');
       showContextPhrase(
         memory.ui.orbSkin
           ? affirmativePhrase
@@ -265,12 +284,16 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
       return;
     }
     // Al acabar: alivio breve, salvo que el panel, el teclado o un error lleven
-    // el mando. Un fallo no se celebra con «¡Listo!».
-    if (isOpen || isTyping || asleepRef.current || status?.type === 'error') return;
+    // el mando. Un fallo no se celebra con «¡Listo!». En esos casos la capa de
+    // procesamiento se retira igualmente para no dejar «thinking» colgado.
+    if (isOpen || isTyping || asleepRef.current || status?.type === 'error') {
+      clearProcessing();
+      return;
+    }
     // Gafas de sol: la corrida terminó bien.
-    setExpression('cool');
+    finishProcessing('cool', 2500);
     showContextPhrase(lang === 'es' ? '¡Listo!' : lang === 'de' ? 'Fertig!' : 'Done!', 2500);
-  }, [busy, isOpen, isTyping, lang, memory.ui.orbSkin, affirmativePhrase, status?.type, setExpression, showContextPhrase]);
+  }, [busy, isOpen, isTyping, lang, memory.ui.orbSkin, affirmativePhrase, status?.type, setExpression, beginProcessing, finishProcessing, clearProcessing, showContextPhrase]);
 
   // El orbe no tiene la pantalla de binario del clásico: mientras procesa mira
   // hacia el chat y asiente, y el bocadillo dice siempre que sí. La frase se
@@ -323,77 +346,28 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
     return () => clearTimeout(timer);
   }, [orbGreeting]);
 
-  // Ojos: dirección desde el centro de la cabeza hasta el puntero.
-  // NonoHead la recibe como vector unitario y desplaza las pupilas. El objetivo
-  // se interpola en pasos cortos para que la mirada acompañe al puntero en vez
-  // de saltar de una posición a otra con cada evento. La opción de accesibilidad
-  // `instantGaze` desactiva esa interpolación y aplica el vector de inmediato.
+  // Ojos: dirección desde el centro de la cabeza hasta el puntero. NonoHead
+  // recibe el vector unitario y la transición CSS lo suaviza; `instantGaze`
+  // desactiva esa transición desde el contenedor de la cabeza.
   const [eyeOffset, setEyeOffset] = useState({ x: 0, y: 0 });
-  const eyeOffsetRef = useRef(eyeOffset);
-  const eyeTargetRef = useRef(eyeOffset);
-  const eyeFollowTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const instantGaze = memory.ui.instantGaze;
 
   useEffect(() => {
-    const stopEyeFollow = () => {
-      if (eyeFollowTimerRef.current !== null) {
-        clearInterval(eyeFollowTimerRef.current);
-        eyeFollowTimerRef.current = null;
-      }
-    };
-
-    const stepEyeFollow = () => {
-      const target = eyeTargetRef.current;
-      const current = eyeOffsetRef.current;
-      const alpha = 1 - Math.exp(-EYE_FOLLOW_FRAME_MS / EYE_FOLLOW_MS);
-      const next = {
-        x: current.x + (target.x - current.x) * alpha,
-        y: current.y + (target.y - current.y) * alpha,
-      };
-      const settled = Math.hypot(target.x - next.x, target.y - next.y) < EYE_FOLLOW_EPSILON;
-      const value = settled ? target : next;
-      eyeOffsetRef.current = value;
-      setEyeOffset(value);
-      if (settled) stopEyeFollow();
-    };
-
-    // Al activar la mirada instantánea se corta la transición en curso y se
-    // salta al último objetivo, sin esperar al siguiente movimiento.
-    if (instantGaze) {
-      stopEyeFollow();
-      const target = eyeTargetRef.current;
-      eyeOffsetRef.current = target;
-      setEyeOffset(target);
-    }
-
     const handleMouseMove = (e: MouseEvent) => {
       const head = headRef.current;
       if (!head) return;
       const rect = head.getBoundingClientRect();
       const dx = e.clientX - (rect.left + rect.width / 2);
       const dy = e.clientY - (rect.top + rect.height / 2);
-      const angle = Math.atan2(dy, dx);
-      // Mover el puntero devuelve el control al cursor de inmediato, sin
-      // esperar al primer frame de la interpolación.
+      const distance = Math.hypot(dx, dy);
       setGazeIdle(false);
-      const target = { x: Math.cos(angle), y: Math.sin(angle) };
-      eyeTargetRef.current = target;
-      if (instantGaze) {
-        stopEyeFollow();
-        eyeOffsetRef.current = target;
-        setEyeOffset(target);
-        return;
-      }
-      if (eyeFollowTimerRef.current === null) {
-        eyeFollowTimerRef.current = setInterval(stepEyeFollow, EYE_FOLLOW_FRAME_MS);
-      }
+      // Justo en el centro no hay dirección: mirar al frente, no a un lado
+      // arbitrario (atan2(0, 0) devolvía 0 y pintaba una mirada a la derecha).
+      setEyeOffset(distance < 1 ? { x: 0, y: 0 } : { x: dx / distance, y: dy / distance });
     };
     window.addEventListener('mousemove', handleMouseMove);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      stopEyeFollow();
-    };
-  }, [instantGaze]);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
 
   // Auto-sueño: en reposo Nono baja los párpados (LED verde + Zzz). La cuenta se
   // reinicia sólo con actividad del usuario. Las expresiones que Nono se provoca
@@ -443,11 +417,24 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
     return () => clearTimeout(timer);
   }, [hovered, isOpen, isTyping, isChatTyping, dragPos]);
 
+  // Error y procesamiento no deben cerrar los ojos: la X roja, los corazones y
+  // las medias lunas tienen que seguir visibles. Tampoco se parpadea dormido.
+  const blinkAllowed =
+    !busy && expression !== 'error' && expression !== 'thinking' && expression !== 'sleepy';
+  const blinkAllowedRef = useRef(blinkAllowed);
+  blinkAllowedRef.current = blinkAllowed;
+
   // Parpadeo
   const [blink, setBlink] = useState(false);
+  const doubleBlinkPendingRef = useRef(false);
+  const lastContextBlinkAtRef = useRef(Number.NEGATIVE_INFINITY);
+  const requestBlinkRef = useRef<(() => void) | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     const timers = new Set<ReturnType<typeof setTimeout>>();
+    let nextBlinkTimer: ReturnType<typeof setTimeout> | null = null;
+    let inBlink = false;
 
     const schedule = (fn: () => void, delay: number) => {
       const timer = setTimeout(() => {
@@ -457,36 +444,98 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
       timers.add(timer);
     };
 
+    const blinkDuration = () =>
+      BLINK_MIN_DURATION_MS +
+      Math.round(Math.random() * (BLINK_MAX_DURATION_MS - BLINK_MIN_DURATION_MS));
+
+    const finishBlink = () => {
+      setBlink(false);
+      inBlink = false;
+    };
+
     const closeEyes = () => {
+      // Durante error, proceso o sueño el cierre no se consume: el doble
+      // parpadeo pendiente espera a que la cara vuelva a poder animarse.
+      if (cancelled || inBlink || !blinkAllowedRef.current) return;
+      inBlink = true;
       setBlink(true);
+      const double = doubleBlinkPendingRef.current;
+      doubleBlinkPendingRef.current = false;
       schedule(() => {
-        setBlink(false);
-        // De vez en cuando, un segundo cierre corto: menos mecánico que un
-        // parpadeo idéntico cada vez.
-        if (Math.random() < DOUBLE_BLINK_CHANCE) {
-          schedule(() => {
-            setBlink(true);
-            schedule(() => setBlink(false), BLINK_DURATION_MS);
-          }, DOUBLE_BLINK_GAP_MS);
-        }
-      }, BLINK_DURATION_MS);
+        finishBlink();
+        if (!double) return;
+        schedule(() => {
+          if (cancelled || !blinkAllowedRef.current) return;
+          inBlink = true;
+          setBlink(true);
+          schedule(finishBlink, blinkDuration());
+        }, DOUBLE_BLINK_GAP_MS);
+      }, blinkDuration());
     };
 
-    const loop = () => {
-      if (cancelled) return;
-      schedule(() => {
+    const nextDelay = () => BLINK_MIN_DELAY_MS + Math.random() * BLINK_DELAY_RANGE_MS;
+
+    const scheduleNext = (delay = nextDelay()) => {
+      if (nextBlinkTimer !== null) {
+        clearTimeout(nextBlinkTimer);
+        timers.delete(nextBlinkTimer);
+      }
+      const timer = setTimeout(() => {
+        nextBlinkTimer = null;
+        timers.delete(timer);
+        if (cancelled) return;
         closeEyes();
-        loop();
-      }, BLINK_MIN_DELAY_MS + Math.random() * BLINK_DELAY_RANGE_MS);
+        scheduleNext();
+      }, delay);
+      nextBlinkTimer = timer;
+      timers.add(timer);
     };
 
-    loop();
+    // Un contexto (sorpresa o vuelta al reposo) adelanta el próximo cierre;
+    // el doble se encadena sólo desde ese cierre contextual.
+    requestBlinkRef.current = () => {
+      if (!blinkAllowedRef.current) return;
+      scheduleNext(CONTEXT_BLINK_DELAY_MS);
+    };
+
+    scheduleNext();
     return () => {
       cancelled = true;
+      requestBlinkRef.current = null;
       for (const timer of timers) clearTimeout(timer);
       timers.clear();
     };
   }, []);
+
+  useEffect(() => {
+    if (blink && !blinkAllowed) setBlink(false);
+  }, [blink, blinkAllowed]);
+
+  // El doble parpadeo ya no es periódico ni aleatorio: se pide al entrar en
+  // sorpresa o al volver a neutral, con un enfriamiento para que no se repita.
+  const previousExpressionRef = useRef(expression);
+  const previousBlinkAllowedRef = useRef(blinkAllowed);
+  useEffect(() => {
+    const previousExpression = previousExpressionRef.current;
+    const previousAllowed = previousBlinkAllowedRef.current;
+    previousExpressionRef.current = expression;
+    previousBlinkAllowedRef.current = blinkAllowed;
+    if (!blinkAllowed) return;
+
+    const afterSurprise =
+      expression === 'surprised' && (previousExpression !== 'surprised' || !previousAllowed);
+    const returnedToRest =
+      expression === 'neutral' &&
+      (DOUBLE_BLINK_RETURN_FROM.has(previousExpression) ||
+        (!previousAllowed && previousExpression === 'neutral'));
+    if (!afterSurprise && !returnedToRest) return;
+
+    const now = Date.now();
+    if (now - lastContextBlinkAtRef.current < DOUBLE_BLINK_COOLDOWN_MS) return;
+    lastContextBlinkAtRef.current = now;
+    doubleBlinkPendingRef.current = true;
+    requestBlinkRef.current?.();
+  }, [expression, blinkAllowed]);
 
   // Mirada en reposo: si el puntero deja de moverse, el orbe barre la mirada a
   // los lados por su cuenta. Cualquier movimiento del ratón devuelve el control
@@ -704,7 +753,7 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
             handleToggle();
           }
         }}
-        className={`fixed z-[9998] select-none touch-none focus-visible:outline-2 focus-visible:outline-[var(--nc-text-accent)] cursor-pointer ${expression !== 'sleepy' ? (idle ? 'nono-awake nono-idle' : 'nono-awake') : 'nono-asleep'} ${busy ? 'nono-busy' : ''}`}
+        className={`fixed z-[9998] select-none touch-none focus-visible:outline-2 focus-visible:outline-[var(--nc-text-accent)] cursor-pointer ${expression !== 'sleepy' ? (idle ? 'nono-awake nono-idle' : 'nono-awake') : 'nono-asleep'} ${busy ? 'nono-busy' : ''} ${instantGaze ? 'nono-instant-gaze' : ''}`}
         style={headStyle}
       >
         {/* La inclinación va en un contenedor interno: así se suma al
@@ -730,19 +779,18 @@ export const FloatingAssistant = forwardRef<FloatingAssistantHandle, FloatingAss
             filter: 'blur(3px)',
           }}
         />
-        {/* `key` remonta el SVG al empezar a escribir, reiniciando el rebote. */}
+        {/* `key` remonta la cabeza al empezar a escribir, reiniciando el rebote. */}
         <NonoHead
           key={chatBounceToken}
           expression={expression as NonoExpression}
           eyeOffset={eyeOffset}
-          blink={blink}
+          blink={blinkAllowed && blink}
           size={memory.ui.compactMode ? 36 : 48}
-          show3D={true}
           busy={busy}
           idleGaze={gazeIdle}
           variant={resolveNonoSkin(memory.ui)}
           orbColors={memory.ui.orbColors}
-          classicAccent={memory.ui.classicAccent}
+          eyesColor={memory.ui.eyesColor}
         />
         {expression === 'sleepy' && !hoverPhrase && !contextPhrase && (
           <div className="nono-sleep-z absolute pointer-events-none" aria-hidden="true">

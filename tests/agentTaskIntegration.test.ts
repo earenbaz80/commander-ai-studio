@@ -151,6 +151,240 @@ test('un nombre con guion bajo del proveedor se ejecuta como la tool real', asyn
   }
 });
 
+test('un turno vacío se reintenta y, si el segundo trae respuesta, el hijo completa', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const objetivo = `hijo-con-turno-vacio-${Date.now()}`;
+  const padre = createSession({ goal: 'padre de la prueba de turno vacío', cwd: dir });
+  let llamadas = 0;
+
+  globalThis.fetch = (async () => {
+    llamadas += 1;
+    if (llamadas === 1) {
+      // El turno que se vio en G1-D5-07: ni pensamiento ni llamadas. Antes se
+      // cerraba con el relleno «Objetivo completado.» y el hijo contaba como ok.
+      return { ok: true, status: 200, json: async () => ({ functionCalls: [] }) } as any;
+    }
+    return { ok: true, status: 200, json: async () => ({ text: 'listo', functionCalls: [] }) } as any;
+  }) as any;
+
+  try {
+    const res: any = await executeAgentTool('task', {
+      root: dir,
+      parentSessionId: padre.id,
+      goal: objetivo,
+    });
+
+    assert.equal(res.ok, true, JSON.stringify(res).slice(0, 400));
+    assert.equal(res.answer, 'listo', 'la respuesta es la del turno real, no el relleno');
+    assert.equal(llamadas, 2, 'el turno vacío se reintenta una vez');
+
+    const [fila] = listSubAgents(padre.id);
+    assert.equal(fila.status, 'completed');
+    assert.equal(fila.answer, 'listo');
+    assert.ok(
+      fila.stepTitles?.includes('Turno vacío'),
+      `el reintento queda visible en la fila: ${JSON.stringify(fila.stepTitles)}`
+    );
+    assert.equal(fila.stepTitles?.at(-1), 'Finalizado', 'cerró con una respuesta de verdad');
+  } finally {
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('si el turno sigue vacío tras el reintento, el hijo queda fallido en vez de «Objetivo completado.»', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const objetivo = `hijo-sin-turno-${Date.now()}`;
+  const padre = createSession({ goal: 'padre de la prueba de turno vacío persistente', cwd: dir });
+  let llamadas = 0;
+
+  globalThis.fetch = (async () => {
+    llamadas += 1;
+    return { ok: true, status: 200, json: async () => ({ functionCalls: [] }) } as any;
+  }) as any;
+
+  try {
+    const res: any = await executeAgentTool('task', {
+      root: dir,
+      parentSessionId: padre.id,
+      goal: objetivo,
+    });
+
+    assert.equal(res.ok, false, 'un hijo sin respuesta ni llamadas no puede darse por bueno');
+    assert.match(String(res.error), /turnos vacíos/i);
+    assert.equal(llamadas, 2, 'reintenta una vez y no entra en bucle');
+
+    const [fila] = listSubAgents(padre.id);
+    assert.equal(fila.status, 'failed');
+    assert.equal(fila.answer, undefined, 'no se inventa «Objetivo completado.»');
+    assert.match(String(fila.error), /turnos vacíos/i);
+    assert.deepEqual(
+      fila.stepTitles,
+      ['Inicio', 'Turno vacío', 'Finalizado sin respuesta'],
+      'la fila dice por qué cerró: un turno vacío y luego la rendición'
+    );
+    assert.deepEqual(fila.calls, [], 'no hubo ninguna tool que anotar');
+  } finally {
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('un hijo que termina en `done` sin `Finalizado` queda incompleto, no con una respuesta inventada', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const objetivo = `hijo-sin-cierre-${Date.now()}`;
+  const padre = createSession({ goal: 'padre de la prueba de cierre ausente', cwd: dir });
+  let llamadas = 0;
+
+  globalThis.fetch = (async () => {
+    llamadas += 1;
+    return { ok: true, status: 200, json: async () => ({ text: 'nunca llega', functionCalls: [] }) } as any;
+  }) as any;
+
+  try {
+    // `maxSteps: 1` se agota antes del primer turno: la sesión cierra en `done`
+    // con el paso `Límite` y sin `Finalizado`, que es el caso que se colaba como
+    // `ok:true` con «Subagente completado sin respuesta explícita».
+    const res: any = await executeAgentTool('task', {
+      root: dir,
+      parentSessionId: padre.id,
+      goal: objetivo,
+      maxSteps: 1,
+    });
+
+    assert.equal(llamadas, 0, 'el límite se alcanza antes de pedir ningún turno');
+    assert.equal(res.ok, false, 'un `done` sin respuesta no puede darse por bueno');
+    assert.match(String(res.error), /sin respuesta final/i);
+    assert.equal(res.answer, undefined, 'no se inventa una respuesta');
+
+    const [fila] = listSubAgents(padre.id);
+    assert.equal(fila.status, 'failed');
+    assert.match(String(fila.error), /sin respuesta final/i);
+    assert.equal(fila.answer, undefined);
+    assert.deepEqual(fila.stepTitles, ['Inicio', 'Límite'], 'la fila deja ver por qué cerró sin responder');
+    assert.deepEqual(fila.calls, []);
+  } finally {
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('si los hijos fallan dos tandas seguidas, el padre se detiene e informa, sin relanzar en bucle', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const padre = createSession({ goal: 'padre que relanza spawn_agents', cwd: dir });
+  let spawnCalls = 0;
+  let turnosDeHijos = 0;
+
+  const stopApprovals = setInterval(() => {
+    for (const approval of padre.getPendingApprovals()) padre.resolveApproval(approval.id, 'allow');
+  }, 10);
+
+  globalThis.fetch = (async () => {
+    // Un hijo en curso tiene goal `hijo-*`: ese turno llega vacío, que es lo que
+    // en G1-D5-08 hizo fallar a los seis hijos. El padre nunca llega aquí con un
+    // hijo corriendo, así que siempre recibe la orden de lanzarlos.
+    const hijoCorriendo = listSessions().some((s) => s.goal.startsWith('hijo-') && s.status === 'running');
+    if (hijoCorriendo) {
+      turnosDeHijos += 1;
+      return { ok: true, status: 200, json: async () => ({ functionCalls: [] }) } as any;
+    }
+    spawnCalls += 1;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        functionCalls: [{
+          name: 'spawn_agents',
+          args: { agents: [{ goal: 'hijo-a' }, { goal: 'hijo-b' }] },
+        }],
+      }),
+    } as any;
+  }) as any;
+
+  try {
+    const terminado = new Promise<{ answer: string; error?: string }>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('la sesión padre no cerró')), 20_000);
+      padre.addListener((evt) => {
+        if (evt.type === 'finish') { clearTimeout(timer); resolve({ answer: evt.answer }); }
+        if (evt.type === 'error') { clearTimeout(timer); resolve({ answer: '', error: evt.error }); }
+      });
+    });
+    void padre.start();
+    const cierre = await terminado;
+
+    assert.equal(cierre.error, undefined, `no debe acabar en error: ${cierre.error}`);
+    assert.match(cierre.answer, /No completé la tarea/, 'cierra diciendo que no completó la tarea');
+    assert.match(cierre.answer, /subagentes fallaron en dos tandas seguidas/);
+    assert.match(cierre.answer, /turnos vacíos/i, 'el motivo del fallo de los hijos viaja en la respuesta');
+
+    assert.equal(spawnCalls, 2, 'no vuelve a lanzar el spawn después de la segunda tanda fallida');
+    assert.equal(turnosDeHijos, 8, 'cuatro hijos × (turno vacío + reintento), en dos tandas');
+    assert.equal(padre.getStatus(), 'done');
+    const ultimo = padre.getSteps().filter((s) => s.title === 'Finalizado').at(-1);
+    assert.match(String(ultimo?.content ?? ''), /No completé la tarea/);
+    // Los `tool_call` sólo se emiten; lo que queda anotado es el resultado.
+    assert.equal(
+      padre.getSteps().filter((s) => s.type === 'tool_result' && s.toolId === 'spawn_agents').length,
+      2,
+      'dos resultados de spawn anotados, ni uno más'
+    );
+  } finally {
+    clearInterval(stopApprovals);
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('un turno truncado por max_tokens llega como error del servidor y el hijo no lo toma por cierre', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const objetivo = `hijo-truncado-${Date.now()}`;
+  const padre = createSession({ goal: 'padre de la prueba de truncado', cwd: dir });
+  let llamadas = 0;
+
+  globalThis.fetch = (async () => {
+    llamadas += 1;
+    // Lo que ahora responde el servidor cuando el proveedor corta el turno:
+    // `finish_reason: length` con contenido vacío ya no viaja como `success:true`.
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ success: false, ok: false, error: 'respuesta truncada por max_tokens (finish_reason: length); max_tokens=4096' }),
+    } as any;
+  }) as any;
+
+  try {
+    const res: any = await executeAgentTool('task', {
+      root: dir,
+      parentSessionId: padre.id,
+      goal: objetivo,
+    });
+
+    assert.equal(res.ok, false, 'el truncado no puede darse por bueno');
+    assert.match(String(res.error), /truncada por max_tokens/i);
+    assert.equal(res.answer, undefined);
+    assert.equal(llamadas, 1, 'no reintenta en modo JSON: volvería a cortarse');
+
+    const [fila] = listSubAgents(padre.id);
+    assert.equal(fila.status, 'failed');
+    assert.match(String(fila.error), /truncada por max_tokens/i);
+    assert.deepEqual(fila.stepTitles, ['Inicio', 'Respuesta truncada'], 'la fila dice que el turno se cortó');
+    assert.deepEqual(fila.calls, []);
+  } finally {
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('un turno que sólo actualiza el plan no se toma por respuesta final', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
   const padre = createSession({ goal: 'padre de la prueba de plan', cwd: dir });

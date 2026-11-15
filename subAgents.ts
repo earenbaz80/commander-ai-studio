@@ -12,6 +12,21 @@
 
 export type SubAgentStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
+/**
+ * Una tool que el hijo llamó y cómo acabó.
+ *
+ * Existe porque la sesión hija se borra al terminar: sin esto, un «no informó
+ * la denegación» no se puede distinguir de «no le pasó», que es justo lo que
+ * necesita la medición de T10 (`G1-SUBAGENT-CLOSE`).
+ */
+export interface SubAgentCall {
+  tool: string;
+  /** `true` si la tool respondió bien, `false` si falló o la denegaron, `null` si no hubo resultado. */
+  ok: boolean | null;
+  /** Error o motivo tal como lo devolvió la tool (recortado). */
+  error?: string;
+}
+
 export interface SubAgentRecord {
   id: string;
   parentSessionId: string;
@@ -25,6 +40,61 @@ export interface SubAgentRecord {
   error?: string;
   /** Pasos que alcanzó a dar, para distinguir «falló al arrancar» de «casi». */
   steps: number;
+  /** Tools llamadas y su resultado, en orden. Sale en `/subagents`. */
+  calls?: SubAgentCall[];
+  /** Títulos de los pasos del hijo, en orden. Sale en `/subagents`. */
+  stepTitles?: string[];
+}
+
+/**
+ * Títulos de los pasos de un hijo, para saber cómo cerró.
+ *
+ * `calls` dice si llamó tools; esto dice si hubo razonamiento antes de cerrar.
+ * Un cierre con `[Razonamiento, Finalizado]` es un turno que decidió no llamar
+ * nada; uno con sólo `[Finalizado]` es el turno vacío del proveedor, que sin
+ * este dato se veía igual desde fuera.
+ */
+export function summarizeStepTitles(
+  steps: Array<{ type?: string; title?: string; toolId?: string }>,
+  max = 40
+): string[] {
+  const titles = steps.map((step) => String(step.title || step.toolId || step.type || 'paso'));
+  return titles.length > max ? titles.slice(-max) : titles;
+}
+
+/**
+ * Resume los pasos de un hijo en llamadas + resultado.
+ *
+ * Empareja cada `tool_result` con la última llamada pendiente de la misma tool,
+ * que es como los emite el bucle: una llamada, un resultado. Una llamada sin
+ * resultado (cancelada a mitad) queda con `ok:null` en vez de desaparecer.
+ */
+export function summarizeCalls(
+  steps: Array<{ type?: string; toolId?: string; output?: unknown }>,
+  max = 40
+): SubAgentCall[] {
+  const calls: SubAgentCall[] = [];
+  for (const step of steps) {
+    if (step.type === 'tool_call' && step.toolId) {
+      calls.push({ tool: step.toolId, ok: null });
+      continue;
+    }
+    if (step.type !== 'tool_result' || !step.toolId) continue;
+    const output = (step.output ?? {}) as { ok?: unknown; error?: unknown };
+    let tail = -1;
+    for (let i = calls.length - 1; i >= 0; i -= 1) {
+      if (calls[i].tool === step.toolId && calls[i].ok === null) { tail = i; break; }
+    }
+    const ok = output.ok !== false;
+    const error = typeof output.error === 'string' && output.error !== '' ? output.error.slice(0, 300) : undefined;
+    if (tail >= 0) {
+      calls[tail] = { ...calls[tail], ok, ...(error ? { error } : {}) };
+    } else {
+      // Resultado sin llamada previa: se anota igual, no se descarta el dato.
+      calls.push({ tool: step.toolId, ok, ...(error ? { error } : {}) });
+    }
+  }
+  return calls.length > max ? calls.slice(-max) : calls;
 }
 
 /** Tope global: son datos de observabilidad, no historial. */
@@ -106,7 +176,7 @@ export function startSubAgent(input: { id: string; parentSessionId: string; goal
 /** Cierra un subagente con su resultado. Idempotente: el primero gana. */
 export function finishSubAgent(
   id: string,
-  patch: { ok: boolean; answer?: string; error?: string; steps?: number; cancelled?: boolean }
+  patch: { ok: boolean; answer?: string; error?: string; steps?: number; cancelled?: boolean; calls?: SubAgentCall[]; stepTitles?: string[] }
 ): void {
   const record = records.get(id);
   if (!record || record.status !== 'running') return;
@@ -115,6 +185,8 @@ export function finishSubAgent(
   record.answer = patch.ok ? patch.answer : undefined;
   record.error = patch.ok ? undefined : patch.error;
   if (typeof patch.steps === 'number') record.steps = patch.steps;
+  if (patch.calls) record.calls = patch.calls;
+  if (patch.stepTitles) record.stepTitles = patch.stepTitles;
   notify(record.parentSessionId);
 }
 

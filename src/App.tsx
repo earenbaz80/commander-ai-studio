@@ -699,6 +699,7 @@ export default function App() {
     attachments?: File[],
     modelOverride?: string,
     runMode: RunMode = 'build',
+    historyOverride?: ChatMessage[],
     retry?: { failedMessageId: string; history: ChatMessage[] }
   ) => {
     const userMsg: ChatMessage = {
@@ -751,7 +752,7 @@ export default function App() {
     let currentBotMsgId: string | null = null;
     // En un reintento el mensaje del usuario ya está en el historial: se usa
     // como contexto previo y no se vuelve a insertar otro globo igual.
-    const sourceMessages = retry ? retry.history : messages;
+    const sourceMessages = retry ? retry.history : historyOverride || messages;
 
     try {
       const {
@@ -762,6 +763,7 @@ export default function App() {
         isCustom,
         isLocal,
         isHf,
+        isStrataLocal,
       } = resolveChatRoute({
         modelId: activeModel,
         provider: selectedProvider,
@@ -810,6 +812,15 @@ export default function App() {
             temperature: parameters.temperature,
             maxTokens: parameters.maxTokens,
           }
+        : selectedProvider === 'nvidia' || selectedProvider === 'openai'
+        ? {
+            prompt: userText,
+            messages: historyForProvider,
+            model: activeModel,
+            systemInstruction: effectiveSystemInstruction,
+            temperature: parameters.temperature,
+            maxTokens: parameters.maxTokens,
+          }
         : isFreeProvider || isLocal
         ? {
             prompt: userText,
@@ -819,6 +830,7 @@ export default function App() {
             temperature: parameters.temperature,
             maxTokens: parameters.maxTokens,
             ...(lmStudioContextLength ? { contextLength: lmStudioContextLength } : {}),
+            ...(isLocal && parameters.contextLength ? { contextLength: parameters.contextLength } : {}),
           }
         : isCustom
         ? {
@@ -972,8 +984,8 @@ export default function App() {
         return;
       }
 
-      if (!isHf && (selectedProvider === 'google' || selectedProvider === 'anthropic')) {
-        // Streaming SSE en tiempo real (Google Gemini & Anthropic Claude)
+      if (!isHf && (selectedProvider === 'google' || selectedProvider === 'anthropic' || isStrataLocal)) {
+        // Streaming SSE en tiempo real (Google Gemini, Anthropic Claude y Strata local)
         const botMsgId = (Date.now() + 1).toString();
         currentBotMsgId = botMsgId;
         const initialBotMsg: ChatMessage = {
@@ -993,7 +1005,14 @@ export default function App() {
         });
 
         if (!streamResponse.ok || !streamResponse.body) {
-          throw new Error('Error al conectar con el flujo de streaming.');
+          const failure = await streamResponse.json().catch(() => null);
+          const error = new Error(failure?.error || 'Error al conectar con el flujo de streaming.');
+          Object.assign(error, {
+            ...(failure?.code ? { code: failure.code } : {}),
+            ...(failure?.hint ? { hint: failure.hint } : {}),
+            ...(typeof failure?.retryable === 'boolean' ? { retryable: failure.retryable } : {}),
+          });
+          throw error;
         }
 
         const reader = streamResponse.body.getReader();
@@ -1036,7 +1055,13 @@ export default function App() {
                 finalWebSearchQueries = data.webSearchQueries || [];
                 finalMetrics = data.metrics;
               } else if (data.type === 'error') {
-                throw new Error(data.error || 'Error en streaming');
+                const error = new Error(data.error || 'Error en streaming');
+                Object.assign(error, {
+                  ...(data.code ? { code: data.code } : {}),
+                  ...(data.hint ? { hint: data.hint } : {}),
+                  ...(typeof data.retryable === 'boolean' ? { retryable: data.retryable } : {}),
+                });
+                throw error;
               }
             }
           }
@@ -1115,7 +1140,13 @@ export default function App() {
             error: null
           });
         } else {
-          throw new Error(data.error || 'Error en la respuesta');
+          const error = new Error(data.error || 'Error en la respuesta');
+          Object.assign(error, {
+            ...(data.code ? { code: data.code } : {}),
+            ...(data.hint ? { hint: data.hint } : {}),
+            ...(typeof data.retryable === 'boolean' ? { retryable: data.retryable } : {}),
+          });
+          throw error;
         }
       }
     } catch (error: any) {
@@ -1192,6 +1223,7 @@ export default function App() {
       undefined,
       failedMessage.modelUsed || selectedModel,
       failedMessage.retryRunMode || 'build',
+      undefined,
       { failedMessageId, history: messages.slice(0, userIndex) }
     );
   };
@@ -1489,6 +1521,7 @@ export default function App() {
               onOpenLocalLlmConfig: () => openSettings('proveedores'),
               displayName,
               isAuthenticated: !!currentUser,
+              downloadedModels,
             }}
             freeform={{
               parameters,
@@ -1754,6 +1787,7 @@ export default function App() {
             isOpen={isAuthModalOpen}
             onClose={() => setIsAuthModalOpen(false)}
             currentUser={currentUser}
+            lang={lang as any}
           />
         </React.Suspense>
       )}

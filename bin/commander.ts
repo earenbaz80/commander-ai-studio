@@ -6,8 +6,9 @@ import fs from 'fs';
 import { loadConfig, writeConfig, getConfigPath, getProviderConfig } from '../src/config/index.js';
 import { CommanderConfigSchema } from '../src/config/schema.js';
 import { checkHealth, consumeSessionStream, forkServerSession, loadServerSession, respondApproval, runAgent } from '../src/cli/agentClient.js';
-import { encodeEvent, makeEventV2, type QuestionV2, type SessionMode, type SessionStateV2 } from '../src/agent/sessionTypes.js';
-import { canPromptApprovals, AgentRenderer, promptApprovalDecision, promptQuestionAnswer, Tui } from '../src/cli/tui.js';
+import { encodeEvent, makeEventV2, type ApprovalDecision, type QuestionV2, type SessionMode, type SessionStateV2 } from '../src/agent/sessionTypes.js';
+import { APPROVAL_KEY_QUARANTINE_MS, canPromptApprovals, AgentRenderer, promptApprovalDecision, promptQuestionAnswer, Tui, type ApprovalPromptInput, type ApprovalPromptOutput } from '../src/cli/tui.js';
+import { createInputGate, type InputGateSource } from '../src/cli/stdinGate.js';
 import { ApprovalQueue } from '../src/cli/approvals.js';
 import { GEMINI_DEFAULT_MODEL } from '../src/config/geminiModels.js';
 
@@ -311,6 +312,7 @@ program
   .option('--json', 'Emitir eventos como NDJSON (para integraciones como la extensión VS Code)')
   .option('--resume <id>', 'Continuar una sesión persistida en el servidor')
   .option('--fork <id>', 'Bifurcar una sesión persistida en una sesión nueva')
+  .option('--label <label>', 'Etiqueta de la corrida para preparar una repetición invalid')
   .option('--no-approval', 'Disable approval prompts (no aplica en headless)')
   .action(async (task, opts) => {
     const serverUrl = String(opts.server);
@@ -360,6 +362,32 @@ program
 
     // Modo máquina: NDJSON de eventos, sin TUI (lo consume la extensión VS Code).
     if (opts.json) {
+      // Arnés E2E: con `COMMANDER_TEST_MODE=1` se ejercita el prompt real
+      // cuando alguna prueba no guiona una decisión (por ejemplo, la caducidad).
+      // Las decisiones guionadas se consumen primero; sin TTY no se inventa un
+      // menú y la aprobación sigue el camino normal sin terminal.
+      const testApprovals = process.env.COMMANDER_TEST_MODE === '1' && canPromptApprovals();
+      const scriptedDecisions: ApprovalDecision[] = testApprovals
+        ? (process.env.COMMANDER_TEST_APPROVAL_DECISIONS ?? '')
+            .split(',')
+            .map((value) => value.trim())
+            .filter(
+              (value): value is ApprovalDecision =>
+                value === 'allow' || value === 'deny' || value === 'allow-session'
+            )
+        : [];
+      const jsonApproval = testApprovals
+        ? async (approval: Parameters<typeof promptApprovalDecision>[0]) => {
+            const scripted = scriptedDecisions.shift();
+            if (scripted) return scripted;
+            return promptApprovalDecision(approval, {
+              tui: new Tui({ interactive: true, color: false }),
+              input: process.stdin as unknown as ApprovalPromptInput,
+              output: process.stderr as unknown as ApprovalPromptOutput,
+              quarantineMs: APPROVAL_KEY_QUARANTINE_MS,
+            });
+          }
+        : undefined;
       try {
         const result = await runAgent({
           serverUrl,
@@ -371,6 +399,8 @@ program
           resumeFrom,
           goal: resumeFrom?.goal,
           persistSession: !resumeFrom,
+          runLabel: opts.label ? String(opts.label) : undefined,
+          requestApproval: jsonApproval,
           // Un único serializador para --json (F1-01): el mismo `encodeEvent`
           // que usan el SSE y la TUI, con sobre v2 y `seq` por sesión.
           onEvent: (event) => process.stdout.write(`${encodeEvent(event)}\n`),
@@ -381,6 +411,7 @@ program
           type: 'done',
           answer: result.answer,
           steps: result.steps,
+          ...(result.invalid ? { invalid: result.invalid } : {}),
         });
         process.stdout.write(`${encodeEvent(done)}\n`);
         process.exitCode = result.answer ? 0 : 1;
@@ -405,8 +436,31 @@ program
     });
     // Con una terminal real respondemos en el cliente; con pipes o `--json` el
     // bucle recibe la pregunta como evento y la cancela sin bloquearse.
+    const agentController = new AbortController();
+    // Compuerta única de la corrida: lo que se teclee entre la respuesta a una
+    // pregunta y la aprobación siguiente se descarta, en vez de decidir por el
+    // operador (ver `src/cli/stdinGate.ts`).
+    const promptGate = canPromptApprovals()
+      ? createInputGate(process.stdin as unknown as InputGateSource)
+      : null;
     const askUser = canPromptApprovals()
-      ? (question: QuestionV2) => promptQuestionAnswer(question, { tui })
+      ? (question: QuestionV2) =>
+          promptQuestionAnswer(question, {
+            tui,
+            signal: agentController.signal,
+            onInterrupt: () => agentController.abort(),
+            ...(promptGate ? { gate: promptGate } : {}),
+          })
+      : undefined;
+    const requestApproval = canPromptApprovals()
+      ? (approval: Parameters<typeof promptApprovalDecision>[0]) =>
+          promptApprovalDecision(approval, {
+            tui,
+            signal: agentController.signal,
+            onInterrupt: () => agentController.abort(),
+            ...(promptGate ? { gate: promptGate } : {}),
+            quarantineMs: APPROVAL_KEY_QUARANTINE_MS,
+          })
       : undefined;
 
     let result: { answer: string; steps: number };
@@ -421,7 +475,10 @@ program
         resumeFrom,
         goal: resumeFrom?.goal,
         persistSession: !resumeFrom,
+        runLabel: opts.label ? String(opts.label) : undefined,
+        signal: agentController.signal,
         askUser,
+        requestApproval,
         onEvent: (event) => renderer.handle(event),
       });
     } catch (e) {
@@ -432,9 +489,11 @@ program
         })
       );
       renderer.finish('', 0);
+      promptGate?.close();
       process.exit(1);
     }
 
+    promptGate?.close();
     renderer.finish(result.answer, result.steps);
     if (!result.answer) process.exit(1);
   });
@@ -515,6 +574,7 @@ program
     const approvals = !json && canPromptApprovals()
       ? new ApprovalQueue(
           async (approval) => {
+            tui.approvalBell(approval);
             const decision = await promptApprovalDecision(approval, {
               tui,
               signal: promptCtrl.signal,
@@ -522,6 +582,7 @@ program
                 interrupted = true;
                 controller.abort();
               },
+              quarantineMs: APPROVAL_KEY_QUARANTINE_MS,
             });
             if (!decision) {
               // Esc: la decisión sigue pendiente en el servidor.
@@ -549,6 +610,10 @@ program
       if (!approvals || !approval || offered.has(approval.id)) return;
       offered.add(approval.id);
       approvals.push(approval);
+      // La cola ya asignó `queueDepth` y el título lo muestra. Se usa la campana
+      // sin renglón para no romper el menú que ya está abierto: el aviso no
+      // espera a que el prompt anterior quede libre.
+      tui.approvalBell(approval);
     };
     // Al adjuntarse puede haber una esperando desde antes del stream.
     offerApproval(initial.pendingApproval);

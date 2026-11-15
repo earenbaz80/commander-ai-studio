@@ -140,10 +140,10 @@ export const Playground: React.FC<PlaygroundProps> = ({
           );
         })}
 
-        <span className="ml-auto flex items-center gap-1 shrink-0 pl-2">
-          <span className="text-[10px] text-[var(--nc-header-text)]/80 font-bold">{modelLabel}:</span>
+        <span className="ml-auto flex min-w-0 items-center gap-1 shrink pl-2">
+          <span className="shrink-0 text-[10px] text-[var(--nc-header-text)]/80 font-bold">{modelLabel}:</span>
           <code
-            className="text-[10px] text-[var(--nc-text-accent)] bg-[var(--nc-bg-deep)] px-1.5 py-0.5 rounded-sm max-w-[220px] truncate"
+            className="inline-block min-w-0 max-w-[220px] truncate align-middle text-[10px] text-[var(--nc-text-accent)] bg-[var(--nc-bg-deep)] px-1.5 py-0.5 rounded-sm"
             title={selectedModel || ''}
             data-testid="playground-model"
           >

@@ -10,8 +10,12 @@
   "main": "electron/main.cjs",
   "private": true,
   "scripts": {
+    "predev": "npm run avatars:sync",
     "dev": "cross-env NODE_ENV=development npx tsx server.ts",
     "dev:legacy": "concurrently \"cross-env NODE_ENV=development npx tsx server.ts\" \"vite\"",
+    "avatars:sync": "tsx scripts/avatars-sync.ts",
+    "avatars:audit": "tsx scripts/avatars-audit.ts",
+    "prebuild": "npm run avatars:sync",
     "build": "tsc --noEmit && vite build",
     "build:server": "npm run build:server:cjs && npm run build:server:mjs",
     "build:server:cjs": "npx esbuild server.ts --bundle --platform=node --format=cjs --target=node22 --external:vite --external:playwright --external:node-pty --outfile=electron/server.cjs",
@@ -29,6 +33,7 @@
     "test:node": "tsx scripts/test-node.ts",
     "test:logic": "vitest run --project node",
     "eval": "tsx evals/run.ts",
+    "baseline": "tsx evals/baseline.ts",
     "eval:live": "cross-env EVAL_LIVE=1 tsx evals/run.ts",
     "eval:strict": "tsx evals/run.ts --strict-scope",
     "eval:history": "tsx evals/run.ts --history",
@@ -41,6 +46,7 @@
     "lint:fix": "eslint src --fix",
     "typecheck": "tsc --noEmit",
     "check:index": "tsx scripts/check-index.ts",
+    "audit:loop-guard": "tsx scripts/audit-loop-guard.ts",
     "check:issue-status": "tsx scripts/sync-issue-status.ts --check",
     "check:criteria": "tsx scripts/check-issue-criteria.ts",
     "check:mcp": "tsx scripts/check-mcp.ts",
@@ -60,7 +66,11 @@
     "skills:import": "tsx bin/commander.ts skills import",
     "tauri:info": "tauri info",
     "tauri:icon": "tauri icon",
-    "build:updater": "npx esbuild electron/updaterEntry.cjs --bundle --platform=node --format=cjs --target=node22 --external:electron --outfile=electron/updater.cjs"
+    "build:updater": "npx esbuild electron/updaterEntry.cjs --bundle --platform=node --format=cjs --target=node22 --external:electron --outfile=electron/updater.cjs",
+    "g1:seed": "tsx scripts/g1-seed.ts",
+    "g1:preview": "tsx scripts/g1-preview.ts",
+    "g1:t7": "tsx scripts/g1-t7.ts",
+    "g1:cal2": "tsx scripts/g1-cal2.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

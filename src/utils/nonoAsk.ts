@@ -79,6 +79,7 @@ const LMSTUDIO_TIMEOUT_MS = LMSTUDIO_LOAD_TIMEOUT_MS * 2;
 const PROVIDER_ENDPOINTS: Record<string, string> = {
   google: '/api/gemini/generate',
   lmstudio: '/api/lmstudio/generate',
+  'strata-local': '/api/strata-local/generate',
   ollama: '/api/ollama/generate',
   anthropic: '/api/anthropic/generate',
   xai: '/api/xai/generate',

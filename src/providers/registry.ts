@@ -14,6 +14,9 @@ import { CUSTOM_MODELS, GEMINI_MODELS, HUGGINGFACE_MODELS, OLLAMA_MODELS } from 
 import { filterModelIds, isProviderEnabled, modelFilterOf } from '../lib/providerFilters';
 import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
 import { compatibleModelId } from '../lib/openaiCompatibleProviders';
+import { STRATA_LOCAL_PROVIDER_ID, STRATA_LOCAL_PROVIDER_NAME } from '../lib/strataLocal';
+
+export const NVIDIA_DEFAULT_MODEL = 'nvidia/nvidia/nemotron-3.5-lightning-30b-a3b';
 
 export type ProviderFieldKind = 'secret' | 'url' | 'text';
 
@@ -79,7 +82,7 @@ export const PROVIDER_SPECS: ProviderSpec[] = [
     name: 'NVIDIA NIM',
     env: ['NVIDIA_API_KEY'],
     fields: [{ name: 'apiKey', required: true, kind: 'secret' }],
-    defaultModel: 'meta/llama-3.3-70b-instruct',
+    defaultModel: NVIDIA_DEFAULT_MODEL,
   },
   {
     id: 'huggingface',
@@ -104,6 +107,16 @@ export const PROVIDER_SPECS: ProviderSpec[] = [
     fields: [
       { name: 'host', required: false, kind: 'url' },
       { name: 'localHost', required: false, kind: 'url' },
+    ],
+  },
+  {
+    id: STRATA_LOCAL_PROVIDER_ID,
+    name: STRATA_LOCAL_PROVIDER_NAME,
+    env: ['STRATA_LOCAL_BASE_URL', 'STRATA_PORT', 'STRATA_API_KEY', 'STRATA_LOCAL_API_KEY'],
+    fields: [
+      { name: 'baseUrl', required: false, kind: 'url' },
+      { name: 'apiKey', required: false, kind: 'secret' },
+      { name: 'defaultModel', required: false, kind: 'text' },
     ],
   },
   {
@@ -250,7 +263,7 @@ const OPENAI_FALLBACK_MODELS: CatalogModel[] = [
 ];
 
 const NVIDIA_FALLBACK_MODELS: CatalogModel[] = [
-  { id: 'meta/llama-3.3-70b-instruct', name: 'Llama 3.3 70B Instruct', provider: 'nvidia', contextWindow: '128K tokens', supportsTools: true },
+  { id: NVIDIA_DEFAULT_MODEL, name: 'Nemotron 3.5 Lightning 30B A3B', provider: 'nvidia', contextWindow: '128K tokens', supportsTools: true },
   { id: 'meta/llama-3.1-8b-instruct', name: 'Llama 3.1 8B Instruct', provider: 'nvidia', contextWindow: '128K tokens', supportsTools: true },
   { id: 'nvidia/llama-3.1-nemotron-70b-instruct', name: 'Llama 3.1 Nemotron 70B', provider: 'nvidia', contextWindow: '128K tokens', supportsTools: true },
   { id: 'deepseek-ai/deepseek-r1', name: 'DeepSeek R1', provider: 'nvidia', contextWindow: '128K tokens', supportsReasoning: true },
@@ -304,7 +317,7 @@ export function describeProvider(
   // que esté en el fichero marcaría como «sin configurar» algo que funciona.
   const missing = fromEnv ? [] : spec.fields.filter((f) => f.required && !filled(f.name)).map((f) => f.name);
   const hasAny = spec.fields.some((f) => filled(f.name));
-  const local = spec.id === 'ollama' || spec.id === 'lmstudio';
+  const local = spec.id === 'ollama' || spec.id === 'lmstudio' || spec.id === STRATA_LOCAL_PROVIDER_ID;
 
   return {
     configured: missing.length === 0 && (hasAny || fromEnv || local),

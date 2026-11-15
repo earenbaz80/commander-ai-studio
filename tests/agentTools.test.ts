@@ -1,10 +1,12 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import {
+  checkShellSegments,
   handleAgentRunTool as handleAgentRunToolRaw,
   executeAgentTool as executeAgentToolRaw,
 } from '../agentTools.js';
@@ -207,6 +209,17 @@ test('shell.run sin allowUnlisted rechaza un comando fuera de la lista', async (
   assert.equal(res.status, 403);
 });
 
+test('allowlist: node --test funciona con o sin archivo y no abre node <script>', () => {
+  assert.equal(checkShellSegments('node --test').ok, true, 'node --test sin archivo debe descubrir los tests');
+  assert.equal(checkShellSegments('node --test math.test.mjs').ok, true, 'node --test <archivo> debe funcionar');
+
+  const script = checkShellSegments('node math.test.mjs');
+  assert.equal(script.ok, false, 'node <script> sigue fuera de la allowlist');
+  if (!script.ok) assert.equal(script.status, 403);
+
+  assert.equal(checkShellSegments('node --testevil math.test.mjs').ok, false, 'no se permite un prefijo laxo');
+});
+
 test('shell.run con allowUnlisted ejecuta el comando pero respeta los bloqueos', async () => {
   const permitido: any = await executeAgentTool('shell.run', { command: 'node --version', allowUnlisted: true });
   assert.equal(permitido.ok, true, permitido.ok ? '' : permitido.error);
@@ -229,7 +242,6 @@ test('shell.run adjunta evidencia y entorno a un comando de tests', async () => 
   try {
     const res: any = await executeAgentTool('shell.run', {
       command: 'node --test tests/tmp/evidence/sample.test.mjs',
-      allowUnlisted: true,
     });
     assert.equal(res.ok, true, res.ok ? '' : res.error);
     assert.equal(res.data.testEvidence.status, 'passed');
@@ -1276,6 +1288,19 @@ test('fs.propose.write devuelve el diff y no crea el archivo', async () => {
   assert.equal(res.ok, true, String(res.error));
   const data = res.data as any;
   assert.equal(data.changed, true);
+  assert.equal(data.applied, false, 'la propuesta no se aplica');
+  assert.match(String(data.proposalId), /^prop_/);
+  assert.match(String(data.hint), /Propuesta no aplicada/);
+  assert.equal(
+    data.baseHash,
+    `sha256:${createHash('sha256').update('').digest('hex')}`,
+    'la base de un archivo nuevo es el contenido vacío'
+  );
+  assert.equal(
+    data.afterHash,
+    `sha256:${createHash('sha256').update('export const a = 1;\nexport const b = 2;\n').digest('hex')}`,
+    'el hash final permite verificar la aplicación'
+  );
   assert.equal(data.exists, false, 'un archivo nuevo se declara como tal');
   assert.equal(data.additions, 2);
   assert.equal(data.deletions, 0);
@@ -1301,6 +1326,21 @@ test('fs.propose.edit muestra el cambio y deja el archivo intacto', async () => 
   assert.equal(res.ok, true, String(res.error));
   const data = res.data as any;
   assert.equal(data.changed, true);
+  assert.equal(data.applied, false, 'la propuesta no se aplica');
+  assert.match(String(data.proposalId), /^prop_/);
+  assert.match(String(data.hint), /Propuesta no aplicada/);
+  assert.equal(
+    data.baseHash,
+    `sha256:${createHash('sha256').update(original).digest('hex')}`,
+    'el hash base identifica el contenido sobre el que se calculó el diff'
+  );
+  assert.equal(
+    data.afterHash,
+    `sha256:${createHash('sha256')
+      .update('const a = 1;\nconst b = 20;\nconst d = 4;\nconst c = 3;\n')
+      .digest('hex')}`,
+    'el hash final permite verificar la aplicación'
+  );
   assert.equal(data.exists, true);
   assert.equal(data.additions, 2);
   assert.equal(data.deletions, 1);
@@ -1326,6 +1366,58 @@ test('fs.propose.edit sin coincidencia no inventa un diff', async () => {
   assert.match(String(res.error), /oldString no encontrado/);
 });
 
+test('fs.edit distingue «ya aplicado» de un oldString que falta', async () => {
+  const dir = path.join(TEST_DIR, 'edit-ya-aplicado');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, 'a.ts');
+  const applied = 'const b = 20;\n';
+  fs.writeFileSync(file, applied, 'utf8');
+
+  const res = await executeAgentTool('fs.edit', {
+    root: dir,
+    path: 'a.ts',
+    oldString: 'const b = 2;',
+    newString: 'const b = 20;',
+  });
+
+  assert.equal(res.ok, false);
+  assert.equal(res.code, 'ALREADY_APPLIED');
+  assert.match(String(res.hint), /no hace falta releerlo/);
+  assert.equal(fs.readFileSync(file, 'utf8'), applied, 'no se escribe nada');
+});
+
+test('fs.propose.edit también señala el cambio ya aplicado', async () => {
+  const dir = path.join(TEST_DIR, 'propose-ya-aplicado');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'a.ts'), 'const b = 20;\n', 'utf8');
+
+  const res = await executeAgentTool('fs.propose.edit', {
+    root: dir,
+    path: 'a.ts',
+    oldString: 'const b = 2;',
+    newString: 'const b = 20;',
+  });
+
+  assert.equal(res.ok, false);
+  assert.equal(res.code, 'ALREADY_APPLIED');
+  assert.match(String(res.hint), /no hace falta releerlo/);
+});
+
+test('run-tool HTTP reenvía code y hint de «ya aplicado»', async () => {
+  fs.writeFileSync(path.join(TEST_DIR, 'ya.txt'), 'nuevo\n', 'utf8');
+  const req = mockReq({
+    toolId: 'fs.edit',
+    input: { path: 'tests/tmp/ya.txt', oldString: 'viejo', newString: 'nuevo' },
+  });
+  const res = mockRes();
+
+  await handleAgentRunTool(req, res);
+
+  assert.equal(res.body.ok, false);
+  assert.equal(res.body.code, 'ALREADY_APPLIED');
+  assert.match(String(res.body.hint), /no hace falta releerlo/);
+});
+
 test('proponer el mismo contenido no se presenta como cambio', async () => {
   const dir = path.join(TEST_DIR, 'propose-igual');
   fs.mkdirSync(dir, { recursive: true });
@@ -1336,6 +1428,8 @@ test('proponer el mismo contenido no se presenta como cambio', async () => {
   assert.equal(res.ok, true, String(res.error));
   const data = res.data as any;
   assert.equal(data.changed, false);
+  assert.equal(data.applied, false);
+  assert.match(String(data.proposalId), /^prop_/);
   assert.equal(data.diff, '', 'sin cambio no hay diff que revisar');
   assert.match(String(data.hint), /Sin cambios/);
 });

@@ -29,8 +29,8 @@ export interface NonoMemory {
     orbRotate: boolean;
     /** Colores del cuerpo del orbe. */
     orbColors: NonoOrbColors;
-    /** Color de contorno, ojos y boca del Nono clásico. */
-    classicAccent: string;
+    /** Color de los ojos de la variante «Ojos». */
+    eyesColor: string;
   };
   /** Historial de interacciones para aprendizaje */
   interactionHistory: {
@@ -63,7 +63,7 @@ export const DEFAULT_MEMORY: NonoMemory = {
     eyesOnly: false,
     orbRotate: true,
     orbColors: DEFAULT_ORB_COLORS,
-    classicAccent: '#ffffff',
+    eyesColor: '#ffffff',
   },
   interactionHistory: [],
 };
@@ -78,13 +78,19 @@ export function readNonoMemory(): NonoMemory {
     const stored = localStorage.getItem(NONO_MEMORY_KEY);
     if (!stored) return DEFAULT_MEMORY;
     const parsed = JSON.parse(stored) as Partial<NonoMemory> | null;
+    // `classicAccent` era el halo de la antena del GIF. Se migra al color de
+    // ojos actual para que una preferencia guardada no cambie de aspecto.
+    const parsedUi = (parsed?.ui ?? {}) as Partial<NonoMemory['ui']> & { classicAccent?: unknown };
+    const { classicAccent: legacyClassicAccent, ...storedUi } = parsedUi;
+    const eyesColor = typeof legacyClassicAccent === 'string' ? legacyClassicAccent : storedUi.eyesColor;
     return {
       ...DEFAULT_MEMORY,
       ...parsed,
       patterns: { ...DEFAULT_MEMORY.patterns, ...(parsed?.patterns || {}) },
       ui: {
         ...DEFAULT_MEMORY.ui,
-        ...(parsed?.ui || {}),
+        ...storedUi,
+        eyesColor: eyesColor ?? DEFAULT_MEMORY.ui.eyesColor,
         orbColors: { ...DEFAULT_ORB_COLORS, ...(parsed?.ui?.orbColors || {}) },
       },
       interactionHistory: Array.isArray(parsed?.interactionHistory) ? parsed!.interactionHistory : [],

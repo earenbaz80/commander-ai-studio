@@ -23,13 +23,13 @@ interface UseNonoChatOptions {
   projectInfo?: FloatingAssistantProps['projectInfo'];
   inputRef: React.RefObject<HTMLInputElement | null>;
   ref: React.ForwardedRef<FloatingAssistantHandle>;
+  /** Controlador central de expresiones de Nono. */
+  setExpression: (expression: NonoExpression, durationMs?: number) => void;
 }
 
 interface UseNonoChatReturn {
   isOpen: boolean;
   setIsOpen: (v: boolean) => void;
-  expression: NonoExpression;
-  setExpression: React.Dispatch<React.SetStateAction<NonoExpression>>;
   messages: Message[];
   inputValue: string;
   setInputValue: (v: string) => void;
@@ -68,9 +68,9 @@ export function useNonoChat({
   projectInfo,
   inputRef,
   ref,
+  setExpression,
 }: UseNonoChatOptions): UseNonoChatReturn {
   const [isOpen, setIsOpen] = useState(false);
-  const [expression, setExpression] = useState<NonoExpression>('neutral');
   const [messages, setMessages] = useState<Message[]>(() => loadNonoChat(projectId));
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -195,7 +195,7 @@ export function useNonoChat({
       setExpression('happy');
       setTimeout(() => inputRef.current?.focus(), 300);
     }
-  }, [isOpen, messages.length, lang, addMessage, inputRef]);
+  }, [isOpen, messages.length, lang, addMessage, inputRef, setExpression]);
 
   // Handle imperativo (usa ref para evitar dependencia circular)
   useImperativeHandle(ref, () => ({
@@ -228,8 +228,7 @@ export function useNonoChat({
       const response = getResponse(text, lang);
       addMessage(response, false);
       setIsTyping(false);
-      setExpression('happy');
-      setTimeout(() => setExpression('neutral'), 3000);
+      setExpression('happy', 3000);
     }, 1000 + Math.random() * 1500);
 
     void (async () => {
@@ -243,13 +242,11 @@ export function useNonoChat({
         if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
         addMessage(result.text.trim(), false);
         setIsTyping(false);
-        setExpression('happy');
-        setTimeout(() => setExpression('neutral'), 3000);
+        setExpression('happy', 3000);
       } else if (result.error) {
         // El proveedor estaba configurado pero no respondió (LM Studio apagado,
         // red caída, clave rechazada): Nono lo siente en vez de fingir.
-        setExpression('sad');
-        setTimeout(() => setExpression('neutral'), 3000);
+        setExpression('sad', 3000);
       }
     })();
   }, [inputValue, lang, addMessage, handleCommand, setExpression]);
@@ -265,10 +262,9 @@ export function useNonoChat({
     setMessages([]);
     clearNonoChat(projectId);
     // Guiño de complicidad al vaciar el hilo.
-    setExpression('wink');
-    setTimeout(() => setExpression('neutral'), 1200);
+    setExpression('wink', 1200);
     showActionFeedback(lang === 'es' ? '🗑️ Chat limpiado' : lang === 'de' ? '🗑️ Chat geleert' : '🗑️ Chat cleared');
-  }, [lang, projectId, showActionFeedback]);
+  }, [lang, projectId, showActionFeedback, setExpression]);
 
   const handleCopyLast = useCallback(async () => {
     const last = messages[messages.length - 1];
@@ -280,10 +276,9 @@ export function useNonoChat({
       showActionFeedback(lang === 'es' ? 'Error al copiar' : lang === 'de' ? 'Kopieren fehlgeschlagen' : 'Copy failed');
       return;
     }
-    setExpression('wink');
-    setTimeout(() => setExpression('neutral'), 1500);
+    setExpression('wink', 1500);
     showActionFeedback(lang === 'es' ? '📋 ¡Copiado!' : lang === 'de' ? '📋 Kopiert!' : '📋 Copied!');
-  }, [messages, lang, showActionFeedback]);
+  }, [messages, lang, showActionFeedback, setExpression]);
 
   const handleNewPromptClick = useCallback(() => {
     onNewPrompt?.();
@@ -294,8 +289,6 @@ export function useNonoChat({
   return {
     isOpen,
     setIsOpen,
-    expression,
-    setExpression,
     messages,
     inputValue,
     setInputValue,

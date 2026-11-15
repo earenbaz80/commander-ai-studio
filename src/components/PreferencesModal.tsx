@@ -23,6 +23,7 @@ import {
   Puzzle,
   HelpCircle,
   Info,
+  Play,
   User,
 } from 'lucide-react';
 import { ConsoleTheme } from './Header';
@@ -123,6 +124,8 @@ const chipClass = (active: boolean) =>
 
 const colorInputClass =
   'h-6 w-10 cursor-pointer rounded-sm border border-[var(--nc-border-light)] bg-transparent p-0';
+
+type NonoDemoStage = 'idle' | 'blink' | 'double' | 'thinking';
 
 /** Las 13 expresiones de Nono, cada una con su propia cara. */
 const NONO_PREVIEW_EXPRESSIONS: NonoExpression[] = [
@@ -339,6 +342,91 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
     updateOrbColors,
   } = useNonoMemory();
   const [nonoPreview, setNonoPreview] = React.useState<NonoExpression>('neutral');
+  const [nonoPreviewBlink, setNonoPreviewBlink] = React.useState(false);
+  const [nonoDemoExpression, setNonoDemoExpression] = React.useState<NonoExpression | null>(null);
+  const [nonoDemoStage, setNonoDemoStage] = React.useState<NonoDemoStage>('idle');
+  const [nonoDemoPlaying, setNonoDemoPlaying] = React.useState(false);
+  const [systemReducedMotion, setSystemReducedMotion] = React.useState(false);
+  const nonoDemoTimers = React.useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  const clearNonoDemoTimers = React.useCallback(() => {
+    for (const timer of nonoDemoTimers.current) clearTimeout(timer);
+    nonoDemoTimers.current.clear();
+  }, []);
+
+  const stopNonoDemo = React.useCallback(() => {
+    clearNonoDemoTimers();
+    setNonoPreviewBlink(false);
+    setNonoDemoExpression(null);
+    setNonoDemoStage('idle');
+    setNonoDemoPlaying(false);
+  }, [clearNonoDemoTimers]);
+
+  // La demo no debe seguir cambiando la vista previa con el panel cerrado.
+  React.useEffect(() => {
+    if (!isOpen) stopNonoDemo();
+  }, [isOpen, stopNonoDemo]);
+
+  React.useEffect(() => () => clearNonoDemoTimers(), [clearNonoDemoTimers]);
+
+  // El aviso refleja la preferencia del sistema, aunque la demo sea explícita.
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      setSystemReducedMotion(false);
+      return;
+    }
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => setSystemReducedMotion(media.matches);
+    sync();
+    media.addEventListener?.('change', sync);
+    return () => media.removeEventListener?.('change', sync);
+  }, [isOpen]);
+
+  const playNonoDemo = React.useCallback(() => {
+    stopNonoDemo();
+    setNonoDemoStage('blink');
+    setNonoDemoPlaying(true);
+
+    const schedule = (delay: number, run: () => void) => {
+      const timer = setTimeout(() => {
+        nonoDemoTimers.current.delete(timer);
+        run();
+      }, delay);
+      nonoDemoTimers.current.add(timer);
+    };
+
+    // Parpadeo simple, pausa, doble parpadeo y secuencia de pensamiento.
+    schedule(180, () => setNonoPreviewBlink(true));
+    schedule(360, () => setNonoPreviewBlink(false));
+    schedule(800, () => {
+      setNonoDemoStage('double');
+      setNonoPreviewBlink(true);
+    });
+    schedule(960, () => setNonoPreviewBlink(false));
+    schedule(1050, () => setNonoPreviewBlink(true));
+    schedule(1210, () => setNonoPreviewBlink(false));
+    schedule(1600, () => {
+      setNonoDemoStage('thinking');
+      setNonoDemoExpression('thinking');
+    });
+    schedule(3400, stopNonoDemo);
+  }, [stopNonoDemo]);
+
+  const selectNonoPreview = (expression: NonoExpression) => {
+    stopNonoDemo();
+    setNonoPreview(expression);
+  };
+
+  const nonoPreviewExpression = nonoDemoExpression ?? nonoPreview;
+  const nonoDemoStageLabel =
+    nonoDemoStage === 'blink'
+      ? t('Parpadeo simple', 'Single blink', 'Einfaches Blinzeln')
+      : nonoDemoStage === 'double'
+        ? t('Doble parpadeo', 'Double blink', 'Doppeltes Blinzeln')
+        : nonoDemoStage === 'thinking'
+          ? t('Pensando', 'Thinking', 'Denkt nach')
+          : '';
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -881,9 +969,9 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                       icon={<Bot className="w-4 h-4 text-[var(--nc-text)]" />}
                       label={t('Variante', 'Variant', 'Variante')}
                       hint={t(
-                        'El clásico es la cabeza retro; el orbe es la esfera del GIF; los ojos son dos rectángulos sin cabeza.',
-                        'Classic is the retro head; orb is the sphere from the GIF.',
-                        'Klassisch ist der Retro-Kopf; Kugel ist die Sphäre aus dem GIF.'
+                        'El clásico replica la cara del GIF con corchetes y ojos; el orbe es la esfera turquesa; los ojos son dos rectángulos sin cabeza.',
+                        'Classic recreates the GIF face with brackets and eyes; orb is the turquoise sphere; eyes are two rectangles without a head.',
+                        'Klassisch bildet das GIF-Gesicht mit Klammern und Augen nach; die Kugel ist türkis; die Augen sind zwei Rechtecke ohne Kopf.'
                       )}
                     >
                       <div className="flex flex-wrap gap-1">
@@ -922,13 +1010,14 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                         className="shrink-0 rounded border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] p-2"
                       >
                         <NonoHead
-                          expression={nonoPreview}
+                          expression={nonoPreviewExpression}
                           eyeOffset={{ x: 0, y: 0 }}
-                          blink={false}
+                          blink={nonoPreviewBlink}
+                          busy={nonoDemoStage === 'thinking'}
                           size={96}
                           variant={resolveNonoSkin(nonoMemory.ui)}
                           orbColors={nonoMemory.ui.orbColors}
-                          classicAccent={nonoMemory.ui.classicAccent}
+                          eyesColor={nonoMemory.ui.eyesColor}
                         />
                       </div>
                       <div className="min-w-0 space-y-1">
@@ -941,7 +1030,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                               key={expression}
                               type="button"
                               aria-pressed={nonoPreview === expression}
-                              onClick={() => setNonoPreview(expression)}
+                              onClick={() => selectNonoPreview(expression)}
                               className={chipClass(nonoPreview === expression)}
                             >
                               {nonoExpressionLabel(expression)}
@@ -950,11 +1039,51 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                         </div>
                         <p className="text-[9px] leading-snug text-[var(--nc-text)] opacity-70">
                           {t(
-                            'La vista previa usa la configuración real; los cambios se guardan al momento.',
-                            'The preview uses the real settings; changes save immediately.',
-                            'Die Vorschau nutzt die echten Einstellungen; Änderungen werden sofort gespeichert.'
+                            'La vista previa usa la configuración real. El bot clásico dibuja los corchetes del GIF y cambia los ojos en cada expresión.',
+                            'The preview uses the real settings. The classic bot draws the GIF brackets and changes its eyes for each expression.',
+                            'Die Vorschau nutzt die echten Einstellungen. Der klassische Bot zeichnet die GIF-Klammern und ändert die Augen je nach Ausdruck.'
                           )}
                         </p>
+                        <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                          <span
+                            data-testid="nono-reduced-motion"
+                            data-reduced={systemReducedMotion ? 'true' : 'false'}
+                            className={`border px-1.5 py-0.5 text-[8px] font-bold uppercase ${
+                              systemReducedMotion
+                                ? 'border-[var(--nc-text-accent)] text-[var(--nc-text-accent)]'
+                                : 'border-[var(--nc-border-dark)] text-[var(--nc-text)] opacity-70'
+                            }`}
+                          >
+                            {systemReducedMotion
+                              ? t(
+                                  'Movimiento reducido del sistema',
+                                  'System reduced motion',
+                                  'System: reduzierte Bewegung'
+                                )
+                              : t('Movimiento normal del sistema', 'System motion normal', 'System: normale Bewegung')}
+                          </span>
+                          <button
+                            type="button"
+                            data-testid="nono-demo-play"
+                            onClick={playNonoDemo}
+                            disabled={nonoDemoPlaying}
+                            className={`${chipClass(false)} inline-flex items-center gap-1 disabled:opacity-60`}
+                          >
+                            <Play className="h-3 w-3" aria-hidden="true" />
+                            {nonoDemoPlaying
+                              ? t('Reproduciendo…', 'Playing…', 'Wiedergabe…')
+                              : t('Probar animaciones', 'Test animations', 'Animationen testen')}
+                          </button>
+                        </div>
+                        {nonoDemoPlaying && (
+                          <p
+                            role="status"
+                            data-testid="nono-demo-stage"
+                            className="text-[9px] font-bold text-[var(--nc-text-accent)]"
+                          >
+                            {nonoDemoStageLabel}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </>
@@ -1123,18 +1252,18 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                     </MenuRow>
                     <MenuRow
                       icon={<Palette className="w-4 h-4 text-[var(--nc-text)]" />}
-                      label={t('Contorno del clásico', 'Classic outline', 'Klassische Kontur')}
+                      label={t('Color de los ojos', 'Eye color', 'Augenfarbe')}
                       hint={t(
-                        'Color de ojos, boca y antena en la variante clásica',
-                        'Eye, mouth and antenna color in the classic variant',
-                        'Farbe von Augen, Mund und Antenne in der klassischen Variante'
+                        'Tinte de la variante Ojos; el clásico conserva el blanco del GIF',
+                        'Tint for the Eyes variant; Classic keeps the GIF white',
+                        'Tönung für die Variante Augen; Klassisch behält das GIF-Weiß'
                       )}
                     >
                       <input
                         type="color"
-                        value={nonoMemory.ui.classicAccent}
-                        onChange={(e) => updateNonoUI('classicAccent', e.target.value)}
-                        aria-label={t('Color del contorno clásico', 'Classic outline color', 'Farbe der klassischen Kontur')}
+                        value={nonoMemory.ui.eyesColor}
+                        onChange={(e) => updateNonoUI('eyesColor', e.target.value)}
+                        aria-label={t('Color de los ojos de la variante Ojos', 'Eyes variant color', 'Farbe der Augen-Variante')}
                         className={colorInputClass}
                       />
                     </MenuRow>

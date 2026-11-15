@@ -45,12 +45,12 @@ export const LIVE_TASK_TIMEOUT_MS = 300_000;
 
 /**
  * Pasos por tarea. Cada tool cuesta dos pasos (llamada + resultado) y cada
- * turno de razonamiento uno, así que 10 pasos ≈ tres tools: suficiente para un
- * guion de replay que va directo al fichero, y no para un modelo que tiene que
- * buscar dónde está el fallo antes de editar (se quedaba sin presupuesto sin
- * haber tocado nada).
+ * turno de razonamiento uno. El preflight (reglas del repo) también consume
+ * pasos: `pipeline-agujereado` necesita lectura + dos ediciones y con 10 se
+ * quedaba sin presupuesto antes de la segunda. 16 deja margen para ese guion
+ * determinista sin acercarse al presupuesto live.
  */
-export const REPLAY_MAX_STEPS = 10;
+export const REPLAY_MAX_STEPS = 16;
 export const LIVE_MAX_STEPS = 30;
 
 /** Pasos de una tarea: los que declare, o el presupuesto del modo. */
@@ -149,12 +149,18 @@ export interface EvalDiff extends EvalChangedFile {
   patch: string;
 }
 
+export type EvalStopReason = 'completed' | 'timeout' | 'error';
+
 export interface EvalOutcome {
   id: string;
   passed: boolean;
   steps: number;
   durationMs: number;
   checks: Array<{ name: string; error?: string }>;
+  /** Cómo terminó la corrida; un check roto no convierte un cierre normal en timeout. */
+  stopReason?: EvalStopReason;
+  /** `true` sólo si se agotó el presupuesto antes de que el bucle terminara. */
+  timedOut?: boolean;
   /** La tarea no llegó a correr (premisa rota, timeout, excepción). */
   error?: string;
   /**
@@ -517,6 +523,14 @@ export async function runTask(task: EvalTask, opts: EvalOptions = {}): Promise<E
       fs.writeFileSync(to, content);
     }
     task.setup?.(dir);
+    // El preflight del bucle busca reglas de repo antes del primer turno. En un
+    // workspace temporal no existen y dejaba cuatro fs.read fallidos en el
+    // contexto, gastando pasos antes de que el modelo empezara. La semilla hace
+    // que el preflight tenga un archivo real y no ensucie el historial.
+    fs.writeFileSync(
+      path.join(dir, 'AGENTS.md'),
+      '# Workspace de evaluación\n\nDirectorio temporal; no hay reglas de repositorio adicionales.\n'
+    );
     baseline = snapshot(dir);
 
     const ws: EvalWorkspace = {
@@ -560,6 +574,9 @@ export async function runTask(task: EvalTask, opts: EvalOptions = {}): Promise<E
     while (orchestrator.getState().running && Date.now() < deadline) {
       await sleep(40);
     }
+    // Se lee antes de parar: `stop()` también apaga el estado y borraría la
+    // única señal de que el presupuesto, y no el modelo, cortó la corrida.
+    const timedOut = orchestrator.getState().running;
     loop.stop();
 
     const ctx = buildContext(dir, originals, steps);
@@ -582,6 +599,8 @@ export async function runTask(task: EvalTask, opts: EvalOptions = {}): Promise<E
       steps: steps.length,
       durationMs: Date.now() - started,
       checks,
+      stopReason: timedOut ? 'timeout' : 'completed',
+      timedOut,
       diffs,
       outOfScope: outOfScopeChanges(task, diffs),
       modelFallback: detectModelFallback(steps) ?? undefined,
@@ -604,6 +623,8 @@ export async function runTask(task: EvalTask, opts: EvalOptions = {}): Promise<E
       steps: steps.length,
       durationMs: Date.now() - started,
       checks: [],
+      stopReason: 'error',
+      timedOut: false,
       error: e?.message || String(e),
       diffs,
       outOfScope: diffs ? outOfScopeChanges(task, diffs) : undefined,
