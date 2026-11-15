@@ -142,7 +142,7 @@ export const AGENT_FUNCTION_DECLARATIONS = [
   },
   {
     name: 'browser',
-    description: 'Navegador headless (Chromium). open: abre sesión (url opcional). navigate: va a una url http/https. snapshot: devuelve la página como árbol de texto con un uid por elemento (e1, e2…). click/type/press: actúan sobre el uid del ÚLTIMO snapshot; si la página cambia hay que volver a leerla. scroll: desplaza dy/dx px. screenshot: guarda un PNG (path opcional dentro del proyecto). logs: errores de consola y peticiones fallidas. close: cierra la sesión. list: sesiones abiertas.',
+    description: 'Navegador headless (Chromium). open: abre sesión (url opcional). navigate: va a una url http/https. snapshot: devuelve la página como árbol de texto con un uid por elemento (e1, e2…), caja en el viewport, display, visibilidad, overflow y contraste WCAG. click/type/press: actúan sobre el uid del ÚLTIMO snapshot; si la página cambia hay que volver a leerla. scroll: desplaza dy/dx px. screenshot: guarda un PNG (path opcional dentro del proyecto). logs: errores de consola y peticiones fallidas. close: cierra la sesión. list: sesiones abiertas.',
     parameters: {
       type: 'OBJECT',
       properties: {

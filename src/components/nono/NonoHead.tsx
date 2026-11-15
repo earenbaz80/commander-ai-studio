@@ -1,250 +1,71 @@
 import React from 'react';
 import type { NonoExpression } from './content';
 import { DEFAULT_ORB_COLORS, type NonoOrbColors } from '../../features/nono/orbPalette';
-
-/** Matriz de binario que recorre la pantalla mientras Nono procesa. */
-const BINARY_COLUMNS = [
-  { x: 14, digits: '1011010110', color: '#ffffff', delay: '0s', duration: '1.2s' },
-  { x: 25, digits: '0101101001', color: '#ffffff', delay: '-0.35s', duration: '1.6s' },
-  { x: 36, digits: '1100101110', color: '#ffffff', delay: '-0.7s', duration: '1.35s' },
-  { x: 47, digits: '0011010010', color: '#ffffff', delay: '-0.15s', duration: '1.5s' },
-];
+import { NonoClassicFace } from './NonoClassicFace';
 
 /** Corazón 24×24 para los ojos de `love`. */
 const HEART_PATH =
   'M12 21s-7-4.35-9.33-8.28C.6 9.36 2.6 5 6.5 5c2.2 0 3.6 1.2 4.5 2.5C11.9 6.2 13.3 5 15.5 5c3.9 0 5.9 4.36 3.83 7.72C19 16.65 12 21 12 21z';
 
-/** Cabeza de Nono: ojos que miran al puntero, parpadeo, expresiones dinámicas - Estilo 3D mejorado */
+/** Cabeza de Nono: cara SVG clásica, orbe o variante de solo ojos. */
 export const NonoHead: React.FC<{
   expression: NonoExpression;
   eyeOffset: { x: number; y: number };
   blink: boolean;
   size?: number;
-  show3D?: boolean;
   /** El chat o el agente están procesando: la pantalla muestra actividad. */
   busy?: boolean;
   /** El orbe mira a los lados por su cuenta cuando el puntero está quieto. */
   idleGaze?: boolean;
   /**
-   * Estilo visual. `classic` es la cabeza retro-Norton de siempre; `orb` es la
-   * variante extra: esfera con degradado turquesa→verde y ojos de barra.
+   * Estilo visual. `classic` es la cara SVG con corchetes y ojos por expresión;
+   * `orb` es la esfera con degradado turquesa→verde y ojos de barra; `eyes`
+   * son dos rectángulos.
    */
   variant?: 'classic' | 'orb' | 'eyes';
   /** Colores del cuerpo y los ojos del orbe (por defecto, los del GIF). */
   orbColors?: Partial<NonoOrbColors>;
-  /** Color de contorno, ojos y boca de la variante clásica. */
-  classicAccent?: string;
+  /** Color de los ojos de la variante «Ojos». */
+  eyesColor?: string;
 }> = ({
   expression,
   eyeOffset,
   blink,
   size = 64,
-  show3D = true,
   busy = false,
   idleGaze = false,
   variant = 'classic',
   orbColors,
-  classicAccent = '#ffffff',
+  eyesColor = '#ffffff',
 }) => {
   // IDs únicos por instancia: la vista previa de Configuración y la cabeza
   // flotante pueden convivir con paletas distintas sin pisarse los gradientes.
   const uid = React.useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const orbPalette = { ...DEFAULT_ORB_COLORS, ...orbColors };
-  // Cabeza, ojos, boca y antena van con el acento elegido; el estado (error,
-  // reposo, actividad) lo sigue avisando sólo el LED de la antena.
-  const headStroke = classicAccent;
-
-  // Los ojos clásicos son cuadrados y no tienen pupila: el bloque entero se
-  // desplaza un poco para conservar el gesto de mirar al puntero.
-  const eyeShiftX = Math.max(-3, Math.min(3, eyeOffset.x * 0.5));
-  const eyeShiftY = Math.max(-2, Math.min(2, eyeOffset.y * 0.5));
-
-  // LED de la antena: es el único indicador que parpadea en Nono.
-  // · Activo → amarillo Norton. · Reposo (dormido) → verde. · Alerta/error → rojo.
-  const ledAlert = expression === 'error' || expression === 'angry';
-  const ledResting = expression === 'sleepy';
-  const antennaColor = ledAlert ? '#ff5555' : ledResting ? '#00ff66' : '#ffff55';
-  const ledState = ledAlert ? 'alert' : ledResting ? 'resting' : 'active';
-
-  // Contorno de cabeza más fino: 1.5px en lugar de 2.5px para estilo más ligero
-  const strokeWidth = 1.5;
-
-  const renderEyes = () => {
-    // Ojos con contorno blanco: resaltan sobre el azul del cuerpo. El trazo
-    // heredado (cian/rojo) queda sólo para la antena, que sigue avisando del
-    // estado con su LED.
-    const strokeColor = classicAccent;
-    // Ojos cuadrados, sin pupila: un bloque de luz por ojo. El bloque entero
-    // se desplaza con el puntero para no perder el gesto de mirada.
-    const squareEye = (cx: number, cy: number, side: number) => (
-      <rect
-        className={blink ? 'nono-eye-square nono-eye-shutter' : 'nono-eye-square'}
-        x={cx + eyeShiftX - side / 2}
-        y={cy + eyeShiftY - side / 2}
-        width={side}
-        height={side}
-        rx="1"
-        fill={show3D ? 'url(#nonoEyeWhite)' : 'none'}
-        stroke={strokeColor}
-        strokeWidth="2"
-        filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))"
-      />
+  if (variant === 'classic') {
+    // La cara clásica es SVG puro: no hay GIF ni capa de accesorios. Cada
+    // expresión dibuja únicamente sus propios ojos dentro de la cabeza.
+    return (
+      <span
+        data-variant="classic"
+        data-expression={expression}
+        data-blink={blink ? 'true' : 'false'}
+        data-testid="nono-bothead"
+        className={`nono-bothead nono-bothead--${expression}${busy ? ' nono-bothead--busy' : ''}${idleGaze ? ' nono-bothead--idle' : ''}`}
+        style={{
+          width: size,
+          height: size,
+        } as React.CSSProperties}
+      >
+        <NonoClassicFace
+          expression={expression}
+          eyeOffset={eyeOffset}
+          blink={blink}
+          busy={busy}
+        />
+      </span>
     );
-
-    // Los ojos cuadrados no se sustituyen por líneas: se recogen con la
-    // animación de persiana. Las expresiones de trazo conservan su cierre rápido.
-    const usesSquareEyes =
-      expression === 'neutral' ||
-      expression === 'surprised' ||
-      expression === 'thinking' ||
-      expression === 'watch' ||
-      expression === 'curious';
-
-    if (blink && !usesSquareEyes) {
-      return (
-        <>
-          <line x1="14" y1="38" x2="26" y2="38" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.5))" />
-          <line x1="38" y1="38" x2="50" y2="38" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.5))" />
-        </>
-      );
-    }
-
-    switch (expression) {
-      case 'happy':
-        return (
-          <>
-            <path d="M14 38 Q20 32 26 38" fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <path d="M38 38 Q44 32 50 38" fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-          </>
-        );
-      case 'love':
-        return (
-          <>
-            <g transform="translate(14 31) scale(0.5)">
-              <path className="nono-heart" d={HEART_PATH} fill={strokeColor} filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            </g>
-            <g transform="translate(38 31) scale(0.5)">
-              <path className="nono-heart nono-heart-right" d={HEART_PATH} fill={strokeColor} filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            </g>
-          </>
-        );
-      case 'sad':
-        return (
-          <>
-            <path d="M14 42 Q20 46 26 42" fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <path d="M38 42 Q44 46 50 42" fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-          </>
-        );
-      case 'surprised':
-        return (
-          <>
-            {squareEye(20, 38, 10)}
-            {squareEye(44, 38, 10)}
-          </>
-        );
-      case 'angry':
-        return (
-          <>
-            <line x1="14" y1="34" x2="26" y2="40" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <line x1="50" y1="34" x2="38" y2="40" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-          </>
-        );
-      case 'wink':
-        return (
-          <>
-            <line x1="14" y1="38" x2="26" y2="38" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <path d="M38 38 Q44 34 50 38" fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-          </>
-        );
-      case 'sleepy':
-        return (
-          <>
-            <path d="M14 38 Q20 40 26 38" fill="none" stroke={strokeColor} strokeWidth="1.5" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <path d="M38 38 Q44 40 50 38" fill="none" stroke={strokeColor} strokeWidth="1.5" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-          </>
-        );
-      case 'thinking':
-        return (
-          <>
-            {squareEye(20, 38, 8)}
-            {squareEye(44, 38, 8)}
-          </>
-        );
-      case 'watch':
-        // Ojos cuadrados grandes: está pendiente de lo que escribes.
-        return (
-          <>
-            <g className="nono-watch-eyes">
-              {squareEye(20, 38, 10)}
-              {squareEye(44, 38, 10)}
-            </g>
-          </>
-        );
-      case 'curious':
-        return (
-          <>
-            {squareEye(20, 38, 11)}
-            {squareEye(44, 38, 8)}
-          </>
-        );
-      case 'error':
-        return (
-          <>
-            <line x1="14" y1="32" x2="26" y2="44" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <line x1="26" y1="32" x2="14" y2="44" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <line x1="38" y1="32" x2="50" y2="44" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <line x1="50" y1="32" x2="38" y2="44" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-          </>
-        );
-      case 'cool':
-        return (
-          <>
-            <rect x="12" y="34" width="16" height="10" rx="2" fill="#001a33" stroke={strokeColor} strokeWidth="1.5" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <rect x="36" y="34" width="16" height="10" rx="2" fill="#001a33" stroke={strokeColor} strokeWidth="1.5" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.3))" />
-            <line x1="28" y1="38" x2="36" y2="38" stroke={strokeColor} strokeWidth="1.5" />
-          </>
-        );
-      default: // neutral - ojos cuadrados que siguen al puntero
-        return (
-          <>
-            {squareEye(20, 38, 9)}
-            {squareEye(44, 38, 9)}
-          </>
-        );
-    }
-  };
-
-  const renderMouth = () => {
-    // La boca acompaña a los ojos: mismo contorno blanco en todas las expresiones.
-    const strokeColor = classicAccent;
-    switch (expression) {
-      case 'happy':
-      case 'love':
-        return <path d="M20 50 Q32 58 44 50" fill="none" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" />;
-      case 'sad':
-        return <path d="M20 56 Q32 48 44 56" fill="none" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" />;
-      case 'surprised':
-        return <ellipse cx="32" cy="52" rx="4" ry="5" fill="none" stroke={strokeColor} strokeWidth="2" />;
-      case 'angry':
-        return <path d="M22 54 L42 50" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" />;
-      case 'wink':
-        return <path d="M22 52 Q32 56 42 52" fill="none" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" />;
-      case 'sleepy':
-        return <line x1="24" y1="52" x2="40" y2="52" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" />;
-      case 'thinking':
-        return <path d="M26 54 Q32 52 38 54" fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" />;
-      case 'watch':
-        return <line x1="27" y1="54" x2="37" y2="54" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" />;
-      case 'curious':
-        return <ellipse cx="32" cy="52" rx="3" ry="4" fill="none" stroke={strokeColor} strokeWidth="2" />;
-      case 'error':
-        return <path d="M24 56 L40 50" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" />;
-      case 'cool':
-        return <path d="M24 52 Q32 56 40 52" fill="none" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" />;
-      default:
-        return <line x1="24" y1="52" x2="40" y2="52" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" />;
-    }
-  };
+  }
 
   if (variant === 'eyes') {
     // Variante «solo ojos»: dos rectángulos redondeados, sin cabeza, boca ni
@@ -252,11 +73,11 @@ export const NonoHead: React.FC<{
     // (ancho, alto, inclinación y separación), sin curvas ni corazones.
     // Sin cabeza que ancle la mirada, el recorrido se amplía: ±7/±5 sobre el
     // viewBox de 64 se nota de verdad y sigue dejando los ojos dentro del lienzo.
-    const dx = Math.max(-7, Math.min(7, eyeOffset.x * 7));
-    const dy = Math.max(-5, Math.min(5, eyeOffset.y * 5));
-    // El error es el único estado que cambia de color: rojo de alerta, el mismo
-    // del LED de la antena clásica, para que se lea de un vistazo.
-    const ink = expression === 'error' ? '#ff5555' : classicAccent;
+    const dx = idleGaze ? 0 : Math.max(-7, Math.min(7, eyeOffset.x * 7));
+    const dy = idleGaze ? 0 : Math.max(-5, Math.min(5, eyeOffset.y * 5));
+    // El error es el único estado que cambia de color: rojo de alerta para
+    // que se lea de un vistazo.
+    const ink = expression === 'error' ? '#ff5555' : eyesColor;
     const centerX = { left: 22, right: 42 } as const;
 
     interface EyeRect {
@@ -279,8 +100,8 @@ export const NonoHead: React.FC<{
         <rect
           key={key}
           data-eye={spec.side}
-          x={x - spec.w / 2 + dx}
-          y={spec.y + dy}
+          x={x - spec.w / 2}
+          y={spec.y}
           width={spec.w}
           height={spec.h}
           rx={spec.r ?? Math.min(3, spec.w / 3)}
@@ -288,7 +109,7 @@ export const NonoHead: React.FC<{
           className={spec.className}
           transform={
             spec.tilt
-              ? `rotate(${spec.side === 'left' ? -spec.tilt : spec.tilt} ${x + dx} ${spec.y + spec.h / 2 + dy})`
+              ? `rotate(${spec.side === 'left' ? -spec.tilt : spec.tilt} ${x} ${spec.y + spec.h / 2})`
               : undefined
           }
         />
@@ -354,13 +175,13 @@ export const NonoHead: React.FC<{
                   <rect
                     key={`${side}-${angle}`}
                     data-eye={side}
-                    x={centerX[side] - 2 + dx}
-                    y={23 + dy}
+                    x={centerX[side] - 2}
+                    y={23}
                     width={4}
                     height={18}
                     rx={1.5}
                     fill={ink}
-                    transform={`rotate(${angle} ${centerX[side] + dx} ${32 + dy})`}
+                    transform={`rotate(${angle} ${centerX[side]} 32)`}
                   />
                 )),
               )}
@@ -370,7 +191,7 @@ export const NonoHead: React.FC<{
           return (
             <>
               {both({ w: 16, h: 6, y: 28, r: 1.5 })}
-              <rect data-eye="bridge" x={30 + dx} y={30.5 + dy} width={4} height={2} rx={1} fill={ink} />
+              <rect data-eye="bridge" x={30} y={30.5} width={4} height={2} rx={1} fill={ink} />
             </>
           );
         default:
@@ -387,8 +208,14 @@ export const NonoHead: React.FC<{
         data-expression={expression}
         data-blink={blink ? 'true' : 'false'}
       >
-        <g data-testid="nono-eyes" className={!busy && idleGaze ? 'nono-orb-gaze' : undefined}>
-          {renderEyeRects()}
+        <g
+          data-testid="nono-eyes-gaze"
+          className="nono-gaze-shift"
+          style={{ transform: `translate(${dx}px, ${dy}px)` }}
+        >
+          <g data-testid="nono-eyes" className={!busy && idleGaze ? 'nono-orb-gaze' : undefined}>
+            {renderEyeRects()}
+          </g>
         </g>
       </svg>
     );
@@ -401,20 +228,22 @@ export const NonoHead: React.FC<{
     // gira sobre su eje. Si algo falla, la expresión de error manda y se
     // recuperan los ojos normales (la cara feliz no tapa el fallo).
     const busyLookingUp = busy && expression !== 'error';
-    // El orbe se dibuja a 36–48 px sobre un viewBox de 64: se amplía el
-    // desplazamiento para que el seguimiento del puntero se note.
-    const dx = busyLookingUp ? 0 : Math.max(-4, Math.min(4, eyeOffset.x * 4));
-    const dy = busyLookingUp ? -3 : Math.max(-3, Math.min(3, eyeOffset.y * 3));
+    // El orbe se dibuja a 36–48 px sobre un viewBox de 64: ±6/±4 hace visible
+    // el seguimiento sin sacar los ojos de la esfera. En reposo vuelve al
+    // centro; procesando mira arriba. El desplazamiento va en un único grupo
+    // para que también sigan las expresiones dibujadas con curvas o corazones.
+    const dx = busyLookingUp || idleGaze ? 0 : Math.max(-6, Math.min(6, eyeOffset.x * 6));
+    const dy = busyLookingUp ? -3 : idleGaze ? 0 : Math.max(-4, Math.min(4, eyeOffset.y * 4));
     const eye = orbPalette.eyes;
     const bar = (x: number) => (
-      <rect x={x + dx} y={27.5 + dy} width="5" height="9" rx="2.5" fill={eye} />
+      <rect x={x} y={27.5} width="5" height="9" rx="2.5" fill={eye} />
     );
     const renderOrbEyes = () => {
       if (blink) {
         return (
           <>
-            <rect x={22.5 + dx} y={31 + dy} width="5" height="2.5" rx="1.25" fill={eye} />
-            <rect x={36.5 + dx} y={31 + dy} width="5" height="2.5" rx="1.25" fill={eye} />
+            <rect x={22.5} y={31} width="5" height="2.5" rx="1.25" fill={eye} />
+            <rect x={36.5} y={31} width="5" height="2.5" rx="1.25" fill={eye} />
           </>
         );
       }
@@ -468,8 +297,8 @@ export const NonoHead: React.FC<{
         case 'surprised':
           return (
             <>
-              <circle cx={25 + dx} cy={32 + dy} r="3.4" fill={eye} />
-              <circle cx={39 + dx} cy={32 + dy} r="3.4" fill={eye} />
+              <circle cx={25} cy={32} r="3.4" fill={eye} />
+              <circle cx={39} cy={32} r="3.4" fill={eye} />
             </>
           );
         case 'error':
@@ -484,8 +313,8 @@ export const NonoHead: React.FC<{
         case 'cool':
           return (
             <>
-              <rect x={20.5 + dx} y={29.5 + dy} width="9" height="5" rx="2.5" fill={eye} />
-              <rect x={34.5 + dx} y={29.5 + dy} width="9" height="5" rx="2.5" fill={eye} />
+              <rect x={20.5} y={29.5} width="9" height="5" rx="2.5" fill={eye} />
+              <rect x={34.5} y={29.5} width="9" height="5" rx="2.5" fill={eye} />
             </>
           );
         case 'watch':
@@ -493,8 +322,8 @@ export const NonoHead: React.FC<{
           return (
             <>
               <g className="nono-watch-eyes">
-                <circle cx={24 + dx} cy={32 + dy} r="3.1" fill={eye} />
-                <circle cx={38 + dx} cy={32 + dy} r="3.1" fill={eye} />
+                <circle cx={24} cy={32} r="3.1" fill={eye} />
+                <circle cx={38} cy={32} r="3.1" fill={eye} />
               </g>
             </>
           );
@@ -502,16 +331,16 @@ export const NonoHead: React.FC<{
           // Concentrado: barras más cortas, como entrecerrando los ojos.
           return (
             <>
-              <rect x={22.5 + dx} y={29 + dy} width="5" height="6" rx="2.5" fill={eye} />
-              <rect x={36.5 + dx} y={29 + dy} width="5" height="6" rx="2.5" fill={eye} />
+              <rect x={22.5} y={29} width="5" height="6" rx="2.5" fill={eye} />
+              <rect x={36.5} y={29} width="5" height="6" rx="2.5" fill={eye} />
             </>
           );
         case 'curious':
           // Un ojo más abierto que el otro: se nota que pregunta.
           return (
             <>
-              <rect x={21.5 + dx} y={25.5 + dy} width="6" height="12" rx="3" fill={eye} />
-              <rect x={37 + dx} y={28.5 + dy} width="5" height="8" rx="2.5" fill={eye} />
+              <rect x={21.5} y={25.5} width="6" height="12" rx="3" fill={eye} />
+              <rect x={37} y={28.5} width="5" height="8" rx="2.5" fill={eye} />
             </>
           );
         default:
@@ -539,8 +368,8 @@ export const NonoHead: React.FC<{
       >
         {blink ? (
           <>
-            <rect x={22.5 + dx} y={28 + dy} width="5" height="2.5" rx="1.25" fill={eye} />
-            <rect x={36.5 + dx} y={28 + dy} width="5" height="2.5" rx="1.25" fill={eye} />
+            <rect x={22.5} y={28} width="5" height="2.5" rx="1.25" fill={eye} />
+            <rect x={36.5} y={28} width="5" height="2.5" rx="1.25" fill={eye} />
           </>
         ) : (
           <>
@@ -578,136 +407,25 @@ export const NonoHead: React.FC<{
         <circle cx="32" cy="32" r="21" fill={`url(#nonoOrbBody-${uid})`} />
         <ellipse cx="25.5" cy="20.5" rx="10.5" ry="6" fill={`url(#nonoOrbGloss-${uid})`} />
         <circle cx="32" cy="32" r="21" fill="none" stroke={orbPalette.eyes} strokeOpacity="0.22" strokeWidth="0.8" />
-        {busyLookingUp ? (
-          renderBusyFace()
-        ) : (
-          <g
-            data-testid="nono-orb-eyes"
-            className={!busy && idleGaze ? 'nono-orb-gaze' : undefined}
-          >
-            {renderOrbEyes()}
-          </g>
-        )}
+        <g
+          data-testid="nono-orb-gaze"
+          className="nono-gaze-shift"
+          style={{ transform: `translate(${dx}px, ${dy}px)` }}
+        >
+          {busyLookingUp ? (
+            renderBusyFace()
+          ) : (
+            <g
+              data-testid="nono-orb-eyes"
+              className={!busy && idleGaze ? 'nono-orb-gaze' : undefined}
+            >
+              {renderOrbEyes()}
+            </g>
+          )}
+        </g>
       </svg>
     );
   }
 
-  return (
-    <svg viewBox="0 0 64 64" width={size} height={size} data-variant="classic" data-expression={expression} data-blink={blink ? 'true' : 'false'}>
-      <defs>
-        {/* 3D radial gradient for body */}
-        <radialGradient id="nonoBody" cx="50%" cy="30%" r="70%">
-          <stop offset="0%" stopColor="#003355" />
-          <stop offset="50%" stopColor="#002244" />
-          <stop offset="100%" stopColor="#001122" />
-        </radialGradient>
-        {/* 3D eye white gradient */}
-        <radialGradient id="nonoEyeWhite" cx="40%" cy="35%" r="80%">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.9" />
-          <stop offset="50%" stopColor="#e8f4ff" stopOpacity="0.7" />
-          <stop offset="100%" stopColor="#cce8ff" stopOpacity="0.4" />
-        </radialGradient>
-        {/* 3D body highlight gradient */}
-        <linearGradient id="nonoHighlight" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#00ffff" stopOpacity="0.15" />
-          <stop offset="100%" stopColor="#00ffff" stopOpacity="0" />
-        </linearGradient>
-        {/* Scanlines del cristal: la cara se lee como una pantalla CRT. */}
-        <pattern id="nonoScanlines" width="4" height="4" patternUnits="userSpaceOnUse">
-          <rect width="4" height="0.6" fill="#00ffff" opacity="0.1" />
-        </pattern>
-        {/* El binario se recorta a la pantalla: al desplazarse no invade la cara. */}
-        <clipPath id="nonoScreenClip">
-          <rect x="9" y="13" width="46" height="42" rx="11" />
-        </clipPath>
-        {/* Filtro de sombra vectorial para profundidad */}
-        <filter id="nonoShadow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="3" dy="6" stdDeviation="4" floodColor="#000000" floodOpacity="0.4" />
-          <feGaussianBlur stdDeviation="0.5" result="blur" />
-        </filter>
-        {/* Inner glow for 3D effect */}
-        <filter id="nonoInnerGlow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="2" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-      {/* Cabeza con sombra vectorial 3D */}
-      <g filter="url(#nonoShadow)">
-        {/* Tapones laterales: dos remates cortos, centrados en la carcasa. */}
-        <g className="nono-side-caps" data-testid="nono-side-caps" aria-hidden="true">
-          <rect className="nono-side-cap" x="3" y="29.5" width="7" height="9" rx="2" fill="url(#nonoBody)" stroke={headStroke} strokeWidth={strokeWidth} />
-          <rect className="nono-side-cap" x="54" y="29.5" width="7" height="9" rx="2" fill="url(#nonoBody)" stroke={headStroke} strokeWidth={strokeWidth} />
-          <line x1="5.5" y1="32" x2="5.5" y2="37" stroke={headStroke} strokeWidth="0.8" opacity="0.6" />
-          <line x1="58.5" y1="32" x2="58.5" y2="37" stroke={headStroke} strokeWidth="0.8" opacity="0.6" />
-        </g>
-        <rect x="8" y="12" width="48" height="44" rx="12" fill="url(#nonoBody)" stroke={headStroke} strokeWidth={strokeWidth} />
-        {/* Inner highlight for 3D depth */}
-        <rect x="10" y="14" width="44" height="18" rx="10" fill="url(#nonoHighlight)" stroke="none" opacity="0.3" />
-      </g>
-      {/* La cara es la pantalla: marco interior y scanlines quedan por debajo
-          de los ojos y la boca, que se leen como la imagen del CRT. */}
-      <g className="nono-face-screen" data-nono-screen="true">
-        <rect x="9" y="13" width="46" height="42" rx="11" fill="#001a33" opacity="0.35" />
-        <rect x="9" y="13" width="46" height="42" rx="11" fill="url(#nonoScanlines)" />
-        <rect x="9.5" y="13.5" width="45" height="41" rx="10.5" fill="none" stroke="#00ffff" strokeWidth="0.6" opacity="0.35" />
-      </g>
-      {/* Proceso: la pantalla sólo muestra columnas de binario. Los ojos y la
-          boca se omiten para que la cara entera se lea como una máquina. */}
-      {busy && (
-        <g
-          className="nono-face-process"
-          data-testid="nono-face-process"
-          aria-hidden="true"
-          clipPath="url(#nonoScreenClip)"
-        >
-          {BINARY_COLUMNS.map((column) => (
-            <g
-              key={column.x}
-              className="nono-binary-column"
-              style={{ animationDelay: column.delay, animationDuration: column.duration }}
-            >
-              {column.digits.split('').map((digit, index) => (
-                <text
-                  key={`${column.x}-${index}`}
-                  x={column.x}
-                  y={15 + index * 9}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  className="nono-binary-digit"
-                  fill={column.color}
-                  fontSize="10.5"
-                  fontFamily="'Courier New', monospace"
-                  fontWeight="700"
-                  opacity="1"
-                >
-                  {digit}
-                </text>
-              ))}
-            </g>
-          ))}
-        </g>
-      )}
-      {/* Antena */}
-      <line x1="32" y1="12" x2="32" y2="6" stroke={headStroke} strokeWidth="2.5" strokeLinecap="round" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.3))" />
-      {/* LED de la antena: único parpadeo de Nono (halo + núcleo) */}
-      <g className="nono-antenna-led" data-led={ledState}>
-        <circle cx="32" cy="5" r="6" fill={antennaColor} opacity="0.25" className="nono-led-halo" filter="drop-shadow(0 0 8px currentColor)" />
-        <circle cx="32" cy="5" r="3" fill={antennaColor} className="nono-led-core" filter="drop-shadow(0 0 4px currentColor)" />
-      </g>
-      {/* Ojos y boca desaparecen mientras procesa: en la pantalla sólo queda
-          el binario. */}
-      {!busy && <g data-testid="nono-face-eyes">{renderEyes()}</g>}
-      {!busy && <g data-testid="nono-face-mouth">{renderMouth()}</g>}
-      {/* Mejillas */}
-      {!busy && (expression === 'happy' || expression === 'love') && (
-        <>
-          <circle cx="14" cy="48" r="3" style={{ fill: 'var(--nc-danger)' }} opacity="0.3" filter="drop-shadow(0 1px 2px rgba(255,0,0,0.3))" />
-          <circle cx="50" cy="48" r="3" style={{ fill: 'var(--nc-danger)' }} opacity="0.3" filter="drop-shadow(0 1px 2px rgba(255,0,0,0.3))" />
-        </>
-      )}
-    </svg>
-  );
+  return null;
 };

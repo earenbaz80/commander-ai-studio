@@ -28,9 +28,11 @@ Thumbs.db
 src-tauri/
 target/
 
-# Tests temporales
+# Tests temporales: restos de corridas locales (eval, G1, checkpoints, búsquedas).
+# Los tests de verdad escriben en os.tmpdir(); esto sólo evita versionar lo que
+# dejan los scripts a mano.
 tests/tmp/
-tests/tmp-evals/
+tests/tmp-*/
 
 # Registro local de proyectos del agente (permisos por máquina)
 .agent-roots.json
@@ -49,6 +51,8 @@ test-results/
 
 # Capturas locales de revisión visual (se regeneran, no son fuente)
 screenshots/
+# Capturas sueltas en la raíz (mismo criterio: se regeneran, no son fuente).
+/screenshot-*.png
 
 # Modelos locales descargados (pesan GB, se re-descargan)
 local_models/
@@ -56,6 +60,9 @@ local_models/
 # Estado interno de Commander
 .commander/
 runtime/
+
+# Artefactos del analizador REA (logs y volcados grandes): material de trabajo
+/.rea/
 
 # Plugins y skills instalados desde el catálogo: se regeneran al instalar y no
 # son fuente del proyecto. Las skills propias (skills/agents, skills/commands)

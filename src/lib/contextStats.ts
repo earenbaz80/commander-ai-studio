@@ -1,11 +1,11 @@
 import type { AIModel, ChatMessage, ParameterConfig } from '../types/studio';
 
 /**
- * Estimación del contexto que ocupa la conversación.
+ * Estimación base del contexto que ocupa la conversación.
  *
- * No se tokeniza en el cliente (cada proveedor usa su tokenizador y sería caro
- * por mensaje): se usa la aproximación estándar de ~4 caracteres por token, que
- * basta para que el indicador avise antes de llegar al límite del modelo.
+ * La aproximación de ~4 caracteres por token evita una petición por mensaje y
+ * sirve de respaldo cuando el proveedor no expone contador. `contextFit.ts`
+ * sustituye el total por el del tokenizador real cuando está disponible.
  */
 const CHARS_PER_TOKEN = 4;
 
@@ -23,11 +23,15 @@ export interface ContextStats {
   limit: number | null;
   /** Porcentaje usado (puede pasar de 100 si ya no cabe). */
   percent: number | null;
+  /** Porcentaje del espacio útil, ya descontadas salida y herramientas. */
+  usablePercent: number | null;
   /** Espacio libre dejando sitio a la respuesta. */
   remainingTokens: number | null;
   /** Tokens reservados para la respuesta (`maxTokens`). */
   reservedTokens: number;
-  /** El total más la respuesta ya no cabe en la ventana. */
+  /** Tokens reservados para esquemas y resultados de herramientas. */
+  reservedToolTokens: number;
+  /** El total más las reservas ya no cabe en la ventana. */
   overLimit: boolean;
 }
 
@@ -59,6 +63,8 @@ export function computeContextStats(opts: {
   messages: ChatMessage[];
   parameters?: ParameterConfig | null;
   model?: AIModel | null;
+  /** Reserva de herramientas; Strata la calcula desde su ventana y capacidades. */
+  toolTokens?: number;
 }): ContextStats {
   const { messages, parameters, model } = opts;
   const examples = parameters?.examples ?? [];
@@ -80,8 +86,17 @@ export function computeContextStats(opts: {
       ? Math.floor(configured)
       : modelContextLimit(model);
   const reservedTokens = Math.max(0, parameters?.maxTokens ?? 0);
+  const reservedToolTokens = Math.max(0, Number(opts.toolTokens) || 0);
   const percent = limit ? Math.round((totalTokens / limit) * 100) : null;
-  const remainingTokens = limit === null ? null : Math.max(0, limit - totalTokens - reservedTokens);
+  const usableLimit = limit === null ? null : Math.max(0, limit - reservedTokens - reservedToolTokens);
+  const usablePercent =
+    reservedToolTokens > 0 && usableLimit !== null && usableLimit > 0
+      ? Math.round((totalTokens / usableLimit) * 100)
+      : percent;
+  const remainingTokens =
+    limit === null
+      ? null
+      : Math.max(0, limit - totalTokens - reservedTokens - reservedToolTokens);
 
   return {
     messages: messages.length,
@@ -90,9 +105,41 @@ export function computeContextStats(opts: {
     totalTokens,
     limit,
     percent,
+    usablePercent,
     remainingTokens,
     reservedTokens,
-    overLimit: limit !== null && totalTokens + reservedTokens > limit,
+    reservedToolTokens,
+    overLimit: limit !== null && totalTokens + reservedTokens + reservedToolTokens > limit,
+  };
+}
+
+/**
+ * Reemplaza el total estimado por el que devolvió el tokenizador del proveedor
+ * sin perder la ventana ni la respuesta reservada que ya calculó la UI.
+ */
+export function applyMeasuredContextTokens(stats: ContextStats, totalTokens: number): ContextStats {
+  const total = Math.max(0, Math.round(totalTokens));
+  const conversationTokens = Math.max(0, total - stats.systemTokens);
+  const percent = stats.limit ? Math.round((total / stats.limit) * 100) : null;
+  const usableLimit =
+    stats.limit === null ? null : Math.max(0, stats.limit - stats.reservedTokens - stats.reservedToolTokens);
+  const usablePercent =
+    stats.reservedToolTokens > 0 && usableLimit !== null && usableLimit > 0
+      ? Math.round((total / usableLimit) * 100)
+      : percent;
+  const remainingTokens =
+    stats.limit === null
+      ? null
+      : Math.max(0, stats.limit - total - stats.reservedTokens - stats.reservedToolTokens);
+  return {
+    ...stats,
+    totalTokens: total,
+    conversationTokens,
+    percent,
+    usablePercent,
+    remainingTokens,
+    overLimit:
+      stats.limit !== null && total + stats.reservedTokens + stats.reservedToolTokens > stats.limit,
   };
 }
 

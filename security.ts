@@ -18,6 +18,10 @@ export const SHELL_ALLOW_PREFIX = [
   // y `npm exec` ejecutan el código del paquete (postinstall) con los
   // privilegios del servidor, así que no pueden estar en la allowlist.
   'npm run ', 'npm test', 'npm ls', 'npm list', 'npm --version',
+  // `node --test` sólo ejecuta el runner de tests; `node <script>` sigue fuera
+  // porque ejecuta código arbitrario sin pasar por el runner. La variante sin
+  // archivo se acepta como igualdad exacta en checkShellSegments.
+  'node --test ',
   'git status', 'git log',
   'git diff', 'ls', 'dir', 'echo ', 'tsc ', 'vite ',
   'mkdir ', 'pwd', 'whoami',

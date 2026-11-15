@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { StudioMode } from '../types/studio';
 import { Language } from '../i18n/translations';
+import { UserAvatarBadge } from './UserAvatar';
 
 export type ConsoleTheme = 'norton' | 'matrix' | 'amber' | 'dos' | 'light' | 'solarized';
 
@@ -99,7 +100,6 @@ export const Header: React.FC<HeaderProps> = ({
   const profileDetail = currentUser
     ? (currentUser.email || (lang === 'es' ? 'Cuenta sin correo' : lang === 'de' ? 'Konto ohne E-Mail' : 'Account without email'))
     : (lang === 'es' ? 'Los datos se guardan en este equipo' : lang === 'de' ? 'Daten bleiben auf diesem Gerät' : 'Data stays on this device');
-  const profileInitial = (profileName || 'U').charAt(0).toUpperCase();
 
   const handleMinimize = () => {
     if ((window as any).electronAPI?.minimize) {
@@ -208,7 +208,12 @@ export const Header: React.FC<HeaderProps> = ({
                 : "Clic para iniciar sesión, registrarse o continuar como invitado"
             }
           >
-            <User className="w-3.5 h-3.5 text-[var(--nc-text-accent)] user-led-blink" />
+            <UserAvatarBadge
+              uid={currentUser?.uid}
+              photoURL={currentUser?.photoURL}
+              size={18}
+              className="user-led-blink"
+            />
             <span className="max-w-[100px] truncate font-bold hidden sm:inline">
               {currentUser
                 ? (currentUser.displayName || currentUser.email?.split('@')[0])
@@ -229,12 +234,11 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <div className="border-b border-[var(--nc-border-dark)] bg-[var(--nc-bg-main)] px-2 py-1.5">
                 <div className="flex items-center gap-2">
-                  <div
-                    aria-hidden
-                    className="flex h-8 w-8 shrink-0 items-center justify-center border border-[var(--nc-border-light)] bg-[var(--nc-highlight-bg)] text-sm font-bold text-black"
-                  >
-                    {profileInitial}
-                  </div>
+                  <UserAvatarBadge
+                    uid={currentUser?.uid}
+                    photoURL={currentUser?.photoURL}
+                    size={32}
+                  />
                   <div className="min-w-0">
                     <div className="truncate text-xs font-bold text-[var(--nc-text-accent)]">{profileName}</div>
                     <div className="truncate text-[10px] text-[var(--nc-text)]" title={profileDetail}>

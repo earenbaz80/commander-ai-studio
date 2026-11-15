@@ -19,6 +19,7 @@ import {
   formatSnapshot,
   normalizeBrowserUrl,
   resolveUid,
+  toHiddenSnapshotNodes,
   toSnapshotNodes,
   type BrowserAction,
   type SnapshotNode,
@@ -63,15 +64,17 @@ const COLLECT_SELECTOR = [
 ].join(',');
 
 /**
- * Script que se ejecuta dentro de la página. Devuelve el array que consume
- * `toSnapshotNodes` (rol, nombre accesible, valor y profundidad). El orden es el
- * del DOM y es el mismo en cada llamada: es lo que da sentido al índice de un
- * `uid` entre el snapshot y la acción.
+ * Script que se ejecuta dentro de la página. Recibe `visible` (árbol
+ * accionable) o `hidden` (controles existentes pero no accionables) y devuelve
+ * el array que consumen `toSnapshotNodes` / `toHiddenSnapshotNodes` (rol,
+ * nombre, valor, profundidad y metadatos visuales). El orden visible es el del
+ * DOM y es el mismo en cada llamada: es lo que da sentido al índice de un uid.
  */
-const COLLECT_SCRIPT = `(() => {
+const COLLECT_SCRIPT = `(mode) => {
   const MAX = ${MAX_SNAPSHOT_NODES + 50};
   /** Hojas de texto que se añaden al final (resultados de una acción, avisos). */
   const MAX_TEXT_LEAVES = 40;
+  const MAX_HIDDEN = 20;
 
   const labelFor = (el) => {
     const id = el.getAttribute && el.getAttribute('id');
@@ -114,16 +117,172 @@ const COLLECT_SCRIPT = `(() => {
     return tag;
   };
 
-  const isHidden = (el) => {
-    if (el.type === 'hidden') return true;
-    const r = el.getBoundingClientRect();
-    if (r.width > 0 || r.height > 0) return false;
+  const clamp01 = (v) => Math.min(1, Math.max(0, v));
+
+  /** Acepta los formatos que Chromium devuelve para colores computados. */
+  const parseColor = (raw) => {
+    const c = String(raw || '').trim();
+    if (!c || c === 'transparent' || c === 'none') return null;
+
+    if (c.charAt(0) === '#') {
+      let h = c.slice(1);
+      if (h.length === 3) h = h.split('').map((x) => x + x).join('');
+      if (h.length !== 6 && h.length !== 8) return null;
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      if (![r, g, b].every(Number.isFinite)) return null;
+      return { r, g, b, a: h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1 };
+    }
+
+    let m = /^rgba?\\(([^)]+)\\)/.exec(c);
+    if (m) {
+      const p = m[1].split(/[ ,/]+/).filter(Boolean).map(Number);
+      if (p.length < 3 || !p.slice(0, 3).every(Number.isFinite)) return null;
+      return { r: p[0], g: p[1], b: p[2], a: p[3] === undefined ? 1 : p[3] };
+    }
+
+    // Chromium serializa Tailwind como oklch(); convertirlo es necesario para
+    // que el contraste no se omita justo en las superficies de la app.
+    m = /^oklch\\(([^)]+)\\)/.exec(c);
+    if (m) {
+      const p = m[1].split(/[ ,/]+/).filter(Boolean);
+      const L = p[0] && p[0].endsWith('%') ? parseFloat(p[0]) / 100 : parseFloat(p[0]);
+      const C = parseFloat(p[1]);
+      const h = (parseFloat(p[2]) * Math.PI) / 180;
+      const alpha = p[3] === undefined ? 1 : p[3].endsWith('%') ? parseFloat(p[3]) / 100 : parseFloat(p[3]);
+      if (![L, C, h].every(Number.isFinite)) return null;
+      const l_ = L + 0.3963377774 * C * Math.cos(h) + 0.2158037573 * C * Math.sin(h);
+      const m_ = L - 0.1055613458 * C * Math.cos(h) - 0.0638541728 * C * Math.sin(h);
+      const s_ = L - 0.0894841775 * C * Math.cos(h) - 1.291485548 * C * Math.sin(h);
+      const l = l_ ** 3;
+      const mm = m_ ** 3;
+      const s = s_ ** 3;
+      const linear = [
+        4.0767416621 * l - 3.3077115913 * mm + 0.2309699292 * s,
+        -1.2684380046 * l + 2.6097574011 * mm - 0.3413193965 * s,
+        -0.0041960863 * l - 0.7034186147 * mm + 1.707614701 * s,
+      ];
+      const rgb = linear.map((v) => clamp01(v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055) * 255);
+      return { r: rgb[0], g: rgb[1], b: rgb[2], a: alpha };
+    }
+
+    m = /^color\\(srgb ([^)]+)\\)/.exec(c);
+    if (m) {
+      const p = m[1].split(/[ ,/]+/).filter(Boolean).map(Number);
+      if (p.length < 3 || !p.slice(0, 3).every(Number.isFinite)) return null;
+      return { r: p[0] * 255, g: p[1] * 255, b: p[2] * 255, a: p[3] === undefined ? 1 : p[3] };
+    }
+
+    return null;
+  };
+
+  const luminance = (c) => {
+    const line = (v) => {
+      const n = v / 255;
+      return n <= 0.03928 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * line(c.r) + 0.7152 * line(c.g) + 0.0722 * line(c.b);
+  };
+
+  const contrastRatio = (a, b) => {
+    const la = luminance(a);
+    const lb = luminance(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  };
+
+  const backgroundOf = (el) => {
+    for (let node = el; node && node !== document.documentElement; node = node.parentElement) {
+      const cs = getComputedStyle(node);
+      const bg = parseColor(cs.backgroundColor);
+      if (bg && bg.a > 0.5) return bg;
+      if (cs.backgroundImage && cs.backgroundImage !== 'none') return null;
+    }
+    const body = parseColor(getComputedStyle(document.body).backgroundColor);
+    return body && body.a > 0.5 ? body : { r: 255, g: 255, b: 255, a: 1 };
+  };
+
+  const textOf = (el) => {
+    const direct = Array.from(el.childNodes || [])
+      .filter((n) => n.nodeType === 3)
+      .map((n) => n.textContent || '')
+      .join(' ')
+      .trim();
+    return (direct || String(el.innerText || el.textContent || '')).replace(/\\s+/g, ' ').trim();
+  };
+
+  /** Caja, display/visibilidad resueltos, overflow y contraste en una pasada. */
+  const visualOf = (el) => {
+    const rect = el.getBoundingClientRect();
     const cs = getComputedStyle(el);
-    return cs.display === 'none' || cs.visibility === 'hidden';
+    let display = String(cs.display || '');
+    let visibility = String(cs.visibility || 'visible');
+    let hidden = display === 'none' || visibility === 'hidden' || visibility === 'collapse';
+
+    // Un hijo de display:none conserva su propio display computado; hay que
+    // mirar los ancestros para no publicarlo como visible con caja 0x0.
+    for (let p = el.parentElement; p && p !== document.documentElement; p = p.parentElement) {
+      const ps = getComputedStyle(p);
+      if (ps.display === 'none') { display = 'none'; hidden = true; }
+      if (ps.visibility === 'hidden' || ps.visibility === 'collapse') { visibility = ps.visibility; hidden = true; }
+    }
+    if (!hidden && (rect.width <= 0 || rect.height <= 0)) hidden = true;
+    if (el.type === 'hidden') hidden = true;
+
+    const box = {
+      x: Math.round(rect.left * 10) / 10,
+      y: Math.round(rect.top * 10) / 10,
+      width: Math.round(rect.width * 10) / 10,
+      height: Math.round(rect.height * 10) / 10,
+    };
+
+    let overflow = '';
+    let contrast = null;
+    let contrastMin = null;
+    if (!hidden) {
+      const ox = String(cs.overflowX || 'visible').toLowerCase();
+      const oy = String(cs.overflowY || 'visible').toLowerCase();
+      const clipX = el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1 && ox !== 'visible';
+      const clipY = el.clientHeight > 0 && el.scrollHeight > el.clientHeight + 1 && oy !== 'visible';
+      overflow = ox === oy ? ox : 'x:' + ox + ',y:' + oy;
+      if (clipX || clipY) overflow += ',clip:' + [clipX ? 'x' : '', clipY ? 'y' : ''].filter(Boolean).join('');
+
+      const text = textOf(el);
+      if (text) {
+        const fg = parseColor(cs.color);
+        const bg = backgroundOf(el);
+        if (fg && fg.a >= 0.5 && bg) {
+          const size = parseFloat(cs.fontSize) || 16;
+          const weight = Number.parseInt(cs.fontWeight, 10) || (cs.fontWeight === 'bold' ? 700 : 400);
+          contrast = Math.round(contrastRatio(fg, bg) * 100) / 100;
+          contrastMin = size >= 24 || (weight >= 700 && size >= 18.66) ? 3 : 4.5;
+        }
+      }
+    }
+
+    return { box, display, visibility, overflow, ...(contrast !== null ? { contrast, contrastMin } : {}), hidden };
   };
 
   const els = Array.from(document.querySelectorAll(${JSON.stringify(COLLECT_SELECTOR)})).slice(0, MAX);
-  const chosen = new Set(els);
+  const infos = els.map((el) => ({ el, visual: visualOf(el) }));
+
+  // Los ocultos van en una sección aparte, sin uid: el agente ve que existen y
+  // por qué no puede actuar, pero no desplazan a los controles visibles del
+  // árbol accionable ni consumen su límite.
+  if (mode === 'hidden') {
+    return infos.filter((x) => x.visual.hidden).slice(0, MAX_HIDDEN).map(({ el, visual }) => {
+      const value = el.value;
+      return {
+        role: String(roleOf(el)),
+        name: String(nameOf(el) || '').replace(/\\s+/g, ' ').trim().slice(0, 200),
+        ...(typeof value === 'string' && value ? { value: value.slice(0, 200) } : {}),
+        ...visual,
+      };
+    });
+  }
+
+  const visibleEls = infos.filter((x) => !x.visual.hidden).map((x) => x.el);
+  const chosen = new Set(visibleEls);
 
   // Sin esta pasada, un <div></div> donde el clic escribe el resultado sería
   // invisible para el agente: acaba de actuar y no puede comprobar el efecto.
@@ -134,15 +293,16 @@ const COLLECT_SCRIPT = `(() => {
     if (chosen.has(el) || el.firstElementChild) continue;
     const tag = el.tagName.toLowerCase();
     if (tag === 'script' || tag === 'style' || tag === 'noscript' || tag === 'br' || tag === 'template') continue;
-    if (!(el.textContent || '').trim() || isHidden(el)) continue;
+    if (!(el.textContent || '').trim()) continue;
+    if (visualOf(el).hidden) continue;
     extras.push(el);
     chosen.add(el);
   }
 
-  const all = els.concat(extras);
+  const all = visibleEls.concat(extras);
   const set = new Set(all);
 
-  return all.filter((el) => !isHidden(el)).map((el) => {
+  return all.map((el) => {
     let depth = 0;
     for (let p = el.parentElement; p; p = p.parentElement) if (set.has(p)) depth++;
     const value = el.value;
@@ -151,9 +311,10 @@ const COLLECT_SCRIPT = `(() => {
       name: String(nameOf(el) || '').replace(/\\s+/g, ' ').trim().slice(0, 200),
       ...(typeof value === 'string' && value ? { value: value.slice(0, 200) } : {}),
       depth: Math.min(depth, 8),
+      ...visualOf(el),
     };
   }).slice(0, ${MAX_SNAPSHOT_NODES + 50});
-})()`;
+}`;
 
 export type BrowserActor = 'user' | 'agent';
 export type BrowserSessionStatus = 'ready' | 'closed';
@@ -567,13 +728,22 @@ async function newSession(root: string): Promise<Session> {
   return session;
 }
 
-/** Sesión por id, o la última abierta (para no repetir el id en cada llamada). */
+/**
+ * Sesión por id, o la última del mismo workspace (para no repetir el id en
+ * cada llamada). Con `root` nunca se reutiliza otro proyecto: una sesión
+ * abierta para T6 no puede contaminar la navegación ni los logs de otro test
+ * o workspace. Sin `root`, el panel genérico sigue usando la última abierta.
+ */
 function pickSession(id: unknown, root: string): Session | null {
   const wanted = String(id ?? '').trim();
   if (wanted) return sessions.get(wanted) ?? null;
-  const mine = [...sessions.values()].filter((s) => !root || s.root === root);
-  const pool = mine.length > 0 ? mine : [...sessions.values()];
-  return pool.sort((a, b) => b.createdAt - a.createdAt)[0] ?? null;
+  const candidates = [...sessions.values()];
+  if (root) {
+    return candidates
+      .filter((session) => session.root === root)
+      .sort((a, b) => b.createdAt - a.createdAt)[0] ?? null;
+  }
+  return candidates.sort((a, b) => b.createdAt - a.createdAt)[0] ?? null;
 }
 
 /** Normaliza y valida el destino: esquema y seguridad de red en una sola puerta. */
@@ -588,24 +758,35 @@ async function safeTarget(raw: unknown): Promise<{ ok: true; url: string } | { o
   return { ok: true, url: check.url };
 }
 
-async function collect(session: Session): Promise<any[]> {
-  const raw = await session.page.evaluate(COLLECT_SCRIPT);
+async function collect(session: Session, mode: 'visible' | 'hidden' = 'visible'): Promise<any[]> {
+  const raw = await session.page.evaluate(`(${COLLECT_SCRIPT})(${JSON.stringify(mode)})`);
   return Array.isArray(raw) ? raw : [];
 }
 
 async function snapshot(session: Session) {
-  const raw = await collect(session);
+  const [raw, hiddenRaw] = await Promise.all([
+    collect(session, 'visible'),
+    collect(session, 'hidden'),
+  ]);
   session.nodes = toSnapshotNodes(raw);
-  const header = { title: await session.page.title().catch(() => ''), url: session.page.url() };
-  const formatted = formatSnapshot(session.nodes, header);
+  const hidden = toHiddenSnapshotNodes(hiddenRaw);
+  const viewport = session.page.viewportSize?.() ?? { width: 1280, height: 800 };
+  const header = {
+    title: await session.page.title().catch(() => ''),
+    url: session.page.url(),
+    viewport,
+  };
+  const formatted = formatSnapshot(session.nodes, header, hidden);
   return {
     sessionId: session.id,
     url: header.url,
     title: header.title,
+    viewport,
     text: formatted.text,
     nodes: formatted.nodes,
+    hidden: formatted.hidden,
     truncated: formatted.truncated,
-    hint: 'Usa el uid (e1, e2…) para click/type. El uid sólo vale para este snapshot.',
+    hint: 'Usa el uid (e1, e2…) para click/type. El uid sólo vale para este snapshot; los nodos de la sección hidden no son accionables.',
   };
 }
 

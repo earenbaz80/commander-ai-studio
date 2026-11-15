@@ -6,7 +6,7 @@
  * el usuario revisa y pulsa Enviar, igual que si lo hubiera escrito.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { pickRecorderMimeType } from '../lib/dictation';
+import { blobToWav, pickRecorderMimeType } from '../lib/dictation';
 import type { Language } from '../i18n/translations';
 
 export type DictationState = 'idle' | 'recording' | 'transcribing';
@@ -44,6 +44,13 @@ interface UseDictationOptions {
   lang: Language;
   onText: (text: string) => void;
 }
+
+type DictationResponse = {
+  success?: boolean;
+  text?: string;
+  error?: string;
+  retryWithWav?: boolean;
+};
 
 function readAsDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -87,8 +94,12 @@ export function useDictation({ lang, onText }: UseDictationOptions): DictationCo
     return () => clearInterval(timer);
   }, [state]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // StrictMode ejecuta el cleanup de la primera montura y vuelve a montar.
+    // Sin restaurar la marca, el primer `start()` veía `mountedRef=false` y
+    // cerraba el stream antes de grabar.
+    mountedRef.current = true;
+    return () => {
       mountedRef.current = false;
       discardRef.current = true;
       const recorder = recorderRef.current;
@@ -100,31 +111,70 @@ export function useDictation({ lang, onText }: UseDictationOptions): DictationCo
         }
       }
       releaseStream();
-    },
-    [releaseStream]
-  );
+    };
+  }, [releaseStream]);
 
   const transcribe = useCallback(
     async (blob: Blob, mimeType: string) => {
       setState('transcribing');
       try {
-        const dataUrl = await readAsDataUrl(blob);
-        const response = await fetch('/api/transcribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            audioData: dataUrl.split(',')[1] || '',
-            mimeType,
-            lang: langKey,
-          }),
-        });
-        const data = await response.json().catch(() => ({}));
+        const send = async (upload: Blob, uploadMime: string, logFailure = true) => {
+          const dataUrl = await readAsDataUrl(upload);
+          const response = await fetch('/api/transcribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              audioData: dataUrl.split(',')[1] || '',
+              mimeType: uploadMime,
+              lang: langKey,
+            }),
+          });
+          const rawBody = await response.text();
+          let data: DictationResponse = {};
+          try {
+            data = rawBody ? JSON.parse(rawBody) : {};
+          } catch {
+            /* el extracto conserva la respuesta no JSON */
+          }
+          if (logFailure && (!response.ok || !data.success)) {
+            // Acotado a propósito: el error ya se ve en la UI y el cuerpo puede
+            // ser un HTML entero; aquí sólo sirve el arranque de la respuesta.
+            const excerpt = rawBody.replace(/\s+/g, ' ').trim().slice(0, 200);
+            console.warn('[dictation] fallo /api/transcribe', JSON.stringify({
+              mimeType: uploadMime,
+              bytes: upload.size,
+              status: response.status,
+              ...(excerpt ? { body: excerpt } : {}),
+            }));
+          }
+          return data;
+        };
+
+        // Primero se manda el contenedor original. Sólo si el servidor marca
+        // el 400 de audio inválido se reencodea a WAV y se reintenta una vez.
+        let data = await send(blob, mimeType);
         if (!mountedRef.current) return;
-        if (data?.success && typeof data.text === 'string' && data.text.trim()) {
+        if (!data.success && data.retryWithWav === true) {
+          const wav = await blobToWav(blob);
+          if (wav) {
+            console.info('[dictation] reintento WAV', JSON.stringify({
+              originalMime: mimeType,
+              originalBytes: blob.size,
+              wavBytes: wav.size,
+            }));
+            // El reintento no repite el fallo: el primer log ya conserva el
+            // diagnóstico original y este conserva el tamaño del WAV.
+            data = await send(wav, 'audio/wav', false);
+          }
+        }
+
+        if (!mountedRef.current) return;
+        if (data.success && typeof data.text === 'string' && data.text.trim()) {
           setError('');
           onText(data.text.trim());
         } else {
-          setError(typeof data?.error === 'string' && data.error ? data.error : MESSAGES[langKey].failed);
+          const message = typeof data.error === 'string' ? data.error.trim() : '';
+          setError(message && !message.startsWith('{') ? message : MESSAGES[langKey].failed);
         }
       } catch (e: any) {
         if (mountedRef.current) setError(e?.message || MESSAGES[langKey].failed);

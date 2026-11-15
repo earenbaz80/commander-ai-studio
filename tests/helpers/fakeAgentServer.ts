@@ -23,7 +23,30 @@ export type FakeScenario =
   | 'tool-error'
   | 'tool-three'
   | 'tool-denied'
+  | 'shell-same-twice'
+  | 'shell-same-after-failed-edit'
+  | 'tool-write-twice'
+  | 'tool-edit-same-twice'
+  | 'tool-edit-same-three'
+  | 'tool-edit-same-six'
+  | 'read-loop'
+  | 'read-after-edit'
+  | 'rerun-same-command'
+  | 'read-after-subagent'
+  | 'browser-snapshot-twice'
+  | 'shell-run-node-test'
+  | 'test-mandatory-source-only'
+  | 'test-mandatory-complete'
+  | 'propose-edit'
+  | 'propose-duplicate'
+  | 'propose-long-diff'
+  | 'propose-huge-diff'
+  | 'tool-payload-false'
+  | 'edit-already-applied'
+  | 'git-diff-long'
   | 'slow-tool'
+  | 'spawn-agents'
+  | 'git-worktree-actions'
   | 'ask-user'
   | 'max-steps'
   | 'unknown-tool'
@@ -57,6 +80,8 @@ interface ModelTurn {
 }
 
 const FINAL_TEXT = 'Listo: el faro funciona.';
+const FAKE_PROPOSAL_HINT =
+  'Propuesta no aplicada: no se escribió en disco; el diff queda pendiente de aplicar.';
 const READ_CALL: FunctionCall = { name: 'fs_read', args: { path: 'README.md' } };
 const THREE_READ_CALLS: FunctionCall[] = [
   READ_CALL,
@@ -64,6 +89,10 @@ const THREE_READ_CALLS: FunctionCall[] = [
   { name: 'fs_read', args: { path: 'AGENTS.md' } },
 ];
 const WRITE_CALL: FunctionCall = { name: 'fs_write', args: { path: 'salida.txt', content: 'x' } };
+const EDIT_CALL: FunctionCall = {
+  name: 'fs_edit',
+  args: { path: 'salida.txt', oldString: 'x', newString: 'y' },
+};
 const ASK_CALL: FunctionCall = {
   name: 'ask_user',
   args: {
@@ -74,6 +103,19 @@ const ASK_CALL: FunctionCall = {
   },
 };
 const UNKNOWN_CALL: FunctionCall = { name: 'no_existe', args: {} };
+// Lectura de navegador: repetirla con el mismo input no muta nada.
+const BROWSER_SNAPSHOT_CALL: FunctionCall = { name: 'browser', args: { action: 'snapshot' } };
+// G1-D1-04: tres lecturas legítimas y luego el modelo vuelve al mismo archivo.
+// Las repeticiones no son consecutivas (alterna archivos), así que el detector
+// tiene que contar por clave acumulada y no por racha seguida.
+const READ_LOOP_CALLS: FunctionCall[] = [
+  { name: 'fs_read', args: { path: 'slug.mjs' } },
+  { name: 'fs_read', args: { path: 'slug.test.mjs' } },
+  { name: 'fs_read', args: { path: 'package.json' } },
+  { name: 'fs_read', args: { path: 'slug.mjs' } },
+  { name: 'fs_read', args: { path: 'slug.mjs' } },
+  { name: 'fs_read', args: { path: 'slug.mjs' } },
+];
 
 const SCENARIOS: FakeScenario[] = [
   'final',
@@ -81,7 +123,30 @@ const SCENARIOS: FakeScenario[] = [
   'tool-error',
   'tool-three',
   'tool-denied',
+  'shell-same-twice',
+  'shell-same-after-failed-edit',
+  'tool-write-twice',
+  'tool-edit-same-twice',
+  'tool-edit-same-three',
+  'tool-edit-same-six',
+  'read-loop',
+  'read-after-edit',
+  'rerun-same-command',
+  'read-after-subagent',
+  'browser-snapshot-twice',
+  'shell-run-node-test',
+  'test-mandatory-source-only',
+  'test-mandatory-complete',
+  'propose-edit',
+  'propose-duplicate',
+  'propose-long-diff',
+  'propose-huge-diff',
+  'tool-payload-false',
+  'edit-already-applied',
+  'git-diff-long',
   'slow-tool',
+  'spawn-agents',
+  'git-worktree-actions',
   'ask-user',
   'max-steps',
   'unknown-tool',
@@ -89,6 +154,13 @@ const SCENARIOS: FakeScenario[] = [
   'slow',
   'llm-error',
 ];
+
+function fakeProposalDiff(prefix: string, lines: number): string {
+  return Array.from(
+    { length: lines },
+    (_, index) => `+${prefix} linea ${index} ${'x'.repeat(24)}`
+  ).join('\n');
+}
 
 function scenarioFrom(body: any): FakeScenario {
   const text = String(body?.contents ?? body?.prompt ?? '');
@@ -117,16 +189,273 @@ function turnFor(scenario: FakeScenario, turn: number): ModelTurn {
       return turn === 1
         ? { text: 'Voy a escribir.', functionCalls: [WRITE_CALL] }
         : { text: FINAL_TEXT, functionCalls: [] };
+    case 'shell-same-twice':
+      return turn <= 2
+        ? {
+            text: turn === 1 ? 'Corro el test.' : 'Repito el mismo test.',
+            functionCalls: [{ name: 'shell_run', args: { command: 'node --test math.test.mjs' } }],
+          }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'shell-same-after-failed-edit':
+      // El test corre, una edición falla (no cambia el workspace) y el mismo
+      // test se repite: la huella de shell.run debe seguir viva.
+      return turn === 1
+        ? {
+            text: 'Corro el test.',
+            functionCalls: [{ name: 'shell_run', args: { command: 'node --test math.test.mjs' } }],
+          }
+        : turn === 2
+          ? {
+              text: 'Intento editar.',
+              functionCalls: [{ name: 'fs_edit', args: { path: 'fallo.txt', oldString: 'a', newString: 'b' } }],
+            }
+          : turn === 3
+            ? {
+                text: 'Repito el mismo test.',
+                functionCalls: [{ name: 'shell_run', args: { command: 'node --test math.test.mjs' } }],
+              }
+            : { text: FINAL_TEXT, functionCalls: [] };
+    case 'tool-write-twice':
+      return turn === 1
+        ? { text: 'Voy a escribir la primera salida.', functionCalls: [WRITE_CALL] }
+        : turn === 2
+          ? {
+              text: 'Ahora escribo la segunda salida.',
+              functionCalls: [{ name: 'fs_write', args: { path: 'salida2.txt', content: 'y' } }],
+            }
+          : { text: FINAL_TEXT, functionCalls: [] };
+    case 'tool-edit-same-twice':
+      return turn <= 2
+        ? { text: `Edito la misma salida (${turn}).`, functionCalls: [EDIT_CALL] }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'tool-edit-same-three':
+      // CAL2-R02/R03: el modelo reemite la misma edición tres veces seguidas.
+      return turn <= 3
+        ? { text: `Edito la misma salida (${turn}).`, functionCalls: [EDIT_CALL] }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'tool-edit-same-six':
+      // CAL2-R19: el modelo reemitió la misma edición seis veces y agotó los pasos
+      // sin llegar a verificar. El corte tiene que llegar antes del tope.
+      return turn <= 6
+        ? { text: `Edito la misma salida (${turn}).`, functionCalls: [EDIT_CALL] }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'read-after-subagent':
+      // Leer, releer (aviso) y lanzar un subagente que puede haber editado el
+      // archivo: la relectura posterior tiene que ejecutarse.
+      return turn <= 2
+        ? { text: `Leo (${turn}).`, functionCalls: [READ_CALL] }
+        : turn === 3
+          ? {
+              text: 'Lanzo un subagente.',
+              functionCalls: [
+                { name: 'spawn_agents', args: { agents: [{ goal: 'Añade maxLength a slug.mjs' }] } },
+              ],
+            }
+          : turn === 4
+            ? { text: 'Releo tras el subagente.', functionCalls: [READ_CALL] }
+            : { text: FINAL_TEXT, functionCalls: [] };
+    case 'rerun-same-command':
+      // Editar y volver a correr el mismo test es el bucle normal de trabajo.
+      // Bajo el guardia viejo (que vigilaba `shell.run`) la segunda ejecución se
+      // saltaba con «Sin cambios: shell.run ya se aplicó».
+      return turn === 1
+        ? { text: 'Edito el test.', functionCalls: [{ name: 'fs_edit', args: { path: 'slug.test.mjs', oldString: 'a', newString: 'b' } }] }
+        : turn === 2
+          ? { text: 'Corro el test.', functionCalls: [{ name: 'shell_run', args: { command: 'node --test slug.test.mjs' } }] }
+          : turn === 3
+            ? { text: 'Ajusto el test.', functionCalls: [{ name: 'fs_edit', args: { path: 'slug.test.mjs', oldString: 'b', newString: 'c' } }] }
+            : turn === 4
+              ? { text: 'Vuelvo a correr el mismo test.', functionCalls: [{ name: 'shell_run', args: { command: 'node --test slug.test.mjs' } }] }
+              : { text: FINAL_TEXT, functionCalls: [] };
+    case 'read-loop':
+      // La 4.ª lectura de `slug.mjs` corta la corrida; las tres primeras claves
+      // (una por archivo) sí llegan a ejecutarse.
+      return turn <= READ_LOOP_CALLS.length
+        ? { text: `Leo (${turn}).`, functionCalls: [READ_LOOP_CALLS[turn - 1]] }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'read-after-edit':
+      // Leer, releer (aviso), verificar con shell.run —eso vacía la ventana— y
+      // volver a leer: no es un bucle y la sesión termina bien.
+      return turn <= 2
+        ? { text: `Leo (${turn}).`, functionCalls: [READ_CALL] }
+        : turn === 3
+          ? {
+              text: 'Verifico antes de releer.',
+              functionCalls: [{ name: 'shell_run', args: { command: 'node slug.test.mjs' } }],
+            }
+          : turn <= 5
+            ? { text: `Releo (${turn}).`, functionCalls: [READ_CALL] }
+            : { text: FINAL_TEXT, functionCalls: [] };
+    case 'browser-snapshot-twice':
+      return turn <= 2
+        ? { text: `Releo la página (${turn}).`, functionCalls: [BROWSER_SNAPSHOT_CALL] }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'propose-edit':
+      return turn === 1
+        ? {
+            text: 'Propongo la edición.',
+            functionCalls: [
+              {
+                name: 'fs_propose_edit',
+                args: { path: 'slug.mjs', oldString: 'a', newString: 'b' },
+              },
+            ],
+          }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'propose-duplicate':
+      // Dos llamadas con distinto `newString` pero el fake devuelve el mismo
+      // diff: el estado debe guardar una sola propuesta (dedupe por contenido).
+      return turn === 1
+        ? {
+            text: 'Propongo la edición dos veces.',
+            functionCalls: [
+              {
+                name: 'fs_propose_edit',
+                args: { path: 'slug.mjs', oldString: 'a', newString: 'b' },
+              },
+              {
+                name: 'fs_propose_edit',
+                args: { path: 'slug.mjs', oldString: 'a', newString: 'c' },
+              },
+            ],
+          }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'propose-long-diff':
+      return turn === 1
+        ? {
+            text: 'Propongo el cambio largo.',
+            functionCalls: [
+              {
+                name: 'fs_propose_edit',
+                args: { path: 'largo.txt', oldString: 'a', newString: 'b' },
+              },
+            ],
+          }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'propose-huge-diff':
+      return turn === 1
+        ? {
+            text: 'Propongo el cambio enorme.',
+            functionCalls: [
+              {
+                name: 'fs_propose_edit',
+                args: { path: 'enorme.txt', oldString: 'a', newString: 'b' },
+              },
+            ],
+          }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'tool-payload-false':
+      // `runTool` recibe HTTP 200 con `ok:false`: el paso tiene que quedar failed.
+      return turn === 1
+        ? {
+            text: 'Edito el archivo.',
+            functionCalls: [
+              { name: 'fs_edit', args: { path: 'fallo.txt', oldString: 'a', newString: 'b' } },
+            ],
+          }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'git-diff-long':
+      return turn === 1
+        ? {
+            text: 'Reviso el diff.',
+            functionCalls: [{ name: 'git_diff', args: {} }],
+          }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'edit-already-applied':
+      return turn === 1
+        ? {
+            text: 'Edito el archivo.',
+            functionCalls: [
+              { name: 'fs_edit', args: { path: 'ya.txt', oldString: 'viejo', newString: 'nuevo' } },
+            ],
+          }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'test-mandatory-source-only':
+      return turn === 1
+        ? {
+            text: 'Edito el código, pero no el test.',
+            functionCalls: [{ name: 'fs_edit', args: { path: 'slug.mjs', oldString: 'a', newString: 'b' } }],
+          }
+        : { text: FINAL_TEXT, functionCalls: [] };
+    case 'test-mandatory-complete':
+      return turn === 1
+        ? {
+            text: 'Edito el código.',
+            functionCalls: [{ name: 'fs_edit', args: { path: 'slug.mjs', oldString: 'a', newString: 'b' } }],
+          }
+        : turn === 2
+          ? {
+              text: 'Añado el test.',
+              functionCalls: [
+                { name: 'fs_edit', args: { path: 'slug.test.mjs', oldString: 'a', newString: 'b' } },
+              ],
+            }
+          : turn === 3
+            ? {
+                text: 'Ejecuto el test.',
+                functionCalls: [{ name: 'shell_run', args: { command: 'node math.test.mjs' } }],
+              }
+            : { text: FINAL_TEXT, functionCalls: [] };
+    case 'shell-run-node-test':
+      return turn === 1
+        ? {
+            text: 'Verifico el test con la forma corta.',
+            functionCalls: [{ name: 'shell_run', args: { command: 'node math.test.mjs' } }],
+          }
+        : { text: FINAL_TEXT, functionCalls: [] };
     case 'slow-tool':
       return turn === 1
         ? { text: 'Voy a leer lento.', functionCalls: [{ name: 'fs_read', args: { path: 'slow.txt' } }] }
         : { text: FINAL_TEXT, functionCalls: [] };
+    case 'spawn-agents':
+      // `spawn_agents` no lleva `parentSessionId` en los argumentos del modelo:
+      // lo inyecta el bucle del CLI, y el test comprueba que llega al servidor.
+      return turn === 1
+        ? {
+            text: 'Lanzo dos subagentes.',
+            functionCalls: [
+              {
+                name: 'spawn_agents',
+                args: {
+                  agents: [
+                    { goal: 'Escribe hijo-a.txt', worktree: true, allowedTools: ['fs.read', 'fs.write'] },
+                    { goal: 'Escribe hijo-b.txt', worktree: true, allowedTools: ['fs.read', 'fs.write'] },
+                  ],
+                },
+              },
+            ],
+          }
+        : { text: 'Listo: dos hijos.', functionCalls: [] };
+    case 'git-worktree-actions':
+      // `list` es sólo lectura; `add` y `remove` crean o borran directorios y
+      // deben seguir pidiendo aprobación (G1-D4 §6, hallazgo de G1-D4-05).
+      if (turn === 1) {
+        return { text: 'Listo los worktrees.', functionCalls: [{ name: 'git_worktree', args: { action: 'list' } }] };
+      }
+      if (turn === 2) {
+        return {
+          text: 'Creo un worktree.',
+          functionCalls: [{ name: 'git_worktree', args: { action: 'add', path: 'wt-demo' } }],
+        };
+      }
+      if (turn === 3) {
+        return {
+          text: 'Lo quito.',
+          functionCalls: [{ name: 'git_worktree', args: { action: 'remove', path: 'wt-demo' } }],
+        };
+      }
+      return { text: FINAL_TEXT, functionCalls: [] };
     case 'ask-user':
       return turn === 1
         ? { text: 'Necesito confirmar el alcance.', functionCalls: [ASK_CALL] }
         : { text: 'Listo: alcance elegido.', functionCalls: [] };
     case 'max-steps':
-      return { text: 'Sigo leyendo.', functionCalls: [READ_CALL] };
+      // Un archivo distinto por turno: el test mide el tope de pasos, no el
+      // guardia de lecturas repetidas (G1-T2-READ-LOOP), que cortaría antes.
+      return {
+        text: 'Sigo leyendo.',
+        functionCalls: [{ name: 'fs_read', args: { path: `archivo-${turn}.md` } }],
+      };
     case 'unknown-tool':
       return turn === 1
         ? { text: 'Pruebo una tool.', functionCalls: [UNKNOWN_CALL] }
@@ -195,6 +524,7 @@ export async function startFakeAgentServer(): Promise<FakeAgentServer> {
   // bucle: el CLI lo hace y manda el estado con PUT /state.
   const sessions = new Map<string, SessionStateV2>();
   let sessionSeq = 0;
+  let proposalSeq = 0;
   const cloneState = (state: SessionStateV2): SessionStateV2 =>
     JSON.parse(JSON.stringify(state)) as SessionStateV2;
 
@@ -342,6 +672,87 @@ export async function startFakeAgentServer(): Promise<FakeAgentServer> {
       if (body?.toolId === 'fs.write') {
         sendJson(res, 403, {
           error: 'Modo Sólo lectura: escritura bloqueada por la política del proyecto.',
+        });
+        return;
+      }
+      if (body?.toolId === 'fs.edit' && body?.input?.path === 'fallo.txt') {
+        // HTTP 200 con `ok:false`: el caso real de un `oldString` que ya no está.
+        sendJson(res, 200, { ok: false, error: 'oldString no encontrado en el archivo' });
+        return;
+      }
+      if (body?.toolId === 'git.diff') {
+        sendJson(res, 200, {
+          ok: true,
+          data: { diff: fakeProposalDiff('gitdifflarga', 60), files: ['a.ts'] },
+        });
+        return;
+      }
+      if (body?.toolId === 'fs.read' && body?.input?.path === 'html.txt') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html>no es json</html>');
+        return;
+      }
+      if (body?.toolId === 'fs.read' && body?.input?.path === 'vacio.txt') {
+        res.writeHead(200);
+        res.end();
+        return;
+      }
+      if (body?.toolId === 'fs.edit' && body?.input?.path === 'ya.txt') {
+        sendJson(res, 200, {
+          ok: false,
+          code: 'ALREADY_APPLIED',
+          error: 'oldString no encontrado en el archivo; el newString ya está en el archivo',
+          hint: 'Posiblemente ya aplicado: el newString ya está en el archivo; no hace falta releerlo.',
+        });
+        return;
+      }
+      if (body?.toolId === 'fs.propose.edit' && body?.input?.path === 'largo.txt') {
+        sendJson(res, 200, {
+          ok: true,
+          data: {
+            applied: false,
+            proposalId: 'prop_fake_largo',
+            baseHash: 'sha256:fake-largo',
+            afterHash: 'sha256:fake-largo-after',
+            hint: FAKE_PROPOSAL_HINT,
+            path: 'largo.txt',
+            changed: true,
+            additions: 60,
+            diff: fakeProposalDiff('largo', 60),
+          },
+        });
+        return;
+      }
+      if (body?.toolId === 'fs.propose.edit' && body?.input?.path === 'enorme.txt') {
+        sendJson(res, 200, {
+          ok: true,
+          data: {
+            applied: false,
+            proposalId: 'prop_fake_enorme',
+            baseHash: 'sha256:fake-enorme',
+            afterHash: 'sha256:fake-enorme-after',
+            hint: FAKE_PROPOSAL_HINT,
+            path: 'enorme.txt',
+            changed: true,
+            additions: 500,
+            diff: fakeProposalDiff('enorme', 500),
+          },
+        });
+        return;
+      }
+      if (String(body?.toolId).startsWith('fs.propose.')) {
+        sendJson(res, 200, {
+          ok: true,
+          data: {
+            applied: false,
+            proposalId: `prop_fake_${++proposalSeq}`,
+            baseHash: 'sha256:fake',
+            afterHash: 'sha256:fake-after',
+            hint: FAKE_PROPOSAL_HINT,
+            path: String(body?.input?.path ?? 'slug.mjs'),
+            changed: true,
+            diff: '+nuevo\\n-viejo',
+          },
         });
         return;
       }

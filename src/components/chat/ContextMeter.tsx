@@ -2,9 +2,10 @@
  * Indicador de contexto del chat: cuánto ocupa la conversación, cuánto queda y
  * con qué esfuerzo responde el modelo.
  *
- * La cifra es una estimación (≈4 caracteres por token): el objetivo es avisar
- * antes de llegar al límite, no dar el número exacto del proveedor. Al pulsarlo
- * se despliega el desglose; los perfiles Rápido / Equilibrado / Potente cambian
+ * La cifra se estima con ≈4 caracteres por token; cuando Google, Anthropic,
+ * OpenAI o Strata local exponen su contador, se sustituye por el número real y
+ * se indica la fuente. Al pulsarlo se despliega el desglose; los perfiles
+ * Rápido / Equilibrado / Potente cambian
  * el máximo de tokens y el nivel de razonamiento. En LM Studio también se elige
  * la ventana con la que se cargará el modelo.
  */
@@ -12,7 +13,9 @@ import React, { useId, useState } from 'react';
 import { Activity, ChevronDown, ChevronUp } from 'lucide-react';
 import type { AIModel, ChatMessage, ParameterConfig } from '../../types/studio';
 import type { Language } from '../../i18n/translations';
-import { computeContextStats, formatTokens, modelContextLimit } from '../../lib/contextStats';
+import { applyMeasuredContextTokens, computeContextStats, formatTokens, modelContextLimit } from '../../lib/contextStats';
+import { strataToolReserveTokens } from '../../lib/strataContextBudget';
+import { useContextMeasurement } from '../../hooks/useContextMeasurement';
 import { EFFORT_ORDER, EFFORT_PROFILES, detectEffort, type EffortLevel } from './effortProfiles';
 
 interface ContextMeterProps {
@@ -79,13 +82,22 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
   const [collapsed, setCollapsed] = useState<boolean>(readCollapsed);
   const panelId = useId();
 
+  const reservedToolTokens = React.useMemo(() => strataToolReserveTokens(model), [model]);
+  const estimatedStats = React.useMemo(
+    () => computeContextStats({ messages, parameters, model, toolTokens: reservedToolTokens }),
+    [messages, parameters, model, reservedToolTokens]
+  );
+  const measurement = useContextMeasurement({ model, messages, parameters });
+  const measured = measurement?.source === 'provider';
   const stats = React.useMemo(
-    () => computeContextStats({ messages, parameters, model }),
-    [messages, parameters, model]
+    () => (measured && measurement ? applyMeasuredContextTokens(estimatedStats, measurement.tokens) : estimatedStats),
+    [estimatedStats, measured, measurement]
   );
 
   const L = (es: string, en: string, de: string) => (lang === 'es' ? es : lang === 'de' ? de : en);
-  const percent = stats.percent ?? 0;
+  // En Strata el porcentaje relevante es el del espacio útil: la respuesta y
+  // las tools ya están reservadas y no deberían hacer fallar el turno.
+  const percent = stats.usablePercent ?? stats.percent ?? 0;
   const tone =
     percent >= 95 ? 'var(--nc-danger)' : percent >= 80 ? 'var(--nc-text-accent)' : 'var(--nc-text)';
   const active = detectEffort(parameters);
@@ -101,11 +113,14 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
     return [...new Set(values)].sort((a, b) => a - b);
   }, [modelLimit, configuredContext]);
 
+  const measuredLabel = L('medidos', 'measured', 'gemessen');
+  const estimatedLabel = L('estimados', 'estimated', 'geschätzt');
   const summary = L(
-    `Contexto: ${stats.percent === null ? 'ventana desconocida' : `${percent}%`} · ${formatTokens(stats.totalTokens)} tokens estimados de ${stats.messages} mensaje(s)`,
-    `Context: ${stats.percent === null ? 'unknown window' : `${percent}%`} · ${formatTokens(stats.totalTokens)} estimated tokens across ${stats.messages} message(s)`,
-    `Kontext: ${stats.percent === null ? 'Fenster unbekannt' : `${percent}%`} · geschätzt ${formatTokens(stats.totalTokens)} Token aus ${stats.messages} Nachricht(en)`
+    `Contexto: ${stats.percent === null ? 'ventana desconocida' : `${percent}%`} · ${formatTokens(stats.totalTokens)} tokens ${measured ? measuredLabel : estimatedLabel} de ${stats.messages} mensaje(s)`,
+    `Context: ${stats.percent === null ? 'unknown window' : `${percent}%`} · ${formatTokens(stats.totalTokens)} ${measured ? measuredLabel : estimatedLabel} tokens across ${stats.messages} message(s)`,
+    `Kontext: ${stats.percent === null ? 'Fenster unbekannt' : `${percent}%`} · ${formatTokens(stats.totalTokens)} Token ${measured ? measuredLabel : estimatedLabel} aus ${stats.messages} Nachricht(en)`
   );
+  const budgetPercent = stats.usablePercent ?? stats.percent;
 
   const toggleCollapsed = React.useCallback(() => {
     setCollapsed((value) => !value);
@@ -143,7 +158,7 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
           <Activity className="h-3 w-3 text-[var(--nc-text-accent)]" aria-hidden />
           <span className="font-bold text-[var(--nc-text-accent)]">CTX</span>
           <span className="tabular-nums" data-testid="context-percent">
-            {stats.percent === null ? '—' : `${percent}%`}
+            {budgetPercent === null ? '—' : `${percent}%`}
           </span>
           <span className="tabular-nums opacity-70">
             {formatTokens(stats.totalTokens)}
@@ -161,7 +176,12 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
   const rows: Array<{ label: string; value: string }> = [
     { label: L('Instrucciones y ejemplos', 'Instructions & examples', 'Anweisungen & Beispiele'), value: formatTokens(stats.systemTokens) },
     { label: L('Conversación', 'Conversation', 'Unterhaltung'), value: formatTokens(stats.conversationTokens) },
-    { label: L('Total estimado', 'Estimated total', 'Geschätzt gesamt'), value: formatTokens(stats.totalTokens) },
+    {
+      label: measured
+        ? L('Total medido', 'Measured total', 'Gemessen gesamt')
+        : L('Total estimado', 'Estimated total', 'Geschätzt gesamt'),
+      value: formatTokens(stats.totalTokens),
+    },
     {
       label:
         configuredContext > 0
@@ -170,6 +190,21 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
       value: stats.limit ? formatTokens(stats.limit) : '—',
     },
     { label: L('Reservado a la respuesta', 'Reserved for reply', 'Für Antwort reserviert'), value: formatTokens(stats.reservedTokens) },
+    ...(stats.reservedToolTokens > 0
+      ? [
+          {
+            label: L('Reservado a herramientas', 'Reserved for tools', 'Für Tools reserviert'),
+            value: formatTokens(stats.reservedToolTokens),
+          },
+          {
+            label: L('Presupuesto útil', 'Usable budget', 'Nutzbares Budget'),
+            value:
+              stats.limit === null
+                ? '—'
+                : formatTokens(Math.max(0, stats.limit - stats.reservedTokens - stats.reservedToolTokens)),
+          },
+        ]
+      : []),
     {
       label: L('Libre', 'Free', 'Frei'),
       value: stats.remainingTokens === null ? '—' : formatTokens(stats.remainingTokens),
@@ -202,7 +237,7 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
             />
           </span>
           <span className="tabular-nums" data-testid="context-percent">
-            {stats.percent === null ? '—' : `${percent}%`}
+            {budgetPercent === null ? '—' : `${percent}%`}
           </span>
           <span className="tabular-nums opacity-70">
             {formatTokens(stats.totalTokens)}
@@ -301,12 +336,18 @@ export const ContextMeter: React.FC<ContextMeterProps> = ({
               <span className="tabular-nums">{row.value}</span>
             </div>
           ))}
-          <p className="col-span-full mt-1 opacity-60">
-            {L(
-              'Estimación aproximada (≈4 caracteres por token).',
-              'Rough estimate (≈4 characters per token).',
-              'Grobe Schätzung (≈4 Zeichen pro Token).'
-            )}
+          <p className="col-span-full mt-1 opacity-60" data-testid="context-source">
+            {measured
+              ? L(
+                  `Medido con el tokenizador real del proveedor${measurement?.tokenizer ? ` (${measurement.tokenizer})` : ''}.`,
+                  `Measured with the provider's real tokenizer${measurement?.tokenizer ? ` (${measurement.tokenizer})` : ''}.`,
+                  `Mit dem echten Tokenizer des Anbieters gemessen${measurement?.tokenizer ? ` (${measurement.tokenizer})` : ''}.`
+                )
+              : L(
+                  'Estimación aproximada (≈4 caracteres por token).',
+                  'Rough estimate (≈4 characters per token).',
+                  'Grobe Schätzung (≈4 Zeichen pro Token).'
+                )}
             {activeProfile
               ? ' ' +
                 L(

@@ -108,6 +108,152 @@ describe('ChatPlayground', () => {
       expect(getTextarea().value).toBe('');
     });
 
+    test('recorta un mensaje que no cabe y avisa antes de enviarlo', async () => {
+      const json = (body: unknown) =>
+        new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/api/context/count')) {
+          return json({ success: true, tokens: 1000, source: 'provider', tokenizer: 'gemini' });
+        }
+        if (url.includes('/api/providers')) {
+          return json({
+            success: true,
+            providers: [
+              { id: 'google', name: 'Google Gemini', configured: true, enabled: true, whitelist: [], blacklist: [] },
+            ],
+          });
+        }
+        if (url.includes('/api/models/live')) {
+          return json({
+            success: true,
+            models: [
+              {
+                id: 'tiny-context',
+                name: 'Modelo de contexto pequeño',
+                provider: 'google',
+                contextWindow: '1K tokens',
+                contextLength: 1024,
+              },
+            ],
+            providers: {},
+          });
+        }
+        return json({
+          success: true,
+          permissions: { mode: 'build', allowedTools: null, deniedTools: [], files: { read: [], write: [] } },
+        });
+      }) as unknown as typeof fetch;
+
+      const props = {
+        ...baseProps(),
+        selectedModel: 'tiny-context',
+        parameters: { ...DEFAULT_PARAMETERS, maxTokens: 100 },
+      };
+      render(<ChatPlayground {...props} />);
+      // El catálogo vivo llega después del primer render; sin esperar, el modelo
+      // todavía no tiene ventana y el envío sale por el camino corto.
+      await waitFor(() => expect(screen.getByTestId('context-meter').textContent).toContain('/1K'));
+      const draft = `CABEZA-${'x'.repeat(5000)}-COLA`;
+      fireEvent.change(getTextarea(), { target: { value: draft } });
+      fireEvent.click(getSendButton());
+
+      await waitFor(() => expect(props.onSendMessage).toHaveBeenCalledTimes(1));
+      const sent = props.onSendMessage.mock.calls[0][0] as string;
+      expect(sent.length).toBeLessThan(draft.length);
+      expect(sent.startsWith('CABEZA-')).toBe(true);
+      expect(sent.endsWith('-COLA')).toBe(true);
+      expect(sent).toContain('caracteres omitidos');
+      expect(screen.getByTestId('context-fit-notice').textContent).toContain('Mensaje acortado');
+      expect(getTextarea().value).toBe('');
+    });
+
+    test('Strata compacta al 80 % del presupuesto y muestra el antes/después', async () => {
+      const history: ChatMessage[] = Array.from({ length: 8 }, (_, index) => ({
+        id: `hist-${index}`,
+        role: index % 2 === 0 ? 'user' : 'model',
+        content: `turno ${index} ${'x'.repeat(3000)}`,
+        timestamp: '10:00',
+      }));
+      let compactBody: any = null;
+      const json = (body: unknown) =>
+        new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/api/context/count')) {
+          // Cabe en la ventana (aún no hay drop-history), pero supera el 80 %
+          // del espacio útil después de reservar salida y herramientas.
+          return json({ success: true, tokens: 25000, source: 'provider', tokenizer: 'strata' });
+        }
+        if (url.includes('/api/strata-local/compact')) {
+          compactBody = JSON.parse(String(init?.body || '{}'));
+          return json({
+            success: true,
+            summary: 'resumen de prueba',
+            kept: 2,
+            removed: 6,
+            beforeTokens: 7000,
+            afterTokens: 2000,
+            savedTokens: 5000,
+            savedPercent: 71,
+          });
+        }
+        if (url.includes('/api/models/live')) {
+          return json({
+            success: true,
+            models: [
+              {
+                id: 'strata-local/strata-demo',
+                name: 'Strata demo',
+                provider: 'strata-local',
+                contextWindow: '32K tokens',
+                contextLength: 32768,
+                supportsTools: true,
+              },
+            ],
+            providers: {},
+          });
+        }
+        return json({
+          success: true,
+          permissions: { mode: 'build', allowedTools: null, deniedTools: [], files: { read: [], write: [] } },
+          providers: [],
+        });
+      }) as unknown as typeof fetch;
+
+      const props = {
+        ...baseProps(),
+        messages: history,
+        selectedModel: 'strata-local/strata-demo',
+      };
+      render(<ChatPlayground {...props} />);
+      await waitFor(() => expect(screen.getByTestId('context-meter').textContent).toContain('/32.8K'));
+      // Un borrador largo fuerza la medición real; el conteo del proveedor
+      // confirma que aún cabe, pero el presupuesto útil ya pasó del 80 %.
+      fireEvent.change(getTextarea(), { target: { value: `Siguiente ${'p'.repeat(3000)}` } });
+      fireEvent.click(getSendButton());
+
+      await waitFor(() => expect(props.onSendMessage).toHaveBeenCalledTimes(1));
+      expect(compactBody).toMatchObject({
+        contextWindow: 32768,
+        reservedTokens: 2048,
+        toolTokens: 2048,
+        keepRecent: 6,
+      });
+      expect(screen.getByTestId('context-fit-notice').textContent).toContain('Historial compactado');
+      expect(screen.getByTestId('context-fit-notice').textContent).toContain('7K → 2K');
+
+      const nextHistory = props.onSendMessage.mock.calls[0][4] as ChatMessage[];
+      expect(nextHistory[0].isSummary).toBe(true);
+      expect(nextHistory[0].contextCompaction).toEqual({
+        beforeTokens: 7000,
+        afterTokens: 2000,
+        savedTokens: 5000,
+      });
+      expect(nextHistory).toHaveLength(3);
+      expect(props.setMessages).toHaveBeenCalledWith(nextHistory);
+    });
+
     test('el contexto de LM Studio configurado en el compositor se guarda en los parámetros', async () => {
       globalThis.fetch = vi.fn(async () =>
         new Response(
@@ -783,6 +929,23 @@ describe('ChatPlayground', () => {
     test('muestra el modelo usado', () => {
       render(<ChatPlayground {...baseProps()} messages={[modelMessage()]} />);
       expect(screen.getByText('gemini-3.5-flash')).toBeInTheDocument();
+    });
+
+    test('el resumen conserva el antes/después del contexto', () => {
+      render(
+        <ChatPlayground
+          {...baseProps()}
+          messages={[
+            {
+              ...modelMessage('Resumen de la conversación'),
+              isSummary: true,
+              contextCompaction: { beforeTokens: 7000, afterTokens: 2000, savedTokens: 5000 },
+            },
+          ]}
+        />
+      );
+
+      expect(screen.getByTestId('summary-context-change').textContent).toContain('7K → 2K');
     });
   });
 

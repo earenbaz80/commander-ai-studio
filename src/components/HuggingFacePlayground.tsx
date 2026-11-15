@@ -9,7 +9,9 @@ import {
 import { ParameterConfig, HfHubModel, DownloadedLocalModel } from '../types/studio';
 
 import { Language } from '../i18n/translations';
+
 import { copyTextToClipboard } from '../utils/clipboard';
+import { LocalModelHubPanel } from './LocalModelHubPanel';
 
 
 
@@ -59,9 +61,11 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
   onRemoveDownloadedModel,
 
+  lang = 'es',
+
 }) => {
 
-  const [activeTab, setActiveTab] = useState<'search' | 'local_models' | 'tester'>('search');
+  const [activeTab, setActiveTab] = useState<'search' | 'native' | 'local_models' | 'tester'>('search');
 
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -143,6 +147,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
 
   const [runtimeStatus, setRuntimeStatus] = useState<{ available: boolean; dir: string } | null>(null);
+  const [nativeLibrary, setNativeLibrary] = useState<{ count: number; sizeMb: number }>({ count: 0, sizeMb: 0 });
 
 
 
@@ -159,6 +164,18 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
         if (data.success) {
 
           setRuntimeStatus({ available: !!data.hasLlamaRuntime, dir: data.dir });
+
+          if (Array.isArray(data.library)) {
+
+            setNativeLibrary({
+
+              count: data.library.length,
+
+              sizeMb: data.library.reduce((sum: number, model: any) => sum + (Number(model.sizeMb) || 0), 0),
+
+            });
+
+          }
 
           if (Array.isArray(data.models)) {
 
@@ -445,7 +462,14 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
 
 
-  const totalStorageMb = downloadedModels.reduce((acc, m) => acc + (m.sizeMb || 0), 0);
+  // La biblioteca nativa vive en disco y la reporta el servidor. `downloadedModels`
+  // es el catálogo histórico del cliente (incluye GGUF nativos), así que se
+  // separa para que la cabecera no sume dos veces ni contradiga al panel.
+  const legacyModels = downloadedModels.filter((model) => !model.id.startsWith('local/'));
+  const legacyStorageMb = legacyModels.reduce((acc, m) => acc + (m.sizeMb || 0), 0);
+  const nativeStorageGb = nativeLibrary.sizeMb / 1024;
+  const legacyStorageGb = legacyStorageMb / 1024;
+  const L = (es: string, en: string) => (lang === 'es' ? es : en);
 
 
 
@@ -454,10 +478,17 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
     <div className="flex-1 min-w-0 min-h-0 h-full flex flex-col bg-[var(--nc-bg-main)] font-mono text-xs text-[var(--nc-text)] p-2 overflow-hidden select-text">
 
       {/* Top Banner Bar */}      <div className="bg-[var(--nc-header-bg)] text-black font-bold border-2 border-black shrink-0">
-        <div className="flex items-center justify-between gap-3 px-3 py-1">
+        <div className="flex items-start justify-between gap-3 px-3 py-1">
           <span className="min-w-0 truncate">╔═ HUGGING FACE LOCAL HUB MANAGER ═╗</span>
-          <span className="shrink-0 whitespace-nowrap text-[10px]">
-            STORAGE: {(totalStorageMb / 1024).toFixed(2)} GB | WEBGPU ACTIVE | LLAMA-CPP: {runtimeStatus && runtimeStatus.available ? 'ON' : 'OFF (runtime missing)'}
+          <span className="min-w-0 text-right text-[9px] leading-[1.35]">
+            <span className="block">
+              {L('GGUF NATIVOS', 'NATIVE GGUF')}: {nativeLibrary.count} · {nativeStorageGb.toFixed(2)} GB
+            </span>
+            <span className="block">
+              {L('LEGACY HF', 'LEGACY HF')}: {legacyModels.length} · {legacyStorageGb.toFixed(2)} GB
+              {' · LLAMA-CPP: '}
+              {runtimeStatus && runtimeStatus.available ? 'ON' : 'OFF (runtime missing)'}
+            </span>
           </span>
         </div>
         <div className="flex gap-1 bg-[var(--nc-bg-main)] px-2 py-1 border-t-2 border-black">
@@ -468,10 +499,16 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
             [HUB SEARCH]
           </button>
           <button
+            onClick={() => setActiveTab('native')}
+            className={`px-3 py-1 text-[10px] font-bold border-2 ${activeTab === 'native' ? 'bg-[var(--nc-active-bg)] text-black border-black' : 'text-[var(--nc-text)] border-transparent hover:border-[var(--nc-border-light)]'}`}
+          >
+            {lang === 'es' ? '[DESCARGA NATIVA]' : '[NATIVE DOWNLOAD]'}
+          </button>
+          <button
             onClick={() => setActiveTab('local_models')}
             className={`px-3 py-1 text-[10px] font-bold border-2 ${activeTab === 'local_models' ? 'bg-[var(--nc-active-bg)] text-black border-black' : 'text-[var(--nc-text)] border-transparent hover:border-[var(--nc-border-light)]'}`}
           >
-            [LOCALES ({downloadedModels.length})]
+            {lang === 'es' ? `[LEGACY HF (${legacyModels.length})]` : `[HF LEGACY (${legacyModels.length})]`}
           </button>
           <button
             onClick={() => setActiveTab('tester')}
@@ -844,6 +881,20 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
 
 
+        {activeTab === 'native' && (
+          <LocalModelHubPanel
+            selectedModel={selectedModel}
+            onSelectModel={setSelectedModel}
+            onAddDownloadedModel={onAddDownloadedModel}
+            onRemoveDownloadedModel={onRemoveDownloadedModel}
+            onLibraryChange={setNativeLibrary}
+            onRuntimeStatusChange={(available) =>
+              setRuntimeStatus((prev) => ({ available, dir: prev?.dir || '' }))
+            }
+            lang={lang}
+          />
+        )}
+
         {activeTab === 'local_models' && (
 
           <div className="space-y-4">
@@ -852,7 +903,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
               <div className="bg-[var(--nc-header-bg)] text-black font-bold px-2 py-0.5">
 
-                MIS MODELOS LOCALES EN CACHÉ ({downloadedModels.length})
+                {L('CACHÉ HF LEGACY', 'LEGACY HF CACHE')} ({legacyModels.length})
 
               </div>
 
@@ -884,7 +935,7 @@ export const HuggingFacePlayground: React.FC<HuggingFacePlaygroundProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 
-                {downloadedModels.map((local) => (
+                {legacyModels.map((local) => (
 
                   <div key={local.id} className="border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] p-3 space-y-2">
 

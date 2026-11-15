@@ -32,6 +32,7 @@ import { GEMINI_DEFAULT_MODEL } from '../../src/config/geminiModels.js';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
 const CLI_PATH = path.join(REPO_ROOT, 'bin', 'commander.ts');
+const PTY_RUNNER_PATH = path.join(REPO_ROOT, 'tests', 'helpers', 'ptyCliRunner.ts');
 const CLI_TIMEOUT_MS = 45_000;
 const RECEIPTS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-cli-e2e-'));
 
@@ -61,10 +62,16 @@ interface NdjsonEvent {
     tool?: string;
     input?: unknown;
     diff?: string;
+    repeatOf?: string;
   };
   approvalId?: string;
   decision?: string;
   reason?: string;
+  invalid?: {
+    reason?: string;
+    approvalId?: string;
+    retryLabel?: string;
+  };
   question?: {
     id?: string;
     header?: string;
@@ -146,6 +153,58 @@ function runAttach(sessionId: string, args: string[]): Promise<CliResult> {
   return runCliCommand('attach', [sessionId, ...args]);
 }
 
+/** Igual que `runCli`, pero con un PTY real para que el CLI vea dos TTY. */
+function runCliInPty(args: string[], extraEnv: Record<string, string>): Promise<CliResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      ['--import', 'tsx', PTY_RUNNER_PATH, ...args],
+      {
+        cwd: REPO_ROOT,
+        env: {
+          ...process.env,
+          NO_COLOR: '1',
+          GEMINI_API_KEY: '',
+          GOOGLE_API_KEY: '',
+          ...extraEnv,
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      }
+    );
+
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        /* ya terminó */
+      }
+    }, CLI_TIMEOUT_MS);
+
+    child.stdout?.setEncoding('utf8');
+    child.stderr?.setEncoding('utf8');
+    child.stdout?.on('data', (chunk: string) => {
+      stdout = `${stdout}${chunk}`.slice(-1_000_000);
+    });
+    child.stderr?.on('data', (chunk: string) => {
+      stderr = `${stderr}${chunk}`.slice(-64_000);
+    });
+
+    child.once('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once('close', (code, signal) => {
+      clearTimeout(timer);
+      resolve({ code, signal, stdout, stderr, timedOut });
+    });
+  });
+}
+
 function runScenario(
   scenario: FakeScenario,
   opts: { serverUrl: string; maxSteps?: number; stream?: boolean }
@@ -198,9 +257,12 @@ function assertEventEnvelope(
 function parseEventsSafe(stdout: string): NdjsonEvent[] {
   const events: NdjsonEvent[] = [];
   for (const line of stdout.split(/\r?\n/)) {
-    if (!line.trim()) continue;
+    // El PTY mezcla el prompt (stderr) con los eventos; el NDJSON puede venir
+    // precedido por secuencias ANSI en la misma línea.
+    const start = line.indexOf('{"schemaVersion"');
+    if (start < 0) continue;
     try {
-      events.push(JSON.parse(line) as NdjsonEvent);
+      events.push(JSON.parse(line.slice(start)) as NdjsonEvent);
     } catch {
       /* el recibo conserva la línea cruda en stdout */
     }
@@ -517,7 +579,7 @@ describe('CLI E2E con proveedor falso (F1-14)', () => {
     assert.equal(answer?.text, 'Listo: el faro funciona.', message);
   });
 
-  test('tool denegada: reporta el 403 y sigue hasta la respuesta', async (t) => {
+  test('tool mutante sin aprobación: deniega en el cliente y sigue hasta la respuesta', async (t) => {
     const fake = await startFakeAgentServer();
     t.after(() => fake.close());
     const result = await runScenario('tool-denied', { serverUrl: fake.baseUrl, stream: false });
@@ -526,13 +588,194 @@ describe('CLI E2E con proveedor falso (F1-14)', () => {
     const message = diag(result, receipt);
 
     assert.equal(result.code, 0, message);
+    const approvalRequest = events.find((event) => event.type === 'approval_request');
+    assert.equal(approvalRequest?.type, 'approval_request', message);
+    if (approvalRequest?.type === 'approval_request') {
+      assert.equal(approvalRequest.approval?.tool, 'fs.write', message);
+    }
+    const decision = events.find((event) => event.type === 'approval_result');
+    assert.equal(decision?.type, 'approval_result', message);
+    if (decision?.type === 'approval_result') {
+      assert.equal(decision.decision, 'deny', message);
+      assert.match(decision.reason || '', /terminal interactiva/, message);
+    }
     const toolResult = events.find((event) => event.type === 'tool_result');
     assert.equal(toolResult?.ok, false, message);
-    assert.match(String(toolResult?.summary), /Sólo lectura/, message);
-    const request = fake.requests.find((entry) => entry.path === '/api/agent/run-tool');
-    assert.equal(request?.body?.toolId, 'fs.write', message);
+    assert.match(String(toolResult?.summary), /aprobación denegada/, message);
+    assert.equal(
+      fake.requests.some((entry) => entry.path === '/api/agent/run-tool'),
+      false,
+      `${message}\nla tool mutante no debe llegar al servidor sin aprobación`
+    );
     const answer = events.find((event) => event.type === 'answer');
     assert.equal(answer?.text, 'Listo: el faro funciona.', message);
+  });
+
+  test('--label: una aprobación caducada por el CLI expone retryLabel en error y done', async (t) => {
+    const fake = await startFakeAgentServer();
+    t.after(() => fake.close());
+
+    const result = await runCliInPty(
+      [
+        'SCENARIO:tool-denied Deja una aprobación abierta.',
+        '--json',
+        '--server',
+        fake.baseUrl,
+        '--label',
+        'CAL2-R01',
+        '--max-steps',
+        '2',
+        '--no-stream',
+      ],
+      {
+        NODE_ENV: 'test',
+        COMMANDER_TEST_MODE: '1',
+        COMMANDER_TEST_APPROVAL_TTL_MS: '80',
+      }
+    );
+    const receipt = writeReceipt('label-expired', 'tool-denied', result, fake);
+    const events = parseEventsSafe(result.stdout);
+    const message = diag(result, receipt);
+
+    assert.equal(result.timedOut, false, message);
+    assert.equal(result.code, 1, message);
+    const error = events.find((event) => event.type === 'error');
+    assert.match(String(error?.text), /aprobación caducada/i, message);
+    assert.match(String(error?.text), /CAL2-R01b/, `${message}\nla etiqueta de repetición va en el error`);
+
+    const approval = events.find((event) => event.type === 'approval_request');
+    const approvalId = approval?.approval?.id;
+    assert.equal(typeof approvalId, 'string', message);
+    const done = events.at(-1);
+    assert.equal(done?.type, 'done', message);
+    assert.deepEqual(done?.invalid, {
+      reason: 'approval_expired',
+      approvalId,
+      retryLabel: 'CAL2-R01b',
+    });
+
+    const sessionId = events.find((event) => typeof event.sessionId === 'string')?.sessionId;
+    assert.equal(typeof sessionId, 'string', message);
+    const persisted = await getServerSession(fake.baseUrl, String(sessionId));
+    assert.equal(persisted.status, 200, JSON.stringify(persisted.state));
+    assert.deepEqual(persisted.state.invalid, done?.invalid, 'el servidor también lo conserva');
+  });
+
+  test('shell.run idéntico repetido: no se ejecuta sin confirmación explícita', async (t) => {
+    const fake = await startFakeAgentServer();
+    t.after(() => fake.close());
+
+    const result = await runCliInPty(
+      [
+        'SCENARIO:shell-same-twice Corre el mismo test dos veces.',
+        '--json',
+        '--server',
+        fake.baseUrl,
+        '--max-steps',
+        '5',
+        '--no-stream',
+      ],
+      {
+        NODE_ENV: 'test',
+        COMMANDER_TEST_MODE: '1',
+        // Primera aprobación allow; la repetición se deniega explícitamente.
+        COMMANDER_TEST_APPROVAL_DECISIONS: 'allow,deny',
+      }
+    );
+    const receipt = writeReceipt('shell-same-twice', 'shell-same-twice', result, fake);
+    const events = parseEventsSafe(result.stdout);
+    const message = diag(result, receipt);
+
+    assert.equal(result.timedOut, false, message);
+    assert.equal(result.code, 0, message);
+    const approvals = events.filter((event) => event.type === 'approval_request');
+    assert.equal(approvals.length, 2, `la repetición vuelve a pedir confirmación: ${message}`);
+    const first = approvals[0];
+    const second = approvals[1];
+    assert.equal(first?.type, 'approval_request', message);
+    assert.equal(second?.type, 'approval_request', message);
+    if (first?.type !== 'approval_request' || second?.type !== 'approval_request') return;
+    assert.equal(
+      second.approval?.repeatOf,
+      first.approval?.id,
+      'el segundo pedido identifica la ejecución previa'
+    );
+
+    const decisions = events
+      .filter((event) => event.type === 'approval_result')
+      .map((event) => (event.type === 'approval_result' ? event.decision : ''));
+    assert.deepEqual(decisions, ['allow', 'deny'], 'la confirmación explícita decide la repetición');
+    assert.equal(
+      fake.requests.filter(
+        (request) => request.path === '/api/agent/run-tool' && request.body?.toolId === 'shell.run'
+      ).length,
+      1,
+      'sin confirmación la repetición no llega al servidor'
+    );
+    assert.equal(events.at(-1)?.type, 'done', message);
+  });
+
+  test('--resume reconstruye la repetición de shell.run', async (t) => {
+    const fake = await startFakeAgentServer();
+    t.after(() => fake.close());
+    const seeded = createSessionState({
+      id: 'sess_e2e_resume_shell',
+      goal: 'SCENARIO:shell-same-twice Corre el mismo test dos veces.',
+      cwd: REPO_ROOT,
+      model: GEMINI_DEFAULT_MODEL,
+    });
+    seeded.steps.push({
+      id: 'step_previous_shell',
+      type: 'tool_result',
+      toolId: 'shell.run',
+      title: 'shell.run',
+      content: 'ok',
+      input: { command: 'node --test math.test.mjs' },
+      status: 'completed',
+      ts: Date.now() - 1_000,
+      approval: { id: 'apr_seed', decision: 'allow', latencyMs: 10 },
+    });
+    fake.seedSession(seeded);
+
+    const result = await runCliInPty(
+      [
+        'SCENARIO:shell-same-twice Corre el mismo test dos veces.',
+        '--json',
+        '--server',
+        fake.baseUrl,
+        '--resume',
+        seeded.id,
+        '--max-steps',
+        '5',
+        '--no-stream',
+      ],
+      {
+        NODE_ENV: 'test',
+        COMMANDER_TEST_MODE: '1',
+        COMMANDER_TEST_APPROVAL_DECISIONS: 'allow,deny',
+      }
+    );
+    const receipt = writeReceipt('resume-shell-same-twice', 'shell-same-twice', result, fake);
+    const events = parseEventsSafe(result.stdout);
+    const message = diag(result, receipt);
+
+    assert.equal(result.timedOut, false, message);
+    assert.equal(result.code, 0, message);
+    const approvals = events.filter((event) => event.type === 'approval_request');
+    assert.equal(approvals.length, 2, `el resume exige confirmación: ${message}`);
+    const first = approvals[0];
+    const second = approvals[1];
+    if (first?.type !== 'approval_request' || second?.type !== 'approval_request') return;
+    assert.equal(first.approval?.repeatOf, 'apr_seed', 'la huella viene del estado persistido');
+    assert.equal(second.approval?.repeatOf, first.approval?.id, 'la repetición posterior también se marca');
+    assert.equal(
+      fake.requests.filter(
+        (request) => request.path === '/api/agent/run-tool' && request.body?.toolId === 'shell.run'
+      ).length,
+      1,
+      'la repetición denegada después del resume no se ejecuta'
+    );
+    assert.equal(events.at(-1)?.type, 'done', message);
   });
 
   test('límite de pasos: corta con error y sale 1', async (t) => {

@@ -119,15 +119,15 @@ function writeVault(vault: VaultFile): void {
   }
 }
 
-function aad(provider: IntegrationId): Buffer {
+function aad(provider: string): Buffer {
   return Buffer.from(`${AAD_PREFIX}${provider}:v1`, 'utf8');
 }
 
-function encryptToken(provider: IntegrationId, token: OAuthToken): VaultEntry {
+function encryptValue(provider: string, value: unknown): VaultEntry {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', readKey(), iv);
   cipher.setAAD(aad(provider));
-  const data = Buffer.concat([cipher.update(JSON.stringify(token), 'utf8'), cipher.final()]);
+  const data = Buffer.concat([cipher.update(JSON.stringify(value), 'utf8'), cipher.final()]);
   return {
     iv: iv.toString('base64'),
     tag: cipher.getAuthTag().toString('base64'),
@@ -136,7 +136,7 @@ function encryptToken(provider: IntegrationId, token: OAuthToken): VaultEntry {
   };
 }
 
-function decryptToken(provider: IntegrationId, entry: VaultEntry): OAuthToken {
+function decryptValue(provider: string, entry: VaultEntry): unknown {
   try {
     const decipher = crypto.createDecipheriv('aes-256-gcm', readKey(), Buffer.from(entry.iv, 'base64'));
     decipher.setAAD(aad(provider));
@@ -145,17 +145,25 @@ function decryptToken(provider: IntegrationId, entry: VaultEntry): OAuthToken {
       decipher.update(Buffer.from(entry.data, 'base64')),
       decipher.final(),
     ]).toString('utf8');
-    const token = JSON.parse(raw) as OAuthToken;
-    if (!token || typeof token.accessToken !== 'string' || !token.accessToken) {
-      throw new Error('token vacío');
-    }
-    return token;
+    return JSON.parse(raw) as unknown;
   } catch (error) {
     if (error instanceof VaultError) throw error;
     throw new VaultError(
       'No se pudo descifrar el token de integración. El vault o su clave cambiaron; vuelve a conectar.',
     );
   }
+}
+
+function encryptToken(provider: IntegrationId, token: OAuthToken): VaultEntry {
+  return encryptValue(provider, token);
+}
+
+function decryptToken(provider: IntegrationId, entry: VaultEntry): OAuthToken {
+  const token = decryptValue(provider, entry) as OAuthToken;
+  if (!token || typeof token.accessToken !== 'string' || !token.accessToken) {
+    throw new VaultError('El token guardado está vacío o malformado.');
+  }
+  return token;
 }
 
 export function saveToken(provider: IntegrationId, token: OAuthToken): void {
@@ -175,6 +183,50 @@ export function deleteToken(provider: IntegrationId): boolean {
   const vault = readVault();
   if (!vault.entries[provider]) return false;
   delete vault.entries[provider];
+  writeVault(vault);
+  return true;
+}
+
+/**
+ * Secretos de aplicación (no OAuth) en el mismo vault cifrado. Se guardan bajo
+ * el prefijo `secret:` para no colisionar con los ids de integraciones.
+ */
+const SECRET_PREFIX = 'secret:';
+
+function secretKey(namespace: string): string {
+  const clean = String(namespace || '').trim();
+  if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(clean)) {
+    throw new VaultError('Namespace de secreto inválido.');
+  }
+  return `${SECRET_PREFIX}${clean}`;
+}
+
+export function saveVaultSecret(namespace: string, value: string): void {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new VaultError('El secreto no puede estar vacío.');
+  }
+  const key = secretKey(namespace);
+  const vault = readVault();
+  vault.entries[key] = encryptValue(key, { value });
+  writeVault(vault);
+}
+
+export function getVaultSecret(namespace: string): string | null {
+  const key = secretKey(namespace);
+  const entry = readVault().entries[key];
+  if (!entry) return null;
+  const value = decryptValue(key, entry) as { value?: unknown };
+  if (!value || typeof value.value !== 'string' || !value.value.trim()) {
+    throw new VaultError('El secreto guardado está vacío o malformado.');
+  }
+  return value.value;
+}
+
+export function deleteVaultSecret(namespace: string): boolean {
+  const key = secretKey(namespace);
+  const vault = readVault();
+  if (!vault.entries[key]) return false;
+  delete vault.entries[key];
   writeVault(vault);
   return true;
 }

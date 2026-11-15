@@ -55,7 +55,7 @@ async function callServer(toolId: string, input: any): Promise<any> {
 export const browserTool: ToolDefinition<BrowserInput, any> = {
   id: 'browser',
   description:
-    'Navegador headless: open, navigate, snapshot (árbol de la página con uid), click, type, press, scroll, screenshot, logs, close, list.',
+    'Navegador headless: open, navigate, snapshot (árbol con uid, caja, display, visibilidad, overflow y contraste), click, type, press, scroll, screenshot, logs, close, list.',
   danger: true,
   requiresApproval: (input) => {
     const action = String((input as any)?.action || '').trim().toLowerCase();

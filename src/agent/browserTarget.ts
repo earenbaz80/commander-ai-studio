@@ -118,12 +118,30 @@ export function isLoopbackUrl(raw: unknown): boolean {
   }
 }
 
+/** Caja del elemento en coordenadas del viewport (CSS px). */
+export interface SnapshotBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /** Elemento tal como lo devuelve el script que recorre la página. */
 export interface RawSnapshotNode {
   role?: string;
   name?: string;
   value?: string;
   depth?: number;
+  box?: Partial<SnapshotBox> | null;
+  /** `visible`, `hidden`, `x:hidden,y:auto,clip:x`… */
+  overflow?: string;
+  display?: string;
+  visibility?: string;
+  /** Ratio de contraste WCAG calculado contra el fondo efectivo. */
+  contrast?: number;
+  /** 4.5 para texto normal, 3 para texto grande. */
+  contrastMin?: number;
+  hidden?: boolean;
 }
 
 /** Nodo con su handle (`uid`), que es lo que el modelo usa para actuar. */
@@ -133,6 +151,61 @@ export interface SnapshotNode {
   name: string;
   value?: string;
   depth: number;
+  box?: SnapshotBox;
+  overflow?: string;
+  display?: string;
+  visibility?: string;
+  contrast?: number;
+  contrastMin?: number;
+  hidden?: boolean;
+}
+
+const finiteNumber = (value: unknown, min: number, max: number, decimals = 1): number | null => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const factor = 10 ** decimals;
+  return Math.round(Math.max(min, Math.min(max, n)) * factor) / factor;
+};
+
+const cssToken = (value: unknown, max = 40): string | undefined => {
+  const token = String(value ?? '').trim().toLowerCase().replace(/\s+/g, '-');
+  if (!token || token.length > max || !/^[a-z0-9-]+$/.test(token)) return undefined;
+  return token;
+};
+
+const overflowToken = (value: unknown): string | undefined => {
+  const token = String(value ?? '').trim().toLowerCase();
+  if (!token || token.length > 80 || !/^[a-z0-9:,-]+$/.test(token)) return undefined;
+  return token;
+};
+
+function normalizeBox(raw: RawSnapshotNode['box']): SnapshotBox | undefined {
+  const bx = finiteNumber(raw?.x, -100_000, 100_000);
+  const by = finiteNumber(raw?.y, -100_000, 100_000);
+  const bw = finiteNumber(raw?.width, 0, 100_000);
+  const bh = finiteNumber(raw?.height, 0, 100_000);
+  if (bx === null || by === null || bw === null || bh === null) return undefined;
+  return { x: bx, y: by, width: bw, height: bh };
+}
+
+type VisualFields = Pick<
+  SnapshotNode,
+  'box' | 'overflow' | 'display' | 'visibility' | 'contrast' | 'contrastMin' | 'hidden'
+>;
+
+function normalizeVisual(item: RawSnapshotNode): VisualFields {
+  const box = normalizeBox(item?.box);
+  const contrast = finiteNumber(item?.contrast, 0, 21, 2);
+  const contrastMin = finiteNumber(item?.contrastMin, 1, 21, 2);
+  return {
+    ...(box ? { box } : {}),
+    ...(cssToken(item?.display) ? { display: cssToken(item?.display) } : {}),
+    ...(cssToken(item?.visibility) ? { visibility: cssToken(item?.visibility) } : {}),
+    ...(overflowToken(item?.overflow) ? { overflow: overflowToken(item?.overflow) } : {}),
+    ...(contrast !== null ? { contrast } : {}),
+    ...(contrastMin !== null ? { contrastMin } : {}),
+    ...(item?.hidden === true ? { hidden: true } : {}),
+  };
 }
 
 /**
@@ -144,13 +217,52 @@ export function toSnapshotNodes(raw: RawSnapshotNode[], limit = MAX_SNAPSHOT_NOD
   const out: SnapshotNode[] = [];
   for (const item of Array.isArray(raw) ? raw : []) {
     if (out.length >= limit) break;
-    const role = String(item?.role ?? '').trim() || 'generic';
+    const role = String(item?.role ?? '').trim().slice(0, 40) || 'generic';
     const name = String(item?.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 120) || UNNAMED;
     const value = item?.value === undefined || item?.value === null ? undefined : String(item.value).slice(0, 120);
     const depth = Number.isFinite(Number(item?.depth))
       ? Math.max(0, Math.min(MAX_DEPTH, Math.trunc(Number(item.depth))))
       : 0;
-    out.push({ uid: `e${out.length + 1}`, role, name, ...(value ? { value } : {}), depth });
+    out.push({
+      uid: `e${out.length + 1}`,
+      role,
+      name,
+      ...(value ? { value } : {}),
+      depth,
+      ...normalizeVisual(item),
+    });
+  }
+  return out;
+}
+
+/** Elementos existentes en el DOM pero no accionables por CSS. */
+export interface HiddenSnapshotNode {
+  role: string;
+  name: string;
+  box?: SnapshotBox;
+  display?: string;
+  visibility?: string;
+  hidden: true;
+}
+
+export function toHiddenSnapshotNodes(
+  raw: RawSnapshotNode[],
+  limit = 20,
+): HiddenSnapshotNode[] {
+  const out: HiddenSnapshotNode[] = [];
+  for (const item of Array.isArray(raw) ? raw : []) {
+    if (out.length >= limit) break;
+    const role = String(item?.role ?? '').trim().slice(0, 40) || 'generic';
+    const name = String(item?.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 120) || UNNAMED;
+    const box = normalizeBox(item?.box);
+    out.push({
+      role,
+      name,
+      ...(box ? { box } : {}),
+      ...(cssToken(item?.display) ? { display: cssToken(item?.display) } : {}),
+      ...(cssToken(item?.visibility) ? { visibility: cssToken(item?.visibility) } : {}),
+      hidden: true,
+    });
   }
   return out;
 }
@@ -173,32 +285,65 @@ export function resolveUid(
   return { index, role: target.role, name: target.name };
 }
 
+export interface SnapshotViewport {
+  width: number;
+  height: number;
+}
+
 export interface SnapshotHeader {
   title?: string;
   url?: string;
+  viewport?: SnapshotViewport;
 }
 
 /**
  * Renderiza el snapshot como texto plano: una línea por elemento, indentada por
- * profundidad, con el uid delante. Es lo que lee el modelo para decidir sobre
- * qué elemento pulsar.
+ * profundidad, con el uid delante y los metadatos visuales. Los ocultos van en
+ * una sección aparte, sin uid, para que se vean sin ser accionables.
  */
 export function formatSnapshot(
   nodes: SnapshotNode[],
   header: SnapshotHeader = {},
-): { text: string; nodes: number; truncated: boolean } {
+  hiddenNodes: HiddenSnapshotNode[] = [],
+): { text: string; nodes: number; truncated: boolean; hidden: number } {
   const lines: string[] = [];
   if (header.title || header.url) {
-    lines.push(`# ${header.title || '(sin título)'}${header.url ? ` — ${header.url}` : ''}`);
+    const viewport = header.viewport
+      ? ` · viewport=${Math.max(0, Math.round(header.viewport.width))}x${Math.max(0, Math.round(header.viewport.height))}`
+      : '';
+    lines.push(`# ${header.title || '(sin título)'}${header.url ? ` — ${header.url}` : ''}${viewport}`);
   }
   for (const node of nodes) {
     const value = node.value ? ` value="${node.value}"` : '';
-    lines.push(`${'  '.repeat(node.depth)}- ${node.uid} ${node.role} "${node.name}"${value}`);
+    const visual = [
+      node.box ? `box=${node.box.x},${node.box.y},${node.box.width}x${node.box.height}` : '',
+      node.display ? `display=${node.display}` : '',
+      node.visibility ? `visibility=${node.visibility}` : '',
+      node.overflow ? `overflow=${node.overflow}` : '',
+      node.contrast !== undefined
+        ? `contrast=${node.contrast.toFixed(2)}/${node.contrastMin ?? 4.5}`
+        : '',
+      node.hidden ? 'hidden' : '',
+    ].filter(Boolean).join(' ');
+    lines.push(`${'  '.repeat(node.depth)}- ${node.uid} ${node.role} "${node.name}"${value}${visual ? ` ${visual}` : ''}`);
   }
   if (nodes.length === 0) lines.push('(sin elementos interactivos ni encabezados)');
+  if (hiddenNodes.length > 0) {
+    lines.push('');
+    lines.push(`# ocultos: ${hiddenNodes.length} (no accionables)`);
+    for (const node of hiddenNodes) {
+      const visual = [
+        node.box ? `box=${node.box.x},${node.box.y},${node.box.width}x${node.box.height}` : '',
+        node.display ? `display=${node.display}` : '',
+        node.visibility ? `visibility=${node.visibility}` : '',
+      ].filter(Boolean).join(' ');
+      lines.push(`- hidden ${node.role} "${node.name}"${visual ? ` ${visual}` : ''}`);
+    }
+  }
   return {
     text: lines.join('\n'),
     nodes: nodes.length,
     truncated: nodes.length >= MAX_SNAPSHOT_NODES,
+    hidden: hiddenNodes.length,
   };
 }

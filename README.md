@@ -7,6 +7,7 @@ Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos
 - [Referencia de API](docs/API.md): endpoints de IA, agente, plugins y seguridad.
 - [LM Studio](docs/API.md#lm-studio): generación, carga automática del modelo y aviso de contexto en la UI.
 - [Plan de paridad](ROADMAP_PARITY.md): comparación con OpenCode, Antigravity y Freebuff, fases y criterios de aceptación.
+- [Roadmap de evolución](ROADMAP.md): resumen de paridad, plataforma y UX, con estado, puertas y secuencia.
 
 ## Run Locally
 
@@ -16,6 +17,23 @@ Requiere Node.js 22.13+ (el backend usa `node:sqlite`).
 2. Copia `.env.example` a `.env` y define `GEMINI_API_KEY`
 3. `npm run dev` → http://localhost:3000
 4. Checks: `npm run lint`, `npm test` ([suite Vitest](#suite-de-tests-vitest)), `npm run test:node` ([suite node y server compartido](#suite-de-tests-node))
+
+### Avatares
+
+`npm run dev` y `npm run build` regeneran antes `public/avatars/manifest.json`
+con `avatars:sync`: indexa los PNG de esa carpeta (nombre plano, PNG válido, sin
+ids duplicados) y conserva las etiquetas del manifiesto anterior. Si no hay PNG,
+el selector usa los 12 SVG de `src/features/user/avatarCatalog.ts`.
+
+`npm run avatars:audit` genera `.commander/avatar-audit.html` con los 12 SVG,
+seis temas y los tamaños 18/32/40, leyendo los tokens reales de `src/index.css`.
+
+### Emulador de Firebase
+
+Con `VITE_FIREBASE_EMULATOR=1` en `.env`, Auth y Firestore apuntan a
+`127.0.0.1:9099` y `127.0.0.1:8080`, y Firestore usa la base `(default)` que crea
+el emulador. Sin la variable se usa el proyecto real y su base nombrada. El
+emulador no se arranca solo: tiene que estar escuchando en esos puertos.
 
 ## Hosting estático (Vercel)
 
@@ -185,7 +203,8 @@ subir, descargar y borrar archivos contra `/api/backend`; el token vive en
 
 ```json
 {"toolId": "shell.pty", "input": {"action": "open", "executable": "node", "args": ["-i"]}}
-{"toolId": "shell.pty", "input": {"action": "write", "id": "pty-1", "data": "1+1"}}
+{"toolId": "shell.pty", "input": {"action": "write", "id": "pty-1", "data": "1+1
+"}}
 {"toolId": "shell.pty", "input": {"action": "read", "id": "pty-1", "cursor": 0}}
 {"toolId": "shell.pty", "input": {"action": "close", "id": "pty-1"}}
 ```
@@ -253,11 +272,11 @@ El CI exige **cero vulnerabilidades en producción**: `npm audit --omit=dev --au
 
 - **Reintento sólo de red.** El paso corre `scripts/audit-prod.ts`, que lee el JSON de npm: un fallo de transporte (`EAI_AGAIN`, `ETIMEDOUT`, `ECONNREFUSED`, 5xx del registry) se reintenta **una** vez a los 3 s y, si tampoco llega, falla diciendo que no es un veredicto sobre las dependencias. Un JSON con `vulnerabilities` **nunca** se reintenta: se listan los paquetes y sale 1. Un error de npm que no es de red (config, lock ilegible) también falla al primer intento, para no retrasar el diagnóstico.
 
-`npm audit` **completo** no está en cero y no puede estarlo hoy: los 25 avisos `moderate` que quedan son todos de dependencias de desarrollo y cuelgan de un único advisory, [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) (ReDoS en `minimatch` por amplificación de `globparts`).
+`npm audit` **completo** no está en cero y no puede estarlo hoy: los **11** avisos `moderate` que quedan son todos de dependencias de desarrollo y cuelgan de un único advisory, [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) (ReDoS en `minimatch` por amplificación de `globparts`). Ese 11 cuenta **paquetes afectados**, no advisories: el propio `minimatch` más sus dependientes (`@electron/universal`, `app-builder-lib`, `dmg-builder`, `electron-builder`, `electron-builder-squirrel-windows` y la cadena de `@typescript-eslint`). Como es un recuento que se mueve cuando npm deduplica el árbol —una lectura anterior de esta sección decía 25—, lo que decide qué hacer es el advisory, no el total.
 
-- **Sólo parcheado en `minimatch` 11.0.1.** No hay fix dentro de 3.x, 5.x, 9.x ni 10.x, y las últimas versiones de los consumidores siguen pinneando major anteriores: `eslint` (`^10.2.6`), `@typescript-eslint/typescript-estree` (`^10.2.2`) y `app-builder-lib` (`^10.2.5`). Subir ESLint o electron-builder no quita ni un aviso.
+- **Sólo parcheado en `minimatch` 11.0.1.** El advisory cubre `7.0.0 - 11.0.0` (extremos incluidos): no hay fix dentro de 7.x, 8.x, 9.x, 10.x ni 11.0.0, y las últimas versiones de los consumidores siguen pinneando major anteriores: `eslint` (`^10.2.6`), `@typescript-eslint/typescript-estree` (`^10.2.2`) y `app-builder-lib` (`^10.2.5`). Actualizar ESLint o electron-builder dentro de las majors actuales no quita ni un aviso: el único `fixAvailable` que reporta npm para el advisory es un **downgrade** a `electron-builder` 25.1.0 (`isSemVerMajor: true`), no una actualización.
 - **Forzar la 11 rompe el empaquetado.** Con `overrides: { "minimatch": "^11.0.1" }` el audit completo baja a 0 y el lint sigue verde, pero `@electron/asar` —que usa `glob@7` con `minimatch@3`— falla: `TypeError: Cannot read properties of undefined (reading 'charAt')`, y el `.asar` sale con **0 entradas**. Un aviso moderado en tooling es preferible a una app vacía, así que ese override no se mantiene.
-- **Cuándo revisarlo.** Cuando `electron-builder` migre a `@electron/asar` 4 / `glob` 13 (o minimatch 11 llegue a la cadena de ESLint), se puede reintentar el override y subir el gate a `npm audit` completo. No apuntar el gate a dev antes de eso: 25 avisos de herramientas taparían un aviso real de producción. Ese día lo detecta el job de vigilancia.
+- **Cuándo revisarlo.** Cuando `electron-builder` migre a `@electron/asar` 4 / `glob` 13 (o minimatch 11 llegue a la cadena de ESLint), se puede reintentar el override y subir el gate a `npm audit` completo. No apuntar el gate a dev antes de eso: 11 avisos de herramientas taparían un aviso real de producción. Ese día lo detecta el job de vigilancia.
 - **Vigilancia semanal.** [`.github/workflows/audit-watch.yml`](.github/workflows/audit-watch.yml) (lunes 06:00 UTC, o a mano con *workflow_dispatch*) corre `scripts/audit-watch.ts`: `npm audit` completo más la resolución **real** de la cadena contra el registry (`npm view <pkg>@<rango>`), no el lockfile instalado. Falla y anota un aviso si aparece un advisory distinto del conocido, o si toda la cadena ya admite `minimatch` >= 11.0.1 —la señal de que toca actualizar y apuntar el gate a dev—. En verde significa «sigue bloqueado y no hay novedades», que es lo esperado. `--offline` se salta el registry y sólo audita el árbol instalado.
 - **Issue automático.** Cuando el vigilante encuentra algo que hacer no se queda en el run rojo: deja un issue abierto con las tablas (cadena y advisories nuevos) y qué hacer marcado como checklist. Si ya hay uno abierto con prefijo `audit-watch:` en el título, comenta ahí en vez de duplicarlo. Un fallo de red **no** abre issue: el script no deja informe en ese caso, porque un registry intermitente no es un hallazgo.
 - **Cierre automático.** Cuando una corrida vuelve a verde **con veredicto completo** (audit sin advisories nuevos, cadena medida y todavía sin admitir el parche), comenta el motivo en ese issue y lo cierra: el aviso no se queda colgado. El disparador es el archivo `cierre.md`, que el script sólo escribe en ese caso, así que un `--offline` o un registry a medias —que igual salen en verde— no pueden cerrar nada. Si el problema reaparece, la corrida siguiente abre un issue nuevo.
@@ -294,8 +313,31 @@ La de arriba va aparte: `npm run test:node` corre los `tests/*.test.ts` de la ra
 - **Modo**: `NODE_ENV=production` y una SQLite en un directorio temporal. No es «desplegar»: con Vite montado como middleware el primer re-optimizado bloqueaba el proceso y una petición de test moría por timeout. La superficie `/api/*` es la misma; los endpoints exclusivos de desarrollo no están.
 - **Sin padre**: `startServer()` del arnés arranca y para su propio server, así que `tsx --test tests/serverEndpoints.test.ts` sigue funcionando solo.
 - **CLI E2E (F1-14)**: `tests/cli/e2e.test.ts` lanza `bin/commander.ts agent --json` contra `tests/helpers/fakeAgentServer.ts`, un HTTP local que imita `/api/health`, `/api/gemini/generate`, `/api/gemini/stream` y `/api/agent/run-tool`. No usa clave ni red; cada caso deja un recibo en `os.tmpdir()` con stdout/stderr/peticiones y la última línea NDJSON.
+- **Worktrees y `--label`**: la caducidad de aprobaciones del CLI se commiteó en `25c30ef` (flag `--label`, `retryLabel`, prompt y TUI). Desde ese commit un worktree en `HEAD` corre la suite node completa —914 tests, incluido el caso `--label`— sin fallos. Antes el flag vivía en cambios sin commitear y el caso salía con `error: unknown option '--label'` (exit 1, cero eventos NDJSON) aunque el test ya estuviera en `ef46438`; si reaparece, comprobar que el worktree está sobre un commit que incluye `bin/commander.ts`.
+
 - **Peticiones**: `node:http` con `agent: false`. `fetch` reutiliza sockets que el server cierra a los 5 s y un POST moría con `ECONNRESET`.
 - **Si el server muere**: el test falla diciéndolo; no se arranca otro por detrás, que escondería el fallo tras una instancia distinta de la que se cree.
+
+### Ensayar un slice en un worktree
+
+`tsc` y Vitest resuelven `node_modules` subiendo directorios, así que no necesitan nada especial. `npm run test:node` sí: `npm run` añade al `PATH` sólo el `node_modules/.bin` del worktree, y el CLI E2E y otros tests lanzan procesos que buscan `<cwd>/node_modules/tsx/dist/cli.mjs`. Sin el junction aparecen fallos por `tsx` no encontrado que no son del slice.
+
+```bash
+REPO=$(git rev-parse --show-toplevel)
+WT="$REPO/.git/slice-wt"
+git worktree add --detach "$WT" HEAD
+# Windows (Git Bash): junction al node_modules real
+cmd //c mklink //J "$(cygpath -w "$WT")\\node_modules" "$(cygpath -w "$REPO")\\node_modules"
+# Linux/macOS:
+# ln -s "$REPO/node_modules" "$WT/node_modules"
+cd "$WT"
+export PATH="$REPO/node_modules/.bin:$PATH"
+npm run test:node -- tests/apiRoutes.test.ts   # o los archivos focales del slice
+```
+
+- **Cobertura**: el servidor compartido compila `server.ts` del worktree y atiende en un puerto efímero; no hace falta `dist/` para las rutas `/api/*` (sólo faltan los estáticos, y el log lo dice).
+- **Cierre**: primero `cmd //c rmdir "$(cygpath -w "$WT")\\node_modules"` (quita el junction; nunca `rm -rf`, que borraría el `node_modules` real), después `git worktree remove --force "$WT"` y `git worktree prune`.
+- **`--label`**: sin limitación desde `25c30ef`; el caso de caducidad pasa también en worktrees (ver la viñeta de worktrees y `--label`).
 
 ## Guardia de secretos
 
@@ -312,7 +354,7 @@ La de arriba va aparte: `npm run test:node` corre los `tests/*.test.ts` de la ra
 `npm run eval` mide el agente con tareas reales del repo: `evals/tasks.ts` define el objetivo, el guion y las comprobaciones; `evals/harness.ts` las ejecuta sobre copias temporales de los ficheros (el repo no se toca).
 
 - **Replay (por defecto, y en CI)**: modelo guionizado, herramientas reales (`AgentLoop` → `/api/agent/run-tool` → `executeAgentTool`). Determinista y sin claves. Corre también dentro de `npm run test:node` (`tests/evals.test.ts`).
-- **Live**: `npm run eval:live` con el modelo de verdad (`EVAL_MODEL`). Cuesta tokens y no es determinista; no va en CI. Cada tarea tiene 300 s y 30 pasos de presupuesto (en replay son 20 s y 10 pasos: cada tool cuesta dos pasos, así que con 10 el modelo gastaba su margen en buscar). `EVAL_TIMEOUT_MS` cambia el tiempo.
+- **Live**: `npm run eval:live` con el modelo de verdad (`EVAL_MODEL`). Cuesta tokens y no es determinista; no va en CI. Cada tarea tiene 300 s y 30 pasos de presupuesto (en replay son 20 s y 16 pasos: cada tool cuesta dos pasos y el preflight también consume; `pipeline-agujereado` necesita lectura + dos ediciones). `EVAL_TIMEOUT_MS` cambia el tiempo.
 - **Comprobación previa**: antes de la primera tarea, la pasada live hace **una** llamada mínima al modelo pedido (`evals/preflight.ts`). Si contesta otro, **aborta con código 1** en vez de gastar las cinco tareas en una pasada que no se registraría; el mensaje dice qué modelo contestaría. Sin respuesta ninguna (key, cuota, `EVAL_BASE_URL`) también aborta, con el motivo real. `--allow-fallback` (o `EVAL_ALLOW_FALLBACK=1`) deja medir el sustituto a sabiendas, avisando de que esa pasada no se registra.
 - **Modelo sustituido**: si el modelo pedido no responde (cuota agotada, modelo retirado) y contesta otro, la pasada lo avisa (`⚠ modelo sustituido: X → Y`) y **no se guarda en el historial**: `sin registrar en …: no midió el modelo pedido`. La serie del historial es por modelo, así que anotar ahí resultados de otro modelo convierte la línea base en una mezcla y ya no se sabe contra qué se mide. Sin cuota se puede repetir la pasada live sin ensuciar nada; la primera que sí mida el modelo pedido se comparará con la última que también lo midió. El dato sale del paso `Modelo sustituido` que escribe el agente; el aviso en el texto del proveedor queda como respaldo.
 - **Exigir el modelo**: `--require-model` (o `EVAL_REQUIRE_MODEL=1`) hace fallar la pasada si hubo sustitución: medir otro modelo no es un resultado peor, es no medir.

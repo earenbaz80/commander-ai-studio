@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
+  connectAuthEmulator,
   GoogleAuthProvider, 
   GithubAuthProvider,
   signInWithPopup, 
@@ -17,6 +18,7 @@ import {
 import { 
   getFirestore, 
   initializeFirestore,
+  connectFirestoreEmulator,
   Firestore,
   collection, 
   doc, 
@@ -39,13 +41,19 @@ import { ParameterConfig, PromptVersion } from '../types/studio';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+const useEmulator = import.meta.env.VITE_FIREBASE_EMULATOR === '1';
 let db: Firestore;
 try {
-  db = firebaseConfig.firestoreDatabaseId
-    ? initializeFirestore(app, {}, firebaseConfig.firestoreDatabaseId)
-    : getFirestore(app);
+  // El emulador usa la base `(default)`; producción conserva la base nombrada.
+  db = useEmulator || !firebaseConfig.firestoreDatabaseId
+    ? getFirestore(app)
+    : initializeFirestore(app, {}, firebaseConfig.firestoreDatabaseId);
 } catch {
   db = getFirestore(app);
+}
+if (useEmulator) {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  connectFirestoreEmulator(db, '127.0.0.1', 8080);
 }
 export { db };
 
@@ -225,6 +233,33 @@ async function syncUserProfile(user: User, customName?: string) {
     }, { merge: true });
   } catch (err) {
     console.warn("User profile sync warning:", err);
+  }
+}
+
+/**
+ * Avatar guardado en `users/{uid}`.
+ *
+ * Un fallo de red devuelve null: la UI sigue con localStorage y no espera a
+ * Firestore para pintar el avatar.
+ */
+export async function loadUserAvatar(uid: string): Promise<string | null> {
+  if (!uid) return null;
+  try {
+    const snapshot = await getDoc(doc(db, 'users', uid));
+    const avatarId = snapshot.exists() ? snapshot.data()?.avatarId : null;
+    return typeof avatarId === 'string' ? avatarId : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Guarda el avatar sin bloquear la elección local. */
+export async function saveUserAvatar(uid: string, avatarId: string): Promise<void> {
+  if (!uid) return;
+  try {
+    await setDoc(doc(db, 'users', uid), { avatarId }, { merge: true });
+  } catch {
+    /* localStorage sigue siendo el respaldo */
   }
 }
 

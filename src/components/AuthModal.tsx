@@ -9,6 +9,8 @@ import {
 } from '../lib/firebase';
 import { User as FirebaseUser } from 'firebase/auth';
 import type { Language } from '../i18n/translations';
+import { UserAvatarBadge } from './UserAvatar';
+import { AvatarPicker } from './settings/AvatarPicker';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -133,12 +135,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, currentUs
           /* Logged In View */
           <div className="flex flex-col gap-4 text-center p-2">
             <div className="bg-[var(--nc-bg-main)] p-3 border-2 border-[var(--nc-border-light)] rounded flex flex-col items-center gap-2">
-              <div className="w-12 h-12 bg-[var(--nc-highlight-bg)] text-black font-bold text-xl rounded-full flex items-center justify-center">
-                {currentUser.displayName?.charAt(0).toUpperCase() || currentUser.email?.charAt(0).toUpperCase() || 'U'}
-              </div>
+              <UserAvatarBadge
+                uid={currentUser.uid}
+                photoURL={currentUser.photoURL}
+                size={48}
+              />
               <div className="text-[var(--nc-text-accent)] font-bold text-lg">{currentUser.displayName || 'Usuario Commander'}</div>
               <div className="text-[var(--nc-text)] text-xs font-mono">{currentUser.email}</div>
             </div>
+
+            <AvatarPicker lang={lang} uid={currentUser.uid} />
 
             <button onClick={handleLogout} className="nc-button flex items-center justify-center gap-2 py-2">
               <LogOut className="w-4 h-4" />

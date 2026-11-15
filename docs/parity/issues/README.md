@@ -3,6 +3,8 @@
 Los 14 issues del backlog están **cerrados como completados**: #2 (F1-01), #3 (F1-02), #4 (F1-03), #5 (F1-04), #6 (F1-05), #7 (F1-06), #8 (F1-07), #9 (F1-08), #10 (F1-09), #11 (F1-10), #12 (F1-11), #13 (F1-12), #14 (F1-13) y #15 (F1-14). El #1 es un PR ajeno a este backlog. Este directorio conserva el cuerpo versionado de cada uno, listo para `gh issue edit --body-file`.
 
 > **G1 no está cerrado.** El cierre de los 14 issues acredita la implementación y sus pruebas, no el dogfooding de 5 días. El estado del gate se documenta en [`backlog-f1.md`](../backlog-f1.md) §7.
+>
+> **Diagnóstico de G1:** [`G1-EMPTY-TURN.md`](G1-EMPTY-TURN.md) explica el turno vacío del proveedor que tumbó `G1-D4-03`/`03R` (razonamiento que agota `max_tokens: 2048` → `finish_reason: "length"` con `content` vacío). [`G1-SUBAGENT-CLOSE.md`](G1-SUBAGENT-CLOSE.md) documenta por qué los hijos de T10 cierran con «Objetivo completado.» sin decir «listo» ni informar la denegación de `shell.run` (`G1-D4-04`, `G1-D4-05`, `G1-D4-05R`). [`G1-T2-READ-LOOP.md`](G1-T2-READ-LOOP.md) mide el bucle de T2 sobre el estado archivado —42 `fs.read` alternas, no 22 propuestas— y decide la guarda propia que lo corta. [`G1-APPROVAL-SHELL-TAIL.md`](G1-APPROVAL-SHELL-TAIL.md) documenta la cola de `shell.run` de CAL4 —10 de 21 `allow` por encima de 15 151 ms, p95 26 820 ms— y el arreglo de visibilidad/medición que debe validarse con un operador humano. Ninguno tiene número en GitHub ni entra en la tabla de arriba.
 
 | Archivo | Issue | Estado | Título | Labels | Est. | Depende de |
 | --- | --- | --- | --- | --- | --- | --- |

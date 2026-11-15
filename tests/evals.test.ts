@@ -48,6 +48,7 @@ import {
   strictScopeFailures,
   type EvalRunRecord,
 } from '../evals/history.js';
+import { DEFAULT_BASELINE_MODEL, resolveBaselineModel } from '../evals/baselineModel.js';
 
 for (const task of EVAL_TASKS) {
   test(`eval · ${task.id}`, async () => {
@@ -151,6 +152,40 @@ test('alcance · allowChanges declara la ruta prevista y deja de marcar', async 
 
   assert.equal(outcome.passed, true);
   assert.deepEqual(outcome.outOfScope, []);
+});
+
+test('resultado · un cierre normal declara completed y no timeout', async () => {
+  const outcome = await runTask(scopeTask({ allowChanges: ['notas.txt'] }));
+
+  assert.equal(outcome.stopReason, 'completed');
+  assert.equal(outcome.timedOut, false);
+});
+
+test('resultado · agotar el presupuesto declara timeout, no un fallo de checks', async () => {
+  const outcome = await runTask(
+    {
+      id: 'timeout',
+      goal: 'demo de timeout',
+      files: [],
+      script: () => [
+        { calls: [{ name: 'fs_read', args: { path: 'AGENTS.md' } }] },
+        { calls: [{ name: 'fs_read', args: { path: 'AGENTS.md' } }] },
+      ],
+      checks: [
+        {
+          name: 'el check también falla',
+          run: () => {
+            throw new Error('fallo distinto del timeout');
+          },
+        },
+      ],
+    },
+    { timeoutMs: 50 }
+  );
+
+  assert.equal(outcome.stopReason, 'timeout');
+  assert.equal(outcome.timedOut, true);
+  assert.equal(outcome.passed, false);
 });
 
 test('diagnóstico · una tarea fallida trae el diff de lo que cambió el agente', async () => {
@@ -373,6 +408,17 @@ test('presupuesto · live tiene más pasos que replay, y la tarea manda', () => 
   );
   assert.equal(resolveTaskSteps({ live: true, maxSteps: 4 }), 4, 'lo que declare la tarea gana');
   assert.equal(resolveTaskSteps({ live: true, maxSteps: 0 }), LIVE_MAX_STEPS);
+});
+
+test('baseline · el modelo por defecto no puede ser un 27B', () => {
+  assert.equal(DEFAULT_BASELINE_MODEL, 'lmstudio/qwen/qwen3.5-9b');
+  assert.doesNotMatch(DEFAULT_BASELINE_MODEL, /27b/i, 'un 27B local no cabe en el presupuesto live');
+  assert.equal(resolveBaselineModel({}), DEFAULT_BASELINE_MODEL);
+  assert.equal(
+    resolveBaselineModel({ BASELINE_MODEL: 'lmstudio/modelo-explicito' }),
+    'lmstudio/modelo-explicito',
+    'el override explícito sigue mandando'
+  );
 });
 
 test('presupuesto · live tiene más margen por tarea que replay', () => {

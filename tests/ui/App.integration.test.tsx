@@ -68,6 +68,7 @@ vi.mock('../../src/utils/browserNotifications', () => ({
 import App from '../../src/App';
 import { ChatStoreProvider } from '../../src/stores/chatStore';
 import { UIStoreProvider } from '../../src/stores/uiStore';
+import { NVIDIA_DEFAULT_MODEL } from '../../src/providers/registry';
 
 /** Respuesta SSE simulada: misma forma que /api/gemini/stream. */
 const makeStreamResponse = (chunks: any[]) => ({
@@ -178,6 +179,146 @@ describe('App (integración)', { timeout: 20_000 }, () => {
     expect(texts).toContain('Hola IA');
     expect(body.model).toBe('gemini-3.5-flash');
     expect(body.systemInstruction).toBeTruthy();
+  });
+
+  test('envía prompt/messages a NVIDIA y nunca contents', async () => {
+    localStorage.setItem('ai_studio_selected_model', JSON.stringify(NVIDIA_DEFAULT_MODEL));
+    localStorage.setItem('ai_studio_tabs_v1', JSON.stringify([{
+      id: 'tab-nvidia',
+      title: 'Sesión NVIDIA',
+      selectedModel: NVIDIA_DEFAULT_MODEL,
+      projectPath: 'C:/proj',
+    }]));
+    localStorage.setItem('ai_studio_active_tab', 'tab-nvidia');
+
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/api/agent/')) {
+        return Promise.resolve({ ok: true, json: async () => ({ roots: [] }) });
+      }
+      if (String(url) === '/api/nvidia/generate') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, text: 'pong', metrics: { totalTokens: 7, latencyMs: 120 } }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ roots: [] }) });
+    });
+    global.fetch = fetchMock as any;
+
+    await bootApp();
+
+    fireEvent.change(getChatInput(), { target: { value: 'Hola NVIDIA' } });
+    fireEvent.keyDown(getChatInput(), { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/nvidia/generate',
+        expect.objectContaining({ method: 'POST' })
+      );
+    });
+
+    const call = fetchMock.mock.calls.find((c) => String(c[0]) === '/api/nvidia/generate');
+    const body = JSON.parse(call![1].body);
+    expect(body.model).toBe(NVIDIA_DEFAULT_MODEL);
+    expect(body.prompt).toBe('Hola NVIDIA');
+    expect(body.messages).toEqual([
+      { role: 'user', content: 'Hola NVIDIA' },
+    ]);
+    expect(body).not.toHaveProperty('contents');
+  });
+
+  test('envía prompt/messages a OpenAI-compatible y nunca contents', async () => {
+    const model = 'custom/custom';
+    localStorage.setItem('ai_studio_selected_model', JSON.stringify(model));
+    localStorage.setItem('ai_studio_tabs_v1', JSON.stringify([{
+      id: 'tab-openai-compatible',
+      title: 'Sesión OpenAI-compatible',
+      selectedModel: model,
+      projectPath: 'C:/proj',
+    }]));
+    localStorage.setItem('ai_studio_active_tab', 'tab-openai-compatible');
+
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/api/agent/')) {
+        return Promise.resolve({ ok: true, json: async () => ({ roots: [] }) });
+      }
+      if (String(url) === '/api/custom/generate') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, text: 'pong', metrics: { totalTokens: 7, latencyMs: 120 } }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ roots: [] }) });
+    });
+    global.fetch = fetchMock as any;
+
+    await bootApp();
+
+    fireEvent.change(getChatInput(), { target: { value: 'Hola OpenAI-compatible' } });
+    fireEvent.keyDown(getChatInput(), { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/custom/generate',
+        expect.objectContaining({ method: 'POST' })
+      );
+    });
+
+    const call = fetchMock.mock.calls.find((c) => String(c[0]) === '/api/custom/generate');
+    const body = JSON.parse(call![1].body);
+    expect(body.model).toBe(model);
+    expect(body.prompt).toBe('Hola OpenAI-compatible');
+    expect(body.messages).toEqual([
+      { role: 'user', content: 'Hola OpenAI-compatible' },
+    ]);
+    expect(body).not.toHaveProperty('contents');
+  });
+
+  test('envía prompt/messages a OpenAI y nunca contents', async () => {
+    const model = 'openai/gpt-4.1-mini';
+    localStorage.setItem('ai_studio_selected_model', JSON.stringify(model));
+    localStorage.setItem('ai_studio_tabs_v1', JSON.stringify([{
+      id: 'tab-openai',
+      title: 'Sesión OpenAI',
+      selectedModel: model,
+      projectPath: 'C:/proj',
+    }]));
+    localStorage.setItem('ai_studio_active_tab', 'tab-openai');
+
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/api/agent/')) {
+        return Promise.resolve({ ok: true, json: async () => ({ roots: [] }) });
+      }
+      if (String(url) === '/api/openai/generate') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, text: 'pong', metrics: { totalTokens: 7, latencyMs: 120 } }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ roots: [] }) });
+    });
+    global.fetch = fetchMock as any;
+
+    await bootApp();
+
+    fireEvent.change(getChatInput(), { target: { value: 'Hola OpenAI' } });
+    fireEvent.keyDown(getChatInput(), { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/openai/generate',
+        expect.objectContaining({ method: 'POST' })
+      );
+    });
+
+    const call = fetchMock.mock.calls.find((c) => String(c[0]) === '/api/openai/generate');
+    const body = JSON.parse(call![1].body);
+    expect(body.model).toBe(model);
+    expect(body.prompt).toBe('Hola OpenAI');
+    expect(body.messages).toEqual([
+      { role: 'user', content: 'Hola OpenAI' },
+    ]);
+    expect(body).not.toHaveProperty('contents');
   });
 
   test('muestra la respuesta acumulada del stream y notifica al completar', async () => {

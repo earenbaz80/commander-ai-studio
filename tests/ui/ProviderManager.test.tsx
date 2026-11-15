@@ -297,3 +297,125 @@ describe('ProviderManager: modelos activables', () => {
     expect(screen.getByRole('button', { name: 'Desactivar todos los modelos de Groq' })).toBeDisabled();
   });
 });
+
+describe('ProviderManager: requisitos de Strata', () => {
+  const fetchMock = vi.fn();
+  const strataProvider = {
+    id: 'strata-local',
+    name: 'Strata (local)',
+    env: ['STRATA_API_KEY'],
+    fields: [],
+    configured: true,
+    missing: [],
+    source: 'file',
+    models: [],
+    allModels: [],
+    modelCount: 0,
+    totalModels: 0,
+    enabled: true,
+    whitelist: [],
+    blacklist: [],
+  };
+  const strataRuntimeResponse = {
+    success: true,
+    ok: true,
+    model: 'qwen3.8-flash-next-iq3_s',
+    contextWindow: 131072,
+    models: [{ id: 'qwen3.8-flash-next-iq3_s', name: 'Qwen 3.8', contextWindow: 131072 }],
+    runtime: { instances: [{ gpus: ['NVIDIA GeForce RTX 5060 Ti'] }] },
+    monitor: {
+      context: { usedTokens: 1200, maxTokens: 131072, pct: 1 },
+      queue: { running: 0, waiting: 0 },
+      hardware: {
+        gpuName: 'NVIDIA GeForce RTX 5060 Ti',
+        vramUsedGb: 14.9,
+        vramTotalGb: 15.9,
+        ramUsedGb: 54.2,
+        ramTotalGb: 63.9,
+      },
+    },
+  };
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    fetchMock.mockImplementation((url: string) => {
+      const target = String(url);
+      if (target.endsWith('/api/providers')) {
+        return json({ success: true, providers: [strataProvider], writePath: '/tmp/config.json' });
+      }
+      if (target.endsWith('/api/strata-local/runtime')) {
+        return json(strataRuntimeResponse);
+      }
+      return json({ success: true });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test('muestra requisitos y recomendación antes de cargar el modelo', async () => {
+    render(<ProviderManager embedded lang="es" />);
+    fireEvent.click(await screen.findByText('Strata (local)'));
+    fireEvent.click(screen.getByRole('button', { name: 'Comprobar requisitos' }));
+
+    expect(await screen.findByText('Requisitos de hardware')).toBeInTheDocument();
+    expect(screen.getByText(/VRAM: 15.9 GB/)).toBeInTheDocument();
+    expect(screen.getByText(/RAM: 63.9 GB/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === 'DIV' &&
+          element.children.length === 0 &&
+          element.textContent?.includes('Recomendado antes de arrancar') === true &&
+          element.textContent?.includes('32K ctx') === true
+      )
+    ).toHaveTextContent('qwen3.8-flash-next-iq3_s');
+  });
+
+  test('arranca/reinicia y detiene Strata desde el panel', async () => {
+    const lifecycleBodies: Array<Record<string, unknown>> = [];
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const target = String(url);
+      if (target.endsWith('/api/providers')) {
+        return json({ success: true, providers: [strataProvider], writePath: '/tmp/config.json' });
+      }
+      if (target.endsWith('/api/strata-local/runtime')) {
+        return json(strataRuntimeResponse);
+      }
+      if (target.endsWith('/api/strata-local/lifecycle')) {
+        if (init?.method === 'POST') {
+          const body = JSON.parse(String(init.body || '{}'));
+          lifecycleBodies.push(body);
+          return json({
+            success: true,
+            state: body.action === 'stop' ? 'stopped' : 'running',
+            model: 'qwen3.8-flash-next-iq3_s',
+            context: 32768,
+            available: true,
+          });
+        }
+        return json({ success: true, state: 'running', available: true });
+      }
+      return json({ success: true });
+    });
+
+    render(<ProviderManager embedded lang="es" />);
+    fireEvent.click(await screen.findByText('Strata (local)'));
+    fireEvent.click(screen.getByRole('button', { name: 'Comprobar requisitos' }));
+    await screen.findByText('Requisitos de hardware');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Aplicar modelo/contexto' })).toBeEnabled()
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar modelo/contexto' }));
+    await waitFor(() => expect(lifecycleBodies.some((body) => body.action === 'restart')).toBe(true));
+    const restart = lifecycleBodies.find((body) => body.action === 'restart');
+    expect(restart?.model).toBe('qwen3.8-flash-next-iq3_s');
+    expect(restart?.context).toBe(131072);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Detener' }));
+    await waitFor(() => expect(lifecycleBodies.some((body) => body.action === 'stop')).toBe(true));
+  });
+});

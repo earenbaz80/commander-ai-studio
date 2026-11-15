@@ -11,7 +11,7 @@ import type { NonoExpression } from '../../src/components/nono/content';
 
 const renderEyes = (
   expression: NonoExpression,
-  options: { blink?: boolean; eyeOffset?: { x: number; y: number } } = {}
+  options: { blink?: boolean; eyeOffset?: { x: number; y: number }; idleGaze?: boolean } = {}
 ) => {
   const { container } = render(
     <NonoHead
@@ -19,6 +19,7 @@ const renderEyes = (
       expression={expression}
       blink={options.blink ?? false}
       eyeOffset={options.eyeOffset ?? { x: 0, y: 0 }}
+      idleGaze={options.idleGaze ?? false}
       size={96}
     />
   );
@@ -26,7 +27,8 @@ const renderEyes = (
   const eyes = Array.from(
     svg?.querySelectorAll('[data-testid="nono-eyes"] rect') ?? []
   ) as SVGRectElement[];
-  return { svg, eyes };
+  const gaze = svg?.querySelector('[data-testid="nono-eyes-gaze"]') as SVGGElement | null;
+  return { svg, eyes, gaze };
 };
 
 describe('NonoHead · variante de solo ojos', () => {
@@ -82,13 +84,24 @@ describe('NonoHead · variante de solo ojos', () => {
     expect(renderEyes('cool').eyes).toHaveLength(3);
   });
 
-  test('la mirada desplaza los rectángulos con el puntero', () => {
-    const base = renderEyes('neutral').eyes[0];
-    const moved = renderEyes('neutral', { eyeOffset: { x: 1, y: 1 } }).eyes[0];
+  test('la mirada sigue al puntero y vuelve al centro en reposo', () => {
+    const base = renderEyes('neutral');
+    const moved = renderEyes('neutral', { eyeOffset: { x: 1, y: 1 } });
+    const idle = renderEyes('neutral', { eyeOffset: { x: 1, y: 1 }, idleGaze: true });
 
-    // Más recorrido que las otras variantes: el ojo solo tiene que seguir el
-    // puntero sin una cabeza que lo ancle.
-    expect(Number(moved.getAttribute('x')) - Number(base.getAttribute('x'))).toBe(7);
-    expect(Number(moved.getAttribute('y')) - Number(base.getAttribute('y'))).toBe(5);
+    // El vector extremo desplaza el grupo; en reposo el grupo vuelve a cero.
+    expect(moved.gaze?.style.transform).toContain('translate(7px, 5px)');
+    expect(idle.gaze?.style.transform).toContain('translate(0px, 0px)');
+
+    // La geometría queda en su sitio y el barrido arranca desde el centro.
+    expect(idle.eyes.map((eye) => eye.getAttribute('x'))).toEqual(
+      base.eyes.map((eye) => eye.getAttribute('x'))
+    );
+    expect(idle.eyes.map((eye) => eye.getAttribute('y'))).toEqual(
+      base.eyes.map((eye) => eye.getAttribute('y'))
+    );
+    expect(
+      idle.svg?.querySelector('[data-testid="nono-eyes"]')?.getAttribute('class') ?? ''
+    ).toContain('nono-orb-gaze');
   });
 });
