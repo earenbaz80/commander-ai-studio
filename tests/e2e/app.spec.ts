@@ -21,6 +21,18 @@ import { test, expect, type Page } from '@playwright/test';
 const esMovil = (page: Page) => (page.viewportSize()?.width ?? 1024) < 640;
 
 /**
+ * El `navigationTimeout` global son 20 s y la primera navegación de Firefox en
+ * el runner los agotaba: `page.goto` se cortaba a los 20 s y el test pasaba en
+ * el reintento, que es exactamente el flaky con el que salía el job E2E. El
+ * arranque real lo acota el `waitForSelector` de cada suite; al `goto` le basta
+ * con traer y ejecutar el bundle, así que lleva su propio margen sin relajar el
+ * resto de las acciones.
+ */
+const GOTO_TIMEOUT = 45000;
+const gotoApp = (page: Page) =>
+  page.goto('/', { waitUntil: 'domcontentloaded', timeout: GOTO_TIMEOUT });
+
+/**
  * La suite no sale de localhost. La app pide recursos a terceros al arrancar
  * (el iframe de auth de Firebase, fuentes) y si uno de esos hosts se atasca en
  * el runner, `page.goto` espera al evento `load` —que incluye los iframes—
@@ -43,12 +55,10 @@ test.describe('Commander AI Studio - Core', () => {
   test.setTimeout(60000);
   test.beforeEach(async ({ page }) => {
     // `load` espera a todos los recursos (fuentes, imágenes, iframes) y aquí esa
-    // espera se mide en 11-18 s: con el techo de 20 s de `navigationTimeout` no
-    // quedaba margen y un `load` lento en el runner salía como test fallido, que
-    // es el flaky que quedaba. La señal de «app lista» ya la da el
+    // espera se mide en 11-18 s. La señal de «app lista» ya la da el
     // waitForSelector de abajo (30 s); al goto le basta con traer y ejecutar el
-    // bundle.
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    // bundle, con el margen propio de `gotoApp`.
+    await gotoApp(page);
     // Esperar a que la app esté lista (retro BIOS boot)
     await page.waitForSelector('[data-testid="app-root"], .nc-header, .commander-title', { timeout: 30000 });
     const guestBtn0 = page.locator('button:has-text("ENTRAR COMO INVITADO")');
@@ -161,7 +171,7 @@ test.describe('Commander AI Studio - Core', () => {
 test.describe('Commander AI Studio - Chat', () => {
   test.setTimeout(60000);
   test.beforeEach(async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await gotoApp(page);
     await page.waitForSelector('[data-testid="app-root"], .nc-header', { timeout: 45000 });
     // Descartar modal de autenticación si aparece (modo invitado)
     const guestBtn = page.locator('button:has-text("ENTRAR COMO INVITADO")');
@@ -207,7 +217,7 @@ test.describe('Commander AI Studio - Chat', () => {
 test.describe('Commander AI Studio - Agent Mode', () => {
   test.setTimeout(60000);
   test.beforeEach(async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await gotoApp(page);
     await page.waitForSelector('[data-testid="app-root"], .nc-header', { timeout: 45000 });
     // Descartar modal de autenticación si aparece (modo invitado)
     const guestBtn = page.locator('button:has-text("ENTRAR COMO INVITADO")');
@@ -257,7 +267,7 @@ test.describe('Commander AI Studio - Agent Mode', () => {
 test.describe('Commander AI Studio - Workbench', () => {
   test.setTimeout(90000);
   test.beforeEach(async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await gotoApp(page);
     await page.waitForSelector('[data-testid="app-root"], .nc-header', { timeout: 45000 });
     // Descartar modal de autenticación si aparece (modo invitado)
     const guestBtn = page.locator('button:has-text("ENTRAR COMO INVITADO")');
@@ -303,7 +313,7 @@ test.describe('Commander AI Studio - Workbench', () => {
 test.describe('Commander AI Studio - Accesibilidad', () => {
   test.setTimeout(60000);
   test.beforeEach(async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await gotoApp(page);
     await page.waitForSelector('[data-testid="app-root"], .nc-header', { timeout: 45000 });
     // Descartar modal de autenticación si aparece (modo invitado)
     const guestBtn = page.locator('button:has-text("ENTRAR COMO INVITADO")');
