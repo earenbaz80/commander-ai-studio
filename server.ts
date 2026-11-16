@@ -58,6 +58,7 @@ import {
   type StrataLocalModelInfo,
 } from './src/lib/strataLocal';
 import { mergeStrataToolCallFragment, normalizeStrataToolCalls } from './src/lib/strataTools';
+import { generateStrataChat, STRATA_DEFAULT_MODEL } from './src/providers/strata';
 import { StrataLifecycleManager } from './src/lib/strataLifecycle';
 import { deleteStrataApiKey, getStrataApiKey, normalizeStrataApiKey, saveStrataApiKey } from './src/lib/strataKeyStore';
 import { redactStrataSecret } from './src/lib/strataRedaction';
@@ -5575,6 +5576,35 @@ app.post('/api/strata-local/generate', async (req, res) => {
     strataTools: { supportsParallelTools: preflight.info?.supportsParallelTools },
     fetcher: (input, init) => fetchStrataWithRetry(fetch, input, init ?? {}, { secret: apiKey }),
   });
+});
+
+/**
+ * Strata alojado (Kronisys). Clave: cuerpo → STRATA_API_KEY → panel. Base:
+ * cuerpo → panel; el adaptador aplica STRATA_BASE_URL y el host público. Sin
+ * clave se responde 400 sin tocar la red.
+ */
+app.post('/api/strata/generate', async (req, res) => {
+  const body = req.body || {};
+  const apiKey =
+    (typeof body.apiKey === 'string' ? body.apiKey.trim() : '') ||
+    process.env.STRATA_API_KEY ||
+    getProviderSecret('strata', 'apiKey');
+  if (!apiKey) {
+    return res.status(400).json({ success: false, error: 'STRATA_API_KEY requerida' });
+  }
+  try {
+    const result = await generateStrataChat({
+      apiKey,
+      baseUrl: body.baseUrl || getProviderSecret('strata', 'baseUrl'),
+      model: body.model || getProviderSecret('strata', 'defaultModel') || STRATA_DEFAULT_MODEL,
+      prompt: body.prompt,
+      messages: body.messages,
+      systemInstruction: body.systemInstruction,
+    });
+    return res.json({ success: true, text: result.content, model: result.model });
+  } catch (error) {
+    return res.status(502).json({ success: false, error: (error as Error).message });
+  }
 });
 
 /**

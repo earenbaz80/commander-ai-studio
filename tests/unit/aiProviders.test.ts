@@ -20,6 +20,7 @@ describe('detectProvider', () => {
     expect(P('local/qwen2.5-1.5b-instruct-q8_0.gguf')).toBe('local');
     expect(P('openai/gpt-4.1')).toBe('openai');
     expect(P('nvidia/meta/llama-3.3-70b-instruct')).toBe('nvidia');
+    expect(P('strata/gpt-5.4')).toBe('strata');
   });
 
   it('sigue detectando modelos HuggingFace org/repo', () => {
@@ -60,6 +61,7 @@ describe('resolveEndpoint', () => {
     expect(resolveEndpoint('openai/gpt-4.1')).toBe('/api/openai/generate');
     expect(resolveEndpoint('nvidia/meta/llama-3.3-70b-instruct')).toBe('/api/nvidia/generate');
     expect(resolveEndpoint('local/modelo.gguf')).toBe('/api/local-models/generate');
+    expect(resolveEndpoint('strata/gpt-5.4')).toBe('/api/strata/generate');
     expect(resolveEndpoint('org/repo')).toBe('/api/hf/generate');
   });
 
@@ -89,5 +91,6 @@ describe('resolveStreamEndpoint', () => {
     expect(resolveStreamEndpoint('custom/mi-modelo')).toBeNull();
     expect(resolveStreamEndpoint('org/repo')).toBeNull();
     expect(resolveStreamEndpoint('grok-3')).toBeNull();
+    expect(resolveStreamEndpoint('strata/gpt-5.4')).toBeNull();
   });
 });

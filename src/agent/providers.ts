@@ -26,6 +26,7 @@ export function toolDialectForModel(model?: string): ToolDialect {
   // LM Studio también es OpenAI-compatible.
   if (/^lmstudio\//.test(model)) return 'openai';
   if (/^strata-local\//.test(model)) return 'openai';
+  if (/^strata\//.test(model)) return 'openai';
   // llama-server expone Chat Completions con tools; el proxy local las reenvía.
   if (/^local\//.test(model)) return 'openai';
   if (/^openrouter\//.test(model)) return 'openai';

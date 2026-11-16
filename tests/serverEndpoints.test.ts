@@ -1316,3 +1316,16 @@ test('los paneles usan panelRoot: un root inválido responde 400', async () => {
   const checkpointsCwd = await srv.request('GET', '/api/checkpoints');
   assert.equal(checkpointsCwd.status, 200, checkpointsCwd.raw);
 });
+
+test('Strata cloud responde 400 sin clave y 502 si el host no responde', async () => {
+  const sinClave = await srv.request('POST', '/api/strata/generate', {});
+  assert.equal(sinClave.status, 400, sinClave.raw);
+  assert.match(String(sinClave.body.error), /STRATA_API_KEY/);
+
+  const hostCaido = await srv.request('POST', '/api/strata/generate', {
+    apiKey: 'clave-de-prueba',
+    baseUrl: 'http://127.0.0.1:1/v1',
+    prompt: 'ping',
+  });
+  assert.equal(hostCaido.status, 502, hostCaido.raw);
+});

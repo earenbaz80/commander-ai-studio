@@ -17,6 +17,7 @@ export type ProviderType =
   | 'ollama'
   | 'lmstudio'
   | 'strata-local'
+  | 'strata'
   | 'openrouter'
   | 'openai'
   | 'nvidia'
