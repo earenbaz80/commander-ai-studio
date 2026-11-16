@@ -12,6 +12,7 @@ import type {
   VerificationTestStatus,
 } from './types';
 import { redactSecrets } from './testEvidence';
+import { applyHunkReviewState } from './hunks';
 
 export type ReportFormat = VerificationReport['format'];
 
@@ -298,6 +299,52 @@ function renderTestsHtml(artifact: VerificationArtifact): string {
     .join('')}</div>`;
 }
 
+function hunkReviewText(hunk: ReturnType<typeof applyHunkReviewState>['hunks'][number]): string {
+  if (hunk.decision === 'pending') return 'revisión pendiente';
+  const label = hunk.decision === 'accepted' ? 'aceptada' : 'rechazada';
+  return `revisión ${label} por ${hunk.reviewedBy ?? 'desconocido'}`;
+}
+
+/**
+ * Resumen de revisión por hunk. El patch no se reescribe: se informa qué se
+ * aplicó, quién lo aplicó y qué revisó el usuario.
+ */
+function renderHunksHtml(artifact: VerificationArtifact): string {
+  const { hunks, summary } = applyHunkReviewState(artifact.diff);
+  if (hunks.length === 0) return '<p class="muted">Sin hunks revisables.</p>';
+  const rows = hunks
+    .map((hunk) => {
+      const applied = hunk.appliedBy
+        ? `aplicado por <code>${escapeHtml(hunk.appliedBy.tool)}</code> (<code>${escapeHtml(
+            hunk.appliedBy.stepId
+          )}</code>)`
+        : 'sin atribución de aplicación';
+      const badge = hunk.decision === 'pending' ? 'incomplete' : hunk.decision === 'accepted' ? 'passed' : 'failed';
+      return `<li><code>${escapeHtml(hunk.id)}</code> <span class="muted">${escapeHtml(
+        hunk.file
+      )}</span> · ${applied} · <span class="badge badge--${badge}">${escapeHtml(
+        hunkReviewText(hunk)
+      )}</span></li>`;
+    })
+    .join('');
+  return `<ul class="hunks"><li><strong>${summary.total}</strong> hunks: ${summary.accepted} aceptados · ${summary.rejected} rechazados · ${summary.pending} pendientes</li>${rows}</ul>`;
+}
+
+function renderHunksMarkdown(artifact: VerificationArtifact): string {
+  const { hunks, summary } = applyHunkReviewState(artifact.diff);
+  if (hunks.length === 0) return '_Sin hunks revisables._';
+  const header = `- **Hunks:** ${summary.total} · ${summary.accepted} aceptados · ${summary.rejected} rechazados · ${summary.pending} pendientes`;
+  const rows = hunks.map((hunk) => {
+    const applied = hunk.appliedBy
+      ? `aplicado por ${mdCode(hunk.appliedBy.tool)} (${mdCode(hunk.appliedBy.stepId)})`
+      : 'sin atribución de aplicación';
+    return `  - ${mdCode(hunk.id)} — ${mdInline(hunk.file)} ${applied} · ${mdInline(
+      hunkReviewText(hunk)
+    )}`;
+  });
+  return [header, ...rows].join('\n');
+}
+
 function renderDiffHtml(artifact: VerificationArtifact): string {
   if (!artifact.diff) return '<p class="muted">Sin diff registrado.</p>';
   const files = relativeFiles(artifact.projectPath, artifact.diff.files);
@@ -321,6 +368,8 @@ function renderDiffHtml(artifact: VerificationArtifact): string {
           )}</pre>`
         : '<p class="muted">Sin patch registrado.</p>'
     }
+    <h4>Revisión por hunk</h4>
+    ${renderHunksHtml(artifact)}
   </div>`;
 }
 
@@ -521,6 +570,7 @@ function renderDiffMarkdown(artifact: VerificationArtifact): string {
   } else {
     lines.push('', '_Sin patch registrado._');
   }
+  lines.push('', '**Revisión por hunk**', '', renderHunksMarkdown(artifact));
   return lines.join('\n');
 }
 

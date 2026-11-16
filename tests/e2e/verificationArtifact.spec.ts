@@ -201,6 +201,19 @@ test.describe('Artifacts de verificación · E2E local', () => {
       FIXTURE_RECORDING_ID
     );
 
+    // Revisión por hunk (F2-08): el artifact atribuye cada hunk a su tool y
+    // guarda la decisión del usuario sin reescribir el patch.
+    const firstHunk = 'src/checkout.ts@1';
+    await expect(page.getByTestId('verification-hunk-summary')).toContainText('2 hunks');
+    await expect(page.locator('[data-testid="verification-hunks"] article')).toHaveCount(2);
+    await expect(page.getByTestId(`verification-hunk-${firstHunk}`)).toContainText(
+      'aplicado por fs.edit · step-1'
+    );
+    await page.getByTestId(`verification-hunk-accept-${firstHunk}`).click();
+    await expect(page.getByTestId(`verification-hunk-${firstHunk}`)).toContainText('ACEPTADO');
+    await expect(page.getByTestId('verification-hunk-summary')).toContainText('1 aceptados');
+    await expect(page.getByTestId('verification-patch-accepted')).toBeEnabled();
+
     const reportPanel = page.getByTestId('verification-report');
     await expect(reportPanel).toContainText('FALLÓ');
     await expect(reportPanel).toContainText('NO EJECUTADO');
@@ -217,6 +230,13 @@ test.describe('Artifacts de verificación · E2E local', () => {
     await expect(page.getByTestId('artifact-play')).toBeVisible();
     await expect(page.getByText(/FRAME 1\/1/)).toBeVisible();
 
+    // Consola y red de la grabación (F2-09), con timestamps y sin red externa.
+    await expect(page.getByTestId('artifact-console')).toContainText('Uncaught TypeError');
+    await expect(page.getByTestId('artifact-network')).toContainText('/api/checkout');
+    await expect(page.getByTestId('artifact-network')).toContainText('500');
+    await expect(page.getByTestId('artifact-export-webm')).toBeVisible();
+    await expect(page.getByTestId('artifact-download-logs')).toBeEnabled();
+
     // Recarga real: el store y el informe tienen que venir de IndexedDB.
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForApp(page);
@@ -225,6 +245,13 @@ test.describe('Artifacts de verificación · E2E local', () => {
     await expect(page.getByTestId('verification-detail')).toBeVisible();
     await expect(page.getByTestId('verification-report')).toContainText(
       'Referencia local: `recording-e2e-f2-07`'
+    );
+    // La revisión por hunk sobrevivió a la recarga: está en IndexedDB.
+    await expect(page.getByTestId('verification-hunk-src/checkout.ts@1')).toContainText(
+      'ACEPTADO'
+    );
+    await expect(page.getByTestId('verification-hunk-src/checkout.ts@20')).toContainText(
+      'PENDIENTE'
     );
 
     const stored = await readArtifacts(page);
@@ -240,6 +267,15 @@ test.describe('Artifacts de verificación · E2E local', () => {
     expect(storedRecording?.sessionId).toBe(FIXTURE_SESSION_ID);
     expect(storedVerification?.browserRecordingId).toBe(FIXTURE_RECORDING_ID);
     expect(storedVerification?.report?.content).toContain('Referencia local');
+    expect(storedVerification?.diff?.reviews).toEqual([
+      expect.objectContaining({
+        hunkId: 'src/checkout.ts@1',
+        decision: 'accepted',
+        reviewedBy: 'user',
+      }),
+    ]);
+    expect(storedRecording?.logs?.console).toHaveLength(1);
+    expect(storedRecording?.logs?.network?.[0]?.status).toBe(500);
     expect(storedRecording?.frames).toHaveLength(1);
     expect(storedVerification).not.toHaveProperty('frames');
     expect(JSON.stringify(stored)).not.toContain(FIXTURE_SECRET);

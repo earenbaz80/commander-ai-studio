@@ -19,7 +19,9 @@ import {
   CheckCircle2,
   Circle,
   Clock3,
+  Download,
   Film,
+  Loader2,
   MessageSquare,
   MessageSquarePlus,
   MonitorPlay,
@@ -28,6 +30,7 @@ import {
   RefreshCw,
   RotateCcw,
   ShieldCheck,
+  Terminal,
   Trash2,
   X,
 } from 'lucide-react';
@@ -51,6 +54,7 @@ import {
 } from '../../artifacts/types';
 import { effectiveVerificationStatus } from '../../artifacts/report';
 import { formatMediaTime, newArtifactId } from '../../artifacts/utils';
+import { exportRecordingWebM, webmSupport } from '../../artifacts/webm';
 import { VerificationArtifactDetail } from './VerificationArtifactDetail';
 
 interface ArtifactsViewProps {
@@ -106,6 +110,19 @@ function thumbnailOf(artifact: BrowserRecordingArtifact): string {
   return first ? frameSrc(first) : '';
 }
 
+/** Descarga un archivo ya construido en memoria (WebM o JSON del log). */
+function downloadBlobFile(blob: Blob, filename: string): void {
+  if (typeof URL.createObjectURL !== 'function') throw new Error('descarga no disponible');
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL?.(objectUrl), 1_000);
+}
+
 type ArtifactFilter = 'all' | 'browser-recording' | 'verification';
 
 const ARTIFACT_FILTERS: Array<{ id: ArtifactFilter; es: string; en: string }> = [
@@ -130,6 +147,9 @@ export function ArtifactsView({
   const [commentDraft, setCommentDraft] = useState('');
   const [focusedCommentId, setFocusedCommentId] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState('');
+  const [exportError, setExportError] = useState('');
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const playFromRef = useRef(0);
   const playStartedAtRef = useRef(0);
@@ -231,6 +251,9 @@ export function ArtifactsView({
     setCommentDraft('');
     setFocusedCommentId('');
     setConfirmDelete(false);
+    setExporting(false);
+    setExportStatus('');
+    setExportError('');
   }, [selectedId]);
 
   useEffect(() => {
@@ -363,6 +386,61 @@ export function ArtifactsView({
   const removeComment = (commentId: string) => {
     if (!selected) return;
     void replaceComments(selected.comments.filter((comment) => comment.id !== commentId));
+  };
+
+  /** Exporta los frames a WebM real; si no hay encoder, lo dice y no inventa MP4. */
+  const exportWebM = async () => {
+    if (!selected || exporting) return;
+    setExportError('');
+    setExportStatus('');
+    const support = webmSupport();
+    if (!support.supported) {
+      setExportError(support.reason);
+      return;
+    }
+    setExporting(true);
+    try {
+      const result = await exportRecordingWebM(selected, {
+        onProgress: (fraction) =>
+          setExportStatus(
+            `${tr(lang, 'Exportando', 'Exporting')}… ${Math.round(fraction * 100)}%`
+          ),
+      });
+      downloadBlobFile(result.blob, result.filename);
+      setExportStatus(
+        `${tr(lang, 'WebM listo', 'WebM ready')} · ${Math.max(
+          1,
+          Math.round(result.blob.size / 1024)
+        )} KB · ${formatMediaTime(result.durationMs)}`
+      );
+    } catch (e: any) {
+      setExportError(String(e?.message || e).slice(0, 300));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const downloadLogs = () => {
+    if (!selected?.logs) return;
+    try {
+      const payload = {
+        recording: {
+          id: selected.id,
+          title: selected.title,
+          sessionId: selected.sessionId,
+          createdAt: selected.createdAt,
+          durationMs: selected.durationMs,
+        },
+        logs: selected.logs,
+      };
+      const safeId = selected.id.replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 60) || 'grabacion';
+      downloadBlobFile(
+        new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }),
+        `grabacion-${safeId}-log.json`
+      );
+    } catch (e: any) {
+      setExportError(String(e?.message || e).slice(0, 300));
+    }
   };
 
   const removeSelected = async () => {
@@ -800,6 +878,132 @@ export function ArtifactsView({
                   <span className="shrink-0 text-[9px] text-white/55 tabular-nums">
                     {formatMediaTime(positionMs)} / {formatMediaTime(selected.durationMs)}
                   </span>
+                </div>
+
+                <div className="border-t border-[var(--nc-border-dark)] pt-2" data-testid="artifact-recording-logs">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Terminal className="w-3.5 h-3.5 text-[var(--nc-text)]" />
+                    <span className="font-bold text-[var(--nc-text)] uppercase tracking-wide">
+                      {tr(lang, 'Consola y red', 'Console and network')}
+                    </span>
+                    <span className="text-[9px] text-white/45">
+                      {selected.logs
+                        ? `${selected.logs.console.length} / ${selected.logs.network.length}`
+                        : tr(lang, 'sin log', 'no log')}
+                    </span>
+                    <div className="ml-auto flex items-center gap-1">
+                      <button
+                        type="button"
+                        data-testid="artifact-export-webm"
+                        onClick={() => void exportWebM()}
+                        disabled={exporting || selected.frames.length === 0}
+                        className="nc-button flex items-center gap-1 px-1.5 py-0.5 text-[9px] disabled:opacity-40"
+                        title={tr(
+                          lang,
+                          'Exportar los frames a un WebM real',
+                          'Export frames to a real WebM'
+                        )}
+                      >
+                        {exporting ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Download className="w-3 h-3" />
+                        )}
+                        {tr(lang, 'Exportar WebM', 'Export WebM')}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="artifact-download-logs"
+                        onClick={downloadLogs}
+                        disabled={!selected.logs}
+                        className="nc-button px-1.5 py-0.5 text-[9px] disabled:opacity-40"
+                      >
+                        {tr(lang, 'Log JSON', 'JSON log')}
+                      </button>
+                    </div>
+                  </div>
+                  {(exportStatus || exportError) && (
+                    <p
+                      data-testid="artifact-export-status"
+                      className={`mt-1 text-[9px] ${exportError ? 'text-red-300' : 'text-[var(--nc-text-accent)]'}`}
+                    >
+                      {exportError || exportStatus}
+                    </p>
+                  )}
+                  {selected.logs?.omitted && (selected.logs.omitted.console || selected.logs.omitted.network) ? (
+                    <p className="mt-1 text-[9px] text-white/40">
+                      {tr(lang, 'Entradas omitidas por límite:', 'Entries omitted by limit:')}{' '}
+                      {selected.logs.omitted.console}{' '}
+                      {tr(lang, 'consola', 'console')} · {selected.logs.omitted.network}{' '}
+                      {tr(lang, 'red', 'network')}
+                    </p>
+                  ) : null}
+                  <div className="mt-1 grid gap-1.5 md:grid-cols-2">
+                    <div>
+                      <div className="text-[9px] text-white/45">
+                        {tr(lang, 'Consola', 'Console')}
+                      </div>
+                      {!selected.logs || selected.logs.console.length === 0 ? (
+                        <p className="text-[9px] text-white/35">
+                          {tr(lang, 'Sin entradas de consola.', 'No console entries.')}
+                        </p>
+                      ) : (
+                        <ul
+                          data-testid="artifact-console"
+                          className="max-h-[160px] overflow-auto space-y-0.5 border border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] p-1"
+                        >
+                          {selected.logs.console.map((entry, index) => (
+                            <li key={`${entry.ts}-${index}`} className="text-[9px] leading-relaxed">
+                              <span className="tabular-nums text-white/35">
+                                {formatMediaTime(entry.atMs, true)}
+                              </span>{' '}
+                              <span
+                                className={
+                                  entry.type === 'error'
+                                    ? 'text-red-300'
+                                    : 'text-[var(--nc-text-accent)]'
+                                }
+                              >
+                                {entry.type}
+                              </span>{' '}
+                              <span className="break-words text-white/70">{entry.text}</span>
+                              {entry.url && <span className="text-white/35"> · {entry.url}</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-[9px] text-white/45">{tr(lang, 'Red', 'Network')}</div>
+                      {!selected.logs || selected.logs.network.length === 0 ? (
+                        <p className="text-[9px] text-white/35">
+                          {tr(lang, 'Sin peticiones registradas.', 'No requests recorded.')}
+                        </p>
+                      ) : (
+                        <ul
+                          data-testid="artifact-network"
+                          className="max-h-[160px] overflow-auto space-y-0.5 border border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] p-1"
+                        >
+                          {selected.logs.network.map((entry, index) => {
+                            const failed = entry.kind === 'failed' || (entry.status ?? 0) >= 400;
+                            return (
+                              <li key={`${entry.ts}-${index}`} className="text-[9px] leading-relaxed">
+                                <span className="tabular-nums text-white/35">
+                                  {formatMediaTime(entry.atMs, true)}
+                                </span>{' '}
+                                <span className="text-white/60">{entry.method}</span>{' '}
+                                <span className={failed ? 'text-red-300' : 'text-[var(--nc-success)]'}>
+                                  {entry.status ?? entry.error ?? 'ERR'}
+                                </span>{' '}
+                                <span className="break-all text-white/70">{entry.url}</span>{' '}
+                                <span className="text-white/35">{entry.durationMs} ms</span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="border-t border-[var(--nc-border-dark)] pt-2">

@@ -2,7 +2,8 @@
 
 > **Base:** Fase 2 de [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md).
 > **Estado (2026-11-09):** **F2-01 a F2-07 implementados** (contrato/store, evidencia de tests, diff/decisiones, informe local, visor, enlace a la grabación y E2E local); G1 sigue pendiente. **G1 sigue sin medirse**: F0 ya tiene una baseline válida con NVIDIA (24 corridas, 8/24, 0 timeouts), pero no se ejecutó el dogfooding que permita comparar latencia/éxito. F2-02 añade evidencia al resultado de `shell.run` sin cambiar el bucle ni las aprobaciones.
-> **Estimaciones:** días-persona, ±30 %. Suman **6,5 d-persona**; el roadmap estima 6–8 días.
+> **Actualización (2026-11-16):** **F2-08 y F2-09 implementados** (revisión por hunk con auditoría; WebM, consola/red y reproducción de 30 s). G1 sigue sin medirse y los criterios de fase siguen sin marcar por esa regla.
+> **Estimaciones:** días-persona, ±30 %. Suman **8,25 d-persona** con F2-08/F2-09; el roadmap estima 6–8 días.
 > **Regla de cierre:** `tsc --noEmit` + pruebas focalizadas en verde; si toca UI, además `vite build`. Un test con `exitCode != 0` o que no llegó a ejecutarse **no** se pinta como aprobado.
 > **Dependencias externas:** ninguna. F2 no requiere Vercel, Linear ni un proveedor de modelo.
 
@@ -31,6 +32,8 @@ La vista actual asume `frames` en todos los artifacts. F2-01 la limita a grabaci
 | F2-05 | Visor de artifacts de verificación | **Hecho** | 1,25 | F2-01, F2-04 |
 | F2-06 | Enlace a la grabación de navegador | **Hecho** | 0,5 | F2-01 |
 | F2-07 | E2E local y límites del artifact | **Hecho** | 1,0 | F2-02 a F2-06 |
+| F2-08 | Revisión por hunk y auditoría de aplicación | **Hecho** | 0,75 | F2-03 |
+| F2-09 | WebM, consola/red y 30 s offline | **Hecho** | 1,0 | F2-01, F2-06 |
 
 ## 3. Issues
 
@@ -251,16 +254,81 @@ La vista actual asume `frames` en todos los artifacts. F2-01 la limita a grabaci
 
 **Archivos:** `tests/e2e/verificationArtifact.spec.ts` (nuevo), `tests/helpers/verificationArtifactFixture.ts` (nuevo), `docs/parity/backlog-f2.md`. No cambia el schema ni el productor del artifact.
 
+### F2-08 — Revisión por hunk y auditoría de aplicación
+
+**Labels:** `f2`, `p1`, `area:artifacts`
+**Estimación:** 0,75 d-persona · **Depende de:** F2-03 · **Estado:** hecho (2026-11-16)
+
+**Por qué.** El artifact ya tenía el patch completo, pero revisarlo por partes obligaba a leerlo entero y no quedaba constancia de quién lo había aplicado. El criterio de fase pide revisión por hunk y auditoría; ninguna de las dos cosas se resuelve reescribiendo el patch.
+
+**Alcance**
+- `src/artifacts/hunks.ts`: parser de patch unificado (`@@ -a,b +c,d @@`) con ids estables por archivo y rango, y rango de líneas dentro del patch.
+- Decisiones por hunk en `VerificationDiff.reviews` (quién, cuándo y, opcionalmente, nota); el patch no se toca al revisar.
+- Atribución por hunk en `VerificationDiff.attributions`: la aprobación (`stepId`, `tool`, decisión) que aportó ese hunk, derivada del patch ya aprobado, no regenerada.
+- Exportación del patch con sólo los hunks aceptados, conservando las cabeceras originales (`diff --git`, `---`, `+++`) y sin recortar espacios finales.
+- Las revisiones sobreviven a reconstruir el artifact mientras los hunks sigan existiendo (`carryHunkReviews`).
+- Visor: estado por hunk, aceptar/rechazar/pendiente, quién aplicó y descarga del patch aceptado. El informe resume hunks y atribución.
+
+**Fuera de alcance:** volver a aplicar el patch, editar su texto, reemplazar el motor de aprobaciones o revisar hunks sin `@@`.
+
+**Criterios de aceptación**
+- [x] Un hunk se marca aceptado o rechazado y la decisión persiste tras recargar (E2E en IndexedDB).
+- [x] Volver a pulsar la decisión la deja pendiente otra vez.
+- [x] Cada hunk muestra la tool y el paso que lo aplicaron; un hunk sin fuente no inventa atribución.
+- [x] El patch aceptado contiene sólo esos hunks y sus cabeceras; sin aceptados no se descarga un "vacío exitoso".
+- [x] El patch original no se reescribe al revisar (`diff.patch` no cambia).
+
+**Pruebas**
+- [`tests/unit/hunks.test.ts`](../../tests/unit/hunks.test.ts): 12/12 — parseo multiarchivo, ids estables, revisión inmutable, atribución por fuente, filtrado por aceptados.
+- [`tests/e2e/verificationArtifact.spec.ts`](../../tests/e2e/verificationArtifact.spec.ts): acepta el primer hunk, comprueba la atribución y que `ACEPTADO` sigue tras recargar.
+
+**Archivos:** `src/artifacts/hunks.ts` (nuevo), `src/artifacts/types.ts`, `src/artifacts/verificationDiff.ts`, `src/artifacts/report.ts`, `src/components/panel/VerificationArtifactDetail.tsx`.
+
+---
+
+### F2-09 — WebM, consola/red y 30 s offline
+
+**Labels:** `f2`, `p1`, `area:artifacts`, `area:browser`
+**Estimación:** 1,0 d-persona · **Depende de:** F2-01, F2-06 · **Estado:** hecho (2026-11-16)
+
+**Por qué.** Los frames JPEG se reproducían, pero no se podían sacar del artifact como vídeo y la grabación no llevaba consola ni red. El criterio de fase pide WebM real, 30 s offline y log con timestamps; inventar un MP4 o un vídeo sin encoder no vale.
+
+**Alcance**
+- `src/artifacts/recordingLogs.ts`: recorta la consola y la red de la sesión a la ventana de la grabación, calcula `atMs` relativo a los frames, deduplica por `seq`, redacta secretos y aplica topes (200 consola / 300 red) dejando constancia de lo omitido.
+- `src/artifacts/webmTimeline.ts`: parte pura (códec VP8→VP9→genérico, línea de tiempo con cambio de frame por instante, nombre de archivo).
+- `src/artifacts/webm.ts`: exportación con `canvas.captureStream` + `MediaRecorder`; si no hay encoder lo dice y conserva frames + log, sin MP4 falso.
+- `useBrowserRecording` captura los logs al detener; si el fetch falla, guarda la grabación sin log en vez de perderla.
+- Visor: consola y red con timestamps, aviso de entradas omitidas, descarga del log JSON y botón de exportación con progreso.
+
+**Fuera de alcance:** MP4, captura a más fps o recodificar desde Playwright; la exportación reproduce los frames ya guardados.
+
+**Criterios de aceptación**
+- [x] El WebM descargado es un archivo real (>200 B) generado por el encoder del navegador (E2E con descarga).
+- [x] Una grabación de 30 s se reproduce offline en Chromium y la línea de tiempo avanza sola.
+- [x] La consola y la red muestran su marca de tiempo relativa (`0:15`) y el estado HTTP.
+- [x] Sin `MediaRecorder` la vista explica el motivo y mantiene frames + log.
+- [x] Los logs no llevan tokens sin redactar ni superan los topes declarados.
+
+**Pruebas**
+- [`tests/unit/recordingLogs.test.ts`](../../tests/unit/recordingLogs.test.ts): 5/5 — ventana, orden, deduplicación, topes/omitidos, redacción.
+- [`tests/unit/webmTimeline.test.ts`](../../tests/unit/webmTimeline.test.ts): 6/6 — códec, 30 s, colapso de frames, topes, nombre.
+- [`tests/ui/webm.test.ts`](../../tests/ui/webm.test.ts): 1/1 — degradación sin encoder.
+- [`tests/e2e/recordingWebm.spec.ts`](../../tests/e2e/recordingWebm.spec.ts): 2/2 — descarga WebM real y reproducción de 30 s con consola/red.
+
+**Archivos:** `src/artifacts/recordingLogs.ts`, `src/artifacts/webmTimeline.ts`, `src/artifacts/webm.ts` (nuevos), `src/artifacts/types.ts`, `src/hooks/useBrowserRecording.ts`, `src/components/panel/ArtifactsView.tsx`.
+
+---
+
 ## 4. Camino crítico
 
 `F2-01` → `F2-02`/`F2-03`/`F2-06` → `F2-04` → `F2-05` → `F2-07`.
 
-F2-01 a F2-07 ya están hechos. El desglose de F2 queda cerrado; G1 sigue siendo el gate pendiente y no se cierra sin el dogfooding de 5 días.
+F2-01 a F2-09 ya están hechos. El desglose de F2 queda cerrado con la salvedad de la revisión visual en Electron; G1 sigue siendo el gate pendiente y no se cierra sin el dogfooding de 5 días.
 
 ## 5. Fuera de alcance de F2
 
 - Subida remota de artifacts, visor en la nube o cuentas.
-- WebM/MP4 o captura a más fps; los frames actuales se enlazan, no se recodifican.
+- MP4 o captura a más fps; la exportación WebM reproduce los frames guardados y no recodifica desde Playwright.
 - Nuevos proveedores de modelo, Vercel o Linear.
 - Reescribir el motor de aprobaciones o el bucle del agente.
 

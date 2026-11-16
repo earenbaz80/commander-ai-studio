@@ -10,12 +10,18 @@
  * SSE o `getPendingApprovals()`); este módulo no lee disco, no ejecuta tools y
  * no vuelve a comparar archivos.
  */
-import type { ApprovalRequestV2, SessionStepV2 } from '../agent/sessionTypes';
+import type { ApprovalDecision, ApprovalRequestV2, SessionStepV2 } from '../agent/sessionTypes';
 import type {
   VerificationArtifact,
   VerificationDecision,
   VerificationDiff,
 } from './types';
+import {
+  attributeHunks,
+  carryHunkReviews,
+  patchPathFromHeader,
+  type HunkAttributionSource,
+} from './hunks';
 
 /** Lo mínimo que hace falta de una solicitud de aprobación. */
 export type ApprovalPatchSource = Pick<ApprovalRequestV2, 'id' | 'tool' | 'diff'>;
@@ -71,14 +77,7 @@ export function buildVerificationDecisions(
  * `/dev/null`, rutas absolutas y cualquier ruta que escape del proyecto.
  */
 function patchPath(raw: string): string | null {
-  let value = String(raw).split('\t')[0].trim();
-  if (!value || value === '/dev/null') return null;
-  if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
-  if (value.startsWith('a/') || value.startsWith('b/')) value = value.slice(2);
-  value = value.replace(/\\/g, '/');
-  if (!value || value.startsWith('/') || /^[A-Za-z]:\//.test(value)) return null;
-  if (value.split('/').includes('..')) return null;
-  return value;
+  return patchPathFromHeader(raw);
 }
 
 /** Archivos que el patch declara, en el orden en que aparecen. */
@@ -107,7 +106,7 @@ export function buildVerificationDiff(
     if (approval?.id && !approvals.has(approval.id)) approvals.set(approval.id, approval);
   }
 
-  const patches: string[] = [];
+  const sources: HunkAttributionSource[] = [];
   const seen = new Set<string>();
   for (const step of input.steps) {
     const recorded = step.approval;
@@ -117,16 +116,23 @@ export function buildVerificationDiff(
     seen.add(recorded.id);
     const patch = approvals.get(recorded.id)?.diff;
     if (typeof patch !== 'string' || !patch.trim()) continue;
-    patches.push(patch);
+    sources.push({
+      patch,
+      stepId: clip(step.id, 200),
+      tool: clip(step.toolId || step.title, 200) || 'tool',
+      decision: recorded.decision as ApprovalDecision,
+    });
   }
 
-  if (patches.length === 0) return undefined;
-  const patch = patches.join('\n');
+  if (sources.length === 0) return undefined;
+  const patch = sources.map((source) => source.patch).join('\n');
+  const attributions = attributeHunks(patch, sources);
   const base = clip(input.base, 200);
   const head = clip(input.head, 200);
   return {
     patch,
     files: filesFromVerificationPatch(patch),
+    ...(attributions.length ? { attributions } : {}),
     ...(base ? { base } : {}),
     ...(head ? { head } : {}),
   };
@@ -154,7 +160,14 @@ export function withVerificationSections(
     decisions: buildVerificationDecisions(input.steps),
   };
   const diff = buildVerificationDiff(input);
-  if (diff) next.diff = diff;
-  else delete next.diff;
+  if (diff) {
+    // Las revisiones por hunk sobreviven a una reconstrucción mientras los
+    // hunks sigan existiendo; el patch no se toca al revisar.
+    const previous = artifact.diff?.reviews;
+    const reviews = previous?.length ? carryHunkReviews(diff.patch, previous) : [];
+    next.diff = reviews.length ? { ...diff, reviews } : diff;
+  } else {
+    delete next.diff;
+  }
   return next;
 }

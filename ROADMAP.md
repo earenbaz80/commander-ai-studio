@@ -57,13 +57,13 @@ Detalle y evidencia: [baseline §6](docs/parity/baseline-2026-11.md#6-línea-bas
 | --- | --- | --- | --- | --- | ---: | --- |
 | **F0** Verdad y línea base | Hecho · G0 cerrada | G0 | P0 | 4–5 d | 5/5 | Mantener la referencia para G1 |
 | **F1** Núcleo de agente y CLI | Hecho en código · G1 abierto | G1 | P0 | 10–12 d | 8/8 | Dogfooding de 5 días |
-| **F2** Artifacts de verificación | Parcial · límites declarados | — | P1 | 6–8 d | 5/7 | Exportación y revisión por hunk |
+| **F2** Artifacts de verificación | Parcial · criterios cubiertos, G1 abierto | — | P1 | 6–8 d | 5/7 | Cerrar G1 y verificación visual en Electron |
 | **F3** Continuidad remota y PWA | Pendiente · espera G2 | G2 | P1 | 10–14 d | 0/4 | Modelo de amenazas |
 | **F4** Editor y ecosistema | Pendiente | — | P1 | 12–15 d | 0/4 | VSIX útil y lifecycle de hooks |
 | **F5** SSR, backend y realtime | Pendiente · espera G3 | G3 | P1 | 18–25 d | 0/5 | Proveedor y entrega 5A |
 | **F6** Apuestas opcionales | Opcional · no comprometido | — | P2 | 20–30 d | n/c | Decisión explícita |
 
-F1 tiene los 14 issues cerrados y 8/8 criterios, pero G1 no se cierra sin el dogfooding; ya existe una baseline F0 válida (NVIDIA, 8/24) para comparar. F2 tiene plan, diff, evidencia de tests, informe local y visor; faltan la grabación exportable y la revisión por hunk. F5 no empieza antes de decidir proveedor en G3; Vercel quedó fuera y Cloudflare Workers es sólo un candidato.
+F1 tiene los 14 issues cerrados y 8/8 criterios, pero G1 no se cierra sin el dogfooding; ya existe una baseline F0 válida (NVIDIA, 8/24) para comparar. F2 tiene plan, diff, evidencia de tests, informe local, visor, revisión por hunk con auditoría y grabación exportable a WebM con consola/red; los criterios de fase siguen sin marcar porque la regla del roadmap no los cierra con G1 pendiente. F5 no empieza antes de decidir proveedor en G3; Vercel quedó fuera y Cloudflare Workers es sólo un candidato.
 
 ### Plataforma
 
@@ -102,7 +102,7 @@ G1 puede prepararse con F0 cerrada, pero no se cierra comparando contra una esti
 **Ahora**
 
 1. Completar el dogfooding del CLI y cerrar G1.
-2. Dejar F2 en revisión: grabación exportable y revisión por hunk.
+2. Cerrar F2: ya tiene revisión por hunk y WebM; falta la revisión visual en Electron y el dogfooding de G1.
 
 **Después de G1**
 

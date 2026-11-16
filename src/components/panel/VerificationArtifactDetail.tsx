@@ -5,22 +5,30 @@
  * y no interpreta el patch. Muestra el contenido tal como quedó guardado para
  * que el usuario pueda revisarlo o descargarlo.
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
+  Check,
   Download,
   FileText,
   Film,
   FolderOpen,
   ShieldCheck,
   Trash2,
+  X,
 } from 'lucide-react';
 import type { Language } from '../../i18n/translations';
 import { deText } from '../../i18n/de';
 import { saveArtifact } from '../../artifacts/store';
 import { effectiveVerificationStatus, withVerificationReport } from '../../artifacts/report';
+import {
+  applyHunkReviewState,
+  filterPatchByAcceptedHunks,
+  reviewVerificationHunk,
+} from '../../artifacts/hunks';
 import type {
   BrowserRecordingArtifact,
   VerificationArtifact,
+  VerificationHunkDecision,
   VerificationStatus,
   VerificationTestStatus,
 } from '../../artifacts/types';
@@ -99,6 +107,30 @@ function testClass(status: VerificationTestStatus): string {
   return 'text-yellow-300 border-yellow-400/60';
 }
 
+const HUNK_LABEL: Record<VerificationHunkDecision, string> = {
+  pending: 'PENDIENTE',
+  accepted: 'ACEPTADO',
+  rejected: 'RECHAZADO',
+};
+
+function hunkClass(decision: VerificationHunkDecision): string {
+  if (decision === 'accepted') return 'text-[var(--nc-success)] border-[var(--nc-success)]';
+  if (decision === 'rejected') return 'text-red-300 border-red-400/60';
+  return 'text-yellow-300 border-yellow-400/60';
+}
+
+function downloadText(content: string, filename: string, mime = 'text/plain;charset=utf-8'): void {
+  if (typeof URL.createObjectURL !== 'function') throw new Error('descarga no disponible');
+  const objectUrl = URL.createObjectURL(new Blob([content], { type: mime }));
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL?.(objectUrl), 1_000);
+}
+
 function Section({
   title,
   children,
@@ -132,10 +164,13 @@ export function VerificationArtifactDetail({
   const [reportError, setReportError] = useState('');
   const [folderStatus, setFolderStatus] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [hunkError, setHunkError] = useState('');
+  const hunkState = useMemo(() => applyHunkReviewState(artifact.diff), [artifact.diff]);
 
   useEffect(() => {
     setReport(artifact.report);
     setConfirmDelete(false);
+    setHunkError('');
   }, [artifact]);
 
   const status = effectiveVerificationStatus(artifact);
@@ -175,6 +210,53 @@ export function VerificationArtifactDetail({
       setFolderStatus(t(lang, 'Ruta copiada', 'Path copied'));
     } catch {
       setFolderStatus(t(lang, 'No se pudo abrir la carpeta', 'Could not open the folder'));
+    }
+  };
+
+  /**
+   * Revisión por hunk: alterna la decisión y persiste en el store. Volver a
+   * pulsar la decisión activa la deja pendiente otra vez.
+   */
+  const toggleHunk = async (hunkId: string, next: Exclude<VerificationHunkDecision, 'pending'>) => {
+    if (!artifact.diff) return;
+    setHunkError('');
+    const current = hunkState.hunks.find((hunk) => hunk.id === hunkId);
+    const decision: VerificationHunkDecision = current?.decision === next ? 'pending' : next;
+    const updated = reviewVerificationHunk(artifact, hunkId, decision, {
+      reviewedBy: 'user',
+      reviewedAt: Date.now(),
+    });
+    try {
+      await saveArtifact(updated);
+      onUpdated?.(updated);
+    } catch (e: any) {
+      setHunkError(String(e?.message || e).slice(0, 300));
+    }
+  };
+
+  const downloadPatch = (onlyAccepted: boolean) => {
+    if (!artifact.diff) return;
+    setHunkError('');
+    const acceptedIds = hunkState.hunks
+      .filter((hunk) => hunk.decision === 'accepted')
+      .map((hunk) => hunk.id);
+    const content = onlyAccepted
+      ? filterPatchByAcceptedHunks(artifact.diff.patch, acceptedIds)
+      : artifact.diff.patch;
+    if (!content.trim()) {
+      setHunkError(
+        t(lang, 'No hay hunks aceptados que exportar.', 'No accepted hunks to export.')
+      );
+      return;
+    }
+    const safeId = artifact.id.replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 60) || 'verificacion';
+    try {
+      downloadText(
+        `${content}\n`,
+        `verificacion-${safeId}${onlyAccepted ? '-hunks-aceptados' : ''}.patch`
+      );
+    } catch (e: any) {
+      setHunkError(String(e?.message || e).slice(0, 300));
     }
   };
 
@@ -370,6 +452,90 @@ export function VerificationArtifactDetail({
                 {artifact.diff.base && artifact.diff.head ? ' · ' : ''}
                 {artifact.diff.head ? `Head: ${artifact.diff.head}` : ''}
               </p>
+            )}
+            {hunkState.hunks.length > 0 && (
+              <div className="space-y-1" data-testid="verification-hunks">
+                <div className="flex flex-wrap items-center gap-1.5 text-[9px] text-white/55">
+                  <span data-testid="verification-hunk-summary">
+                    {hunkState.summary.total} {t(lang, 'hunks', 'hunks')}{' · '}
+                    {hunkState.summary.accepted}{' '}
+                    {t(lang, 'aceptados', 'accepted')} · {hunkState.summary.rejected}{' '}
+                    {t(lang, 'rechazados', 'rejected')} · {hunkState.summary.pending}{' '}
+                    {t(lang, 'pendientes', 'pending')}
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="verification-patch-full"
+                    onClick={() => downloadPatch(false)}
+                    className="nc-button ml-auto flex items-center gap-1 px-1.5 py-0.5 text-[9px]"
+                  >
+                    <Download className="w-3 h-3" />
+                    {t(lang, 'Patch completo', 'Full patch')}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="verification-patch-accepted"
+                    onClick={() => downloadPatch(true)}
+                    disabled={hunkState.summary.accepted === 0}
+                    className="nc-button flex items-center gap-1 px-1.5 py-0.5 text-[9px] disabled:opacity-40"
+                  >
+                    <Download className="w-3 h-3" />
+                    {t(lang, 'Sólo aceptados', 'Accepted only')}
+                  </button>
+                </div>
+                {hunkState.hunks.map((hunk) => (
+                  <article
+                    key={hunk.id}
+                    data-testid={`verification-hunk-${hunk.id}`}
+                    className="border border-[var(--nc-border-dark)] bg-[var(--nc-bg-panel)]/40"
+                  >
+                    <div className="flex flex-wrap items-center gap-1.5 px-1.5 py-1">
+                      <code className="text-[9px] text-white/70">{hunk.header}</code>
+                      <span className={`border px-1 text-[9px] font-bold ${hunkClass(hunk.decision)}`}>
+                        {HUNK_LABEL[hunk.decision]}
+                      </span>
+                      <span className="text-[9px] text-white/45">
+                        {hunk.appliedBy
+                          ? `${t(lang, 'aplicado por', 'applied by')} ${hunk.appliedBy.tool} · ${hunk.appliedBy.stepId}`
+                          : t(lang, 'sin atribución', 'no attribution')}
+                      </span>
+                      <div className="ml-auto flex items-center gap-1">
+                        <button
+                          type="button"
+                          data-testid={`verification-hunk-accept-${hunk.id}`}
+                          aria-pressed={hunk.decision === 'accepted'}
+                          onClick={() => void toggleHunk(hunk.id, 'accepted')}
+                          className="nc-button flex items-center gap-1 px-1.5 py-0.5 text-[9px]"
+                        >
+                          <Check className="w-3 h-3" />
+                          {t(lang, 'Aceptar', 'Accept')}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`verification-hunk-reject-${hunk.id}`}
+                          aria-pressed={hunk.decision === 'rejected'}
+                          onClick={() => void toggleHunk(hunk.id, 'rejected')}
+                          className="nc-button flex items-center gap-1 px-1.5 py-0.5 text-[9px]"
+                        >
+                          <X className="w-3 h-3" />
+                          {t(lang, 'Rechazar', 'Reject')}
+                        </button>
+                      </div>
+                    </div>
+                    <pre className="max-h-[160px] overflow-auto whitespace-pre border-t border-[var(--nc-border-dark)] bg-[var(--nc-bg-deep)] p-1.5 text-[9px] leading-relaxed text-white/75">
+                      {hunk.lines.join('\n')}
+                    </pre>
+                    {(hunk.reviewedBy || hunk.reviewedAt) && (
+                      <div className="px-1.5 py-1 text-[9px] text-white/40">
+                        {t(lang, 'revisado por', 'reviewed by')} {hunk.reviewedBy ?? '—'}
+                        {hunk.reviewedAt ? ` · ${formatDateTime(hunk.reviewedAt, lang)}` : ''}
+                        {hunk.note ? ` · ${hunk.note}` : ''}
+                      </div>
+                    )}
+                  </article>
+                ))}
+                {hunkError && <p className="text-[9px] text-red-300">{hunkError}</p>}
+              </div>
             )}
             {artifact.diff.patch ? (
               <pre
