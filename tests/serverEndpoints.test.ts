@@ -1329,3 +1329,33 @@ test('Strata cloud responde 400 sin clave y 502 si el host no responde', async (
   });
   assert.equal(hostCaido.status, 502, hostCaido.raw);
 });
+test('Strata cloud emite el sobre SSE de chunk y done', async () => {
+  const sinClave = await srv.request('POST', '/api/strata/stream', {});
+  assert.equal(sinClave.status, 400, sinClave.raw);
+
+  const upstream = http.createServer((req, res) => {
+    if (req.url === '/v1/chat/completions') {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('data: {"choices":[{"delta":{"content":"po"}}]}\n\n');
+      res.end('data: {"choices":[{"delta":{"content":"ng"}}]}\n\ndata: [DONE]\n\n');
+      return;
+    }
+    res.writeHead(404, { 'Content-Type': 'application/json' }).end('{}');
+  });
+  await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', () => resolve()));
+  const port = (upstream.address() as { port: number }).port;
+  try {
+    const stream = await srv.request('POST', '/api/strata/stream', {
+      apiKey: 'clave-de-prueba',
+      baseUrl: `http://127.0.0.1:${port}/v1`,
+      prompt: 'ping',
+    });
+    assert.equal(stream.status, 200, stream.raw);
+    assert.match(String(stream.raw), /"type":"chunk"/);
+    assert.match(String(stream.raw), /po/);
+    assert.match(String(stream.raw), /"type":"done"/);
+    assert.match(String(stream.raw), /pong/);
+  } finally {
+    await new Promise<void>((resolve) => upstream.close(() => resolve()));
+  }
+});

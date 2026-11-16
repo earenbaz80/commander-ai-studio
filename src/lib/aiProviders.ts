@@ -74,10 +74,11 @@ export const PROVIDER_CONFIGS: Record<ProviderType, ProviderConfig> = {
   strata: {
     id: 'strata',
     name: 'Strata AI',
-    supportsStreaming: false,
+    supportsStreaming: true,
     supportsTools: true,
     supportsThinking: false,
-    defaultEndpoint: '/api/strata/generate',
+        defaultEndpoint: '/api/strata/generate',
+    streamEndpoint: '/api/strata/stream',
   },
   openrouter: {
     id: 'openrouter',

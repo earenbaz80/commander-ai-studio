@@ -142,7 +142,7 @@ export function resolveChatRoute({
   return {
     endpoint,
     streamEndpoint: isStrata
-      ? '/api/strata/generate'
+      ? '/api/strata/stream'
       : isStrataLocal
         ? '/api/strata-local/stream'
         : isAnthropic

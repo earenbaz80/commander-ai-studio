@@ -3,6 +3,7 @@ import {
   fetchStrataModelIds,
   generateStrataChat,
   normalizeStrataBaseUrl,
+  streamStrataChat,
 } from '../../src/providers/strata';
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -111,4 +112,46 @@ describe('Strata adapter', () => {
     expect(normalizeStrataBaseUrl('')).toBe('https://app.strata.kronisys.com/v1');
     expect(normalizeStrataBaseUrl('https://tenant.example/v1/')).toBe('https://tenant.example/v1');
   });
+  it('emite chunks SSE y el done con usage de /chat/completions', async () => {
+    const sse = [
+      'data: {"choices":[{"delta":{"content":"po"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":"ng"}}]}\n\n',
+      'data: {"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}\n\n',
+      'data: [DONE]\n\n',
+    ].join('');
+    const calls: Array<{ url: string; body: any }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      return new Response(sse, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+    }));
+
+    const events: Array<{ type: string; text?: string; usage?: unknown }> = [];
+    for await (const event of streamStrataChat({ apiKey: 'test-key', baseUrl: 'https://example.test/v1', prompt: 'ping' })) {
+      events.push(event);
+    }
+
+    expect(events.filter((e) => e.type === 'chunk').map((e) => e.text)).toEqual(['po', 'ng']);
+    expect(events.at(-1)).toMatchObject({ type: 'done', usage: { total_tokens: 5 } });
+    expect(calls[0].url).toBe('https://example.test/v1/chat/completions');
+    expect(calls[0].body.stream).toBe(true);
+  });
+
+  it('degrada a un único chunk si el host no expone /chat/completions', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) =>
+      String(url).endsWith('/chat/completions')
+        ? jsonResponse({ error: 'No route' }, 404)
+        : jsonResponse({ content: 'pong', model: 'gpt-5.4' })
+    ));
+
+    const events: Array<{ type: string; text?: string }> = [];
+    for await (const event of streamStrataChat({ apiKey: 'test-key', baseUrl: 'https://hosted.test/v1', prompt: 'ping' })) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      { type: 'chunk', text: 'pong' },
+      { type: 'done', model: 'gpt-5.4', usage: null },
+    ]);
+  });
+
 });

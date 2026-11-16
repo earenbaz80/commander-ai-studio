@@ -91,6 +91,6 @@ describe('resolveStreamEndpoint', () => {
     expect(resolveStreamEndpoint('custom/mi-modelo')).toBeNull();
     expect(resolveStreamEndpoint('org/repo')).toBeNull();
     expect(resolveStreamEndpoint('grok-3')).toBeNull();
-    expect(resolveStreamEndpoint('strata/gpt-5.4')).toBeNull();
+        expect(resolveStreamEndpoint('strata/gpt-5.4')).toBe('/api/strata/stream');
   });
 });

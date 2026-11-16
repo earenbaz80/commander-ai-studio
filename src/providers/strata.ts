@@ -207,3 +207,90 @@ export async function generateStrataChat(opts: {
     raw: data,
   };
 }
+
+export type StrataStreamEvent =
+  | { type: 'chunk'; text: string }
+  | { type: 'done'; model: string; usage: StrataUsage | null };
+
+/**
+ * Streaming del contrato OpenAI (`stream: true`) para el sobre SSE del server.
+ *
+ * Si el host no expone `/chat/completions` (404/405) se degrada a la
+ * generación completa y el texto sale en un único `chunk`; si responde JSON en
+ * vez de SSE, lo mismo. El contrato no-streaming (`generateStrataChat`) no
+ * cambia.
+ */
+export async function* streamStrataChat(opts: {
+  baseUrl?: string;
+  apiKey: string;
+  prompt?: string;
+  messages?: Array<{ role?: string; content?: unknown }>;
+  systemInstruction?: string;
+  model?: string;
+  signal?: AbortSignal;
+}): AsyncGenerator<StrataStreamEvent> {
+  const baseUrl = normalizeStrataBaseUrl(opts.baseUrl);
+  const model = String(opts.model || STRATA_DEFAULT_MODEL).replace(/^strata\//, '');
+  const messages = normalizeMessages(opts.messages, opts.systemInstruction);
+  if (opts.prompt?.trim() && messages.length === 0) messages.push({ role: 'user', content: opts.prompt });
+
+  const upstream = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: { ...headers(opts.apiKey), Accept: 'text/event-stream, application/json' },
+    body: JSON.stringify({ model, messages, stream: true }),
+    signal: opts.signal ?? AbortSignal.timeout(120_000),
+  });
+
+  if (upstream.status === 404 || upstream.status === 405) {
+    const result = await generateStrataChat({ ...opts, baseUrl, model });
+    yield { type: 'chunk', text: result.content };
+    yield { type: 'done', model: result.model, usage: result.usage };
+    return;
+  }
+  if (!upstream.ok) throw new Error(`Strata HTTP ${upstream.status}: ${await errorMessage(upstream)}`);
+
+  const contentType = String(upstream.headers.get('content-type') || '');
+  if (!contentType.includes('text/event-stream')) {
+    const data: any = await upstream.json().catch(() => ({}));
+    const content = data?.choices?.[0]?.message?.content;
+    if (typeof content !== 'string') throw new Error('Strata devolvió una respuesta sin content');
+    yield { type: 'chunk', text: content };
+    yield {
+      type: 'done',
+      model: typeof data?.model === 'string' ? data.model : model,
+      usage: data?.usage && typeof data.usage === 'object' ? data.usage : null,
+    };
+    return;
+  }
+
+  const reader = upstream.body?.getReader();
+  if (!reader) throw new Error('Strata no devolvió cuerpo de streaming');
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let usage: StrataUsage | null = null;
+  let resolvedModel = model;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line.startsWith('data:')) continue;
+      const raw = line.slice(5).trim();
+      if (!raw || raw === '[DONE]') continue;
+      let chunk: any;
+      try {
+        chunk = JSON.parse(raw);
+      } catch {
+        continue;
+      }
+      if (typeof chunk?.model === 'string') resolvedModel = chunk.model;
+      if (chunk?.usage && typeof chunk.usage === 'object') usage = chunk.usage;
+      const text = chunk?.choices?.[0]?.delta?.content;
+      if (typeof text === 'string' && text) yield { type: 'chunk', text };
+    }
+  }
+  yield { type: 'done', model: resolvedModel, usage };
+}
