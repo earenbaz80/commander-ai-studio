@@ -1205,7 +1205,11 @@ describe('ChatPlayground', () => {
     test('cada opción muestra el nombre del modelo (con su badge)', () => {
       render(<ChatPlayground {...baseProps()} />);
       fireEvent.click(screen.getByLabelText('Modelo que se usará para responder'));
-      expect(screen.getByRole('option', { name: /Gemini 3.5 Flash · Flash 2026/ })).toBeInTheDocument();
+      // El nombre accesible conserva el modelo y el badge; sólo varía el espacio
+      // antes del « · » según cómo resuelva jsdom el display del span anidado.
+      expect(
+        screen.getByRole('option', { name: /Gemini 3\.5 Flash\s*·\s*Flash 2026/ })
+      ).toBeInTheDocument();
     });
 
     test('el panel busca por proveedor', async () => {
