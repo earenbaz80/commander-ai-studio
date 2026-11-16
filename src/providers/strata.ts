@@ -215,10 +215,9 @@ export type StrataStreamEvent =
 /**
  * Streaming del contrato OpenAI (`stream: true`) para el sobre SSE del server.
  *
- * Si el host no expone `/chat/completions` (404/405) se degrada a la
- * generación completa y el texto sale en un único `chunk`; si responde JSON en
- * vez de SSE, lo mismo. El contrato no-streaming (`generateStrataChat`) no
- * cambia.
+ * Si el host no expone `/chat/completions` (404/405) o responde sin SSE, se
+ * degrada a la generación completa y el texto sale en un único `chunk`. El
+ * contrato no-streaming (`generateStrataChat`) no cambia.
  */
 export async function* streamStrataChat(opts: {
   baseUrl?: string;
@@ -241,25 +240,18 @@ export async function* streamStrataChat(opts: {
     signal: opts.signal ?? AbortSignal.timeout(120_000),
   });
 
-  if (upstream.status === 404 || upstream.status === 405) {
+  const isSse = String(upstream.headers.get('content-type') || '').includes('text/event-stream');
+  const missingRoute = upstream.status === 404 || upstream.status === 405;
+  if (!upstream.ok && !missingRoute) {
+    throw new Error(`Strata HTTP ${upstream.status}: ${await errorMessage(upstream)}`);
+  }
+
+  // Un host sin stream (ruta inexistente o `stream: true` ignorado) se resuelve
+  // con la generación completa: un único `chunk` y el `done`.
+  if (!upstream.ok || !isSse) {
     const result = await generateStrataChat({ ...opts, baseUrl, model });
     yield { type: 'chunk', text: result.content };
     yield { type: 'done', model: result.model, usage: result.usage };
-    return;
-  }
-  if (!upstream.ok) throw new Error(`Strata HTTP ${upstream.status}: ${await errorMessage(upstream)}`);
-
-  const contentType = String(upstream.headers.get('content-type') || '');
-  if (!contentType.includes('text/event-stream')) {
-    const data: any = await upstream.json().catch(() => ({}));
-    const content = data?.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') throw new Error('Strata devolvió una respuesta sin content');
-    yield { type: 'chunk', text: content };
-    yield {
-      type: 'done',
-      model: typeof data?.model === 'string' ? data.model : model,
-      usage: data?.usage && typeof data.usage === 'object' ? data.usage : null,
-    };
     return;
   }
 
@@ -268,7 +260,6 @@ export async function* streamStrataChat(opts: {
   const decoder = new TextDecoder();
   let buffer = '';
   let usage: StrataUsage | null = null;
-  let resolvedModel = model;
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -286,11 +277,10 @@ export async function* streamStrataChat(opts: {
       } catch {
         continue;
       }
-      if (typeof chunk?.model === 'string') resolvedModel = chunk.model;
       if (chunk?.usage && typeof chunk.usage === 'object') usage = chunk.usage;
       const text = chunk?.choices?.[0]?.delta?.content;
       if (typeof text === 'string' && text) yield { type: 'chunk', text };
     }
   }
-  yield { type: 'done', model: resolvedModel, usage };
+  yield { type: 'done', model, usage };
 }

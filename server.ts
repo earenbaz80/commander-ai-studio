@@ -5658,6 +5658,7 @@ app.post('/api/strata/stream', async (req, res) => {
     };
 
     let fullText = '';
+    let streamDone: { model: string; usage?: unknown } | null = null;
     for await (const event of streamStrataChat({
       apiKey,
       baseUrl,
@@ -5671,9 +5672,18 @@ app.post('/api/strata/stream', async (req, res) => {
         fullText += event.text;
         send({ type: 'chunk', text: event.text });
       } else {
-        send({ type: 'done', fullText, model: event.model, usage: event.usage, metrics: { latencyMs: Date.now() - started } });
+        streamDone = event;
       }
     }
+    // Un solo `done`, al agotar el stream: aunque el adaptador emitiera más de
+    // uno, el cliente no puede recibirlo dos veces.
+    send({
+      type: 'done',
+      fullText,
+      model: streamDone?.model ?? model,
+      usage: streamDone?.usage ?? null,
+      metrics: { latencyMs: Date.now() - started },
+    });
     if (!res.writableEnded) res.end();
   } catch (error) {
     const message = abort.signal.aborted ? 'Generación cancelada' : (error as Error).message;

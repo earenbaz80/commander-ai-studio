@@ -131,7 +131,13 @@ describe('Strata adapter', () => {
     }
 
     expect(events.filter((e) => e.type === 'chunk').map((e) => e.text)).toEqual(['po', 'ng']);
-    expect(events.at(-1)).toMatchObject({ type: 'done', usage: { total_tokens: 5 } });
+    expect(events.filter((e) => e.type === 'done')).toEqual([
+      {
+        type: 'done',
+        model: 'gpt-5.4',
+        usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+      },
+    ]);
     expect(calls[0].url).toBe('https://example.test/v1/chat/completions');
     expect(calls[0].body.stream).toBe(true);
   });

@@ -1351,10 +1351,10 @@ test('Strata cloud emite el sobre SSE de chunk y done', async () => {
       prompt: 'ping',
     });
     assert.equal(stream.status, 200, stream.raw);
-    assert.match(String(stream.raw), /"type":"chunk"/);
-    assert.match(String(stream.raw), /po/);
-    assert.match(String(stream.raw), /"type":"done"/);
-    assert.match(String(stream.raw), /pong/);
+    const raw = String(stream.raw);
+    assert.match(raw, /"type":"chunk"/);
+    assert.match(raw, /pong/);
+    assert.equal(raw.match(/"type":"done"/g)?.length, 1);
   } finally {
     await new Promise<void>((resolve) => upstream.close(() => resolve()));
   }
