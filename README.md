@@ -35,6 +35,41 @@ Con `VITE_FIREBASE_EMULATOR=1` en `.env`, Auth y Firestore apuntan a
 el emulador. Sin la variable se usa el proyecto real y su base nombrada. El
 emulador no se arranca solo: tiene que estar escuchando en esos puertos.
 
+## Convención de ramas
+
+- **Toda rama parte de `main`.** `git switch -c fix/algo origin/main`; nunca de una
+  historia reconstruida ni de otra rama de trabajo. Así el PR compara contra la
+  base real y no arrastra commits ajenos.
+- **Entrega por PR** contra `main`, con CI verde (`.github/workflows/tests.yml`) y
+  sin push directo a `main`. Un solo commit o varios, pero el merge es **squash**.
+- **Si las historias difieren** (rama nacida de otra raíz: `git merge-base` vacío),
+  GitHub rechaza el PR con *«has no history in common with main»*. Se crea una
+  rama puente desde `main` con el árbol final y se abre el PR desde ella:
+
+  ```bash
+  git switch -c fix/algo-main origin/main
+  git read-tree --reset -u fix/algo   # deja el árbol de la rama en la puente
+  git commit -m "…"
+  git push origin fix/algo-main
+  ```
+
+  La rama original no se mergea: queda con su historia para revisar y el squash
+  mantiene `main` lineal.
+- **Archivar con tag antes de borrar.** Una rama cuyo contenido ya está en `main`
+  (mismo árbol, o sólo artefactos temporales) se etiqueta y después se elimina:
+
+  ```bash
+  git tag -a archive/<rama>-AAAA-MM-DD -m "Archivo de <rama> (<sha>): contenido ya presente en main" <rama>
+  git push origin archive/<rama>-AAAA-MM-DD
+  git push origin --delete <rama>
+  git branch -D <rama>
+  ```
+
+  El tag es la referencia permanente de esa historia: `git checkout archive/<rama>-AAAA-MM-DD`.
+- **Comprobar antes de borrar.** `git diff --stat origin/main <rama>` (si sólo
+  aparecen `tests/tmp-*`, la rama no aporta contenido) y
+  `git diff --name-status origin/main..<rama> | grep '^A'` para listar lo exclusivo.
+
 ## Hosting estático (Vercel)
 
 El panel **Publicar** crea releases locales inmutables y las publica en Vercel
