@@ -3,7 +3,7 @@
  * edición, adjuntos y limpieza del chat.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { ChatPlayground } from '../../src/components/ChatPlayground';
 import { DEFAULT_PARAMETERS } from '../../src/hooks/useTabs';
 import { ChatMessage } from '../../src/types/studio';
@@ -478,6 +478,41 @@ describe('ChatPlayground', () => {
       expect(screen.getByTestId('queue-send-notice')).toHaveTextContent(
         'Mensaje enviado al instante · la cola quedó vacía'
       );
+    });
+
+    test('dos keydown en el mismo tick no duplican el envío del primer pendiente', () => {
+      const key = 'queue-shortcut-same-tick';
+      writeChatQueue(key, []);
+      const props = baseProps();
+      render(<ChatPlayground {...props} queueKey={key} isGenerating />);
+      const textarea = screen.getByRole('textbox');
+
+      fireEvent.change(textarea, { target: { value: 'Primero' } });
+      fireEvent.keyDown(textarea, { key: 'Enter' });
+      fireEvent.change(textarea, { target: { value: 'Segundo' } });
+      fireEvent.keyDown(textarea, { key: 'Enter' });
+
+      const shortcut = () =>
+        new KeyboardEvent('keydown', {
+          key: 'Enter',
+          ctrlKey: true,
+          shiftKey: true,
+          bubbles: true,
+        });
+      // Un solo act: los dos eventos leen la misma foto de la cola, así que sin
+      // el guard del id el segundo volvería a enviar «Primero».
+      act(() => {
+        window.dispatchEvent(shortcut());
+        window.dispatchEvent(shortcut());
+      });
+
+      expect(props.onSendMessage).toHaveBeenCalledTimes(1);
+      expect(props.onSendMessage).toHaveBeenCalledWith('Primero', undefined, undefined, 'build');
+      expect(screen.getByTestId('queue-send-notice')).toHaveTextContent(
+        'Mensaje enviado al instante · queda 1 en cola'
+      );
+      expect(screen.getByTestId('chat-queue')).toHaveTextContent('Segundo');
+      expect(screen.getByTestId('chat-queue')).not.toHaveTextContent('Primero');
     });
   });
 

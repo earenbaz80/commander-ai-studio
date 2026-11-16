@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Copy,
   Bot,
@@ -725,7 +725,19 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
     (lang === 'es' ? 'Archivo adjunto' : lang === 'de' ? 'Anhang' : 'Attachment');
 
   /** Muestra que un pendiente salió de la cola por un envío inmediato. */
-  const notifyInstantQueuedSend = () => setInstantSendNotice((seq) => seq + 1);
+  const notifyInstantQueuedSend = useCallback(() => setInstantSendNotice((seq) => seq + 1), []);
+
+  /**
+   * Un segundo keydown en el mismo tick reusa la foto anterior de la cola y
+   * volvería a enviar el mismo pendiente. El id ya reclamado corta ese duplicado;
+   * los ids son únicos, así que nunca bloquea a otro mensaje.
+   */
+  const instantSendRef = useRef<string | null>(null);
+  const claimInstantSend = useCallback((id: string) => {
+    if (instantSendRef.current === id) return false;
+    instantSendRef.current = id;
+    return true;
+  }, []);
 
   const startQueuedEdit = (item: QueuedChatMessage) => {
     setEditingQueuedId(item.id);
@@ -755,14 +767,16 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
    * Envía ya el pendiente que se está editando con el texto actual del editor,
    * sin guardarlo antes en la cola. El resto de la cola se conserva.
    */
-  const sendEditingQueuedNow = () => {
+  const sendEditingQueuedNow = useCallback(() => {
     if (!editingQueuedId) return;
     const item = queuedMessages.find((queued) => queued.id === editingQueuedId);
     if (!item) return;
     const text = editingQueuedText.trim();
     if (!text && item.attachments.length === 0) return;
+    if (!claimInstantSend(item.id)) return;
     setQueuedMessages((prev) => prev.filter((queued) => queued.id !== item.id));
-    cancelQueuedEdit();
+    setEditingQueuedId(null);
+    setEditingQueuedText('');
     if (isGenerating) onStop?.();
     onSendMessage(
       text,
@@ -771,26 +785,39 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
       item.runMode
     );
     notifyInstantQueuedSend();
-  };
+  }, [
+    claimInstantSend,
+    editingQueuedId,
+    editingQueuedText,
+    isGenerating,
+    notifyInstantQueuedSend,
+    onSendMessage,
+    onStop,
+    queuedMessages,
+  ]);
 
   /** Envía un pendiente ya: corta la acción en curso y conserva el resto. */
-  const sendQueuedNow = (item: QueuedChatMessage) => {
-    setQueuedMessages((prev) => prev.filter((queued) => queued.id !== item.id));
-    if (isGenerating) onStop?.();
-    onSendMessage(
-      item.text,
-      item.attachments.length > 0 ? item.attachments : undefined,
-      undefined,
-      item.runMode
-    );
-    notifyInstantQueuedSend();
-  };
+  const sendQueuedNow = useCallback(
+    (item: QueuedChatMessage) => {
+      if (!claimInstantSend(item.id)) return;
+      setQueuedMessages((prev) => prev.filter((queued) => queued.id !== item.id));
+      if (isGenerating) onStop?.();
+      onSendMessage(
+        item.text,
+        item.attachments.length > 0 ? item.attachments : undefined,
+        undefined,
+        item.runMode
+      );
+      notifyInstantQueuedSend();
+    },
+    [claimInstantSend, isGenerating, notifyInstantQueuedSend, onSendMessage, onStop]
+  );
 
   /**
    * Envía ya el primer pendiente. Si es el que se está editando, usa el texto
    * actual del editor, igual que el botón «Enviar ahora sin guardar».
    */
-  const sendFirstQueuedNow = () => {
+  const sendFirstQueuedNow = useCallback(() => {
     const [first] = queuedMessages;
     if (!first) return;
     if (first.id === editingQueuedId) {
@@ -798,7 +825,7 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
       return;
     }
     sendQueuedNow(first);
-  };
+  }, [editingQueuedId, queuedMessages, sendEditingQueuedNow, sendQueuedNow]);
 
   // Ctrl/Cmd+Shift+Enter envía ya el primer pendiente de la cola. El atajo
   // escucha en window para funcionar también desde el compositor; Ctrl/Cmd+Enter
@@ -821,7 +848,7 @@ export const ChatPlayground: React.FC<ChatPlaygroundProps> = ({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [queuedMessages, editingQueuedId, editingQueuedText, isGenerating, onStop, onSendMessage]);
+  }, [queuedMessages, sendFirstQueuedNow]);
 
   /** Devuelve un pendiente al compositor con su texto y todos sus adjuntos. */
   const moveQueuedToComposer = (item: QueuedChatMessage) => {
