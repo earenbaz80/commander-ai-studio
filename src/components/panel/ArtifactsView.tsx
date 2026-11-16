@@ -55,6 +55,7 @@ import {
 import { effectiveVerificationStatus } from '../../artifacts/report';
 import { formatMediaTime, newArtifactId } from '../../artifacts/utils';
 import { exportRecordingWebM, webmSupport } from '../../artifacts/webm';
+import { downloadBlob } from '../../utils/download';
 import { VerificationArtifactDetail } from './VerificationArtifactDetail';
 
 interface ArtifactsViewProps {
@@ -108,19 +109,6 @@ function frameSrc(frame: ArtifactFrame): string {
 function thumbnailOf(artifact: BrowserRecordingArtifact): string {
   const first = artifact.frames[0];
   return first ? frameSrc(first) : '';
-}
-
-/** Descarga un archivo ya construido en memoria (WebM o JSON del log). */
-function downloadBlobFile(blob: Blob, filename: string): void {
-  if (typeof URL.createObjectURL !== 'function') throw new Error('descarga no disponible');
-  const objectUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = objectUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL?.(objectUrl), 1_000);
 }
 
 type ArtifactFilter = 'all' | 'browser-recording' | 'verification';
@@ -406,12 +394,12 @@ export function ArtifactsView({
             `${tr(lang, 'Exportando', 'Exporting')}… ${Math.round(fraction * 100)}%`
           ),
       });
-      downloadBlobFile(result.blob, result.filename);
+      downloadBlob(result.blob, result.filename);
       setExportStatus(
         `${tr(lang, 'WebM listo', 'WebM ready')} · ${Math.max(
           1,
           Math.round(result.blob.size / 1024)
-        )} KB · ${formatMediaTime(result.durationMs)}`
+        )} KB · ${formatMediaTime(result.durationMs)} · ${result.width}×${result.height}`
       );
     } catch (e: any) {
       setExportError(String(e?.message || e).slice(0, 300));
@@ -434,7 +422,7 @@ export function ArtifactsView({
         logs: selected.logs,
       };
       const safeId = selected.id.replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 60) || 'grabacion';
-      downloadBlobFile(
+      downloadBlob(
         new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }),
         `grabacion-${safeId}-log.json`
       );

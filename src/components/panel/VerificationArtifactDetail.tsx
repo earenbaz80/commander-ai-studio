@@ -25,6 +25,7 @@ import {
   filterPatchByAcceptedHunks,
   reviewVerificationHunk,
 } from '../../artifacts/hunks';
+import { downloadText } from '../../utils/download';
 import type {
   BrowserRecordingArtifact,
   VerificationArtifact,
@@ -117,18 +118,6 @@ function hunkClass(decision: VerificationHunkDecision): string {
   if (decision === 'accepted') return 'text-[var(--nc-success)] border-[var(--nc-success)]';
   if (decision === 'rejected') return 'text-red-300 border-red-400/60';
   return 'text-yellow-300 border-yellow-400/60';
-}
-
-function downloadText(content: string, filename: string, mime = 'text/plain;charset=utf-8'): void {
-  if (typeof URL.createObjectURL !== 'function') throw new Error('descarga no disponible');
-  const objectUrl = URL.createObjectURL(new Blob([content], { type: mime }));
-  const link = document.createElement('a');
-  link.href = objectUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL?.(objectUrl), 1_000);
 }
 
 function Section({
@@ -276,18 +265,10 @@ export function VerificationArtifactDetail({
     if (!report) return;
     setReportError('');
     try {
-      if (typeof URL.createObjectURL !== 'function') throw new Error('descarga no disponible');
       const mime = report.format === 'html' ? 'text/html;charset=utf-8' : 'text/markdown;charset=utf-8';
       const ext = report.format === 'html' ? 'html' : 'md';
       const safeId = artifact.id.replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 80) || 'verificacion';
-      const objectUrl = URL.createObjectURL(new Blob([report.content], { type: mime }));
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download = `verificacion-${safeId}.${ext}`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL?.(objectUrl), 1_000);
+      downloadText(report.content, `verificacion-${safeId}.${ext}`, mime);
     } catch (e: any) {
       setReportError(String(e?.message || e).slice(0, 300));
     }

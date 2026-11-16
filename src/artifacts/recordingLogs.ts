@@ -48,19 +48,21 @@ function clean(value: unknown, max: number): string {
     .slice(0, max);
 }
 
-function relativeMs(ts: number, startedAt: number, durationMs: number): number {
-  const value = Math.round(ts - startedAt);
-  if (!Number.isFinite(value)) return 0;
-  return Math.min(Math.max(0, value), Math.max(0, durationMs));
+function relativeMs(ts: number, startedAt: number): number {
+  return Math.max(0, Math.round(ts - startedAt));
 }
 
+/** Sin `seq` (eventos sintéticos) la posición en el lote es la identidad. */
 function dedupe<T extends { seq?: number; ts: number }>(entries: readonly T[]): T[] {
-  const byKey = new Map<string, T>();
-  entries.forEach((entry, index) => {
-    const key = Number.isFinite(entry?.seq) ? `seq:${entry.seq}` : `i:${index}:${entry?.ts}`;
-    if (!byKey.has(key)) byKey.set(key, entry);
-  });
-  return [...byKey.values()].sort((a, b) => a.ts - b.ts);
+  const seen = new Set<string>();
+  return entries
+    .filter((entry, index) => {
+      const key = Number.isFinite(entry?.seq) ? `seq:${entry.seq}` : `idx:${index}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.ts - b.ts);
 }
 
 /**
@@ -72,12 +74,11 @@ function dedupe<T extends { seq?: number; ts: number }>(entries: readonly T[]): 
 export function buildRecordingLogs(input: RecordingLogsInput): RecordingLogs {
   const startedAt = Number.isFinite(input.startedAt) ? input.startedAt : 0;
   const endedAt = Math.max(startedAt, Number.isFinite(input.endedAt) ? input.endedAt : startedAt);
-  const durationMs = endedAt - startedAt;
 
   const consoleEntries = dedupe(input.console ?? [])
     .filter((entry) => Number.isFinite(entry.ts) && entry.ts >= startedAt && entry.ts <= endedAt)
     .map<RecordingConsoleEntry>((entry) => ({
-      atMs: relativeMs(entry.ts, startedAt, durationMs),
+      atMs: relativeMs(entry.ts, startedAt),
       ts: entry.ts,
       type: clean(entry.type || 'log', 20),
       text: clean(entry.text, MAX_CONSOLE_TEXT),
@@ -89,7 +90,7 @@ export function buildRecordingLogs(input: RecordingLogsInput): RecordingLogs {
     .map<RecordingNetworkEntry>((entry) => {
       const entryDuration = Number(entry.durationMs);
       return {
-        atMs: relativeMs(entry.ts, startedAt, durationMs),
+        atMs: relativeMs(entry.ts, startedAt),
         ts: entry.ts,
         kind: entry.kind === 'failed' ? 'failed' : 'http',
         method: clean(entry.method || 'GET', 12),

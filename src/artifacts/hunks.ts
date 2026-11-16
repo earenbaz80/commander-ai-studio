@@ -37,12 +37,6 @@ export function patchPathFromHeader(raw: string): string | null {
   return value;
 }
 
-function headerLines(value: string | undefined): number {
-  if (value === undefined) return 1;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 1;
-}
-
 function isHunkBody(line: string): boolean {
   return (
     line.startsWith(' ') || line.startsWith('+') || line.startsWith('-') || line.startsWith('\\')
@@ -64,7 +58,7 @@ export function parseVerificationHunks(patch: string): VerificationHunk[] {
 
   const close = (endLine: number) => {
     if (!current) return;
-    current.endLine = Math.max(current.headerLine + 1, endLine);
+    current.endLine = endLine;
     hunks.push(current);
     current = null;
   };
@@ -98,9 +92,10 @@ export function parseVerificationHunks(patch: string): VerificationHunk[] {
         file: file || 'archivo',
         header: line.trim(),
         oldStart,
-        oldLines: headerLines(match[2]),
+        // `@@ -a +b @@` omite el conteo cuando es 1; `,0` es un valor real.
+        oldLines: Number(match[2] ?? 1),
         newStart: Number(match[3]),
-        newLines: headerLines(match[4]),
+        newLines: Number(match[4] ?? 1),
         lines: [line],
         headerLine: index,
         endLine: source.length,
@@ -127,20 +122,16 @@ export function parseVerificationHunks(patch: string): VerificationHunk[] {
   return hunks;
 }
 
-export interface VerificationHunkSummary {
+interface VerificationHunkSummary {
   total: number;
   accepted: number;
   rejected: number;
   pending: number;
 }
 
-export interface VerificationHunkState {
+interface VerificationHunkState {
   hunks: VerificationHunk[];
   summary: VerificationHunkSummary;
-}
-
-function emptySummary(): VerificationHunkSummary {
-  return { total: 0, accepted: 0, rejected: 0, pending: 0 };
 }
 
 /**
@@ -149,7 +140,6 @@ function emptySummary(): VerificationHunkSummary {
  */
 export function applyHunkReviewState(diff?: VerificationDiff): VerificationHunkState {
   const hunks = parseVerificationHunks(diff?.patch ?? '');
-  if (hunks.length === 0) return { hunks, summary: emptySummary() };
 
   const reviews = new Map<string, VerificationHunkReview>();
   for (const review of diff?.reviews ?? []) {
@@ -180,7 +170,7 @@ export function applyHunkReviewState(diff?: VerificationDiff): VerificationHunkS
     }
   }
 
-  const summary = hunks.reduce(
+  const summary = hunks.reduce<VerificationHunkSummary>(
     (acc, hunk) => {
       acc.total += 1;
       if (hunk.decision === 'accepted') acc.accepted += 1;
@@ -188,13 +178,13 @@ export function applyHunkReviewState(diff?: VerificationDiff): VerificationHunkS
       else acc.pending += 1;
       return acc;
     },
-    emptySummary()
+    { total: 0, accepted: 0, rejected: 0, pending: 0 }
   );
 
   return { hunks, summary };
 }
 
-export interface HunkReviewOptions {
+interface HunkReviewOptions {
   reviewedBy?: VerificationHunkReviewer;
   reviewedAt?: number;
   note?: string;
@@ -219,8 +209,8 @@ export function reviewVerificationHunk(
       hunkId,
       decision,
       reviewedBy: options.reviewedBy ?? 'user',
-      reviewedAt: Number.isFinite(options.reviewedAt as number)
-        ? (options.reviewedAt as number)
+      reviewedAt: Number.isFinite(options.reviewedAt)
+        ? Number(options.reviewedAt)
         : Date.now(),
       ...(note ? { note: note.slice(0, 500) } : {}),
     });
@@ -229,6 +219,10 @@ export function reviewVerificationHunk(
   return { ...artifact, diff: { ...artifact.diff, reviews } };
 }
 
+/** Cabeceras de archivo que no son `---`/`+++` y deben viajar con el bloque. */
+const FILE_HEADER_LINE =
+  /^(index |\+\+\+ |new file mode |deleted file mode |old mode |new mode |similarity index |dissimilarity index |rename from |rename to |copy from |copy to |Binary files )/;
+
 /** Reconstruye el patch con los hunks aceptados y sus cabeceras originales. */
 export function filterPatchByAcceptedHunks(
   patch: string,
@@ -236,6 +230,7 @@ export function filterPatchByAcceptedHunks(
 ): string {
   const hunks = parseVerificationHunks(patch);
   if (hunks.length === 0) return '';
+
   const accepted = new Set(acceptedHunkIds);
   const acceptedFiles = new Set(
     hunks.filter((hunk) => accepted.has(hunk.id)).map((hunk) => hunk.file)
@@ -243,61 +238,40 @@ export function filterPatchByAcceptedHunks(
   if (acceptedFiles.size === 0) return '';
 
   const lines = String(patch ?? '').split(/\r?\n/);
-  const hunkAt = new Map<number, VerificationHunk>();
-  for (const hunk of hunks) hunkAt.set(hunk.headerLine, hunk);
-
+  const hunkAt = new Map(hunks.map((hunk) => [hunk.headerLine, hunk] as const));
   const out: string[] = [];
-  let blockFile = '';
+  let file = '';
   let header: string[] = [];
 
+  // Las cabeceras se emiten una sola vez por archivo, y sólo si algún hunk
+  // aceptado pertenece a él.
   const flushHeader = () => {
-    if (header.length && blockFile && acceptedFiles.has(blockFile)) out.push(...header);
+    if (header.length && acceptedFiles.has(file)) out.push(...header);
     header = [];
-  };
-  const resolveFile = (from: number): string => {
-    for (let probe = from; probe < lines.length; probe += 1) {
-      if (lines[probe].startsWith('+++ ')) {
-        const parsed = patchPathFromHeader(lines[probe].slice(4));
-        if (parsed) return parsed;
-      }
-      if (HUNK_HEADER.test(lines[probe])) break;
-    }
-    const nextHunk = hunks.find((hunk) => hunk.headerLine >= from);
-    return nextHunk?.file ?? '';
   };
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    const hunk = hunkAt.get(index);
 
-    if (hunkAt.has(index)) {
-      const hunk = hunkAt.get(index) as VerificationHunk;
-      if (!blockFile) blockFile = hunk.file;
+    if (hunk) {
       flushHeader();
       if (accepted.has(hunk.id)) out.push(...hunk.lines);
       continue;
     }
-
     if (line.startsWith('diff --git ')) {
       flushHeader();
-      blockFile = resolveFile(index);
+      file = hunks.find((candidate) => candidate.headerLine > index)?.file ?? '';
       header.push(line);
       continue;
     }
     if (line.startsWith('--- ')) {
       const parsed = patchPathFromHeader(line.slice(4));
-      if (parsed) blockFile = parsed;
+      if (parsed) file = parsed;
       header.push(line);
       continue;
     }
-    if (/^(index |\+\+\+ |new file mode |deleted file mode |old mode |new mode |similarity index |dissimilarity index |rename from |rename to |copy from |copy to |Binary files )/.test(line)) {
-      header.push(line);
-      continue;
-    }
-    if (line === '') {
-      flushHeader();
-      if (out.length && out[out.length - 1] !== '') out.push('');
-      continue;
-    }
+    if (FILE_HEADER_LINE.test(line)) header.push(line);
   }
   flushHeader();
 

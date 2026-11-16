@@ -12,25 +12,14 @@
 import type { BrowserRecordingArtifact } from './types';
 import {
   buildWebMTimeline,
+  fitCanvasSize,
   pickWebMMimeType,
   webmFileName,
   type WebMTimelineOptions,
 } from './webmTimeline';
 
-export {
-  WEBM_MIME_CANDIDATES,
-  buildWebMTimeline,
-  pickWebMMimeType,
-  webmFileName,
-} from './webmTimeline';
-export type {
-  WebMTimeline,
-  WebMTimelineEntry,
-  WebMTimelineOptions,
-} from './webmTimeline';
-
 /** Milisegundos extra para que el último frame no se corte al parar. */
-export const WEBM_HOLD_MS = 250;
+const WEBM_HOLD_MS = 250;
 
 export interface WebMExportSupport {
   supported: boolean;
@@ -81,10 +70,10 @@ export interface WebMExportOptions extends WebMTimelineOptions {
 export interface WebMExportResult {
   blob: Blob;
   filename: string;
-  mimeType: string;
   durationMs: number;
-  frameCount: number;
-  fps: number;
+  /** Tamaño real del lienzo codificado (con la relación de aspecto original). */
+  width: number;
+  height: number;
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -134,9 +123,9 @@ export async function exportRecordingWebM(
     throw new Error('La grabación no tiene frames que exportar');
   }
 
-  const viewport = recording.viewport ?? { width: 1280, height: 800 };
-  const width = Math.max(2, Math.min(1280, Math.round(viewport.width) || 1280));
-  const height = Math.max(2, Math.min(720, Math.round(viewport.height) || 800));
+  // Caja máxima con relación de aspecto: un 1280×800 se codifica 1152×720 en
+  // vez de aplastarse a 1280×720.
+  const { width, height } = fitCanvasSize(recording.viewport);
 
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -206,9 +195,8 @@ export async function exportRecordingWebM(
   return {
     blob,
     filename: webmFileName(recording),
-    mimeType,
     durationMs: timeline.durationMs,
-    frameCount: timeline.sourceFrames.length,
-    fps: timeline.fps,
+    width,
+    height,
   };
 }

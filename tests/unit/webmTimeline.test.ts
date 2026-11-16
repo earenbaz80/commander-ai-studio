@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import {
   buildWebMTimeline,
+  fitCanvasSize,
   pickWebMMimeType,
   webmFileName,
+  WEBM_MAX_SIZE,
   WEBM_MIME_CANDIDATES,
 } from '../../src/artifacts/webmTimeline';
 import type { ArtifactFrame, BrowserRecordingArtifact } from '../../src/artifacts/types';
@@ -52,6 +54,34 @@ describe('pickWebMMimeType', () => {
         throw new Error('sin encoder');
       })
     ).toBeNull();
+  });
+});
+
+describe('fitCanvasSize', () => {
+  test('un viewport 1280×800 entra en la caja 1280×720 sin aplastarse', () => {
+    expect(fitCanvasSize({ width: 1280, height: 800 })).toEqual({ width: 1152, height: 720 });
+    const sourceRatio = 1280 / 800;
+    const fitted = fitCanvasSize({ width: 1280, height: 800 });
+    expect(fitted.width / fitted.height).toBeCloseTo(sourceRatio, 3);
+    expect(fitted.width).toBeLessThanOrEqual(WEBM_MAX_SIZE.width);
+    expect(fitted.height).toBeLessThanOrEqual(WEBM_MAX_SIZE.height);
+  });
+
+  test('limita por el lado que sobra, no por los dos a la vez', () => {
+    expect(fitCanvasSize({ width: 2560, height: 720 })).toEqual({ width: 1280, height: 360 });
+    expect(fitCanvasSize({ width: 1280, height: 1600 })).toEqual({ width: 576, height: 720 });
+  });
+
+  test('no agranda una captura más pequeña que la caja', () => {
+    expect(fitCanvasSize({ width: 800, height: 600 })).toEqual({ width: 800, height: 600 });
+    expect(fitCanvasSize({ width: 640, height: 480 })).toEqual({ width: 640, height: 480 });
+    // Un móvil vertical también entra en la caja, escalado por alto.
+    expect(fitCanvasSize({ width: 390, height: 844 })).toEqual({ width: 333, height: 720 });
+  });
+
+  test('un viewport inválido cae al tamaño por defecto sin deformar', () => {
+    expect(fitCanvasSize({ width: 0, height: Number.NaN })).toEqual({ width: 1152, height: 720 });
+    expect(fitCanvasSize(undefined)).toEqual({ width: 1152, height: 720 });
   });
 });
 

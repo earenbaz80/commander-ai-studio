@@ -6,6 +6,9 @@
  */
 import type { BrowserRecordingArtifact } from './types';
 
+/** Caja máxima del lienzo de exportación; el viewport se escala dentro de ella. */
+export const WEBM_MAX_SIZE = { width: 1280, height: 720 } as const;
+
 /** Códec preferido primero: VP8 es el más disponible en Chromium headless. */
 export const WEBM_MIME_CANDIDATES = [
   'video/webm;codecs=vp8',
@@ -49,6 +52,31 @@ function frameSource(frame: BrowserRecordingArtifact['frames'][number]): string 
   const data = String(frame?.data ?? '');
   if (!data) return '';
   return data.startsWith('data:') ? data : `data:${frame.mimeType || 'image/jpeg'};base64,${data}`;
+}
+
+export interface CanvasSize {
+  width: number;
+  height: number;
+}
+
+/**
+ * Escala el viewport dentro de una caja máxima conservando su relación de
+ * aspecto: un 1280×800 entra en 1280×720 como 1152×720, no aplastado.
+ * No agranda una captura más pequeña que la caja.
+ */
+export function fitCanvasSize(
+  viewport: { width: number; height: number } | undefined,
+  max: CanvasSize = WEBM_MAX_SIZE
+): CanvasSize {
+  const rawWidth = Math.round(Number(viewport?.width));
+  const rawHeight = Math.round(Number(viewport?.height));
+  const width = Number.isFinite(rawWidth) && rawWidth > 0 ? rawWidth : 1280;
+  const height = Number.isFinite(rawHeight) && rawHeight > 0 ? rawHeight : 800;
+  const scale = Math.min(1, max.width / width, max.height / height);
+  return {
+    width: Math.max(2, Math.round(width * scale)),
+    height: Math.max(2, Math.round(height * scale)),
+  };
 }
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {

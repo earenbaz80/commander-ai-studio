@@ -315,6 +315,12 @@ La vista actual asume `frames` en todos los artifacts. F2-01 la limita a grabaci
 - [`tests/ui/webm.test.ts`](../../tests/ui/webm.test.ts): 1/1 — degradación sin encoder.
 - [`tests/e2e/recordingWebm.spec.ts`](../../tests/e2e/recordingWebm.spec.ts): 2/2 — descarga WebM real y reproducción de 30 s con consola/red.
 
+**Cierre (2026-11-16).** Medición reproducible del caso de 30 s: `WEBM_MEASURE=1 npx playwright test tests/e2e/recordingWebm.spec.ts --project=chromium -g "mide la exportación"` en Chromium headless (Playwright 1.65; Windows 10.0.26200, i7-11700F, 64 GiB). Caso: 42 frames JPEG de 1152×720 (30 s a la cadencia real de ~1,4 fps, viewport 1280×800 escalado), artifact origen de **0,69 MiB**. Exportar a 1× tardó **30.299 ms** y produjo un WebM de **0,27 MiB**.
+
+Límite real que fija esa medición: la exportación es **1:1 en tiempo real** (no hay aceleración por defecto), así que el máximo de grabación (120 s / 180 frames) implica ~2 min de exportación. El peso depende del contenido, no del tamaño del artifact: el encoder está topado a 2 Mbps (techo teórico de 7,5 MB por 30 s) y un timeline casi estático queda muy por debajo (0,27 MiB medido). La pestaña debe permanecer visible, porque `setTimeout` se estrangula en segundo plano y estira el tiempo real. La vista no ofrece cancelar la exportación, aunque el exportador ya acepta `AbortSignal`.
+
+La medición es una prueba **opt-in**: con la suite normal el caso queda `skip` y la exportación por defecto no cambia.
+
 **Archivos:** `src/artifacts/recordingLogs.ts`, `src/artifacts/webmTimeline.ts`, `src/artifacts/webm.ts` (nuevos), `src/artifacts/types.ts`, `src/hooks/useBrowserRecording.ts`, `src/components/panel/ArtifactsView.tsx`.
 
 ---
