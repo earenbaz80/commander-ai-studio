@@ -5,6 +5,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { FloatingAssistant } from '../../src/components/FloatingAssistant';
+import { translatePx } from './helpers/cssTransform';
 
 /** Nono busca la cabeza por su aria-label ("Nono"). */
 const getHead = () => screen.getByLabelText('Nono') as HTMLElement;
@@ -307,7 +308,7 @@ describe('FloatingAssistant (Nono)', () => {
       render(<FloatingAssistant lang="es" />);
       const head = getHead();
       expect(head.style.left).toBe('0px');
-      expect(head.style.transform).toBe('translate3d(250px, 175px, 0)');
+      expect(translatePx(head.style.transform)).toEqual({ x: 250, y: 175, z: 0 });
     });
 
     test('ignora una posición corrupta y se ancla', () => {
@@ -342,7 +343,7 @@ describe('FloatingAssistant (Nono)', () => {
         </>,
       );
       const head = getHead();
-      expect(head.style.transform).toContain('translate3d(250px, 175px');
+      expect(translatePx(head.style.transform)).toEqual({ x: 250, y: 175, z: 0 });
 
       fireEvent.input(screen.getByLabelText('chat de prueba'));
 
@@ -354,7 +355,7 @@ describe('FloatingAssistant (Nono)', () => {
       localStorage.setItem('nono-position-v1', JSON.stringify({ x: 250, y: 175 }));
       render(<FloatingAssistant lang="es" />);
       const head = getHead();
-      expect(head.style.transform).toBe('translate3d(250px, 175px, 0)');
+      expect(translatePx(head.style.transform)).toEqual({ x: 250, y: 175, z: 0 });
 
       fireEvent.doubleClick(head);
       expect(head.style.transform).toBe('');

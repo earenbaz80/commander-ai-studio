@@ -2,6 +2,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { GlobalTooltip } from '../../src/components/GlobalTooltip';
 import { EDGE_MARGIN, ANCHOR_GAP } from '../../src/utils/tooltipGeometry';
+import { translatePx } from './helpers/cssTransform';
 
 /**
  * jsdom no maqueta nada: el tooltip se mide a sí mismo con
@@ -33,9 +34,14 @@ function installRects(anchor: { left: number; top: number; width: number; height
     if (el.classList?.contains('z-[10001]')) {
       const left = Number.parseFloat(el.style.left) || 0;
       const top = Number.parseFloat(el.style.top) || 0;
-      const shift = /translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)/.exec(el.style.transform || '');
-      const dx = shift ? Number(shift[1]) : 0;
-      const dy = shift ? Number(shift[2]) : 0;
+      // La corrección se lee como números: jsdom 31 omite el eje Y cuando es 0.
+      let dx = 0;
+      let dy = 0;
+      try {
+        ({ x: dx, y: dy } = translatePx(el.style.transform || ''));
+      } catch {
+        /* todavía no se aplicó la corrección de borde */
+      }
       const boxLeft = left - TOOLTIP_WIDTH / 2 + dx;
       const boxTop = top + dy;
       return {
@@ -108,7 +114,7 @@ describe('GlobalTooltip compacto', () => {
     expect(tip.style.top).toBe(`${120 + ANCHOR_GAP}px`);
 
     // El borde derecho queda exactamente en el margen mínimo de la ventana.
-    await waitFor(() => expect(tip.style.transform).toContain('translate(-50px, 0px)'));
+    await waitFor(() => expect(translatePx(tip.style.transform)).toEqual({ x: -50, y: 0, z: 0 }));
     const left = Number.parseFloat(tip.style.left);
     const rightEdge = left + TOOLTIP_WIDTH / 2 - 50;
     expect(rightEdge).toBe(window.innerWidth - EDGE_MARGIN);
@@ -120,7 +126,7 @@ describe('GlobalTooltip compacto', () => {
 
     const tip = await shownTooltip();
 
-    await waitFor(() => expect(tip.style.transform).toContain('translate(84px, 0px)'));
+    await waitFor(() => expect(translatePx(tip.style.transform)).toEqual({ x: 84, y: 0, z: 0 }));
     const left = Number.parseFloat(tip.style.left);
     expect(left - TOOLTIP_WIDTH / 2 + 84).toBe(EDGE_MARGIN);
   });

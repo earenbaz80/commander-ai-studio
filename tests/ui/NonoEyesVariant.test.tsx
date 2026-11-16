@@ -2,6 +2,7 @@ import { describe, test, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import { NonoHead } from '../../src/components/nono/NonoHead';
 import type { NonoExpression } from '../../src/components/nono/content';
+import { translatePx } from './helpers/cssTransform';
 
 /**
  * Variante «solo ojos»: dos rectángulos sin cabeza ni boca. Las expresiones se
@@ -90,8 +91,8 @@ describe('NonoHead · variante de solo ojos', () => {
     const idle = renderEyes('neutral', { eyeOffset: { x: 1, y: 1 }, idleGaze: true });
 
     // El vector extremo desplaza el grupo; en reposo el grupo vuelve a cero.
-    expect(moved.gaze?.style.transform).toContain('translate(7px, 5px)');
-    expect(idle.gaze?.style.transform).toContain('translate(0px, 0px)');
+    expect(translatePx(moved.gaze!.style.transform)).toEqual({ x: 7, y: 5, z: 0 });
+    expect(translatePx(idle.gaze!.style.transform)).toEqual({ x: 0, y: 0, z: 0 });
 
     // La geometría queda en su sitio y el barrido arranca desde el centro.
     expect(idle.eyes.map((eye) => eye.getAttribute('x'))).toEqual(
