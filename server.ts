@@ -5583,20 +5583,40 @@ app.post('/api/strata-local/generate', async (req, res) => {
  * cuerpo → panel; el adaptador aplica STRATA_BASE_URL y el host público. Sin
  * clave se responde 400 sin tocar la red.
  */
-app.post('/api/strata/generate', async (req, res) => {
+/**
+ * Resolución compartida de clave, base y modelo de Strata alojado para que
+ * `/api/strata/generate` y `/api/strata/stream` no puedan divergir.
+ * Clave: cuerpo → STRATA_API_KEY → panel; base: cuerpo → panel; modelo:
+ * cuerpo → panel → STRATA_DEFAULT_MODEL. `apiKey` nulo ⇒ 400 sin tocar la red.
+ */
+function resolveStrataCloudCredentials(req: any): {
+  apiKey: string | null;
+  baseUrl?: string;
+  model: string;
+} {
   const body = req.body || {};
-  const apiKey =
-    (typeof body.apiKey === 'string' ? body.apiKey.trim() : '') ||
-    process.env.STRATA_API_KEY ||
-    getProviderSecret('strata', 'apiKey');
+  return {
+    apiKey:
+      (typeof body.apiKey === 'string' ? body.apiKey.trim() : '') ||
+      process.env.STRATA_API_KEY ||
+      getProviderSecret('strata', 'apiKey') ||
+      null,
+    baseUrl: body.baseUrl || getProviderSecret('strata', 'baseUrl'),
+    model: body.model || getProviderSecret('strata', 'defaultModel') || STRATA_DEFAULT_MODEL,
+  };
+}
+
+app.post('/api/strata/generate', async (req, res) => {
+  const { apiKey, baseUrl, model } = resolveStrataCloudCredentials(req);
   if (!apiKey) {
     return res.status(400).json({ success: false, error: 'STRATA_API_KEY requerida' });
   }
+  const body = req.body || {};
   try {
     const result = await generateStrataChat({
       apiKey,
-      baseUrl: body.baseUrl || getProviderSecret('strata', 'baseUrl'),
-      model: body.model || getProviderSecret('strata', 'defaultModel') || STRATA_DEFAULT_MODEL,
+      baseUrl,
+      model,
       prompt: body.prompt,
       messages: body.messages,
       systemInstruction: body.systemInstruction,
@@ -5616,16 +5636,11 @@ app.post('/api/strata/stream', async (req, res) => {
   const started = Date.now();
   const abort = requestAbort(req, res);
   try {
+    const { apiKey, baseUrl, model } = resolveStrataCloudCredentials(req);
     const body = req.body || {};
-    const apiKey =
-      (typeof body.apiKey === 'string' ? body.apiKey.trim() : '') ||
-      process.env.STRATA_API_KEY ||
-      getProviderSecret('strata', 'apiKey');
     if (!apiKey) {
       return res.status(400).json({ success: false, error: 'STRATA_API_KEY requerida' });
     }
-    const baseUrl = body.baseUrl || getProviderSecret('strata', 'baseUrl');
-    const model = body.model || getProviderSecret('strata', 'defaultModel') || STRATA_DEFAULT_MODEL;
 
     res.status(200);
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
