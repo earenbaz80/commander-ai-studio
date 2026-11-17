@@ -46,13 +46,11 @@ import { CONTENT_SECURITY_POLICY } from './security';
 import { clearStrataLocalApiKey, getConfig, getConfigPath, getEnvProviderIds, getGlobalConfigPath, getProviderFileConfig, getProviderSecret, loadConfig, removeOpenAiCompatibleProvider, removeProviderConfig } from './src/config/index';
 import { PROVIDER_SPECS, NVIDIA_DEFAULT_MODEL, buildProviderList, customProviderSpecs, describeProvider, getAllProviderCatalog, getProviderCatalog } from './src/providers/registry';
 import { parseCompatibleModelId, slugifyProviderId } from './src/lib/openaiCompatibleProviders';
-import { filterModelIds } from './src/lib/providerFilters';
 import { probeLocalProvider } from './src/providers/localProbe';
 import {
   normalizeStrataLocalBaseUrl,
   probeStrataLocal,
   strataLocalEndpointInfo,
-  strataLocalModelId,
   strataLocalModelName,
   STRATA_LOCAL_PROVIDER_ID,
   type StrataLocalModelInfo,
@@ -1342,59 +1340,11 @@ app.get('/api/providers', async (req, res) => {
       ollama: process.env.OLLAMA_HOST || config?.ollama?.host || 'http://localhost:11434',
       lmstudio: await resolveLmstudioHost(req),
       custom: process.env.CUSTOM_BASE_URL || config?.custom?.baseUrl || '',
-      [STRATA_LOCAL_PROVIDER_ID]: resolveStrataLocalBaseUrl(),
     };
     providers = await Promise.all(
       providers.map(async (provider) => {
         const host = localHosts[provider.id];
         if (!host) return provider;
-        // Strata Serving puede exigir API key: la sonda genérica no la manda y
-        // marcaría como caído un host que sí responde.
-        if (provider.id === STRATA_LOCAL_PROVIDER_ID) {
-          const endpoint = strataLocalEndpointInfo(host);
-          const configuredKey = resolveStrataLocalApiKey();
-          const allowInsecure = strataLocalSettings().allowInsecure;
-          const apiKey = safeStrataLocalApiKey(host, configuredKey, allowInsecure);
-          const probe = await probeStrataLocal(host, apiKey, { timeoutMs: 1_500 });
-          // El gestor también enseña los modelos que existen ahora en el host,
-          // incluido el cargado que sólo aparezca en `/v1/status`.
-          const liveModels = probe.entries.map((entry) => ({
-            id: strataLocalModelId(entry.id),
-            name: entry.name || entry.id,
-            provider: STRATA_LOCAL_PROVIDER_ID,
-            ...(entry.contextWindow
-              ? { contextWindow: `${Math.round(entry.contextWindow / 1000)}K tokens` }
-              : {}),
-            ...(entry.supportsTools !== undefined ? { supportsTools: entry.supportsTools } : {}),
-            ...(entry.inputModalities?.includes('image') ? { supportsImage: true } : {}),
-          }));
-          const visibleModels = filterModelIds(liveModels, {
-            whitelist: provider.whitelist,
-            blacklist: provider.blacklist,
-          });
-          return {
-            ...provider,
-            ...(liveModels.length > 0
-              ? {
-                  models: visibleModels,
-                  allModels: liveModels,
-                  modelCount: visibleModels.length,
-                  totalModels: liveModels.length,
-                }
-              : {}),
-            host,
-            allowInsecure: allowInsecure === true,
-            ...(endpoint.insecureRemote && !apiKey && configuredKey ? { keyBlocked: true } : {}),
-            reachable: probe.ok,
-            identity: probe.identity,
-            ...(probe.status === 'auth' ? { auth: true } : {}),
-            ...(probe.monitor ? { monitor: probe.monitor } : {}),
-            ...(typeof probe.loaded === 'boolean' ? { loaded: probe.loaded } : {}),
-            ...(probe.model ? { model: probe.model } : {}),
-            ...(endpoint.warning ? { warning: endpoint.warning } : {}),
-            ...(probe.ok ? {} : { probeError: probe.error || `HTTP ${probe.httpStatus ?? 0}` }),
-          };
-        }
         const probe = await probeLocalProvider(provider.id, host);
         return {
           ...provider,
@@ -1959,81 +1909,6 @@ app.post('/api/strata-local/compact', async (req, res) => {
     abort.cleanup();
   }
 });
-
-/**
- * Modelos de Strata para el selector. Si el host está apagado se conserva la
- * última detección, igual que con Ollama y LM Studio.
- */
-async function strataLocalCatalog(): Promise<{
-  live: boolean;
-  baseUrl: string;
-  loaded?: boolean;
-  model?: string;
-  identity: 'verified' | 'unverified';
-  warning?: string;
-  entries: Array<{
-    id: string;
-    name: string;
-    provider: string;
-    context_window?: number;
-    context_length?: number;
-    supportsTools?: boolean;
-    supportsParallelTools?: boolean;
-    tags: string[];
-  }>;
-}> {
-  const baseUrl = resolveStrataLocalBaseUrl();
-  const endpoint = strataLocalEndpointInfo(baseUrl);
-  let liveModels: string[] = [];
-  let liveEntries: StrataLocalModelInfo[] = [];
-  let identity: 'verified' | 'unverified' = 'unverified';
-  let loaded: boolean | undefined;
-  let model: string | undefined;
-  try {
-    const probe = await probeStrataLocal(
-      baseUrl,
-      safeStrataLocalApiKey(baseUrl, resolveStrataLocalApiKey(), strataLocalSettings().allowInsecure),
-      { timeoutMs: 2_000 }
-    );
-    liveModels = probe.models;
-    liveEntries = probe.entries;
-    identity = probe.identity;
-    loaded = probe.loaded;
-    model = probe.model;
-    if (probe.ok) rememberLocalModels(STRATA_LOCAL_PROVIDER_ID, baseUrl, probe.models);
-  } catch {
-    /* se usa la caché */
-  }
-  const ids = liveModels.length > 0 ? liveModels : cachedLocalModels(STRATA_LOCAL_PROVIDER_ID, baseUrl).models;
-  const metadata = new Map(liveEntries.map((entry) => [entry.id, entry]));
-  return {
-    live: liveModels.length > 0,
-    baseUrl,
-    ...(typeof loaded === 'boolean' ? { loaded } : {}),
-    ...(model ? { model } : {}),
-    identity,
-    ...(endpoint.warning ? { warning: endpoint.warning } : {}),
-    entries: ids.map((id) => {
-      const info = metadata.get(id);
-      return {
-        id: strataLocalModelId(id),
-        name: info?.name || id,
-        provider: STRATA_LOCAL_PROVIDER_ID,
-        ...(info?.contextWindow
-          ? {
-              context_window: info.contextWindow,
-              context_length: info.contextWindow,
-            }
-          : {}),
-        ...(info?.supportsTools !== undefined ? { supportsTools: info.supportsTools } : {}),
-        ...(info?.supportsParallelTools !== undefined
-          ? { supportsParallelTools: info.supportsParallelTools }
-          : {}),
-        tags: liveModels.length > 0 ? ['local'] : ['local', 'guardado'],
-      };
-    }),
-  };
-}
 
 app.post('/api/strata-local/models', async (req, res) => {
   try {
@@ -4818,7 +4693,7 @@ async function fetchModelsDevCatalog(): Promise<ModelsDevModel[]> {
 
 app.get('/api/models/live', async (req, res) => {
   try {
-    const [modelsDevModels, ollamaModels, lmstudioResult, nvidiaModels, strataLocalResult] = await Promise.all([
+    const [modelsDevModels, ollamaModels, lmstudioResult, nvidiaModels] = await Promise.all([
       fetchModelsDevCatalog(),
       (async () => {
         try {
@@ -4870,7 +4745,6 @@ app.get('/api/models/live', async (req, res) => {
         };
       })(),
       fetchNvidiaLiveModels(),
-      strataLocalCatalog(),
     ]);
 
     // Proveedores añadidos por el usuario: sus modelos no están en models.dev,
@@ -4974,14 +4848,6 @@ app.get('/api/models/live', async (req, res) => {
       })),
       ...ollamaList,
       ...lmstudioResult.entries,
-      ...strataLocalResult.entries.map((entry) => ({
-        ...entry,
-        name: entry.name || entry.id,
-        contextLength: entry.context_length,
-        ...(entry.context_window
-          ? { contextWindow: `${Math.round(entry.context_window / 1000)}K tokens` }
-          : {}),
-      })),
       ...nvidiaModels,
       ...nativeLocalEntries,
       ...compatibleEntries,
@@ -5003,15 +4869,6 @@ app.get('/api/models/live', async (req, res) => {
         configured: st.configured,
         source: st.source,
         name: spec?.name || p,
-        ...(p === STRATA_LOCAL_PROVIDER_ID
-          ? {
-              ...(typeof strataLocalResult.loaded === 'boolean' ? { loaded: strataLocalResult.loaded } : {}),
-              ...(strataLocalResult.model ? { model: strataLocalResult.model } : {}),
-              identity: strataLocalResult.identity,
-              cached: !strataLocalResult.live,
-              ...(strataLocalResult.warning ? { warning: strataLocalResult.warning } : {}),
-            }
-          : {}),
       };
     }
     // Los proveedores sin entradas en el catálogo (HF, custom, freebuff) deben
@@ -5024,19 +4881,6 @@ app.get('/api/models/live', async (req, res) => {
     providerStatus.ollama = { available: ollamaList.length > 0, count: ollamaList.length, configured: true, source: 'local', ...(ollamaLive ? {} : { cached: true }) };
     providerStatus.lmstudio = { available: lmstudioResult.entries.length > 0, count: lmstudioResult.entries.length, configured: true, source: 'local', name: 'LM Studio', ...(lmstudioLive ? {} : { cached: true }) };
     providerStatus.local = { available: nativeLocalEntries.length > 0, count: nativeLocalEntries.length, configured: true, source: 'local', name: 'Commander (GGUF)' };
-    providerStatus[STRATA_LOCAL_PROVIDER_ID] = {
-      ...(providerStatus[STRATA_LOCAL_PROVIDER_ID] || {}),
-      available: strataLocalResult.entries.length > 0,
-      count: strataLocalResult.entries.length,
-      configured: true,
-      source: 'local',
-      name: 'Strata (local)',
-      identity: strataLocalResult.identity,
-      ...(typeof strataLocalResult.loaded === 'boolean' ? { loaded: strataLocalResult.loaded } : {}),
-      ...(strataLocalResult.model ? { model: strataLocalResult.model } : {}),
-      ...(strataLocalResult.entries.length > 0 && !strataLocalResult.live ? { cached: true } : {}),
-      ...(strataLocalResult.warning ? { warning: strataLocalResult.warning } : {}),
-    };
     // Los añadidos están configurados por definición: existen porque se guardó
     // su URL base, aunque ahora no respondan.
     for (const spec of addedProviders) {

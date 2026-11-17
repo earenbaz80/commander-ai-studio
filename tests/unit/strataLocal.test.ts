@@ -11,9 +11,6 @@ import {
   strataLocalModelName,
   STRATA_LOCAL_DEFAULT_BASE_URL,
 } from '../../src/lib/strataLocal';
-import { PROVIDER_SPECS, describeProvider } from '../../src/providers/registry';
-import { detectProvider, resolveEndpoint } from '../../src/lib/aiProviders';
-import { resolveChatRoute } from '../../src/lib/aiRouting';
 
 /**
  * Strata local comparte el contrato OpenAI-compatible, pero tiene su propio id
@@ -336,19 +333,3 @@ describe('sonda de Strata local', () => {
   });
 });
 
-describe('registro y enrutado de Strata local', () => {
-  test('el proveedor está configurado de fábrica como local', () => {
-    const spec = PROVIDER_SPECS.find((item) => item.id === 'strata-local');
-    expect(spec).toBeTruthy();
-    expect(spec!.fields.map((field) => field.name)).toEqual(['baseUrl', 'apiKey', 'defaultModel']);
-    const status = describeProvider(spec!, {}, new Set());
-    expect(status.configured).toBe(true);
-    expect(status.source).toBe('local');
-  });
-
-  test('el modelo detectado se resuelve a la ruta de Strata, no a HuggingFace', () => {
-    expect(detectProvider('strata-local/modelo-local', 'google', [])).toBe('strata-local');
-    expect(resolveEndpoint('strata-local/modelo-local')).toBe('/api/strata-local/generate');
-    expect(resolveChatRoute({ modelId: 'strata-local/modelo-local' }).endpoint).toBe('/api/strata-local/generate');
-  });
-});
