@@ -15,6 +15,7 @@
  * a través de `onEvent`.
  */
 import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from '../agent/fnTools';
+import { spawnBatchHadFailure, spawnChildrenFromResults, spawnFailureClosingMessage } from '../agent/spawnStreak';
 import { toOpenAITools, toolDialectForModel } from '../agent/providers';
 import { PLAN_TOOL } from '../agent/plan';
 import { resolveEndpoint, resolveStreamEndpoint } from '../lib/aiProviders';
@@ -1099,6 +1100,11 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   let testPolicyReminders = 0;
   // Escalada común: la 2.ª repetición avisa, la 3.ª falla y la 4.ª corta.
   const loopGuard = new LoopGuard();
+  // Tandas seguidas de `spawn_agents` con algún hijo fallido. El bucle del
+  // servidor ya corta a la segunda (`spawnFailureStreak` en
+  // `AgentSession.stepNative`); el CLI corre el suyo y no lo tenía, así que
+  // G1-T10-06 lanzó seis tandas hasta agotar el presupuesto.
+  let spawnFailureStreak = 0;
   const goal = state?.goal || opts.goal || opts.task;
   const model = opts.model || state?.model || GEMINI_DEFAULT_MODEL;
   const mode = opts.mode ?? state?.mode ?? 'build';
@@ -1283,6 +1289,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     }
 
     history.push(`ASISTENTE: ${thought}`);
+    // Resultados de `spawn_agents` de esta tanda, para la guarda de racha.
+    const spawnRuns: { tool: string; ok: boolean; data?: unknown }[] = [];
     for (const call of calls) {
       // El modelo devuelve el nombre de la función (`fs_read`), no el id de la
       // tool del servidor (`fs.read`). Sin esta traducción el endpoint responde
@@ -1699,6 +1707,11 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         toolInput.parentSessionId = sessionId;
       }
       const result = await runTool(opts.serverUrl, mapped.tool, toolInput, opts.signal);
+      if (mapped.tool === 'spawn_agents') {
+        // La guarda mira el resultado tal como llega del endpoint
+        // (`{ ok, data: { results, spawned, capped } }`), no el texto del paso.
+        spawnRuns.push({ tool: mapped.tool, ok: result.ok, data: result.data });
+      }
       if (shellRunKey) {
         executedShellRuns.set(shellRunKey, approval?.id ?? 'session');
       }
@@ -1744,6 +1757,26 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         output: result.data,
         status: result.ok ? 'completed' : 'failed',
       });
+    }
+
+    // El modelo puede re-lanzar `spawn_agents` cuando falla algún hijo
+    // (G1-D5-08, G1-D5-10 y G1-T10-06). A la segunda tanda seguida con algún
+    // hijo fallido se cierra informando, con el mismo texto que el servidor.
+    const hijos = spawnChildrenFromResults(spawnRuns);
+    spawnFailureStreak = spawnBatchHadFailure(hijos) ? spawnFailureStreak + 1 : 0;
+    if (spawnFailureStreak >= 2) {
+      // Mismo texto que el bucle del servidor (`spawnFailureClosingMessage`).
+      const answer = spawnFailureClosingMessage(hijos);
+      addTurn({ role: 'assistant', text: answer });
+      await addStep({ type: 'thought', title: 'Finalizado', content: answer, status: 'completed' });
+      if (state) {
+        state.answer = answer;
+        state.status = 'completed';
+        state.updatedAt = Date.now();
+        await sync();
+      }
+      emit({ type: 'answer', text: answer });
+      return done(answer, steps);
     }
   }
 

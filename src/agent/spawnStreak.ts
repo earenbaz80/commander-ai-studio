@@ -18,6 +18,25 @@ export function spawnBatchHadFailure(children: any[]): boolean {
   return children.some((hijo: any) => hijo?.ok === false);
 }
 
+
+/**
+ * Mensaje con el que los dos bucles cierran cuando la racha corta.
+ *
+ * Vive aquí, y no en cada bucle, porque el servidor (`AgentSession.stepNative`)
+ * y el CLI (`runAgent`) tienen que decir exactamente lo mismo: con dos copias,
+ * un cambio de redacción en uno dejaba al otro con un texto distinto y la
+ * corrida se comparaba contra un mensaje que ya no existía.
+ */
+export function spawnFailureClosingMessage(children: any[]): string {
+  const fallidos = children.filter((hijo: any) => hijo?.ok === false);
+  const motivos = [...new Set(fallidos.map((hijo: any) => String(hijo?.error ?? '').trim()).filter(Boolean))];
+  const todosFallidos = children.length > 0 && fallidos.length === children.length;
+  const cierre = todosFallidos
+    ? 'No completé la tarea: los subagentes fallaron en dos tandas seguidas.'
+    : 'No completé la tarea: hubo subagentes fallidos en dos tandas seguidas.';
+  return `${cierre}${motivos.length ? ` Motivo: ${motivos.join(' | ')}` : ''}`.slice(0, 1000);
+}
+
 /**
  * Hijos devueltos por cada `spawn_agents` de una tanda de tools.
  *

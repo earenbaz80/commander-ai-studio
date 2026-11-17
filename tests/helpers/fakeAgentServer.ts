@@ -46,6 +46,7 @@ export type FakeScenario =
   | 'git-diff-long'
   | 'slow-tool'
   | 'spawn-agents'
+  | 'spawn-agents-fail'
   | 'git-worktree-actions'
   | 'ask-user'
   | 'max-steps'
@@ -146,6 +147,7 @@ const SCENARIOS: FakeScenario[] = [
   'git-diff-long',
   'slow-tool',
   'spawn-agents',
+  'spawn-agents-fail',
   'git-worktree-actions',
   'ask-user',
   'max-steps',
@@ -426,6 +428,24 @@ function turnFor(scenario: FakeScenario, turn: number): ModelTurn {
             ],
           }
         : { text: 'Listo: dos hijos.', functionCalls: [] };
+    case 'spawn-agents-fail':
+      // G1-T10-06: el padre repite la tanda con un hijo fallido. El `goal` cambia
+      // en cada turno para que el guardia de repeticiones no corte antes que la
+      // guarda de racha.
+      return {
+        text: `Lanzo la tanda ${turn}.`,
+        functionCalls: [
+          {
+            name: 'spawn_agents',
+            args: {
+              agents: [
+                { goal: `Intenta shell.run y escribe hijo-a ${turn}.txt`, worktree: true, allowedTools: ['fs.read', 'fs.write'] },
+                { goal: `Escribe hijo-b ${turn}.txt`, worktree: true, allowedTools: ['fs.read', 'fs.write'] },
+              ],
+            },
+          },
+        ],
+      };
     case 'git-worktree-actions':
       // `list` es sólo lectura; `add` y `remove` crean o borran directorios y
       // deben seguir pidiendo aprobación (G1-D4 §6, hallazgo de G1-D4-05).
@@ -668,6 +688,22 @@ export async function startFakeAgentServer(): Promise<FakeAgentServer> {
       if (body?.toolId === 'fs.read' && body?.input?.path === 'slow.txt') {
         await new Promise((resolve) => setTimeout(resolve, 2_000));
         if (res.destroyed) return;
+      }
+      if (body?.toolId === 'spawn_agents') {
+        // Misma forma que la corrida real (G1-T10-06): el sobre envuelve el
+        // resultado de la tool y el hijo A falla en todas las tandas.
+        sendJson(res, 200, {
+          ok: true,
+          data: {
+            results: [
+              { index: 0, ok: false, error: 'Subagente excedió tiempo límite' },
+              { index: 1, ok: true, answer: 'Archivos: hijo-b.txt\nDenegado: ninguna' },
+            ],
+            spawned: 2,
+            capped: false,
+          },
+        });
+        return;
       }
       if (body?.toolId === 'fs.write') {
         sendJson(res, 403, {
