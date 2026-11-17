@@ -2,7 +2,7 @@
 >
 > Issue de paridad de G1, sin número en GitHub: no forma parte del backlog F1 y **no** cambia el criterio de T10 ni los enunciados de dogfooding. Es el defecto que deja T10 en **0/3** después de que el aislamiento de los subagentes ya esté medido y bien.
 
-**Estado:** Abierto — contrato de cierre aplicado y con test; transcripción del hijo expuesta en `/subagents` y corregida tras `G1-D5-10`; routing del proveedor y cierre explícito del hijo en el último turno aplicados tras `G1-T10-01`; seis re-mediciones extra, dos intentos de T10 y la re-medición `G1-T10-06` (2/6 con seis tandas y el padre sin cerrar) sin cerrarlo. La decisión sobre «listo» queda registrada abajo: el criterio sigue intacto y el contrato no se cambia para pedir esa palabra.
+**Estado:** Abierto — contrato de cierre aplicado y con test; transcripción del hijo expuesta en `/subagents` y corregida tras `G1-D5-10`; routing del proveedor y cierre explícito del hijo en el último turno aplicados tras `G1-T10-01`; seis re-mediciones extra, dos intentos de T10, la re-medición `G1-T10-06` (2/6 con seis tandas y el padre sin cerrar) y `G1-T10-08`, donde la guarda de racha ya cerró el padre a la segunda tanda (4/6), sin cerrarlo. La decisión sobre «listo» queda registrada abajo: el criterio sigue intacto y el contrato no se cambia para pedir esa palabra.
 
 **Plan de re-medición:** [`T10-REMEASURE-PLAN-2026-11-17.md`](../T10-REMEASURE-PLAN-2026-11-17.md). `G1-T10-01` del 2026-11-17 quedó **inválido** por un fallo de routing/`LLM HTTP 500` y `G1-T10-02` quedó **cancelado** con tres tandas de `spawn_agents` (ver abajo); `G1-T10-06`, con el cierre por `maxSteps` ya aplicado, tampoco cerró T10 (2/6 y seis tandas), así que sigue sin haber una medición válida de una sola tanda. No se ejecutó CAL4H y el umbral de **15 151 ms** no se tocó.
 
@@ -207,6 +207,27 @@ Qué implica:
 Qué **no** se hizo en esta sesión: no se cambió `runT10`, ni el encargo de T10, ni el contrato de cierre, ni `SUBAGENT_CLOSING_REMINDER`, ni el umbral. La decisión queda registrada, no aplicada al evaluador.
 
 **Nota de alcance (2026-11-17):** el catálogo que ve el subagente ya respeta `allowedTools` en el árbol de trabajo (sin commit), así que un hijo con `['fs.read','fs.write']` no recibe `shell.run`. Eso deja el check 4 de `runT10` fuera de alcance por la vía del intento: si se quiere medir la denuncia de la allowlist, el encargo tendría que darle a A una allowlist que incluya `shell.run`. Se anota como punto abierto para la revisión de cierre; no se cambia el criterio.
+
+
+## Re-medición `G1-T10-08` (2026-11-17): la guarda dispara, 4/6
+
+Corrida **extra fuera de las 24** con `HEAD` `7e21944` (guarda de racha extraída a `src/agent/spawnStreak.ts`, portada al bucle del CLI y mensaje de cierre compartido; catálogo del subagente filtrado por `allowedTools`), servidor dedicado `:3285` (PID 18496) y el encargo literal de `runT10` (SHA-256 `c54e1a1a…`). Sesión `sess_95d1f22b`, **107 764 ms**, `completed`. Recibo: [`G1-T10-08-2026-11-17.md`](../receipts/G1-T10-08-2026-11-17.md).
+
+| Check de `runT10` | Resultado |
+| --- | --- |
+| el padre terminó | verde (`completed`) |
+| lanzó dos subagentes | verde (`spawned:2`, dos resultados) |
+| los dos subagentes terminaron | **rojo**: la primera tanda trajo un truncado por `max_tokens` y un turno vacío |
+| la allowlist denegó shell en el hijo | **rojo**: ningún hijo pidió `shell.run` ni informó denegación |
+| los worktrees no ensuciaron el árbol principal | verde |
+| respondió con el resultado | **verde por artefacto**: `/2|dos/` casa con «dos tandas seguidas» |
+
+- **El hallazgo de `G1-T10-06` queda cerrado: la guarda ahora dispara.** El padre pidió una segunda tanda tras la primera con ambos hijos fallidos y, en lugar de seguir, cerró con «No completé la tarea: hubo subagentes fallidos en dos tandas seguidas. Motivo: respuesta truncada por max_tokens (finish_reason: length); max_tokens=4096». Dos tandas y 1 min 48 s, frente a seis tandas y 15 min 19 s.
+- **El catálogo filtrado cambia el uso de tools:** ningún hijo llamó `fs.list`, `fs.glob` ni `git.status` (en `G1-T10-06` se gastaban ahí los pasos); B2 fue directo a `fs.write` y cerró en 4 pasos. Contrapartida ya anotada: sin `shell.run` a la vista, el check 4 no se puede cumplir por la vía del intento.
+- **El fallo se mueve al proveedor:** dos hijos truncados por `max_tokens` (4096) y uno con turnos vacíos; ninguno llegó al turno de cierre con texto, así que el contrato no tuvo ocasión de cumplirse.
+- **Desviaciones:** el operador aprobó **dos** tandas (`apr_935582cc` 5 654 ms y `apr_c8bbef2c` 22 502 ms), así que no es la medición de tanda única del runbook; el intento `G1-T10-07` quedó `invalid` por aprobación caducada a los 300 012 ms (`.commander/g1/G1-T10-07-invalid.json`).
+- **Aislamiento entero:** 1 worktree, árbol limpio, sin `hijo-*.txt` ni `prohibido.txt`.
+- **Sin efecto en G1:** T10 sigue **0/3** en las 24 y **0/10** con las extras; el issue sigue abierto por el texto de cierre y la denuncia de la allowlist. CAL4H no se ejecutó y el umbral de **15 151 ms** no se tocó.
 
 ## Los dos caminos por los que el hijo se daba por bueno
 

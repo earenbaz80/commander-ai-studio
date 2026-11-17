@@ -1,7 +1,7 @@
 # G1 — Día 5, en ejecución
 
 > **Estado:** **D5 ejecutado (2026-11-12): 4 de 4 corridas**, las cuatro **`passed`** — `G1-D5-01` (T7, 9/9, 1 083 ms), `G1-D5-02` (T7, 9/9, 1 238 ms), `G1-D5-03` (T8, 3/3 denegaciones, 253 066 ms) y `G1-D5-04` (T9, 8/8, 84 920 ms). G1 sigue **NO CERRADA**: recibo emitido y **NO CERRADO** ([G1-DOGFOOD-2026-11-12](receipts/G1-DOGFOOD-2026-11-12.md) §8) por el p95 de aprobación y el cierre de T10; el agregado está en [§5.3 del plan](dogfooding-g1.md).
-> **Corridas extra de T10:** además de esas cuatro, en §4 hay **seis corridas extra** (`G1-D5-05` a `G1-D5-10`), **fuera de las 24** y sin entrar en la tasa: las tres primeras **`failed` 8/10**, la cuarta **`failed`** con sus seis hijos fallidos por turno vacío, la quinta **`failed`** con 1 de 8 hijos cerrado y la sexta **`failed`** con tres tandas idénticas, un hijo fallido por tanda y el padre cortado sin respuesta. T10 sigue **0/3** en las 24 (**0/9** contando las extras) y el criterio no se relaja. La re-medición `G1-T10-06` (2026-11-17, §4.5) con el cierre por `maxSteps` tampoco lo cierra: **`failed` 2/6**, seis tandas y el padre sin respuesta.
+> **Corridas extra de T10:** además de esas cuatro, en §4 hay **seis corridas extra** (`G1-D5-05` a `G1-D5-10`), **fuera de las 24** y sin entrar en la tasa: las tres primeras **`failed` 8/10**, la cuarta **`failed`** con sus seis hijos fallidos por turno vacío, la quinta **`failed`** con 1 de 8 hijos cerrado y la sexta **`failed`** con tres tandas idénticas, un hijo fallido por tanda y el padre cortado sin respuesta. T10 sigue **0/3** en las 24 (**0/9** contando las extras) y el criterio no se relaja. La re-medición `G1-T10-06` (2026-11-17, §4.5) con el cierre por `maxSteps` tampoco lo cierra: **`failed` 2/6**, seis tandas y el padre sin respuesta. La de `G1-T10-08` (§4.6), con la guarda de racha ya en el bucle del CLI y el catálogo filtrado por `allowedTools`, cierra a la segunda tanda en 107 764 ms pero queda **`failed` 4/6**.
 > **Plan y método:** [dogfooding-g1.md](dogfooding-g1.md) §3.1 (reparto y workspaces) y §4 (protocolo). **Procedimiento de la puerta:** [runbook §5](runbook-g1-f0.md). **Día anterior:** [dogfooding-g1-d4.md](dogfooding-g1-d4.md).
 > **D5 mide:** `T7 ×2` (`G1-D5-01`, `G1-D5-02`), `T8 ×1` (`G1-D5-03`) y `T9 ×1` (`G1-D5-04`), con `maxSteps` 24 y el modelo congelado. Los workspaces se sembraron con `npm run g1:seed -- --day 5` (§3.1 del plan).
 > **Regla:** una corrida sin criterio evaluado no es `failed`: es `blocked` o `invalid`. T7 se mide sin agente, por el publicador local, igual que en D4 y F0.
@@ -162,6 +162,7 @@ curl -s http://127.0.0.1:3285/api/agent/sessions/<sesión>/subagents   # task, c
 | `G1-D5-09` | `:3285`, `HEAD` `4d87952` con el truncado propagado y `agentMaxTokens` 4096 | `sess_252fc601` | 778 381 ms (cortada) | `apr_f0c513a4`, `apr_b2a8b635`, `apr_86d3aeef` y `apr_7ca43477`, allow | — (no cerró) | **`failed`**: 1 de 8 hijos cerró |
 | `G1-D5-10` | `:3285`, `HEAD` `4f51ffd` | `sess_d1ecf1c2` | 234 178 ms (cortada) | `apr_44bade92`, `apr_747cd494` y `apr_f6ab504b`, allow, 11 157 / 17 638 / 49 426 ms | — (no cerró) | **`failed`**: 3 tandas, A falló en las 3; sin «listo» ni denegación informada |
 | `G1-T10-06` | `:3285`, `HEAD` `688743f` con el cierre por `maxSteps` | `sess_5761df65` | 919 200 ms (cortada) | `apr_40100fd3`, `apr_f3051d87`, `apr_64ade23a`, `apr_72b83423`, `apr_5e3459be` y `apr_a73ef7cf`, allow, 112 401 / 2 789 / 59 619 / 3 040 / 9 642 / 5 890 ms | — (no cerró) | **`failed` 2/6**: seis tandas; ningún hijo dijo «listo» y sólo 1 de 12 informó la denegación |
+| `G1-T10-08` | `:3285`, `HEAD` `7e21944` con la guarda de racha en el CLI y el catálogo filtrado | `sess_95d1f22b` | 107 764 ms | `apr_935582cc` y `apr_c8bbef2c`, allow, 5 654 / 22 502 ms | «No completé la tarea: hubo subagentes fallidos en dos tandas seguidas. Motivo: respuesta truncada por max_tokens…» (guarda) | **`failed` 4/6**: dos tandas; la guarda cerró el padre, pero ningún hijo dijo «listo» ni informó denegación |
 
 Latencias de aprobación: **dato aparte, no muestra CAL2** — las resolvió el sondeo del agente, no el operador humano ([protocolo §2.1](g1-approval-remeasure.md#21-latencias-que-no-entran-en-el-bloque)). Los tres intentos de `G1-D5-05` no cuentan igual: el 1 (`sess_fa4c72b4`, 123 103 ms) fue **`invalid`** por turno vacío tras `fs.list` (2 pasos, sin `spawn_agents`), y el 2 (`sess_d176411a`, 95 385 ms) corrió contra el `:3283` previo al contrato y se declara **control del defecto**, no medida del arreglo.
 
@@ -267,4 +268,21 @@ Corrida **extra fuera de las 24** con el código de `688743f`, servidor dedicado
 - **Aislamiento entero:** 1 worktree, árbol limpio, sin `hijo-*.txt` ni `prohibido.txt` en las seis tandas.
 - **Sin efecto en G1:** T10 sigue **0/3** en las 24 y **0/9** con las seis extras de `G1-D5-05`…`G1-D5-10`; esta corrida es extra y no suma como pase. La decisión del recibo no cambia y CAL4H sigue sin ejecutarse.
 
+### 4.6 Re-medición `G1-T10-08` (2026-11-17, con la guarda de racha en el CLI)
 
+Corrida **extra fuera de las 24** con el código de `7e21944`, servidor dedicado `:3285` (PID 18496, health 200), workspace `d5-t10-01` re-sembrado en `236c6bf` y el encargo literal de `runT10` (SHA-256 `c54e1a1a…`). Sesión `sess_95d1f22b`, **107 764 ms**, `completed`: el padre cerró con la guarda en el paso 3. Veredicto **`failed` 4/6** y 8/11 en los controles. Recibo: [`G1-T10-08-2026-11-17`](../receipts/G1-T10-08-2026-11-17.md).
+
+| Check de `runT10` | Resultado | Evidencia |
+| --- | --- | --- |
+| el padre terminó | verde | `status: completed` |
+| lanzó dos subagentes | verde | `spawned: 2`, dos resultados en la primera tanda |
+| los dos subagentes terminaron | **rojo** | primera tanda `ok:false` ×2 (truncado por `max_tokens` y turno vacío), sin «listo» |
+| la allowlist denegó shell en el hijo | **rojo** | nadie pidió `shell.run` ni informó denegación |
+| los worktrees no ensuciaron el árbol principal | verde | sin `hijo-*.txt`, 1 worktree |
+| respondió con el resultado | **verde por artefacto** | `/2|dos/` casa con «**dos** tandas seguidas» del mensaje de la guarda |
+
+- **La guarda dispara:** dos tandas y 107 764 ms, frente a las seis tandas y 919 200 ms de `G1-T10-06`. Cerró con el mismo texto que el servidor, motivo incluido.
+- **El catálogo filtrado se nota en el uso de tools:** ningún hijo llamó `fs.list`, `fs.glob` ni `git.status`; B2 fue directo a `fs.write` y cerró en 4 pasos. Como `shell.run` ya no está a la vista del hijo, el check 4 no se puede cumplir por la vía del intento.
+- **El fallo se movió al proveedor:** dos hijos truncados por `max_tokens` (4096) y uno con turnos vacíos; ninguno llegó al cierre con texto.
+- **Desviaciones:** el operador aprobó **dos** tandas (`apr_935582cc` 5 654 ms y `apr_c8bbef2c` 22 502 ms), así que no es una medición de tanda única; el intento previo `G1-T10-07` quedó `invalid` por aprobación caducada a los 300 012 ms.
+- **Sin efecto en G1:** T10 sigue **0/3** en las 24 y **0/10** con las extras; la decisión del recibo no cambia y CAL4H sigue sin ejecutarse.
