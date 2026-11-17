@@ -503,3 +503,77 @@ test('un turno que sólo actualiza el plan no se toma por respuesta final', asyn
     globalThis.fetch = originalFetch;
   }
 });
+
+test('un hijo con tools denegadas escribe y gasta su turno final en `Finalizado`', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const objetivo = `hijo-cierre-con-denegadas-${Date.now()}`;
+  const padre = createSession({ goal: 'padre de la prueba de cierre reservado', cwd: dir });
+  const stopApprovals = autoApprove(objetivo);
+  let turnosConTools = 0;
+  let turnosFinales = 0;
+
+  globalThis.fetch = (async (_url: any, init?: any) => {
+    const body = JSON.parse(String(init?.body || '{}'));
+    // El turno reservado para cerrar se reconoce porque no lleva tools.
+    if (!body.tools) {
+      turnosFinales += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          text: 'Archivos: hijo-a.txt\nDenegado: fs.list y fs.glob por allowlist. listo',
+          functionCalls: [],
+        }),
+      } as any;
+    }
+
+    turnosConTools += 1;
+    const call = (name: string, args: Record<string, unknown>) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ functionCalls: [{ name, args }] }),
+    } as any);
+
+    if (turnosConTools === 1) return call('fs_list', { path: dir });
+    if (turnosConTools === 2) return call('fs_glob', { pattern: '*' });
+    if (turnosConTools === 3) return call('fs_write', { path: 'hijo-a.txt', content: 'hola' });
+    if (turnosConTools === 4) return call('fs_read', { path: 'hijo-a.txt' });
+    throw new Error(`llamada con tools inesperada: ${turnosConTools}`);
+  }) as any;
+
+  try {
+    const res: any = await executeAgentTool('task', {
+      root: dir,
+      parentSessionId: padre.id,
+      goal: objetivo,
+      allowedTools: ['fs.read', 'fs.write'],
+      maxSteps: 8,
+    });
+
+    assert.equal(res.ok, true, JSON.stringify(res).slice(0, 400));
+    assert.match(String(res.answer), /listo/i);
+    assert.match(String(res.answer), /Denegado:.*fs\.list/i);
+    assert.equal(fs.readFileSync(path.join(dir, 'hijo-a.txt'), 'utf8'), 'hola');
+    assert.equal(turnosConTools, 4, 'no pide un turno con tools cuando ya no queda presupuesto');
+    assert.equal(turnosFinales, 1, 'usa exactamente un turno sin tools para cerrar');
+
+    const [fila] = listSubAgents(padre.id);
+    assert.equal(fila.status, 'completed');
+    assert.equal(fila.answer, res.answer);
+    assert.equal(fila.stepTitles?.at(-1), 'Finalizado', 'la fila termina en el cierre real');
+    assert.ok(
+      fila.calls?.some((c) => c.tool === 'fs.write' && c.ok === true),
+      `la escritura quedó registrada: ${JSON.stringify(fila.calls)}`
+    );
+    assert.ok(
+      fila.calls?.some((c) => c.tool === 'fs.list' && c.ok === false),
+      `la denegación quedó registrada: ${JSON.stringify(fila.calls)}`
+    );
+  } finally {
+    stopApprovals();
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});

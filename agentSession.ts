@@ -24,7 +24,7 @@ import { decide, needsHumanApproval } from './src/agent/permissionRules';
 import { enforceTool, getPermissions, type Permissions } from './permissions';
 import { createWorktree, removeWorktree, type WorktreeResult } from './worktrees';
 import { resolveSubagentPolicy } from './src/agent/subagentTemplates';
-import { agentMaxTokens, toolDialectForModel, toOpenAITools } from './src/agent/providers';
+import { agentMaxTokens, sessionGenerateRoute, toolDialectForModel, toOpenAITools } from './src/agent/providers';
 import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from './src/agent/fnTools';
 import { PLAN_TOOL, normalizePlan } from './src/agent/plan';
 import { TOOL_REGISTRY } from './src/agent/registry';
@@ -420,23 +420,20 @@ const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.list', '
 async function callLlmNative(
   cfg: SessionConfig,
   ctx: { goal: string; cwd: string; plan: AgentPlanItem[]; recentSteps: any[]; toolSchema: string; agentsMd: string; turns: { role: string; text: string }[]; systemExtra?: string }
-  , signal?: AbortSignal
+  , signal?: AbortSignal,
+  opts: { finalTurn?: boolean } = {}
 ): Promise<{ thought: string; calls: { name: string; args: any }[] }> {
   const model = cfg.model || GEMINI_DEFAULT_MODEL;
   const dialect = toolDialectForModel(model);
   const turns = ctx.turns || [];
-  const user = `OBJETIVO: ${ctx.goal}\nCWD: ${ctx.cwd}\n\nPLAN ACTUAL:\n${JSON.stringify(ctx.plan, null, 2)}\n\nULTIMOS PASOS:\n${JSON.stringify(ctx.recentSteps.slice(-10), null, 2)}\n\nHISTORIAL:\n${turns.slice(-8).map((t) => `${t.role.toUpperCase()}: ${t.text.slice(0, 1200)}`).join('\n\n')}\n\nTOOLS:\n${ctx.toolSchema}${ctx.systemExtra ? `\n${ctx.systemExtra}` : ''}`;
-  const systemInstruction = `Eres un agente autónomo de código. Razona brevemente en texto y llama herramientas para avanzar hacia: ${ctx.goal}. Si el objetivo está cumplido, responde SOLO texto final sin llamar herramientas. Antes de editar, localiza el código con fs.glob/fs.grep y léelo con fs.read para tener el texto exacto: los cambios pequeños van con fs.edit y un oldString idéntico al del archivo.${ctx.agentsMd ? `\nREGLAS DEL REPO:\n${ctx.agentsMd.slice(0, 4000)}` : ''}${childDirectives(cfg)}`;
+  const finalTurn = opts.finalTurn === true;
+  const toolsSection = finalTurn ? '' : `\n\nTOOLS:\n${ctx.toolSchema}`;
+  const user = `OBJETIVO: ${ctx.goal}\nCWD: ${ctx.cwd}\n\nPLAN ACTUAL:\n${JSON.stringify(ctx.plan, null, 2)}\n\nULTIMOS PASOS:\n${JSON.stringify(ctx.recentSteps.slice(-10), null, 2)}\n\nHISTORIAL:\n${turns.slice(-8).map((t) => `${t.role.toUpperCase()}: ${t.text.slice(0, 1200)}`).join('\n\n')}${toolsSection}${ctx.systemExtra ? `\n${ctx.systemExtra}` : ''}`;
+  const systemInstruction = `Eres un agente autónomo de código. Razona brevemente en texto y llama herramientas para avanzar hacia: ${ctx.goal}. Si el objetivo está cumplido, responde SOLO texto final sin llamar herramientas. Antes de editar, localiza el código con fs.glob/fs.grep y léelo con fs.read para tener el texto exacto: los cambios pequeños van con fs.edit y un oldString idéntico al del archivo.${ctx.agentsMd ? `\nREGLAS DEL REPO:\n${ctx.agentsMd.slice(0, 4000)}` : ''}${childDirectives(cfg)}${finalTurn ? '\nÚLTIMO TURNO: no llames herramientas. Escribe ahora el cierre obligatorio, con lo que hiciste y lo que se te denegó.' : ''}`;
 
   if (dialect === 'json-text') return { thought: '', calls: [] };
 
-  const route =
-    dialect === 'gemini' ? '/api/gemini/generate'
-    : model.startsWith('openrouter/') ? '/api/openrouter/generate'
-    : model.startsWith('ollama/') ? '/api/ollama/generate'
-    : model.startsWith('lmstudio/') ? '/api/lmstudio/generate'
-    : model.startsWith('freebuff/') ? '/api/freebuff/generate'
-    : '/api/custom/generate';
+  const route = sessionGenerateRoute(model);
 
   const payload: Record<string, unknown> = {
     contents: user,
@@ -455,8 +452,10 @@ async function callLlmNative(
   // La sesión corre en el servidor, sin usuario al otro lado: `ask_user` no
   // puede resolverse aquí y no se le ofrece al modelo.
   const declarations = AGENT_FUNCTION_DECLARATIONS.filter((d) => d.name !== 'ask_user');
-  if (dialect === 'gemini') payload.tools = [{ functionDeclarations: declarations }];
-  else payload.tools = toOpenAITools(declarations);
+  if (!finalTurn) {
+    if (dialect === 'gemini') payload.tools = [{ functionDeclarations: declarations }];
+    else payload.tools = toOpenAITools(declarations);
+  }
 
   const res = await fetch(`${getServerBaseUrl()}${route}`, {
     method: 'POST',
@@ -525,13 +524,7 @@ ${JSON.stringify(ctx.history.slice(-6).map((m) => ({ role: m.role, content: m.co
 TOOLS:
 ${ctx.toolSchema}`;
 
-  const route = model.startsWith('custom/') ? '/api/custom/generate'
-    : model.startsWith('openrouter/') ? '/api/openrouter/generate'
-    : model.startsWith('pollinations/') ? '/api/pollinations/generate'
-    : model.startsWith('freebuff/') ? '/api/freebuff/generate'
-    : model.startsWith('ollama/') ? '/api/ollama/generate'
-    : model.startsWith('lmstudio/') ? '/api/lmstudio/generate'
-    : '/api/gemini/generate';
+  const route = sessionGenerateRoute(model);
 
   const payload = {
     model: model.startsWith('custom/') ? (cfg.keys?.CUSTOM_MODEL || model) : model,
@@ -1389,7 +1382,44 @@ export class AgentSession {
     }
   }
 
+  /**
+   * Último turno del hijo cuando ya no tiene presupuesto para tools.
+   *
+   * No se sintetiza una respuesta: se pide al modelo un turno SIN tools para
+   * que emita el cierre obligatorio. Antes, `budget <= 0` cerraba en `done` sin
+   * `Finalizado` y `executeTask` lo convertía en «sin respuesta final»
+   * (G1-T10-01).
+   */
+  private async finalizeChild(recentSteps: any[]) {
+    const final = await callLlmNative(this.cfg, {
+      goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
+      toolSchema: this.toolSchema(), agentsMd: this.agentsMd, turns: this.turns,
+    }, this.abortCtrl.signal, { finalTurn: true });
+    const answer = String(final.thought || '').trim();
+    if (!answer) {
+      this.fail('El subagente agotó el presupuesto sin una respuesta de cierre.');
+      return;
+    }
+    this.answer = answer;
+    this.turns.push({ role: 'assistant', text: answer, ts: Date.now() });
+    if (this.turns.length > 10) this.turns = this.turns.slice(-10);
+    this.addStep({ type: 'thought', title: 'Finalizado', content: answer, status: 'completed' });
+    this.emit({ type: 'finish', answer });
+    this.status = 'done';
+    this.running = false;
+    this.emit({ type: 'status', status: 'done' });
+  }
+
   private async stepNative(recentSteps: any[]) {
+    const budget = this.toolBudget();
+    // El presupuesto se comprueba antes de pedir otro turno con tools: si el
+    // hijo ya no puede ejecutar ninguna, se gasta directamente su turno de
+    // cierre sin tools. Antes se hacía una llamada con tools que se descartaba.
+    if (this.cfg.closingContract && budget <= 0) {
+      await this.finalizeChild(recentSteps);
+      return;
+    }
+
     let native;
     try {
       native = await callLlmNative(this.cfg, {
@@ -1487,7 +1517,6 @@ export class AgentSession {
       return;
     }
 
-    const budget = this.toolBudget();
     if (budget <= 0) {
       this.turns.push({ role: 'assistant', text: native.thought || '(sin salida)', ts: Date.now() });
       this.status = 'done';

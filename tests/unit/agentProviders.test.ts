@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { agentMaxTokens, isReasoningModel, toolDialectForModel, truncatedTurnError } from '../../src/agent/providers';
+import { agentMaxTokens, isReasoningModel, sessionGenerateRoute, toolDialectForModel, truncatedTurnError } from '../../src/agent/providers';
 
 /**
  * G1-EMPTY-TURN: los modelos que razonan gastan el presupuesto de salida en
@@ -10,6 +10,20 @@ import { agentMaxTokens, isReasoningModel, toolDialectForModel, truncatedTurnErr
 describe('dialecto de tools', () => {
   it('usa Chat Completions para los GGUF nativos del runtime local', () => {
     expect(toolDialectForModel('local/qwen2.5-7b-instruct-q4_k_m.gguf')).toBe('openai');
+  });
+});
+
+describe('ruta interna de la sesión', () => {
+  it('manda el nemotron de NVIDIA por /api/nvidia/generate', () => {
+    expect(sessionGenerateRoute('nvidia/nvidia/nemotron-3.5-lightning-30b-a3b')).toBe('/api/nvidia/generate');
+  });
+
+  it('resuelve el resto de proveedores por la tabla compartida', () => {
+    expect(sessionGenerateRoute('custom/mi-modelo')).toBe('/api/custom/generate');
+    expect(sessionGenerateRoute('openrouter/qwen/qwen3-30b-a3b')).toBe('/api/openrouter/generate');
+    expect(sessionGenerateRoute('ollama/llama3.2')).toBe('/api/ollama/generate');
+    expect(sessionGenerateRoute('lmstudio/qwen2.5-7b')).toBe('/api/lmstudio/generate');
+    expect(sessionGenerateRoute(undefined)).toBe('/api/gemini/generate');
   });
 });
 
