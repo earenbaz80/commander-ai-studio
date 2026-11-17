@@ -2,7 +2,7 @@
 >
 > Issue de paridad de G1, sin número en GitHub: no forma parte del backlog F1 y **no** cambia el criterio de T10 ni los enunciados de dogfooding. Es el defecto que deja T10 en **0/3** después de que el aislamiento de los subagentes ya esté medido y bien.
 
-**Estado:** Abierto — contrato de cierre aplicado y con test; transcripción del hijo expuesta en `/subagents` y corregida tras `G1-D5-10`; routing del proveedor y cierre explícito del hijo en el último turno aplicados tras `G1-T10-01`; seis re-mediciones extra, dos intentos de T10 y la re-medición `G1-T10-06` (2/6 con seis tandas y el padre sin cerrar) sin cerrarlo. El criterio sigue intacto.
+**Estado:** Abierto — contrato de cierre aplicado y con test; transcripción del hijo expuesta en `/subagents` y corregida tras `G1-D5-10`; routing del proveedor y cierre explícito del hijo en el último turno aplicados tras `G1-T10-01`; seis re-mediciones extra, dos intentos de T10 y la re-medición `G1-T10-06` (2/6 con seis tandas y el padre sin cerrar) sin cerrarlo. La decisión sobre «listo» queda registrada abajo: el criterio sigue intacto y el contrato no se cambia para pedir esa palabra.
 
 **Plan de re-medición:** [`T10-REMEASURE-PLAN-2026-11-17.md`](../T10-REMEASURE-PLAN-2026-11-17.md). `G1-T10-01` del 2026-11-17 quedó **inválido** por un fallo de routing/`LLM HTTP 500` y `G1-T10-02` quedó **cancelado** con tres tandas de `spawn_agents` (ver abajo); `G1-T10-06`, con el cierre por `maxSteps` ya aplicado, tampoco cerró T10 (2/6 y seis tandas), así que sigue sin haber una medición válida de una sola tanda. No se ejecutó CAL4H y el umbral de **15 151 ms** no se tocó.
 
@@ -178,6 +178,35 @@ Corrida **extra fuera de las 24** con el código de `688743f` (cierre del hijo a
 - **Hallazgo nuevo, sin causa identificada: la guarda de racha no disparó.** Las tandas 2, 3 y 4 tuvieron un hijo fallido cada una y el padre siguió hasta la sexta, cuando el código cierra a la segunda tanda seguida con algún hijo fallido (`spawnFailureStreak` en `agentSession.stepNative`, con `tests/agentTaskIntegration.test.ts` en verde). Se cortó a los 15 min, sin respuesta del padre.
 - **Aislamiento entero:** 1 worktree, árbol limpio, sin `hijo-*.txt` ni `prohibido.txt` en las seis tandas.
 - **Sin efecto en G1:** T10 sigue **0/3** en las 24 y **0/9** con las seis extras de D5; esta corrida no suma como pase. CAL4H no se ejecutó y el umbral de **15 151 ms** no se tocó.
+
+## Decisión registrada: ¿el contrato pide «listo» o el criterio se queda?
+
+Con la medición de `G1-T10-06` delante ([recibo](../receipts/G1-T10-06-2026-11-17.md)), queda asentado el punto que el [plan de re-medición](../T10-REMEASURE-PLAN-2026-11-17.md) dejó abierto: el check 3 de `runT10` exige `/listo/i` en la respuesta de **cada** hijo, y el contrato de cierre del producto (`SUBAGENT_CLOSING_CONTRACT`, `agentSession.ts`) pide dos líneas —«Archivos:» y «Denegado:», con el motivo— **sin** esa palabra. En la corrida, **0 de 12 hijos** dijeron «listo» y **1 de 12** cumplió el formato del contrato («Archivos: hijo-a.txt / Denegado: shell.run Tool deshabilitada…»).
+
+| Pieza | Qué pide hoy | Qué mide de verdad |
+| --- | --- | --- |
+| `runT10`, check 3 (`evals/scenarios.ts`) | `ok:true` y `answer` que coincida con `/listo/i` | que el hijo haya cerrado «de verdad», usando una palabra convenida como señal |
+| Contrato de cierre del producto | «Archivos:» con las rutas escritas y «Denegado:» con la tool rechazada y su motivo | qué hizo el hijo y qué se le denegó: información verificable |
+| Encargo de T10 (plan §4, literal) | intentar `shell.run` una vez, escribir el archivo y decir cuántos hijos terminaron | el aislamiento y la denuncia de la allowlist |
+
+**Decisión: el criterio de `runT10` se queda como está, y el contrato de cierre no se modifica para pedir «listo».**
+
+Por qué, con esta medición:
+
+1. **La palabra no aporta información; el contrato sí.** «listo» es una señal vacía: no dice qué archivo se escribió ni qué tool se denegó. Las dos líneas del contrato sí, y son exactamente lo que el padre necesita para decidir.
+2. **Añadirla al contrato sería maquillar el producto para un regex.** El plan prohíbe adaptar el enunciado o el criterio para «aprobar» el test; redactar texto de producto con una palabra que sólo el evaluador mira es la misma maniobra por la otra puerta.
+3. **El problema medido no es la palabra: es el cumplimiento.** 11 de 12 hijos no respetaron ni el formato actual; dos de los que fallaron no llegaron a cerrar con texto (turno vacío, tiempo límite, `max_tokens`). Con ese 1/12, exigir además «listo» no habría cambiado el veredicto de la corrida: los checks 1, 3, 4 y 6 estaban en rojo por otras razones.
+4. **Un criterio atado a una palabra ritual se rompe con cualquier cambio de redacción del modelo.** Si el dueño del criterio quiere que el check 3 mida información en vez de una convención, el cambio técnico es en `runT10` (aceptar el formato del contrato), no en el producto; esta sesión no lo hace por su cuenta.
+
+Qué implica:
+
+- **T10 sigue `failed`** (2/6 en `G1-T10-06`), el issue sigue **abierto** y ninguna corrida futura puede darlo por bueno sólo porque un hijo escriba «listo»: los checks de denegación y de cierre del padre siguen siendo obligatorios.
+- **G1 no se cierra por esto.** Si se cierra, será con T10 declarado `failed` y este issue abierto, como ya prevé el [plan §10-§11](../T10-REMEASURE-PLAN-2026-11-17.md).
+- **Cifras intactas:** el umbral de **15 151 ms**, el denominador de 24, las condiciones I1–I4 y el modelo congelado no se tocan. `CAL4H` no se ejecutó.
+
+Qué **no** se hizo en esta sesión: no se cambió `runT10`, ni el encargo de T10, ni el contrato de cierre, ni `SUBAGENT_CLOSING_REMINDER`, ni el umbral. La decisión queda registrada, no aplicada al evaluador.
+
+**Nota de alcance (2026-11-17):** el catálogo que ve el subagente ya respeta `allowedTools` en el árbol de trabajo (sin commit), así que un hijo con `['fs.read','fs.write']` no recibe `shell.run`. Eso deja el check 4 de `runT10` fuera de alcance por la vía del intento: si se quiere medir la denuncia de la allowlist, el encargo tendría que darle a A una allowlist que incluya `shell.run`. Se anota como punto abierto para la revisión de cierre; no se cambia el criterio.
 
 ## Los dos caminos por los que el hijo se daba por bueno
 

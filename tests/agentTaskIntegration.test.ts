@@ -650,3 +650,76 @@ test('un hijo con tools denegadas escribe y gasta su turno final en `Finalizado`
     globalThis.fetch = originalFetch;
   }
 });
+test('el catálogo del hijo respeta allowedTools: no le ofrece fs.list, fs.glob, git.status ni shell.run', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const padre = createSession({ goal: 'padre de la prueba de catálogo', cwd: dir });
+  const objetivo = `catalogo-${Date.now()}`;
+  const pedidos: any[] = [];
+
+  // El hijo no llama tools: interesa el sobre que se le manda al proveedor.
+  globalThis.fetch = (async (_url: any, init: any) => {
+    pedidos.push(JSON.parse(String(init?.body ?? '{}')));
+    return { ok: true, status: 200, json: async () => ({ text: 'Archivos: ninguno\nDenegado: ninguna', functionCalls: [] }) } as any;
+  }) as any;
+
+  try {
+    const res: any = await executeAgentTool('task', {
+      root: dir,
+      parentSessionId: padre.id,
+      goal: objetivo,
+      allowedTools: ['fs.read', 'fs.write'],
+    });
+    assert.equal(res.ok, true, `el subagente debe completar: ${JSON.stringify(res).slice(0, 400)}`);
+
+    const pedido = pedidos[0];
+    assert.ok(pedido, 'el hijo pidió al menos un turno');
+    const prompt = String(pedido.contents ?? pedido.prompt ?? '');
+    assert.ok(prompt.includes('TOOLS:'), 'el prompt lleva la sección de tools');
+    const catalogo = prompt.slice(prompt.indexOf('TOOLS:'));
+
+    for (const permitida of ['fs.read', 'fs.write']) {
+      assert.match(catalogo, new RegExp(permitida.replace('.', '\\.')), `el catálogo debe ofrecer ${permitida}`);
+    }
+    for (const denegada of ['fs.list', 'fs.glob', 'shell.run', 'git.status']) {
+      assert.doesNotMatch(catalogo, new RegExp(denegada.replace('.', '\\.')), `el catálogo no debe ofrecer ${denegada}`);
+    }
+
+    const declaradas: string[] = (pedido.tools?.[0]?.functionDeclarations ?? []).map((d: any) => String(d.name));
+    assert.ok(declaradas.includes('fs_read') && declaradas.includes('fs_write'), 'las declaraciones nativas siguen la allowlist');
+    for (const fuera of ['fs_list', 'fs_glob', 'shell_run', 'git_status']) {
+      assert.equal(declaradas.includes(fuera), false, `no se declara ${fuera} al proveedor`);
+    }
+  } finally {
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('sin allowlist el hijo sigue viendo el catálogo completo', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const padre = createSession({ goal: 'padre de la prueba de catálogo completo', cwd: dir });
+  const objetivo = `catalogo-completo-${Date.now()}`;
+  let prompt = '';
+
+  globalThis.fetch = (async (_url: any, init: any) => {
+    const pedido = JSON.parse(String(init?.body ?? '{}'));
+    prompt = String(pedido.contents ?? pedido.prompt ?? '');
+    return { ok: true, status: 200, json: async () => ({ text: 'Archivos: ninguno\nDenegado: ninguna', functionCalls: [] }) } as any;
+  }) as any;
+
+  try {
+    const res: any = await executeAgentTool('task', { root: dir, parentSessionId: padre.id, goal: objetivo });
+    assert.equal(res.ok, true, `el subagente debe completar: ${JSON.stringify(res).slice(0, 400)}`);
+    const catalogo = prompt.slice(prompt.indexOf('TOOLS:'));
+    for (const id of ['fs.read', 'fs.write', 'shell.run', 'fs.list']) {
+      assert.match(catalogo, new RegExp(id.replace('.', '\\.')), `sin allowlist el catálogo mantiene ${id}`);
+    }
+  } finally {
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});

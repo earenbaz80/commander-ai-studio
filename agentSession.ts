@@ -26,6 +26,12 @@ import { createWorktree, removeWorktree, type WorktreeResult } from './worktrees
 import { resolveSubagentPolicy } from './src/agent/subagentTemplates';
 import { agentMaxTokens, sessionGenerateRoute, toolDialectForModel, toOpenAITools } from './src/agent/providers';
 import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from './src/agent/fnTools';
+import { spawnBatchHadFailure, spawnChildrenFromResults } from './src/agent/spawnStreak';
+
+// La guarda vive en `src/agent/spawnStreak` para que el CLI la importe sin
+// arrastrar este módulo (y con él `browserSession`/`mcp`); se re-exporta para
+// no romper a quien ya la importaba de aquí.
+export { spawnBatchHadFailure, spawnChildrenFromResults } from './src/agent/spawnStreak';
 import { PLAN_TOOL, normalizePlan } from './src/agent/plan';
 import { TOOL_REGISTRY } from './src/agent/registry';
 import { LoopGuard, type LoopCut } from './src/agent/identicalCalls';
@@ -419,7 +425,7 @@ const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.list', '
 
 async function callLlmNative(
   cfg: SessionConfig,
-  ctx: { goal: string; cwd: string; plan: AgentPlanItem[]; recentSteps: any[]; toolSchema: string; agentsMd: string; turns: { role: string; text: string }[]; systemExtra?: string }
+  ctx: { goal: string; cwd: string; plan: AgentPlanItem[]; recentSteps: any[]; toolSchema: string; agentsMd: string; turns: { role: string; text: string }[]; systemExtra?: string; visibleTools?: string[] | null }
   , signal?: AbortSignal,
   opts: { finalTurn?: boolean } = {}
 ): Promise<{ thought: string; calls: { name: string; args: any }[] }> {
@@ -451,7 +457,15 @@ async function callLlmNative(
   };
   // La sesión corre en el servidor, sin usuario al otro lado: `ask_user` no
   // puede resolverse aquí y no se le ofrece al modelo.
-  const declarations = AGENT_FUNCTION_DECLARATIONS.filter((d) => d.name !== 'ask_user');
+  // La misma allowlist manda en las declaraciones nativas: si la tool no está
+  // permitida, no se le ofrece al proveedor y el modelo no la llama.
+  const visible = ctx.visibleTools ?? null;
+  const declarations = AGENT_FUNCTION_DECLARATIONS.filter((d) => {
+    if (d.name === 'ask_user') return false;
+    if (!visible) return true;
+    const tool = mapFunctionCall(d.name, {})?.tool;
+    return tool != null && visible.includes(tool);
+  });
   if (!finalTurn) {
     if (dialect === 'gemini') payload.tools = [{ functionDeclarations: declarations }];
     else payload.tools = toOpenAITools(declarations);
@@ -480,7 +494,7 @@ async function callLlmNative(
 
 async function callLlmJson(
   cfg: SessionConfig,
-  ctx: { goal: string; cwd: string; plan: AgentPlanItem[]; recentSteps: any[]; toolSchema: string; agentsMd: string; history: { role: string; content: string }[]   }, signal?: AbortSignal,
+  ctx: { goal: string; cwd: string; plan: AgentPlanItem[]; recentSteps: any[]; toolSchema: string; agentsMd: string; history: { role: string; content: string }[]; visibleTools?: string[] | null }, signal?: AbortSignal,
   opts: { finalTurn?: boolean } = {}
 ): Promise<{ thought?: string; plan?: { id: string; text: string; done: boolean }[]; toolCalls?: { id: string; tool: string; input: unknown }[]; answer?: string; finish?: boolean }> {
   const model = cfg.model || GEMINI_DEFAULT_MODEL;
@@ -911,12 +925,28 @@ export class AgentSession {
     return full;
   }
 
+  /**
+   * Allowlist efectiva de la sesión; `null` = todas las del proyecto.
+   *
+   * Es la misma lista con la que `enforceTool` deniega. El catálogo salía del
+   * registro entero, así que un hijo con `allowedTools:['fs.read','fs.write']`
+   * seguía viendo —y llamando— `fs.list`, `fs.glob`, `git.status` o
+   * `shell.run`: cada llamada se denegaba y el hijo gastaba sus pasos antes de
+   * llegar al turno de cierre (G1-T10-06: 21 pasos en tools denegadas y un
+   * cierre con «Llamando a fs.glob…»).
+   */
+  private visibleToolIds(): string[] | null {
+    return this.effectivePermissions().allowedTools ?? null;
+  }
+
   private toolSchema(): string {
-    return JSON.stringify(
-      Object.values(TOOL_REGISTRY).map((t) => ({ id: t.id, description: t.description, danger: t.danger })),
-      null,
-      2
-    ) + (this.mcpSchema ? `\n${this.mcpSchema}` : '');
+    const visible = this.visibleToolIds();
+    const tools = Object.values(TOOL_REGISTRY)
+      .filter((t) => !visible || visible.includes(t.id))
+      .map((t) => ({ id: t.id, description: t.description, danger: t.danger }));
+    // El esquema MCP sólo se anuncia si la sesión puede usar sus tools.
+    const conMcp = Boolean(this.mcpSchema) && (!visible || visible.includes('mcp.call') || visible.includes('mcp.list'));
+    return JSON.stringify(tools, null, 2) + (conMcp ? `\n${this.mcpSchema}` : '');
   }
 
   async start() {
@@ -1413,14 +1443,16 @@ export class AgentSession {
     if (toolDialectForModel(this.cfg.model) === 'json-text') {
       const final = await callLlmJson(this.cfg, {
         goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
-        toolSchema: this.toolSchema(), agentsMd: this.agentsMd,
+        toolSchema: this.toolSchema(),
+        visibleTools: this.visibleToolIds(), agentsMd: this.agentsMd,
         history: this.turns.map((turn) => ({ role: turn.role, content: turn.text })),
       }, this.abortCtrl.signal, { finalTurn: true });
       answer = String(final.answer ?? final.thought ?? '').trim();
     } else {
       const final = await callLlmNative(this.cfg, {
         goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
-        toolSchema: this.toolSchema(), agentsMd: this.agentsMd, turns: this.turns,
+        toolSchema: this.toolSchema(),
+        visibleTools: this.visibleToolIds(), agentsMd: this.agentsMd, turns: this.turns,
       }, this.abortCtrl.signal, { finalTurn: true });
       answer = String(final.thought || '').trim();
     }
@@ -1452,7 +1484,8 @@ export class AgentSession {
     try {
       native = await callLlmNative(this.cfg, {
         goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
-        toolSchema: this.toolSchema(), agentsMd: this.agentsMd, turns: this.turns,
+        toolSchema: this.toolSchema(),
+        visibleTools: this.visibleToolIds(), agentsMd: this.agentsMd, turns: this.turns,
       }, this.abortCtrl.signal);
     } catch (e: any) {
       // Abortado: reintentar en modo JSON volvería a pedirle al proveedor justo
@@ -1612,7 +1645,8 @@ export class AgentSession {
   private async stepJson(recentSteps: any[]) {
     const llmRes = await callLlmJson(this.cfg, {
       goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
-      toolSchema: this.toolSchema(), agentsMd: this.agentsMd,
+      toolSchema: this.toolSchema(),
+      visibleTools: this.visibleToolIds(), agentsMd: this.agentsMd,
       // Los resultados de tools viven en `turns`; el resumen de `recentSteps`
       // no lleva su contenido y el modelo acababa releyendo los archivos.
       history: this.turns.map((turn) => ({ role: turn.role, content: turn.text })),
@@ -1975,31 +2009,4 @@ export function removeSession(id: string): void {
   }
 }
 
-/**
- * ¿La tanda de `spawn_agents` dejó algún hijo fallido?
- *
- * La racha cuenta también el fallo parcial: en G1-D5-10 un hijo cerraba bien y
- * el otro no, y el padre relanzó la misma tanda tres veces porque la guarda
- * sólo miraba «todos fallidos».
- */
-export function spawnBatchHadFailure(children: any[]): boolean {
-  return children.some((hijo: any) => hijo?.ok === false);
-}
 
-/**
- * Hijos devueltos por cada `spawn_agents` de una tanda de tools.
- *
- * La forma depende de dónde se ejecutó la tool: en proceso el resultado es
- * `{ results, spawned, capped }`, pero el CLI ejecuta las tools contra
- * `/api/agent/tool` y recibe el sobre entero, `{ ok, data: { results, … } }`.
- * G1-D5-09 lo destapó: la guarda leía sólo la primera forma, así que el padre
- * relanzó `spawn_agents` cuatro veces sin que la cuenta de tandas fallidas
- * subiera nunca.
- */
-export function spawnChildrenFromResults(results: any[]): any[] {
-  return results.flatMap((r) => {
-    const entrada = (r?.data ?? r) as any;
-    const lista = entrada?.results ?? entrada?.data?.results;
-    return Array.isArray(lista) ? lista : [];
-  });
-}
