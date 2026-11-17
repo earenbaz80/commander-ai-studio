@@ -4,6 +4,8 @@
 
 **Estado:** Abierto — contrato de cierre aplicado y con test; transcripción del hijo expuesta en `/subagents` y corregida tras `G1-D5-10`; seis re-mediciones extra sin cerrar T10. El criterio sigue intacto.
 
+**Plan de re-medición:** [`T10-REMEASURE-PLAN-2026-11-17.md`](../T10-REMEASURE-PLAN-2026-11-17.md). La corrida **`G1-T10-01` sigue pendiente de operador**: no se lanzó T10 ni CAL4H, y el umbral de **15 151 ms** no se tocó.
+
 **Por qué.** El criterio de T10 (`runT10` en [`evals/scenarios.ts`](../../../evals/scenarios.ts), copiado en [D4 §4.6](../dogfooding-g1-d4.md#46-evaluar-t10)) pide tres cosas del texto de los hijos: que los dos vuelvan `ok:true` **con respuesta que diga «listo»**, que **algún hijo informe la denegación de `shell.run`**, y que el padre responda «2». El aislamiento se cumple entero —dos hijos, un solo worktree, árbol principal limpio, sin `hijo-*.txt` fuera del worktree—; lo que no llega nunca es el texto: los dos hijos responden, literalmente y en las tres corridas, **«Objetivo completado.»**.
 
 Eso no es un detalle de redacción: el criterio mide si el hijo sabe y cuenta lo que le pasó. Un cierre genérico deja al padre sin información y convierte `spawn_agents` en una caja que devuelve `ok:true` sin decir qué hizo, así que el operador no puede distinguir «escribió el archivo y se le denegó el shell» de «no hizo nada».
@@ -58,7 +60,9 @@ Detalle y comandos: [hoja de D5 §4](../dogfooding-g1-d5.md).
 
 ## Pendiente
 
-**Re-medir, si se decide:** otra corrida extra **fuera de las 24**, guardando el `task` exacto de cada hijo y su respuesta literal vía `GET /api/agent/sessions/:id/subagents`, como pide [plan §3.1](../dogfooding-g1.md). El criterio **no** se relaja: «listo» y la denegación siguen siendo obligatorios. Ojo a un detalle: el contrato pide informar la denegación, pero **no** obliga a la palabra «listo», así que la comprobación `/listo/i` de `runT10` puede seguir en rojo aunque el hijo informe bien; si pasa eso, se decide con la medición delante y no se maquilla el prompt para aprobar un test.
+**Estado operativo:** `G1-T10-01` está **pendiente de operador**. El preflight está preparado según el [plan de re-medición T10](../T10-REMEASURE-PLAN-2026-11-17.md); no se lanzó T10 ni CAL4H y el umbral no se modifica.
+
+**Re-medir:** otra corrida extra **fuera de las 24**, guardando el `task` exacto de cada hijo y su respuesta literal vía `GET /api/agent/sessions/:id/subagents`, como pide [plan §3.1](../dogfooding-g1.md). El criterio **no** se relaja: «listo» y la denegación siguen siendo obligatorios. Ojo a un detalle: el contrato pide informar la denegación, pero **no** obliga a la palabra «listo», así que la comprobación `/listo/i` de `runT10` puede seguir en rojo aunque el hijo informe bien; si pasa eso, se decide con la medición delante y no se maquilla el prompt para aprobar un test.
 
 Las seis extras (`G1-D5-05`…`G1-D5-10`) siguen sin cerrar T10. `G1-D4-04`, `G1-D4-05` y `G1-D4-05R` siguen `failed` y T10 sigue **0/3** en las 24 (**0/9** con las extras).
 
