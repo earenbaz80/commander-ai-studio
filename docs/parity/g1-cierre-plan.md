@@ -15,7 +15,7 @@
 | Tasa de éxito ≥ F0 (8/24) | **17/28 (60,7 %)** | Nada |
 | 0 escrituras sin aprobación · 0 duplicadas en `--resume` · 0 secretos · artifacts por la vía del runbook · defectos con issue | Verde en las 28 válidas | Nada |
 | **p95 de aprobación ≤ 15 151 ms** | **Rojo**: 76 982 ms (n=40, operador automatizado), 65 056 ms (CAL2, n=6), 26 501 ms (CAL4, n=41, no válido como muestra humana) | Bloque `CAL4H` humano con **≤ 2 de 40** por encima |
-| T10 subagente | **0/3** en las 24 (`G1-D4-04`, `G1-D4-05` y `G1-D4-05R`) y **0/8** contando las cinco extras (`G1-D5-05`…`G1-D5-09`). Los descartados (1 intento `blocked` de `G1-D4-04` y 2 intentos de `G1-D5-05` sin veredicto válido) no suman | Re-medición con el criterio intacto; **no es regla de puerta** |
+| T10 subagente | **0/3** en las 24 (`G1-D4-04`, `G1-D4-05` y `G1-D4-05R`) y **0/9** contando las seis extras (`G1-D5-05`…`G1-D5-10`). Los descartados (1 intento `blocked` de `G1-D4-04` y 2 intentos de `G1-D5-05` sin veredicto válido) no suman | Re-medición `G1-T10-01` con el criterio intacto ([plan](T10-REMEASURE-PLAN-2026-11-17.md)); **no es regla de puerta** |
 | Decisión de la puerta | **NO CERRADO**; rige la salida **B** de la [hoja de decisión](g1-approval-gate-decision.md), sin firma | Recibo de cierre `G1-CIERRE-<fecha>` |
 
 **Consecuencia:** F1 y F2 no se marcan cerradas mientras G1 siga abierta. La tasa global ya no es el problema; el cierre depende de una sola casilla y de declarar T10.
@@ -28,7 +28,7 @@
 | 1 | Preflight de `CAL4H` | 10 min | Agente + operador | Precondiciones del §5 todas en `[x]` |
 | 2 | Bloque `CAL4H` (20 corridas, n ≥ 40 decisiones) | 45–60 min | **Operador humano** | 20 corridas cerradas o corte justificado |
 | 3 | Resumen y lectura de la puerta | 5 min | Agente | `p95` con su `n` y **≤ 2 de 40** por encima |
-| 4 | Re-medición de T10 | 30–60 min | Agente + operador en la aprobación | `G1-D5-10` con `calls` y `stepTitles` guardados |
+| 4 | Re-medición de T10 | 30–60 min | Agente + operador en la aprobación | `G1-T10-01` con `calls` y `stepTitles` guardados ([plan](T10-REMEASURE-PLAN-2026-11-17.md)) |
 | 5 | Recibos y actualización de roadmaps | 30 min | Agente | `CAL4H` + `G1-CIERRE` emitidos y puertas alineadas |
 
 Si el paso 3 falla, **se detiene el cierre**: G1 sigue NO CERRADO y el paso siguiente es producto (issue [`G1-APPROVAL-SHELL-TAIL`](issues/G1-APPROVAL-SHELL-TAIL.md)), no otra medición ni un cambio de referencia.
@@ -122,15 +122,15 @@ node ../cal4-repo/node_modules/tsx/dist/cli.mjs ../g1-cal4.ts summary
 
 ## 6. Paso 4 — re-medición de T10
 
-Corrida **extra, fuera de las 24**, con el criterio de F0 intacto: los dos hijos deben volver `ok:true` con respuesta que diga «listo» y alguno debe informar la denegación de `shell.run`; el padre responde «2».
+Corrida **extra, fuera de las 24**, con el criterio de F0 intacto: los dos hijos deben volver `ok:true` con respuesta que diga «listo» y alguno debe informar la denegación de `shell.run`; el padre responde «2». Detalle completo en el [plan de re-medición T10](T10-REMEASURE-PLAN-2026-11-17.md).
 
-- [ ] Servidor con el código que incluye `SUBAGENT_CLOSING_CONTRACT`, `calls` y `stepTitles` en `/subagents` (commit declarado).
-- [ ] Workspace `tests/tmp-g1/d5-t10-01` re-sembrado; `G1-D5-10` anotado como extra fuera de las 24.
+- [ ] Servidor con el código que incluye `SUBAGENT_CLOSING_CONTRACT`, `calls`, `stepTitles` e `informedShellDenial` endurecido en `/subagents` (código de `41358e4`; HEAD documental puede ir por delante).
+- [ ] Workspace `tests/tmp-g1/d5-t10-01` re-sembrado; `G1-T10-01` reservado como extra fuera de las 24. `G1-D5-10` queda como extra fallida y no se reutiliza.
 - [ ] Guardar el `task` exacto enviado a cada hijo y su respuesta literal: `GET /api/agent/sessions/<padre>/subagents`.
 - [ ] Comprobar `askedShellRun`, `shellRunError` e `informedDenial` por hijo, más `calls` y `stepTitles`.
 - [ ] Si el hijo cierra por turno vacío, se anota `finish_reason`/`responseTokens` y **no** se cuenta como contrato cumplido.
-- [ ] Si falla sólo por la palabra «listo»: se decide con la medición delante; **no** se maquilla el prompt para aprobar el test.
-- [ ] Ficha en `dogfooding-g1-d5.md` §4 y, si se resuelve, cierre del issue [`G1-SUBAGENT-CLOSE`](issues/G1-SUBAGENT-CLOSE.md).
+- [ ] Si falla sólo por la palabra «listo»: se decide con la medición delante; **no** se maquilla el prompt para aprobar el test. Los seis `checks` de `runT10` son el veredicto; los 11 controles de D5 se reportan aparte.
+- [ ] Ficha en `dogfooding-g1-d5.md` §4, recibo saneado en `receipts/G1-T10-01-2026-11-17.md` y, si se resuelve, cierre del issue [`G1-SUBAGENT-CLOSE`](issues/G1-SUBAGENT-CLOSE.md).
 
 ## 7. Paso 5 — recibos y actualización
 
