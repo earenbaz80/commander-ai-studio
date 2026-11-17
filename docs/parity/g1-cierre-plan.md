@@ -35,19 +35,19 @@ Si el paso 3 falla, **se detiene el cierre**: G1 sigue NO CERRADO y el paso sigu
 
 ## 3. Paso 0 — congelar el árbol
 
-- [ ] Refactor F2 commiteado (`c86c922`) y `git status --short` vacío. El ruido de fin de línea de `public/avatars/manifest.json` no se commitea: se restaura.
-- [ ] `git rev-parse HEAD` anotado; será el commit del bloque.
-- [ ] Worktree medido `tests/tmp-g1/cal4-repo` limpio y en el commit que se declare (el runbook cita `6838fa1`; si es otro, se anota en el recibo).
-- [ ] Servidor vivo en `http://127.0.0.1:3283` con el código actual: `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3283/api/health` → `200`.
+- [ ] Árbol limpio y commit anotado: el bloque se mide en **`bd61ad0`**. `git status --short` vacío; si `predev` regenera `public/avatars/manifest.json`, se restaura (es sólo fin de línea).
+- [ ] Worktree medido `tests/tmp-g1/cal4-repo` **detached en `bd61ad0`** y limpio. Se recreó con `git worktree add --detach tests/tmp-g1/cal4-repo bd61ad0` y `npm ci --ignore-scripts --no-audit --no-fund` dentro del worktree (738 paquetes; la junction de `node_modules` falló en Git Bash), más la siembra `--force --only d1-t1-01`.
+- [ ] Servidor vivo en `:3283` con **`npm run dev`**: `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3283/api/health` → `200`. El script fija `PORT=3283`; el `57898` medido el 2026-11-16 vino de un `PORT=0` heredado del shell, que `server.ts` trata como puerto efímero para los tests.
 - [ ] Modelo y `maxSteps` congelados: `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`, `--max-steps 24`.
 - [ ] Ninguna otra sesión del CLI usando el puerto.
 
 ```bash
 cd "G:/Proyectos AI/commander-ai-studio-2.5.1"
 git status --short
-git rev-parse HEAD
+git rev-parse --short HEAD                          # bd61ad0
 git -C tests/tmp-g1/cal4-repo status --short
-git -C tests/tmp-g1/cal4-repo rev-parse --short HEAD
+git -C tests/tmp-g1/cal4-repo rev-parse --short HEAD # bd61ad0
+npm run dev                                          # :3283 por defecto, en otra terminal
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3283/api/health
 ```
 
@@ -76,6 +76,7 @@ Detalle completo en el [runbook CAL4H](g1-approval-cal4-human-runbook.md). Resum
 
 **Precondiciones**
 
+- [ ] Entorno preparado: árbol, worktree y servidor en **`bd61ad0`**, con `npm run dev` en `:3283` (ver §3).
 - [ ] Operador presente, con **60–90 min** reservados y sin otra tarea abierta.
 - [ ] Terminal real, no el panel del agente: `tty` responde un dispositivo (por ejemplo `/dev/ttys003`).
 - [ ] Sin teclas en cola y sin otra sesión en `:3283`.
@@ -133,7 +134,7 @@ Corrida **extra, fuera de las 24**, con el criterio de F0 intacto: los dos hijos
 
 ## 7. Paso 5 — recibos y actualización
 
-- [ ] `docs/parity/receipts/G1-APPROVAL-CAL4H-<fecha>.md`: operador, fecha, commit, `n`, p95, exclusiones, decisiones `deny` y decisión de la casilla. **No** se reutiliza el recibo de CAL4.
+- [ ] `docs/parity/receipts/G1-APPROVAL-CAL4H-<fecha>.md`: operador, fecha, commit **`bd61ad0`**, `n`, p95, exclusiones, decisiones `deny` y decisión de la casilla. **No** se reutiliza el recibo de CAL4 ni se declara el `6838fa1` del runbook original.
 - [ ] `docs/parity/receipts/G1-CIERRE-<fecha>.md`: las ocho reglas de [§7.1](dogfooding-g1.md#71-reglas-de-decisión-criterio-de-puerta) con su evidencia, tasa global, tabla por tarea con delta frente a F0, avisos de regresión de §7.2, seguridad, fallbacks, límites y decisión **CERRADO / NO CERRADO** en ese orden.
 - [ ] Si CAL4H cumple: `ROADMAP.md` y `ROADMAP_PARITY.md` pasan G1 a cerrada y recién entonces se marcan los criterios de F1/F2 que dependían de la puerta.
 - [ ] Si CAL4H no cumple: los roadmaps siguen como están (G1 abierta) y el recibo declara el siguiente paso de producto.

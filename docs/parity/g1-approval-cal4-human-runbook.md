@@ -1,6 +1,6 @@
 # G1 — CAL4H: repetición de CAL4 con operador humano
 
-> **Estado:** **preparado, sin operador asignado. NO EJECUTAR TODAVÍA.**
+> **Estado:** **entorno preparado en `bd61ad0`, sin operador asignado. NO EJECUTAR TODAVÍA.**
 > **Qué es:** el procedimiento para repetir el bloque CAL4 con una **persona real** leyendo el panel y pulsando `a`/`d` en el TTY. El agente **no envía ninguna tecla**, no conduce el PTY y no importa muestras por su cuenta.
 > **Qué no es:** no es una corrida autorizada, no reemplaza el recibo del bloque inválido y no cambia la referencia de 15 151 ms. G1 sigue **NO CERRADO**.
 > **Base:** [protocolo de re-medición](g1-approval-remeasure.md) §4.1 y §7.1–§7.2; [recibo CAL4 no válido](receipts/G1-APPROVAL-CAL4-2026-11-14.md).
@@ -26,8 +26,8 @@ La única mano que decide es la del operador. El agente puede leer este document
   git -C tests/tmp-g1/cal4-repo status --short
   git -C tests/tmp-g1/cal4-repo rev-parse --short HEAD
   ```
-  Debe estar vacío y en `6838fa1` (o en el commit que se declare y se anote en el recibo).
-- [ ] **Servidor vivo:** `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3283/api/health` → `200`.
+  Debe estar vacío y en **`bd61ad0`**, el commit declarado del bloque (ver §7). Si se cambiara, hay que recrear el worktree y anotar el nuevo commit antes de la primera muestra.
+- [ ] **Servidor vivo en `:3283`:** `npm run dev` → `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3283/api/health` → `200`. El script `dev` fija `PORT=3283` desde el 2026-11-16; antes, con `PORT=0` exportado, el servidor elegía un puerto efímero (se midió `57898`) y `cal4-one.sh` no lo encontraba (ver §7).
 - [ ] **Modelo y `maxSteps` congelados:** `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`, `--max-steps 24`.
 - [ ] **Store humano aislado y vacío.** El bloque inválido vive en `.commander/g1/cal4/samples.jsonl`; **no se toca**. La repetición usa `tests/tmp-g1/cal4-human/.commander/g1/cal4/samples.jsonl`:
   ```bash
@@ -128,4 +128,30 @@ Verificar:
 
 ## 6. Estado actual
 
-**Preparado y detenido.** No hay operador asignado, no se ejecutó ninguna corrida de `CAL4H` y el store humano está vacío. El bloque anterior sigue documentado como **no válido como muestra humana**; G1 sigue **NO CERRADO**.
+**Preparado y detenido.** El entorno está listo (§7), pero no hay operador asignado, no se ejecutó ninguna corrida de `CAL4H` y el store humano está vacío. El bloque anterior sigue documentado como **no válido como muestra humana**; G1 sigue **NO CERRADO**.
+
+## 7. Entorno medido (2026-11-16)
+
+Fijado antes de la primera muestra, para que el recibo declare exactamente lo que se mide:
+
+| Elemento | Valor | Cómo se comprobó |
+| --- | --- | --- |
+| Commit del bloque | **`bd61ad0`** (`docs(parity): corrige el conteo de corridas T10 del plan de cierre`) | `git rev-parse --short HEAD`; es docs-only sobre `5ba5d95` |
+| Worktree medido | `tests/tmp-g1/cal4-repo` en **`bd61ad0`**, detached y limpio | `git -C tests/tmp-g1/cal4-repo rev-parse --short HEAD` y `git status --porcelain` vacío |
+| Servidor | `npm run dev` → `:3283`, `/api/health` `200` | El script fija `PORT=3283`; la causa del `57898` fue un `PORT=0` heredado del shell, que `server.ts` interpreta como puerto efímero (los tests lo usan así) |
+| Modelo / `maxSteps` | `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` / `24` | Flags de `cal4-one.sh` |
+| Store humano | vacío (0 archivos) | `find tests/tmp-g1/cal4-human -type f` |
+| Rango | `CAL4-R22`…`R41` libre; el bloque inválido ocupa `R02`–`R21` | `grep -o 'CAL4-R[0-9][0-9]' .commander/g1/cal4/samples.jsonl` |
+
+El worktree **se recreó** (el anterior ya no existía) con estos comandos, ejecutados desde la raíz:
+
+```bash
+git worktree add --detach tests/tmp-g1/cal4-repo bd61ad0
+cd tests/tmp-g1/cal4-repo
+npm ci --ignore-scripts --no-audit --no-fund   # 738 paquetes; la junction de node_modules falló en Git Bash
+node node_modules/tsx/dist/cli.mjs scripts/g1-seed.ts --force --only d1-t1-01
+```
+
+El recibo de `CAL4H` debe declarar **`bd61ad0`**, no `6838fa1`: el `6838fa1` del runbook original era la referencia prevista y no es el commit con el que se mide. Si el servidor o el worktree se reinician antes del bloque, se repite este §7 y se anota el commit vigente.
+
+**Puerto del servidor.** `npm run dev` arranca en `:3283` por defecto desde el 2026-11-16 (`dev` fija `PORT=3283`). El `57898` que se midió no venía de la configuración: el shell tenía `PORT=0` exportado y `server.ts` lo interpreta como «el SO elige el puerto» (lo mismo que usa `tests/helpers/serverHarness.ts`). No se cambió `server.ts` para no romper ese arnés; por eso el valor va en el script. Un `PORT` distinto para otro uso requiere `PORT=<n> npx tsx server.ts`, no `npm run dev`.

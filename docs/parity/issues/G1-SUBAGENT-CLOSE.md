@@ -82,7 +82,7 @@ Con `stepTitles` ya en `/subagents` ([hoja de D5 §4.2](../dogfooding-g1-d5.md))
 
 - **La ausencia de intento ya tiene causa:** sin paso `Razonamiento`, el turno del proveedor llegó **vacío** y el hijo cerró con el relleno «Objetivo completado.» (`agentSession.ts:1283`). No es desobediencia del contrato de cierre: no hubo turno. Es [`G1-EMPTY-TURN`](G1-EMPTY-TURN.md) afectando al subagente, y el hijo se anota `ok:true`.
 - **Consecuencia para este issue:** mientras el hijo cierre por turno vacío, T10 no puede decir nada sobre el contrato; el arreglo del turno vacío en el camino del hijo va antes de otra medición. **Ya está:** el hijo reintenta una vez y, si sigue vacío, queda `failed` con error ([`G1-EMPTY-TURN`](G1-EMPTY-TURN.md#arreglo-implementado-en-los-puntos-1-2-y-4)); la próxima corrida sí mide el contrato.
-- **Sin efecto en G1:** 28 válidas y 17 `passed` igual; T10 **0/3** en las 24 y **0/7** con las cuatro extras.
+- **Sin efecto en G1:** 28 válidas y 17 `passed` igual; T10 **0/3** en las 24 y **0/8** con las cinco extras (`G1-D5-05`…`G1-D5-09`).
 
 ## Resultado de la cuarta re-medición (`G1-D5-08`, con el reintento en vivo)
 
@@ -92,7 +92,7 @@ Servidor `:3285` con `HEAD` `989ad17`, sesión `sess_218d4b05`, 650 771 ms hasta
 - **Lo que no se buscaba y salió:** el reintento no basta. 6 de 6 hijos siguieron vacíos, el padre volvió a lanzarlos dos veces y la corrida se detuvo en el cuarto intento sin respuesta; el arreglo de fondo —propagar el `finish_reason` truncado como error y subir el presupuesto de salida de los modelos que razonan— ya está en [`G1-EMPTY-TURN`](G1-EMPTY-TURN.md#arreglo-implementado-en-los-puntos-1-2-y-4). Tampoco hubo «listo» ni denegación que anotar: no existió llamada.
 - **El bucle del padre, cerrado después:** aquella corrida lo vio relanzar `spawn_agents` tres veces sin cerrar. Ahora, a la **segunda tanda seguida sin un solo hijo bueno**, la sesión padre se cierra con «No completé la tarea: los subagentes fallaron en dos tandas seguidas. Motivo: …» en vez de repetir (`spawnFailureStreak` en `agentSession.stepNative`). El test fija dos spawns y no tres, y que el motivo de los hijos viaja en la respuesta.
 - **La guarda no disparaba en producción, y lo destapó `G1-D5-09`:** el padre lanzó **cuatro** tandas y no cerró. Leía `r.data.results`, pero fuera de proceso el resultado llega envuelto y el paso anotado tiene la forma `{ ok, data: { results } }`, así que la cuenta de hijos era siempre cero y la racha se reiniciaba. Se arregló extrayendo `spawnChildrenFromResults`, que acepta las dos formas, con `tests/agentSpawnStreak.test.ts`; la corrida del padre con 4 spawns queda documentada en [dogfooding §4](../dogfooding-g1-d5.md#43-qué-se-supo-en-cada-paso).
-- **Sin efecto en G1:** 28 válidas y 17 `passed` igual; T10 **0/3** en las 24 y **0/7** con las cuatro extras.
+- **Sin efecto en G1:** 28 válidas y 17 `passed` igual; T10 **0/3** en las 24 y **0/8** con las cinco extras (`G1-D5-05`…`G1-D5-09`).
 
 ## Los dos caminos por los que el hijo se daba por bueno
 
