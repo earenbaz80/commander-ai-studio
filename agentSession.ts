@@ -480,10 +480,11 @@ async function callLlmNative(
 
 async function callLlmJson(
   cfg: SessionConfig,
-  ctx: { goal: string; cwd: string; plan: AgentPlanItem[]; recentSteps: any[]; toolSchema: string; agentsMd: string; history: { role: string; content: string }[] }
-  , signal?: AbortSignal
+  ctx: { goal: string; cwd: string; plan: AgentPlanItem[]; recentSteps: any[]; toolSchema: string; agentsMd: string; history: { role: string; content: string }[]   }, signal?: AbortSignal,
+  opts: { finalTurn?: boolean } = {}
 ): Promise<{ thought?: string; plan?: { id: string; text: string; done: boolean }[]; toolCalls?: { id: string; tool: string; input: unknown }[]; answer?: string; finish?: boolean }> {
   const model = cfg.model || GEMINI_DEFAULT_MODEL;
+  const finalTurn = opts.finalTurn === true;
   const system = `Eres un agente autónomo pragmático para ingeniería de código.
 
 REGLAS:
@@ -498,7 +499,7 @@ REGLAS:
 - Si el comando shell es potencialmente destructivo, lo marcarás pero ejecutará solo con aprobación.
 - Sé minimalista. Un tool_call a la vez si es incierto.
 - Si ya cumpliste el objetivo, responde con {"finish": true, "answer": "..."}.
-${ctx.agentsMd ? `\nREGLAS DEL REPO (AGENTS.md):\n${ctx.agentsMd.slice(0, 4000)}\n` : ''}${childDirectives(cfg)}
+${ctx.agentsMd ? `\nREGLAS DEL REPO (AGENTS.md):\n${ctx.agentsMd.slice(0, 4000)}\n` : ''}${childDirectives(cfg)}${finalTurn ? '\nÚLTIMO TURNO: no propongas toolCalls. Responde SOLO {"finish": true, "answer": "..."} con el cierre obligatorio, con lo que hiciste y lo que se te denegó.' : ''}
 
 FORMATO JSON:
 {
@@ -519,10 +520,10 @@ ULTIMOS PASOS:
 ${JSON.stringify(ctx.recentSteps.slice(-10), null, 2)}
 
 HISTORIAL BREVE:
-${JSON.stringify(ctx.history.slice(-6).map((m) => ({ role: m.role, content: m.content.slice(0, 4000) })), null, 2)}
+${JSON.stringify(ctx.history.slice(-6).map((m) => ({ role: m.role, content: m.content.slice(0, 4000) })), null, 2)}${finalTurn ? '' : `
 
 TOOLS:
-${ctx.toolSchema}`;
+${ctx.toolSchema}`}`;
 
   const route = sessionGenerateRoute(model);
 
@@ -1351,18 +1352,33 @@ export class AgentSession {
 
   private async step() {
     if (!this.running) return;
+    const recentSteps = this.steps.slice(-12).map((s) => ({
+      id: s.id, type: s.type, toolId: s.toolId, title: s.title,
+      content: (s.content || '').slice(0, 500), status: s.status, ts: s.ts,
+    }));
+
     if (this.steps.length >= this.maxSteps) {
+      // Un hijo con contrato de cierre no se rinde en «Límite»: gasta un turno
+      // sin tools, igual que cuando se acaba el presupuesto de tools. Antes
+      // `maxSteps` lo mataba con `done` sin `Finalizado` y el padre recibía un
+      // hijo fallido aunque hubiera trabajo hecho (G1-T10-05, hijo A).
+      if (this.cfg.closingContract) {
+        try {
+          await this.finalizeChild(recentSteps);
+        } catch (e: any) {
+          if (this.stopReason) return;
+          const msg = String(e?.message || e);
+          this.addStep({ type: 'thought', title: 'Error', content: msg, status: 'failed' });
+          this.fail(msg);
+        }
+        return;
+      }
       this.addStep({ type: 'thought', title: 'Límite', content: `maxSteps=${this.maxSteps} alcanzado.`, status: 'completed' });
       this.status = 'done';
       this.running = false;
       this.emit({ type: 'status', status: 'done' });
       return;
     }
-
-    const recentSteps = this.steps.slice(-12).map((s) => ({
-      id: s.id, type: s.type, toolId: s.toolId, title: s.title,
-      content: (s.content || '').slice(0, 500), status: s.status, ts: s.ts,
-    }));
 
     try {
       if (toolDialectForModel(this.cfg.model) !== 'json-text') {
@@ -1383,19 +1399,31 @@ export class AgentSession {
   }
 
   /**
-   * Último turno del hijo cuando ya no tiene presupuesto para tools.
+   * Último turno del hijo cuando ya no tiene presupuesto para tools o pasos.
    *
    * No se sintetiza una respuesta: se pide al modelo un turno SIN tools para
-   * que emita el cierre obligatorio. Antes, `budget <= 0` cerraba en `done` sin
-   * `Finalizado` y `executeTask` lo convertía en «sin respuesta final»
-   * (G1-T10-01).
+   * que emita el cierre obligatorio. Cubre los dos presupuestos que cerraban
+   * en `done` sin `Finalizado` (y que `executeTask` convertía en «sin respuesta
+   * final»): el de tools (G1-T10-01) y el de `maxSteps`, que cortaba en `Límite`
+   * antes de pedir el cierre (G1-T10-05, hijo A). Los hijos con dialecto
+   * json-text también cierran: `callLlmJson` acepta el mismo `finalTurn`.
    */
   private async finalizeChild(recentSteps: any[]) {
-    const final = await callLlmNative(this.cfg, {
-      goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
-      toolSchema: this.toolSchema(), agentsMd: this.agentsMd, turns: this.turns,
-    }, this.abortCtrl.signal, { finalTurn: true });
-    const answer = String(final.thought || '').trim();
+    let answer: string;
+    if (toolDialectForModel(this.cfg.model) === 'json-text') {
+      const final = await callLlmJson(this.cfg, {
+        goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
+        toolSchema: this.toolSchema(), agentsMd: this.agentsMd,
+        history: this.turns.map((turn) => ({ role: turn.role, content: turn.text })),
+      }, this.abortCtrl.signal, { finalTurn: true });
+      answer = String(final.answer ?? final.thought ?? '').trim();
+    } else {
+      const final = await callLlmNative(this.cfg, {
+        goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
+        toolSchema: this.toolSchema(), agentsMd: this.agentsMd, turns: this.turns,
+      }, this.abortCtrl.signal, { finalTurn: true });
+      answer = String(final.thought || '').trim();
+    }
     if (!answer) {
       this.fail('El subagente agotó el presupuesto sin una respuesta de cierre.');
       return;
@@ -1615,7 +1643,18 @@ export class AgentSession {
 
     const calls = (llmRes.toolCalls || []).filter((tc) => ALLOWED_TOOLS.includes(tc.tool)).slice(0, 5);
     const budget = this.toolBudget();
-    if (budget <= 0) { this.status = 'done'; this.running = false; this.emit({ type: 'status', status: 'done' }); return; }
+    if (budget <= 0) {
+      // El hijo cierra igual que en la vía nativa: un `done` sin `Finalizado`
+      // llega al padre como hijo fallido aunque haya trabajo hecho.
+      if (this.cfg.closingContract) {
+        await this.finalizeChild(recentSteps);
+        return;
+      }
+      this.status = 'done';
+      this.running = false;
+      this.emit({ type: 'status', status: 'done' });
+      return;
+    }
     const executable = calls.slice(0, budget);
 
     if (executable.length > 0) {
