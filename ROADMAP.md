@@ -1,10 +1,10 @@
 # Roadmap de evolución — Commander AI Studio
 
-> **Instantánea:** 2026-11-11. **Frentes:** paridad F0–F6, plataforma PL0–PL7 y UX 1.0.
+> **Instantánea:** 2026-11-16. **Frentes:** paridad F0–F6, plataforma PL0–PL7 y UX 1.0.
 >
 > **Detalle por frente:** [Paridad](ROADMAP_PARITY.md) · [Plataforma](ROADMAP_PLATFORM.md) · [UX](ROADMAP_UX.md).
 >
-> **Evidencia:** [baseline F0](docs/parity/baseline-2026-11.md) · [runbook G1/F0](docs/parity/runbook-g1-f0.md) · [recibo F0 local](docs/parity/receipts/F0-LOCAL-2026-11-10.md).
+> **Evidencia:** [baseline F0](docs/parity/baseline-2026-11.md) · [runbook G1/F0](docs/parity/runbook-g1-f0.md) · [recibo F0 local](docs/parity/receipts/F0-LOCAL-2026-11-10.md) · [recibo del dogfooding G1](docs/parity/receipts/G1-DOGFOOD-2026-11-12.md) · [hoja de decisión del p95](docs/parity/g1-approval-gate-decision.md).
 
 Este documento es el roadmap umbrella: cuenta el proceso de evolución del producto, qué está hecho, qué está en curso y qué falta. No promete fechas; los esfuerzos son órdenes de magnitud. Una fase o un criterio sólo pasa a **hecho** cuando existe evidencia en el árbol o un recibo verificable. Cuando no hay medición, se dice **sin medir**.
 
@@ -21,13 +21,13 @@ Este documento es el roadmap umbrella: cuenta el proceso de evolución del produ
 - **5 parciales:** F1, F2, PL2, PL5 y PL6.
 - **5 pendientes:** F3, F4, F5, PL3 y PL4.
 - **Fuera del cómputo:** PL1 (fuera de alcance) y F6/PL7 (opcionales).
-- **Puertas:** G0 cerrada; G1 abierta; G2 y G3 no iniciadas.
+- **Puertas:** G0 cerrada; G1 abierta (dogfooding ejecutado, p95 en rojo); G2 y G3 no iniciadas.
 
-El 56 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tampoco dice que la app esté al 56 %: dice que 44 de los 78 criterios comprometidos tienen evidencia. F0 cerró G0 con una baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts y 0 inválidas); la paridad es baja y G1 sigue abierta hasta el dogfooding.
+El 56 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tampoco dice que la app esté al 56 %: dice que 44 de los 78 criterios comprometidos tienen evidencia. F0 cerró G0 con una baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts y 0 inválidas); la paridad es baja. El dogfooding de G1 se ejecutó el 2026-11-12 (17/28, 60,7 %) y la puerta sigue abierta por una sola regla: el p95 de aprobación.
 
 ## 2. Ahora: cerrar G1
 
-**Objetivo:** usar la baseline F0 ya cerrada como referencia y ejecutar el dogfooding de G1 antes de añadir superficie.
+**Objetivo:** usar la baseline F0 ya cerrada como referencia y cerrar G1 —dogfooding ejecutado, una regla en rojo— antes de añadir superficie.
 
 **Criterios de F0 en alcance**
 
@@ -39,7 +39,15 @@ El 56 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tamp
 
 **Fuera de alcance por decisión (2026-11-10):** Vercel y Linear. No hay cuenta de ninguno de los dos y no se simula una verificación. El hosting remoto se decide en G3.
 
-**Estado de la medición (2026-11-11):** la baseline vigente se midió con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`: 24/24 corridas, 8 pasan, 16 fallan, 0 timeouts y 0 inválidas. T1 y T7 pasan 3/3; T3 y T5 1/2; T2, T4, T6, T8, T9 y T10 no pasan. El id NIM válido es el doble prefijo; los ids de models.dev dieron 410/404. Los intentos previos con DeepSeek, Qwen y Gemini quedan como historial y no cuentan. **G0 queda cerrada**; G1 sigue abierta hasta el dogfooding.
+**Estado de la medición (2026-11-11):** la baseline vigente se midió con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`: 24/24 corridas, 8 pasan, 16 fallan, 0 timeouts y 0 inválidas. T1 y T7 pasan 3/3; T3 y T5 1/2; T2, T4, T6, T8, T9 y T10 no pasan. El id NIM válido es el doble prefijo; los ids de models.dev dieron 410/404. Los intentos previos con DeepSeek, Qwen y Gemini quedan como historial y no cuentan. **G0 queda cerrada**; G1 se mide contra esta referencia (ver «Estado de G1»).
+
+**Estado de G1 (2026-11-16): dogfooding ejecutado, puerta abierta por el p95.**
+
+- D1–D5 se ejecutaron el 2026-11-12 con el modelo y `maxSteps` congelados: 24 corridas planificadas medidas, 28 válidas y **17 `passed` (60,7 %)** frente a 8/24 (33,3 %) de F0. Cero escrituras sin aprobación, cero tool calls duplicadas en `--resume`, cero secretos y cero fallbacks; los 2 timeouts son de operación.
+- El [recibo `G1-DOGFOOD-2026-11-12`](docs/parity/receipts/G1-DOGFOOD-2026-11-12.md) decide **NO CERRADO**: de las ocho reglas de la puerta, siete están en verde.
+- La única regla en rojo es el **p95 de aprobación ≤ 15 151 ms**: 76 982 ms (n=40, operador automatizado por PTY), 65 056 ms en la re-medición humana CAL2 (n=6) y 26 501 ms en CAL4 (n=41), que **no vale como muestra humana** porque el PTY lo condujo el agente.
+- La [hoja de decisión](docs/parity/g1-approval-gate-decision.md) deja rigiendo la **salida B** (sin firma): la referencia no se toca y la casilla sólo pasa a verde con un bloque `CAL4H` con `latencyMs`, n ≥ 40 y **como mucho 2 de 40** por encima de 15 151 ms. Ese bloque está preparado y **no ejecutado**: falta un operador humano.
+- T10 sigue **0/3** en las 24 corridas, con issue propio; es un defecto declarado, no una regla de puerta. F1 y F2 no se marcan cerradas mientras G1 siga abierta.
 
 El arnés está listo:
 
@@ -56,14 +64,14 @@ Detalle y evidencia: [baseline §6](docs/parity/baseline-2026-11.md#6-línea-bas
 | Fase | Estado | Puerta | Prioridad | Esfuerzo | Criterios | Siguiente hito |
 | --- | --- | --- | --- | --- | ---: | --- |
 | **F0** Verdad y línea base | Hecho · G0 cerrada | G0 | P0 | 4–5 d | 5/5 | Mantener la referencia para G1 |
-| **F1** Núcleo de agente y CLI | Hecho en código · G1 abierto | G1 | P0 | 10–12 d | 8/8 | Dogfooding de 5 días |
+| **F1** Núcleo de agente y CLI | Hecho en código · G1 abierto | G1 | P0 | 10–12 d | 8/8 | Bloque CAL4H humano y T10 |
 | **F2** Artifacts de verificación | Parcial · criterios cubiertos, G1 abierto | — | P1 | 6–8 d | 5/7 | Cerrar G1 y verificación visual en Electron |
 | **F3** Continuidad remota y PWA | Pendiente · espera G2 | G2 | P1 | 10–14 d | 0/4 | Modelo de amenazas |
 | **F4** Editor y ecosistema | Pendiente | — | P1 | 12–15 d | 0/4 | VSIX útil y lifecycle de hooks |
 | **F5** SSR, backend y realtime | Pendiente · espera G3 | G3 | P1 | 18–25 d | 0/5 | Proveedor y entrega 5A |
 | **F6** Apuestas opcionales | Opcional · no comprometido | — | P2 | 20–30 d | n/c | Decisión explícita |
 
-F1 tiene los 14 issues cerrados y 8/8 criterios, pero G1 no se cierra sin el dogfooding; ya existe una baseline F0 válida (NVIDIA, 8/24) para comparar. F2 tiene plan, diff, evidencia de tests, informe local, visor, revisión por hunk con auditoría y grabación exportable a WebM con consola/red; los criterios de fase siguen sin marcar porque la regla del roadmap no los cierra con G1 pendiente. F5 no empieza antes de decidir proveedor en G3; Vercel quedó fuera y Cloudflare Workers es sólo un candidato.
+F1 tiene los 14 issues cerrados y 8/8 criterios; el dogfooding de G1 se ejecutó el 2026-11-12 (17/28 frente a 8/24 de F0), pero la puerta no se cierra: el p95 de aprobación sigue por encima de 15 151 ms y la hoja de decisión, sin firma, deja rigiendo B. F2 tiene plan, diff, evidencia de tests, informe local, visor, revisión por hunk con auditoría y grabación exportable a WebM con consola/red; los criterios de fase siguen sin marcar porque la regla del roadmap no los cierra con G1 pendiente. F5 no empieza antes de decidir proveedor en G3; Vercel quedó fuera y Cloudflare Workers es sólo un candidato.
 
 ### Plataforma
 
@@ -91,18 +99,18 @@ PL0 separó release de destino y funciona sin credenciales. PL1 tiene adaptador,
 | Puerta | Exige | Estado | Qué la desbloquea |
 | --- | --- | --- | --- |
 | **G0** Verdad externa | GitHub verificado + línea base de 24 corridas | **Cerrada** | Baseline NVIDIA válida: 24 corridas, 0 timeouts |
-| **G1** Dogfooding del CLI | 5 días y 24 corridas usando el CLI como superficie principal, sin retroceder frente a F0 | **Abierta** | Ejecutar el dogfooding |
+| **G1** Dogfooding del CLI | 5 días y 24 corridas usando el CLI como superficie principal, sin retroceder frente a F0 | **Abierta** · dogfooding ejecutado; p95 en rojo | Bloque CAL4H humano (n≥40, ≤2 de 40 > 15 151 ms) y T10 |
 | **G2** Seguridad remota | Modelo de amenazas y revisión antes de habilitar `--remote` | **No iniciada** | Aprobar el modelo de amenazas |
 | **G3** Proveedor de plataforma | Proveedor y modelo de costo decididos antes de 5A | **No iniciada** | Decisión explícita de proveedor |
 
-G1 puede prepararse con F0 cerrada, pero no se cierra comparando contra una estimación. G2 bloquea F3; G3 bloquea F5A. Ninguna puerta se cierra por compilar o por tener tests con mocks.
+G1 no se cierra por ejecutar el dogfooding ni comparando contra una estimación: le falta que el producto cumpla el presupuesto de aprobación con una muestra humana válida. G2 bloquea F3; G3 bloquea F5A. Ninguna puerta se cierra por compilar o por tener tests con mocks.
 
 ## 5. Secuencia recomendada
 
 **Ahora**
 
-1. Completar el dogfooding del CLI y cerrar G1.
-2. Cerrar F2: ya tiene revisión por hunk y WebM; falta la revisión visual en Electron y el dogfooding de G1.
+1. Cerrar la única casilla en rojo de G1: bloque `CAL4H` con operador humano y re-medición de T10.
+2. Cerrar F2: ya tiene revisión por hunk y WebM; falta la revisión visual en Electron y el cierre de G1.
 
 **Después de G1**
 
@@ -141,3 +149,5 @@ Con dos personas, el alcance P0 + P1 es del orden de 9–12 semanas de trabajo e
 - [docs/parity/baseline-2026-11.md](docs/parity/baseline-2026-11.md) — criterios de F0 y estado de la baseline.
 - [docs/parity/runbook-g1-f0.md](docs/parity/runbook-g1-f0.md) — orden para cerrar G0 y G1.
 - [docs/parity/receipts/F0-LOCAL-2026-11-10.md](docs/parity/receipts/F0-LOCAL-2026-11-10.md) — recibos de GitHub, gates locales y bloqueo de medición.
+- [docs/parity/receipts/G1-DOGFOOD-2026-11-12.md](docs/parity/receipts/G1-DOGFOOD-2026-11-12.md) — dogfooding de G1: 28 válidas, 17/28 y decisión NO CERRADO.
+- [docs/parity/g1-approval-gate-decision.md](docs/parity/g1-approval-gate-decision.md) — salida B vigente y disparador de la casilla del p95.

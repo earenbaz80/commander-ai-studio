@@ -1,6 +1,7 @@
 # Plan de paridad — Commander AI Studio vs. OpenCode, Antigravity y Freebuff
 
 > **Estado:** propuesta revisada contra el árbol 2.5.1 y la documentación oficial, 2026-11-07.
+> **Estado G1 (2026-11-16):** dogfooding ejecutado el 2026-11-12 (28 válidas, 17/28) y puerta **NO CERRADA** por el p95 de aprobación; rige la salida B de la [hoja de decisión](docs/parity/g1-approval-gate-decision.md). Recibo: [G1-DOGFOOD-2026-11-12](docs/parity/receipts/G1-DOGFOOD-2026-11-12.md).
 > **Horizonte:** 9–12 semanas de trabajo efectivo para el alcance comprometido (P0 + P1) con 2 personas; 12–16 semanas con una. Las estimaciones son de orden de magnitud (±30%), no fechas comprometidas.
 > **Documentos relacionados:** [ROADMAP_PLATFORM.md](ROADMAP_PLATFORM.md) (hosting, backend y conectores), [ROADMAP_UX.md](ROADMAP_UX.md) (UX) y [AGENTS.md](AGENTS.md) (reglas del repo).
 > **Numeración:** las fases F0–F6 de este documento son propias del plan de paridad; no renumeran ni sustituyen las fases de `ROADMAP_PLATFORM.md`.
@@ -144,7 +145,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 >
 > **Decisión de alcance 2026-11-10 — F0 sin Vercel ni Linear.** El usuario sólo dispone de cuenta de GitHub y decidió explícitamente no configurar Vercel ni Linear. Esas filas salen del alcance de F0 y quedan marcadas como **fuera de alcance por decisión**, no como pendientes. F0 se cierra con GitHub (OAuth real y Actions, ya verificados con recibos) y la línea base de 24 corridas. Recibos en [docs/parity/receipts/F0-LOCAL-2026-11-10.md](docs/parity/receipts/F0-LOCAL-2026-11-10.md); orden de ejecución en [docs/parity/runbook-g1-f0.md](docs/parity/runbook-g1-f0.md).
 >
-> **Cierre 2026-11-11 — F0/G0 cerrados.** La línea base de 24 corridas se completó con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`: 8/24, 0 timeouts y 0 inválidas. La paridad es baja, pero la muestra es válida y sirve de referencia para G1; el dogfooding sigue pendiente.
+> **Cierre 2026-11-11 — F0/G0 cerrados.** La línea base de 24 corridas se completó con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`: 8/24, 0 timeouts y 0 inválidas. La paridad es baja, pero la muestra es válida y sirve de referencia para G1; en esa fecha el dogfooding seguía pendiente.
 
 **Alcance**
 
@@ -168,7 +169,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 - [x] `tsc --noEmit`, `vite build` y las pruebas focalizadas siguen en verde (recibo `F0-LOCAL-2026-11-10` §2).
 - [x] La línea base de 24 corridas (T1–T10) está medida y registrada con NVIDIA (8/24, 0 timeouts, 0 inválidas).
 
-**Puerta G0: CERRADA (2026-11-11).** GitHub está verificado (OAuth y Actions, con recibos) y la línea base de 24 corridas quedó registrada con NVIDIA (8/24, 0 timeouts, 0 inválidas). Vercel y Linear no forman parte de la puerta desde la decisión de alcance del 2026-11-10. G1 sigue abierta hasta el dogfooding, y 5A (hosting SSR/Workers) sigue necesitando una decisión de proveedor en G3.
+**Puerta G0: CERRADA (2026-11-11).** GitHub está verificado (OAuth y Actions, con recibos) y la línea base de 24 corridas quedó registrada con NVIDIA (8/24, 0 timeouts, 0 inválidas). Vercel y Linear no forman parte de la puerta desde la decisión de alcance del 2026-11-10. G1 sigue abierta: el dogfooding se ejecutó el 2026-11-12 y la casilla del p95 de aprobación quedó en rojo. 5A (hosting SSR/Workers) sigue necesitando una decisión de proveedor en G3.
 
 ---
 
@@ -201,9 +202,9 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 - [x] 10 casos adversariales de permisos (shell, escritura, red, MCP, subagente) no ejecutan nada fuera de política.
 - [x] Pruebas focalizadas del CLI/sesiones, `tsc --noEmit` y `vite build` en verde.
 
-**Puerta G1:** dogfooding de 5 días con el CLI como superficie principal. Si la latencia de aprobación o la tasa de éxito retrocede frente a F0, no se empieza F2 hasta corregirlo.
+**Puerta G1:** dogfooding de 5 días con el CLI como superficie principal. Si la latencia de aprobación o la tasa de éxito retrocede frente a F0, no se empieza F2 hasta corregirlo. Medido el 2026-11-12: la tasa no retrocede (17/28 frente a 8/24), pero el p95 de aprobación queda en rojo (76 982 ms, n=40).
 
-> **Estado G1 (2026-11-09): NO CERRADO.** Los 14 issues de F1 están cerrados y la suite focalizada pasa (70/70 CLI, 30/30 agente/sesiones), pero no se ejecutó el dogfooding de 5 días. F0/G0 está cerrado y la baseline NVIDIA de 24 corridas es válida (8/24, 0 timeouts), así que falta el dogfooding para comparar latencia/éxito. No se declara paridad. F2-01 (contrato/store), F2-02 (evidencia de tests en `shell.run`), F2-03 (diff y decisiones), F2-04 (informe local Markdown/HTML), F2-05 (visor de artifacts), F2-06 (enlace a la grabación) y F2-07 (E2E local y límites) avanzaron; F2-02 es aditivo sobre la tool y F2-03/F2-04 son módulos puros, así que ninguno cambia el bucle ni las aprobaciones; G1 sigue abierto y no se cierra hasta ejecutar el dogfooding.
+> **Estado G1 (2026-11-16): NO CERRADO, con el dogfooding ya ejecutado.** D1–D5 se corrieron el 2026-11-12 con modelo y `maxSteps` congelados: 24 corridas planificadas medidas, 28 válidas, **17 `passed` (60,7 %)** frente a 8/24 (33,3 %) de F0, 0 escrituras sin aprobación, 0 duplicadas en `--resume`, 0 secretos y 0 fallbacks ([recibo](docs/parity/receipts/G1-DOGFOOD-2026-11-12.md)). De las ocho reglas de la puerta, siete están en verde; la única en rojo es el **p95 de aprobación ≤ 15 151 ms**: 76 982 ms (n=40, operador automatizado), 65 056 ms en CAL2 (n=6) y 26 501 ms en CAL4 (n=41), bloque este último **no válido como muestra humana** porque el PTY lo condujo el agente. La [hoja de decisión](docs/parity/g1-approval-gate-decision.md) deja rigiendo la **salida B** sin firma: la referencia no se toca y la casilla sólo pasa a verde con un `CAL4H` humano con `latencyMs`, n ≥ 40 y ≤ 2 de 40 por encima. CAL4H está preparado y **no ejecutado**; T10 sigue 0/3 con issue propio y no es regla de puerta. Los 14 issues de F1 siguen cerrados y F2-01 a F2-09 están hechos, pero **ninguna fase que dependa de la puerta se marca cerrada**.
 
 ---
 
@@ -211,7 +212,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 **Objetivo:** que cada corrida deje evidencia revisable y exportable, no sólo mensajes en el chat.
 
-> **Desglose ejecutable:** [docs/parity/backlog-f2.md](docs/parity/backlog-f2.md) — F2-01 (contrato/store), F2-02 (evidencia de tests y entorno), F2-03 (diff y decisiones), F2-04 (informe local), F2-05 (visor), F2-06 (enlace a la grabación), F2-07 (E2E local y límites), F2-08 (revisión por hunk y auditoría) y F2-09 (WebM, consola y red) hechos. El E2E local cubre persistencia en Chromium; no sustituye la verificación visual en Electron ni el dogfooding de G1.
+> **Desglose ejecutable:** [docs/parity/backlog-f2.md](docs/parity/backlog-f2.md) — F2-01 (contrato/store), F2-02 (evidencia de tests y entorno), F2-03 (diff y decisiones), F2-04 (informe local), F2-05 (visor), F2-06 (enlace a la grabación), F2-07 (E2E local y límites), F2-08 (revisión por hunk y auditoría) y F2-09 (WebM, consola y red) hechos. El E2E local cubre persistencia en Chromium; no sustituye la verificación visual en Electron ni el cierre de G1: el dogfooding ya se ejecutó el 2026-11-12 y la puerta sigue abierta por el p95 de aprobación.
 
 **Alcance**
 
@@ -234,7 +235,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 > **Cierre del desglose (2026-11-09):** F2-01 a F2-07 están hechos. El E2E local de F2-07 demuestra persistencia en IndexedDB y recarga.
 >
-> **Actualización (2026-11-16):** F2-08 (revisión por hunk con atribución de la tool que aplicó cada hunk) y F2-09 (exportación WebM real, consola/red con timestamps y reproducción offline de 30 s) están hechos y verificados en Chromium. Con eso los criterios de fase quedan cubiertos por evidencia, pero **siguen sin marcar**: la regla del roadmap no cierra criterios de F2 con G1 abierto, y el dogfooding de 5 días no se ha medido. Queda además la verificación visual en Electron, que el E2E de Chromium no sustituye.
+> **Actualización (2026-11-16):** F2-08 (revisión por hunk con atribución de la tool que aplicó cada hunk) y F2-09 (exportación WebM real, consola/red con timestamps y reproducción offline de 30 s) están hechos y verificados en Chromium. Con eso los criterios de fase quedan cubiertos por evidencia, pero **siguen sin marcar**: la regla del roadmap no cierra criterios de F2 con G1 abierto, y el dogfooding de 5 días ya se ejecutó el 2026-11-12 (17/28, sin cerrar la puerta por el p95 de aprobación). Queda además la verificación visual en Electron, que el E2E de Chromium no sustituye.
 
 ---
 
@@ -447,4 +448,4 @@ Documentación oficial consultada el **2026-11-07**. Los productos cambian rápi
 
 ---
 
-**Siguiente acción recomendada:** ejecutar F0 con credenciales reales y publicar `docs/parity/baseline-2026-11.md`; sin ese recibo, este plan sigue siendo una hipótesis de trabajo, no una declaración de paridad.
+**Siguiente acción recomendada:** cerrar la casilla del p95 con un bloque `CAL4H` conducido por una persona y re-medir T10; sin esas dos piezas, G1 sigue **NO CERRADO** y ninguna fase que dependa de la puerta se marca cerrada.
