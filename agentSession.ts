@@ -26,7 +26,7 @@ import { createWorktree, removeWorktree, type WorktreeResult } from './worktrees
 import { resolveSubagentPolicy } from './src/agent/subagentTemplates';
 import { agentMaxTokens, sessionGenerateRoute, toolDialectForModel, toOpenAITools } from './src/agent/providers';
 import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from './src/agent/fnTools';
-import { spawnBatchHadFailure, spawnChildrenFromResults } from './src/agent/spawnStreak';
+import { spawnBatchHadFailure, spawnChildrenFromResults, spawnFailureClosingMessage } from './src/agent/spawnStreak';
 
 // La guarda vive en `src/agent/spawnStreak` para que el CLI la importe sin
 // arrastrar este módulo (y con él `browserSession`/`mcp`); se re-exporta para
@@ -1623,13 +1623,8 @@ export class AgentSession {
       const hijos = spawnChildrenFromResults(spawnRuns);
       this.spawnFailureStreak = spawnBatchHadFailure(hijos) ? this.spawnFailureStreak + 1 : 0;
       if (this.spawnFailureStreak >= 2) {
-        const fallidos = hijos.filter((hijo: any) => hijo?.ok === false);
-        const motivos = [...new Set(fallidos.map((hijo: any) => String(hijo?.error ?? '').trim()).filter(Boolean))];
-        const todosFallidos = hijos.length > 0 && fallidos.length === hijos.length;
-        const cierre = todosFallidos
-          ? 'No completé la tarea: los subagentes fallaron en dos tandas seguidas.'
-          : 'No completé la tarea: hubo subagentes fallidos en dos tandas seguidas.';
-        const finalAnswer = `${cierre}${motivos.length ? ` Motivo: ${motivos.join(' | ')}` : ''}`.slice(0, 1000);
+        // Texto compartido con el CLI: ver `spawnFailureClosingMessage`.
+        const finalAnswer = spawnFailureClosingMessage(hijos);
         this.answer = finalAnswer;
         this.turns.push({ role: 'assistant', text: finalAnswer, ts: Date.now() });
         if (this.turns.length > 10) this.turns = this.turns.slice(-10);

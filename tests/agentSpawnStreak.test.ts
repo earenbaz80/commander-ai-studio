@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnBatchHadFailure, spawnChildrenFromResults } from '../agentSession';
+import { spawnFailureClosingMessage } from '../src/agent/spawnStreak';
 
 /**
  * G1-D5-09: en la corrida real los resultados de `spawn_agents` llegaron
@@ -108,4 +109,21 @@ test('con las seis tandas de G1-T10-06 la racha llega a 2 en la tercera', () => 
 
   assert.deepEqual(rachas, [0, 1, 2, 3, 0, 1]);
   assert.equal(rachas.findIndex((valor) => valor >= 2) + 1, 3, 'tenía que cerrar en la tanda 3');
+});
+test('el mensaje de cierre es el mismo para los dos bucles, con el motivo', () => {
+  // G1-D5-10 y G1-T10-06: falla un solo hijo y el otro cierra bien.
+  assert.equal(
+    spawnFailureClosingMessage([{ ok: false, error: 'Subagente excedió tiempo límite' }, { ok: true }]),
+    'No completé la tarea: hubo subagentes fallidos en dos tandas seguidas. Motivo: Subagente excedió tiempo límite'
+  );
+  // Todos fallidos: cambia la primera frase, no el formato del motivo.
+  assert.equal(
+    spawnFailureClosingMessage([{ ok: false, error: 'tiempo límite' }, { ok: false, error: 'turno vacío' }]),
+    'No completé la tarea: los subagentes fallaron en dos tandas seguidas. Motivo: tiempo límite | turno vacío'
+  );
+  // Sin motivo no queda un «Motivo:» vacío.
+  assert.equal(
+    spawnFailureClosingMessage([{ ok: false }]),
+    'No completé la tarea: los subagentes fallaron en dos tandas seguidas.'
+  );
 });
