@@ -46,10 +46,10 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 | Permisos, aprobaciones y undo | **V** | `permissionRules`, `AgentApprovalModal`, checkpoints y `undoStep`/`redo` | La política vive sobre todo en la UI de escritorio |
 | Sesiones | **V** | `src/agent/sessions.ts`, rutas de sesiones y threads del servidor | No hay reanudación desde CLI ni desde un cliente remoto |
 | Navegador y artifacts | **V/P** | `browserSession.ts`, `BrowserView.tsx`, `useBrowserRecording.ts`, `ArtifactsView.tsx` | Frames a ~1,4 fps; sin exportación, sin MP4 y sin verificación visual en Electron |
-| Publicación estática/SPA | **V local; remoto fuera de alcance** | `publisher.ts`, `deploy/vercelAdapter.ts`, tests de contrato | Sin proveedor verificado por decisión (2026-11-10); sin SSR/Workers |
+| Publicación estática/SPA | **V local; remoto en pausa hasta G3** | `publisher.ts`, `deploy/vercelAdapter.ts`, tests de contrato | Sin proveedor verificado; verificación en pausa hasta G3 (2026-11-10); sin SSR/Workers |
 | Backend multiinquilino | **V local** | `backend/tenantStore.ts`, `backend/routes.ts`, `tests/tenantBackend.test.ts` (6/6) | No aprovisiona bindings para apps publicadas |
 | Integraciones GitHub/Linear | **V GitHub; Linear fuera de alcance** | `src/integrations/`, rutas OAuth, vault AES-256-GCM | GitHub con OAuth real verificado (recibo §8); Linear no se configura |
-| GitHub Actions | **I** | `.github/workflows/commander-agent.yml`, `scripts/github-agent.ts` | No hay una corrida real en GitHub |
+| GitHub Actions | **V** | `.github/workflows/commander-agent.yml`, `scripts/github-agent.ts` | Corrida real en el repo de prueba con PR y comentario (recibo `F0-LOCAL-2026-11-10` §11) |
 | CLI | **P** | `bin/commander.ts`, `src/cli/repl.ts`, `src/cli/agentClient.ts`, `src/cli/tui.ts` | REPL multi-turno, `ask_user`, `--resume`/`--fork`, diff por hunk y paridad de permisos del escritorio (F1-07) operativos |
 | Extensión de VS Code | **P** | `vscode-extension/` | Scaffold: webview que lanza `npx commander agent`; no es un IDE integrado |
 | Skills/plugins/MCP | **V/P** | `skills/`, `pluginsRuntime.ts`, `src/agent/mcp.ts` | Hooks sólo `beforeTool`/`afterTool`; sin lifecycle completo ni marketplace propio |
@@ -124,7 +124,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 | ID | Hueco | Por qué importa | Fase | Prioridad |
 | --- | --- | --- | --- | --- |
-| P0-1 | Verdad externa de GitHub y Actions, y línea base de 24 corridas (Vercel y Linear fuera de alcance desde 2026-11-10) | Hoy hay código con mocks; afirmar paridad sin recibo erosiona la confianza | F0 | **P0** |
+| P0-1 | Verdad externa de GitHub y Actions, y línea base de 24 corridas (Vercel en pausa hasta G3; Linear fuera de alcance desde 2026-11-10) | Hoy hay código con mocks; afirmar paridad sin recibo erosiona la confianza | F0 | **P0** |
 | P0-2 | CLI/TUI de primera clase con approvals y `ask_user` | Es la superficie principal de OpenCode/Antigravity/Freebuff y hoy Commander sólo tiene una pasada | F1 | **P0** |
 | P0-3 | Sesión única y plan persistente entre escritorio y CLI | Sin continuidad, el usuario pierde el trabajo al cambiar de superficie | F1 | **P0** |
 | P1-0 | Artifact de verificación: plan + diff + tests + grabación | Es lo que hace revisable y confiable una corrida; Antigravity ya lo vende | F2 | **P1** |
@@ -143,7 +143,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 > **Estado 2026-11-07 (histórico) — bloqueada en G0.** En esta máquina no hay credenciales de Vercel, GitHub ni Linear (ni `.env`, ni variables de entorno, ni conectores OAuth), así que ninguna fila externa está verificada. Lo medido en local, lo que falta y el runbook para cerrarla están en [docs/parity/baseline-2026-11.md](docs/parity/baseline-2026-11.md).
 >
-> **Decisión de alcance 2026-11-10 — F0 sin Vercel ni Linear.** El usuario sólo dispone de cuenta de GitHub y decidió explícitamente no configurar Vercel ni Linear. Esas filas salen del alcance de F0 y quedan marcadas como **fuera de alcance por decisión**, no como pendientes. F0 se cierra con GitHub (OAuth real y Actions, ya verificados con recibos) y la línea base de 24 corridas. Recibos en [docs/parity/receipts/F0-LOCAL-2026-11-10.md](docs/parity/receipts/F0-LOCAL-2026-11-10.md); orden de ejecución en [docs/parity/runbook-g1-f0.md](docs/parity/runbook-g1-f0.md).
+> **Decisión de alcance 2026-11-10 — F0 sin Vercel ni Linear.** El usuario sólo dispone de cuenta de GitHub y decidió explícitamente no configurar Vercel ni Linear. **Vercel queda en pausa hasta G3** y **Linear fuera de alcance por decisión**; ninguna de las dos bloquea F0 ni se marca como pendiente. F0 se cierra con GitHub (OAuth real y Actions, ya ejecutados y verificados con recibos) y la línea base de 24 corridas. Recibos en [docs/parity/receipts/F0-LOCAL-2026-11-10.md](docs/parity/receipts/F0-LOCAL-2026-11-10.md); orden de ejecución en [docs/parity/runbook-g1-f0.md](docs/parity/runbook-g1-f0.md).
 >
 > **Cierre 2026-11-11 — F0/G0 cerrados.** La línea base de 24 corridas se completó con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`: 8/24, 0 timeouts y 0 inválidas. La paridad es baja, pero la muestra es válida y sirve de referencia para G1; en esa fecha el dogfooding seguía pendiente.
 
@@ -152,24 +152,24 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 - Verificar con cuentas reales, dentro del alcance vigente:
   - OAuth de GitHub: conectar, leer un PR, comentar con aprobación, revocar y comprobar que el token no aparece en UI/logs;
   - GitHub Actions: `/commander` en modo plan y `--write` en un repo de prueba, con PR y comentario reales.
-- **Fuera de alcance por decisión (2026-11-10):** despliegue estático/SPA en Vercel y OAuth de Linear. No hay cuenta de ninguno de los dos y el usuario decidió no crearlas; no se simulan ni se declaran verificados. El hosting remoto se decide en G3, al abordar 5A.
+- **Vercel en pausa hasta G3; Linear fuera de alcance (2026-11-10):** despliegue estático/SPA en Vercel y OAuth de Linear. No hay cuenta de ninguno de los dos; Vercel se retoma al abordar 5A en G3 y Linear no se configura. No se simulan ni se declaran verificados.
 - Medir 10 tareas canónicas (bugfix, feature pequeña, refactor, tests, revisión, browser, deploy, permiso denegado, resume y subagente) con 2 corridas; 3 corridas en las 4 críticas. Registrar éxito, pasos, tokens/costo, aprobaciones, duración y fallos.
 - Revisar la matriz de este documento y marcar cada fila con evidencia o con “sin verificar”.
 - Corregir sólo los defectos que impidan la verificación; no abrir features nuevas.
 
 **Criterios de aceptación**
 
-- [—] ~~App Vite de ejemplo con URL real de preview y producción y content types correctos~~ **fuera de alcance por decisión (2026-11-10):** no hay cuenta de Vercel.
-- [—] ~~Rollback real en menos de 30 s y estado persistente tras reiniciar contra el proveedor~~ **fuera de alcance por decisión (2026-11-10).**
+- [—] ~~App Vite de ejemplo con URL real de preview y producción y content types correctos~~ **en pausa hasta G3 (2026-11-10):** no hay cuenta de Vercel.
+- [—] ~~Rollback real en menos de 30 s y estado persistente tras reiniciar contra el proveedor~~ **en pausa hasta G3 (2026-11-10).**
 - [x] GitHub completa OAuth real: lectura de un PR, comentario con aprobación y revocación que invalida el acceso (recibo `F0-LOCAL-2026-11-10` §8).
 - [x] GitHub Actions ejecuta `/commander` en modo plan y `--write` en el repo de prueba; el comentario y el PR son reales (recibo `F0-LOCAL-2026-11-10` §11).
 - [—] ~~Linear completa OAuth real~~ **fuera de alcance por decisión (2026-11-10):** no hay cuenta de Linear.
-- [x] Ningún token, `.env`, source map ni secreto aparece en artifacts, logs o respuestas (árbol, runs reales y PR revisados; no hay deployments de Vercel en alcance).
+- [x] Ningún token, `.env`, source map ni secreto aparece en artifacts, logs o respuestas (árbol, runs reales y PR revisados; no hay deployments de Vercel en este corte).
 - [x] Existe `docs/parity/baseline-2026-11.md` con metodología, resultados y limitaciones.
 - [x] `tsc --noEmit`, `vite build` y las pruebas focalizadas siguen en verde (recibo `F0-LOCAL-2026-11-10` §2).
 - [x] La línea base de 24 corridas (T1–T10) está medida y registrada con NVIDIA (8/24, 0 timeouts, 0 inválidas).
 
-**Puerta G0: CERRADA (2026-11-11).** GitHub está verificado (OAuth y Actions, con recibos) y la línea base de 24 corridas quedó registrada con NVIDIA (8/24, 0 timeouts, 0 inválidas). Vercel y Linear no forman parte de la puerta desde la decisión de alcance del 2026-11-10. G1 sigue abierta: el dogfooding se ejecutó el 2026-11-12 y la casilla del p95 de aprobación quedó en rojo. 5A (hosting SSR/Workers) sigue necesitando una decisión de proveedor en G3.
+**Puerta G0: CERRADA (2026-11-11).** GitHub está verificado (OAuth y Actions, con recibos) y la línea base de 24 corridas quedó registrada con NVIDIA (8/24, 0 timeouts, 0 inválidas). **Vercel queda en pausa hasta G3** y **Linear fuera de alcance** desde la decisión del 2026-11-10; ninguna de las dos forma parte de la puerta. G1 sigue abierta: el dogfooding se ejecutó el 2026-11-12 y la casilla del p95 de aprobación quedó en rojo. 5A (hosting SSR/Workers) sigue necesitando una decisión de proveedor en G3.
 
 ---
 
@@ -383,7 +383,7 @@ Una fase termina sólo si:
 
 | Riesgo | Prob. | Impacto | Mitigación |
 | --- | --- | --- | --- |
-| Falta la credencial real de un proveedor (Vercel y Linear ya están fuera de alcance) | Media | Medio | F0 mide lo que sí hay (GitHub) y no declara paridad con mocks; un proveedor nuevo exige su propio recibo antes de volver a la matriz. |
+| Falta la credencial real de un proveedor (Vercel en pausa hasta G3 y Linear fuera de alcance) | Media | Medio | F0 mide lo que sí hay (GitHub) y no declara paridad con mocks; un proveedor nuevo exige su propio recibo antes de volver a la matriz. |
 | El alcance crece por comparar tres productos a la vez | Alta | Alto | Puertas G0–G3, no objetivos y fases separadas; F6 sólo con aprobación. |
 | El pair remoto expone código o approvals | Media | Alto | Loopback por defecto, enlace de un uso, caducidad, cookie, Origin/CSRF, control lease, revisión de seguridad. |
 | Cambian las APIs de proveedores | Media | Medio | Adaptadores, tests de contrato, versiones y recibos por release. |

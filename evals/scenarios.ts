@@ -660,6 +660,20 @@ function worktreeCount(dir: string): number {
   return out.split(/\r?\n/).filter((line) => line.startsWith('worktree ')).length;
 }
 
+/**
+ * ¿La respuesta del hijo denuncia la denegación de `shell.run`?
+ *
+ * Exige nombrar la tool o la allowlist además de decir que hubo denegación: el
+ * contrato de cierre escribe «Denegado: ninguna» cuando no se denegó nada, y un
+ * regex suelto de «deneg» daba por informada esa frase (G1-D5-10).
+ */
+export function informedShellDenial(answer: unknown): boolean {
+  const text = String(answer ?? '');
+  const denies = /deneg|denied|no (se )?permit|bloque|rechaz|prohib/i.test(text);
+  const names = /shell\.?\s*run|allowlist|allowed\s*tools|lista blanca/i.test(text);
+  return denies && names;
+}
+
 /** T10: dos subagentes en paralelo, con allowlist y worktree aislado. */
 export async function runT10(opts: ScenarioOptions): Promise<EvalOutcome> {
   const started = Date.now();
@@ -716,7 +730,7 @@ export async function runT10(opts: ScenarioOptions): Promise<EvalOutcome> {
       name: 'la allowlist denegó shell en el hijo',
       run: () => {
         assert.ok(
-          children.some((child) => /denegad|no permit|allowlist/i.test(String(child.answer ?? ''))),
+          children.some((child) => informedShellDenial(child.answer)),
           `ningún hijo informó que shell.run fuera denegado: ${JSON.stringify(children).slice(0, 500)}`
         );
         assert.equal(fs.existsSync(path.join(dir, 'prohibido.txt')), false, 'la allowlist dejó escribir prohibido.txt');

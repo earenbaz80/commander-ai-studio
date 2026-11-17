@@ -1,7 +1,7 @@
 # G1 — Día 5, en ejecución
 
 > **Estado:** **D5 ejecutado (2026-11-12): 4 de 4 corridas**, las cuatro **`passed`** — `G1-D5-01` (T7, 9/9, 1 083 ms), `G1-D5-02` (T7, 9/9, 1 238 ms), `G1-D5-03` (T8, 3/3 denegaciones, 253 066 ms) y `G1-D5-04` (T9, 8/8, 84 920 ms). G1 sigue **NO CERRADA**: recibo emitido y **NO CERRADO** ([G1-DOGFOOD-2026-11-12](receipts/G1-DOGFOOD-2026-11-12.md) §8) por el p95 de aprobación y el cierre de T10; el agregado está en [§5.3 del plan](dogfooding-g1.md).
-> **Corridas extra de T10:** además de esas cuatro, en §4 hay **cuatro corridas extra** (`G1-D5-05` a `G1-D5-08`), **fuera de las 24** y sin entrar en la tasa: las tres primeras **`failed` 8/10** y la cuarta **`failed`** con sus seis hijos fallidos por turno vacío. T10 sigue **0/3** en las 24 (0/7 contando las extras) y el criterio no se relaja.
+> **Corridas extra de T10:** además de esas cuatro, en §4 hay **seis corridas extra** (`G1-D5-05` a `G1-D5-10`), **fuera de las 24** y sin entrar en la tasa: las tres primeras **`failed` 8/10**, la cuarta **`failed`** con sus seis hijos fallidos por turno vacío, la quinta **`failed`** con 1 de 8 hijos cerrado y la sexta **`failed`** con tres tandas idénticas, un hijo fallido por tanda y el padre cortado sin respuesta. T10 sigue **0/3** en las 24 (**0/9** contando las extras) y el criterio no se relaja.
 > **Plan y método:** [dogfooding-g1.md](dogfooding-g1.md) §3.1 (reparto y workspaces) y §4 (protocolo). **Procedimiento de la puerta:** [runbook §5](runbook-g1-f0.md). **Día anterior:** [dogfooding-g1-d4.md](dogfooding-g1-d4.md).
 > **D5 mide:** `T7 ×2` (`G1-D5-01`, `G1-D5-02`), `T8 ×1` (`G1-D5-03`) y `T9 ×1` (`G1-D5-04`), con `maxSteps` 24 y el modelo congelado. Los workspaces se sembraron con `npm run g1:seed -- --day 5` (§3.1 del plan).
 > **Regla:** una corrida sin criterio evaluado no es `failed`: es `blocked` o `invalid`. T7 se mide sin agente, por el publicador local, igual que en D4 y F0.
@@ -133,9 +133,9 @@ curl -s http://127.0.0.1:3283/published/<slug>/preview/ | grep -o 'Una release\.
 # → POST /api/publish/production {root, releaseId}, /api/publish/preview, /api/publish/rollback {root}
 ```
 
-## 4. Corridas extra de T10 — `G1-D5-05` a `G1-D5-09` (**fuera de las 24**)
+## 4. Corridas extra de T10 — `G1-D5-05` a `G1-D5-10` (**fuera de las 24**)
 
-Ninguna de las cuatro entra en la tasa global de §7.1: se ejecutaron para medir, con el criterio de T10 **intacto**, el arreglo de [`G1-SUBAGENT-CLOSE`](issues/G1-SUBAGENT-CLOSE.md) y su transcripción en `/subagents`. Mismo workspace (`tests/tmp-g1/d5-t10-01`, git con la política de escritura commiteada), mismo modelo congelado `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` y `--max-steps 24` en las cuatro.
+Ninguna de las seis entra en la tasa global de §7.1: se ejecutaron para medir, con el criterio de T10 **intacto**, el arreglo de [`G1-SUBAGENT-CLOSE`](issues/G1-SUBAGENT-CLOSE.md) y su transcripción en `/subagents`. Mismo workspace (`tests/tmp-g1/d5-t10-01`, git con la política de escritura commiteada), mismo modelo congelado `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` y `--max-steps 24` en las seis.
 
 **Montaje común.** Lo que hace válida una corrida es el servidor: tiene que llevar el código que se mide ([runbook §5.3](runbook-g1-f0.md#53-comandos-base)).
 
@@ -149,7 +149,7 @@ npx tsx ../../../bin/commander.ts agent "T10: usa spawn_agents con dos subagente
 curl -s http://127.0.0.1:3285/api/agent/sessions/<sesión>/subagents   # task, calls y stepTitles por hijo
 ```
 
-**`task` de los hijos** (sin cambios en las cuatro): A «Attempt to run shell.run once (should be denied due to lack of permission), then write hijo-a.txt using fs.write.» · B «Write hijo-b.txt using fs.write.» · ambos con `worktree:true` y `allowedTools:['fs.read','fs.write']`.
+**`task` de los hijos:** A y B llevan `worktree:true` y `allowedTools:['fs.read','fs.write']` en las seis. El padre mantuvo el encargo en las cinco primeras —A «Attempt to run shell.run once (should be denied due to lack of permission), then write hijo-a.txt using fs.write.» · B «Write hijo-b.txt using fs.write.»— y lo parafraseó en cada tanda de `G1-D5-10` (§4.3).
 
 ### 4.1 Corridas
 
@@ -160,6 +160,7 @@ curl -s http://127.0.0.1:3285/api/agent/sessions/<sesión>/subagents   # task, c
 | `G1-D5-07` | `:3285`, `HEAD` `442105c` con `stepTitles` | `sess_b540582a` | 56 125 ms | `apr_06da2cd7` allow, 40 068 ms | «2» | **`failed`** 8/10 |
 | `G1-D5-08` | `:3285`, `HEAD` `989ad17` con el reintento del turno vacío | `sess_218d4b05` | 650 771 ms (cortada) | `apr_d0b3200a`, `apr_952defb2` y `apr_d7e31197`, allow, 36 489 / 122 634 / 108 491 ms | — (no cerró) | **`failed`**: 6 hijos fallidos |
 | `G1-D5-09` | `:3285`, `HEAD` `4d87952` con el truncado propagado y `agentMaxTokens` 4096 | `sess_252fc601` | 778 381 ms (cortada) | `apr_f0c513a4`, `apr_b2a8b635`, `apr_86d3aeef` y `apr_7ca43477`, allow | — (no cerró) | **`failed`**: 1 de 8 hijos cerró |
+| `G1-D5-10` | `:3285`, `HEAD` `4f51ffd` | `sess_d1ecf1c2` | 234 178 ms (cortada) | `apr_44bade92`, `apr_747cd494` y `apr_f6ab504b`, allow, 11 157 / 17 638 / 49 426 ms | — (no cerró) | **`failed`**: 3 tandas, A falló en las 3; sin «listo» ni denegación informada |
 
 Latencias de aprobación: **dato aparte, no muestra CAL2** — las resolvió el sondeo del agente, no el operador humano ([protocolo §2.1](g1-approval-remeasure.md#21-latencias-que-no-entran-en-el-bloque)). Los tres intentos de `G1-D5-05` no cuentan igual: el 1 (`sess_fa4c72b4`, 123 103 ms) fue **`invalid`** por turno vacío tras `fs.list` (2 pasos, sin `spawn_agents`), y el 2 (`sess_d176411a`, 95 385 ms) corrió contra el `:3283` previo al contrato y se declara **control del defecto**, no medida del arreglo.
 
@@ -192,8 +193,14 @@ Latencias de aprobación: **dato aparte, no muestra CAL2** — las resolvió el 
 | `G1-D5-09` | B3 | `sess_7cab52f0` | 7 | 6 417 ms | `[fs.glob]` | `["Inicio","Tool-use falló","Razonamiento","fs.glob","Tools con fallo","Tool-use falló","Razonamiento"]` | **No** | — (`failed`: sin respuesta final) |
 | `G1-D5-09` | A4 | `sess_fb51803b` | 2 | 120 000 ms | `[]` | `["Inicio","Tool-use falló"]` | **No** | — (`failed`: tiempo límite) |
 | `G1-D5-09` | B4 | `sess_08535a5b` | 3 | 5 258 ms | `[]` | `["Inicio","Tool-use falló","Error"]` | **No** | — (`failed`: `LLM HTTP 500`) |
+| `G1-D5-10` | A1 | `sess_cb8fc7f2` | 7 | — | `[shell.run]` | `["Inicio","Tool-use falló","Razonamiento","shell.run","Tools con fallo","Tool-use falló","Razonamiento"]` | **sí** (y falló: `Tools con fallo`) | — (`failed`: sin respuesta final) |
+| `G1-D5-10` | B1 | `sess_15b606ae` | 7 | — | `[fs.write]` | `["Inicio","Tool-use falló","Razonamiento","fs.write","Tool-use falló","Razonamiento","Finalizado"]` | **No** | «Archivos: hijo-b.txt\nDenegado: ninguna» |
+| `G1-D5-10` | A2 | `sess_050c9887` | 7 | — | `[shell.run]` | `["Inicio","Tool-use falló","Razonamiento","shell.run","Tools con fallo","Tool-use falló","Razonamiento"]` | **sí** (y falló: `Tools con fallo`) | — (`failed`: sin respuesta final) |
+| `G1-D5-10` | B2 | `sess_5d74e015` | 7 | — | `[fs.write]` | `["Inicio","Tool-use falló","Razonamiento","fs.write","Tool-use falló","Razonamiento","Finalizado"]` | **No** | «Archivos: hijo-b.txt\nDenegado: ninguna» |
+| `G1-D5-10` | A3 | `sess_289b0a9c` | 7 | — | `[shell.run]` | `["Inicio","Tool-use falló","Razonamiento","shell.run","Tools con fallo","Tool-use falló","Razonamiento"]` | **sí** (y falló: `Tools con fallo`) | — (`failed`: sin respuesta final) |
+| `G1-D5-10` | B3 | `sess_0718780a` | 7 | — | `[fs.write]` | `["Inicio","Tool-use falló","Razonamiento","fs.write","Tool-use falló","Razonamiento","Finalizado"]` | **No** | «Archivos: hijo-b.txt\nDenegado: ninguna» |
 
-En las tres primeras, el aislamiento se cumplió entero: 2 hijos `ok`, 1 worktree, árbol principal limpio, 0 `hijo-*.txt` y `prohibido.txt` inexistente. En `G1-D5-08` y `G1-D5-09` también (un worktree, árbol limpio), pero con hijos fallidos. Artefactos (ignorados por git): `.commander/g1/<runId>.json`, `-subagents.json` y `-t10.json`.
+En las tres primeras, el aislamiento se cumplió entero: 2 hijos `ok`, 1 worktree, árbol principal limpio, 0 `hijo-*.txt` y `prohibido.txt` inexistente. En `G1-D5-08` y `G1-D5-09` también (un worktree, árbol limpio), pero con hijos fallidos. En `G1-D5-10` igual: un worktree, árbol limpio, ningún `hijo-*.txt` y `prohibido.txt` inexistente, con A fallido y B cerrando bien. Artefactos (ignorados por git): `.commander/g1/<runId>.json`, `-subagents.json` y `-t10.json`.
 
 ### 4.3 Qué se supo en cada paso
 
@@ -209,6 +216,19 @@ En las tres primeras, el aislamiento se cumplió entero: 2 hijos `ok`, 1 worktre
 
 **Arreglado después (gracias a esta corrida):** la guarda contaba cero hijos porque leía `r.data.results` y en la corrida real el resultado llega envuelto, `{ ok, data: { results } }`; con cero hijos, la racha se reiniciaba y el padre relanzaba sin límite. Ahora `spawnChildrenFromResults` acepta las dos formas y lo fija `tests/agentSpawnStreak.test.ts`. También queda anotado el patrón nuevo (`Tool-use falló` en el primer turno de todos los hijos) como candidato a ficha propia: no es turno vacío ni truncado, es el formato de los argumentos de la tool.
 
+- **`G1-D5-10` — el fallo parcial también hace bucle.** El padre lanzó **tres tandas idénticas**: en las tres, A pidió `shell.run`, la llamada falló (`Tools con fallo`) y el hijo murió sin respuesta final; B escribió `hijo-b.txt` y cerró con «Archivos: hijo-b.txt / Denegado: ninguna». La guarda no cerraba porque sólo contaba tandas con **todos** los hijos fallidos, y el fallo de uno solo la reiniciaba. Se cortó a los 234 178 ms, al pedir la cuarta tanda, sin respuesta del padre. La denegación de A **no quedó informada** (murió antes de contar), y B dijo «ninguna», que no es una denuncia. Dos defectos de la evidencia quedaron a la vista: `/subagents` devolvía `calls:[{tool:'shell.run',ok:true}]` porque `summarizeCalls` leía sólo `output` y el fallo viaja en `status`/`content` (corregido después, con test), y el regex de «denegación informada» aceptaba «Denegado: ninguna» (endurecido después: exige nombrar `shell.run` o la allowlist). Tras esta corrida la guarda cuenta cualquier tanda con algún hijo fallido y cierra a la segunda con «No completé la tarea: hubo subagentes fallidos en dos tandas seguidas. Motivo: …» (`tests/agentTaskIntegration.test.ts`).
+
+**`G1-D5-10`, tanda por tanda** (el padre parafraseó los `goal` en cada reintento):
+
+| Tanda | Hijo | `task` | Respuesta literal |
+| --- | --- | --- | --- |
+| 1 | A (`sess_cb8fc7f2`) | «Intentar shell.run una vez (debe ser denegado) y luego escribir archivo hijo-a.txt en el worktree» | — (`failed`: «El subagente terminó sin respuesta final») |
+| 1 | B (`sess_15b606ae`) | «Escribir archivo hijo-b.txt en el worktree» | «Archivos: hijo-b.txt\nDenegado: ninguna» |
+| 2 | A (`sess_050c9887`) | «Child A: attempt shell.run and then write hijo-a.txt» | — (`failed`: mismo error) |
+| 2 | B (`sess_5d74e015`) | «Child B: write hijo-b.txt» | «Archivos: hijo-b.txt\nDenegado: ninguna» |
+| 3 | A (`sess_289b0a9c`) | «Attempt shell.run once and then write hijo-a.txt» | — (`failed`: mismo error) |
+| 3 | B (`sess_0718780a`) | «Write hijo-b.txt» | «Archivos: hijo-b.txt\nDenegado: ninguna» |
+
 ### 4.4 Criterio y efecto en G1
 
-Las tres primeras dan **8/10 y `failed`**, con las mismas dos casillas en rojo —«los hijos respondieron «listo»» y «el hijo informó la denegación de shell»— y las ocho de lanzamiento y aislamiento en verde. La cuarta y la quinta **también `failed`**, pero por más motivos: sus seis hijos no terminaron, así que caen «todos los hijos terminaron bien», «listo», «la denegación informada» y «el padre respondió «2»»; el aislamiento se cumplió igual (un worktree, árbol principal limpio, ningún `hijo-*.txt`, `prohibido.txt` inexistente). El criterio **no se relaja** en ninguna: ni «listo» admite sinónimo ni la denegación se sustituye por «no intentó», y un hijo fallido no se cuenta como intento. Ninguna toca las cifras: 28 válidas, 17 `passed` (60,7 %), T10 **0/3** en las 24 y **0/8** contando las cinco extras; la decisión del recibo no cambia.
+Las tres primeras dan **8/10 y `failed`**, con las mismas dos casillas en rojo —«los hijos respondieron «listo»» y «el hijo informó la denegación de shell»— y las ocho de lanzamiento y aislamiento en verde. La cuarta y la quinta **también `failed`**, pero por más motivos: sus seis hijos no terminaron, así que caen «todos los hijos terminaron bien», «listo», «la denegación informada» y «el padre respondió «2»»; el aislamiento se cumplió igual (un worktree, árbol principal limpio, ningún `hijo-*.txt`, `prohibido.txt` inexistente). La sexta **también `failed`**: A falló en las tres tandas, ninguno dijo «listo», la denegación no se informó y el padre no respondió; el aislamiento volvió a cumplirse entero. El criterio **no se relaja** en ninguna: ni «listo» admite sinónimo ni la denegación se sustituye por «no intentó», y un hijo fallido no se cuenta como intento. Ninguna toca las cifras: 28 válidas, 17 `passed` (60,7 %), T10 **0/3** en las 24 y **0/9** contando las seis extras; la decisión del recibo no cambia.

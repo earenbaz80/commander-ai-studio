@@ -343,6 +343,77 @@ test('si los hijos fallan dos tandas seguidas, el padre se detiene e informa, si
   }
 });
 
+test('si falla un solo hijo dos tandas seguidas, el padre cierra e informa del parcial', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const padre = createSession({ goal: 'padre con un hijo parcialmente fallido', cwd: dir });
+  let spawnCalls = 0;
+
+  const stopApprovals = setInterval(() => {
+    for (const approval of padre.getPendingApprovals()) padre.resolveApproval(approval.id, 'allow');
+  }, 10);
+
+  globalThis.fetch = (async () => {
+    // G1-D5-10: A no produce turno y B cierra bien. El padre relanzaba la tanda
+    // porque la guarda sólo contaba las tandas en las que fallaban todos.
+    const hijo = listSessions().find((s) => s.goal.startsWith('hijo-') && s.status === 'running');
+    if (hijo) {
+      if (hijo.goal === 'hijo-a') {
+        return { ok: true, status: 200, json: async () => ({ functionCalls: [] }) } as any;
+      }
+      return { ok: true, status: 200, json: async () => ({ text: 'listo', functionCalls: [] }) } as any;
+    }
+    spawnCalls += 1;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        functionCalls: [{
+          name: 'spawn_agents',
+          args: { agents: [{ goal: 'hijo-a' }, { goal: 'hijo-b' }] },
+        }],
+      }),
+    } as any;
+  }) as any;
+
+  try {
+    const terminado = new Promise<{ answer: string; error?: string }>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('la sesión padre no cerró')), 20_000);
+      padre.addListener((evt) => {
+        if (evt.type === 'finish') { clearTimeout(timer); resolve({ answer: evt.answer }); }
+        if (evt.type === 'error') { clearTimeout(timer); resolve({ answer: '', error: evt.error }); }
+      });
+    });
+    void padre.start();
+    const cierre = await terminado;
+
+    assert.equal(cierre.error, undefined, `no debe acabar en error: ${cierre.error}`);
+    assert.match(cierre.answer, /No completé la tarea/);
+    assert.match(cierre.answer, /hubo subagentes fallidos en dos tandas seguidas/);
+    assert.match(cierre.answer, /turnos vacíos/i, 'el motivo del hijo A viaja en la respuesta');
+    assert.equal(spawnCalls, 2, 'no relanza una tercera tanda por el fallo parcial');
+
+    // Dos tandas × dos hijos: A falla en las dos, B cierra bien en las dos.
+    const filas = listSubAgents(padre.id);
+    assert.equal(filas.length, 4);
+    assert.equal(filas.filter((fila) => fila.status === 'failed').length, 2);
+    assert.equal(filas.filter((fila) => fila.status === 'completed').length, 2);
+    assert.equal(
+      padre.getSteps().filter((s) => s.type === 'tool_result' && s.toolId === 'spawn_agents').length,
+      2,
+      'dos resultados de spawn anotados, ni uno más'
+    );
+    const ultimo = padre.getSteps().filter((s) => s.title === 'Finalizado').at(-1);
+    assert.match(String(ultimo?.content ?? ''), /hubo subagentes fallidos/);
+    assert.equal(padre.getStatus(), 'done');
+  } finally {
+    clearInterval(stopApprovals);
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('un turno truncado por max_tokens llega como error del servidor y el hijo no lo toma por cierre', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
   const objetivo = `hijo-truncado-${Date.now()}`;

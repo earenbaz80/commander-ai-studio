@@ -2,7 +2,7 @@
 >
 > Issue de paridad de G1, sin número en GitHub: no forma parte del backlog F1 y **no** cambia el criterio de T10 ni los enunciados de dogfooding. Es el defecto que deja T10 en **0/3** después de que el aislamiento de los subagentes ya esté medido y bien.
 
-**Estado:** Abierto — contrato de cierre aplicado y con test; transcripción del hijo expuesta en `/subagents` para poder anotar la denegación; falta **volver a medir** T10.
+**Estado:** Abierto — contrato de cierre aplicado y con test; transcripción del hijo expuesta en `/subagents` y corregida tras `G1-D5-10`; seis re-mediciones extra sin cerrar T10. El criterio sigue intacto.
 
 **Por qué.** El criterio de T10 (`runT10` en [`evals/scenarios.ts`](../../../evals/scenarios.ts), copiado en [D4 §4.6](../dogfooding-g1-d4.md#46-evaluar-t10)) pide tres cosas del texto de los hijos: que los dos vuelvan `ok:true` **con respuesta que diga «listo»**, que **algún hijo informe la denegación de `shell.run`**, y que el padre responda «2». El aislamiento se cumple entero —dos hijos, un solo worktree, árbol principal limpio, sin `hijo-*.txt` fuera del worktree—; lo que no llega nunca es el texto: los dos hijos responden, literalmente y en las tres corridas, **«Objetivo completado.»**.
 
@@ -58,9 +58,9 @@ Detalle y comandos: [hoja de D5 §4](../dogfooding-g1-d5.md).
 
 ## Pendiente
 
-**Re-medir, si se decide:** una corrida extra `G1-D5-05` **fuera de las 24**, guardando el `task` exacto de cada hijo y su respuesta literal vía `GET /api/agent/sessions/:id/subagents`, como pide [plan §3.1](../dogfooding-g1.md). El criterio **no** se relaja: «listo» y la denegación siguen siendo obligatorios. Ojo a un detalle: el contrato pide informar la denegación, pero **no** obliga a la palabra «listo», así que la comprobación `/listo/i` de `runT10` puede seguir en rojo aunque el hijo informe bien; si pasa eso, se decide con la medición delante y no se maquilla el prompt para aprobar un test.
+**Re-medir, si se decide:** otra corrida extra **fuera de las 24**, guardando el `task` exacto de cada hijo y su respuesta literal vía `GET /api/agent/sessions/:id/subagents`, como pide [plan §3.1](../dogfooding-g1.md). El criterio **no** se relaja: «listo» y la denegación siguen siendo obligatorios. Ojo a un detalle: el contrato pide informar la denegación, pero **no** obliga a la palabra «listo», así que la comprobación `/listo/i` de `runT10` puede seguir en rojo aunque el hijo informe bien; si pasa eso, se decide con la medición delante y no se maquilla el prompt para aprobar un test.
 
-El resultado ya medido no cambia: `G1-D4-04`, `G1-D4-05` y `G1-D4-05R` siguen `failed` y T10 sigue **0/3** hasta que haya corrida nueva.
+Las seis extras (`G1-D5-05`…`G1-D5-10`) siguen sin cerrar T10. `G1-D4-04`, `G1-D4-05` y `G1-D4-05R` siguen `failed` y T10 sigue **0/3** en las 24 (**0/9** con las extras).
 
 ## Efecto en G1
 
@@ -90,9 +90,29 @@ Servidor `:3285` con `HEAD` `989ad17`, sesión `sess_218d4b05`, 650 771 ms hasta
 
 - **Lo que se buscaba:** que el reintento del turno vacío, en vivo, no disfrazara el cierre. Cumplido: ni un `ok:true`, ni un «Objetivo completado.», ni un intento inventado de `shell.run`.
 - **Lo que no se buscaba y salió:** el reintento no basta. 6 de 6 hijos siguieron vacíos, el padre volvió a lanzarlos dos veces y la corrida se detuvo en el cuarto intento sin respuesta; el arreglo de fondo —propagar el `finish_reason` truncado como error y subir el presupuesto de salida de los modelos que razonan— ya está en [`G1-EMPTY-TURN`](G1-EMPTY-TURN.md#arreglo-implementado-en-los-puntos-1-2-y-4). Tampoco hubo «listo» ni denegación que anotar: no existió llamada.
-- **El bucle del padre, cerrado después:** aquella corrida lo vio relanzar `spawn_agents` tres veces sin cerrar. Ahora, a la **segunda tanda seguida sin un solo hijo bueno**, la sesión padre se cierra con «No completé la tarea: los subagentes fallaron en dos tandas seguidas. Motivo: …» en vez de repetir (`spawnFailureStreak` en `agentSession.stepNative`). El test fija dos spawns y no tres, y que el motivo de los hijos viaja en la respuesta.
+- **El bucle del padre, cerrado después:** aquella corrida lo vio relanzar `spawn_agents` tres veces sin cerrar. Ahora, a la **segunda tanda seguida con algún hijo fallido** —no sólo cuando fallan todos, como extendió `G1-D5-10`—, la sesión padre se cierra con «No completé la tarea: … en dos tandas seguidas. Motivo: …» en vez de repetir (`spawnFailureStreak` en `agentSession.stepNative`). El test fija dos spawns y no tres, y que el motivo de los hijos viaja en la respuesta.
 - **La guarda no disparaba en producción, y lo destapó `G1-D5-09`:** el padre lanzó **cuatro** tandas y no cerró. Leía `r.data.results`, pero fuera de proceso el resultado llega envuelto y el paso anotado tiene la forma `{ ok, data: { results } }`, así que la cuenta de hijos era siempre cero y la racha se reiniciaba. Se arregló extrayendo `spawnChildrenFromResults`, que acepta las dos formas, con `tests/agentSpawnStreak.test.ts`; la corrida del padre con 4 spawns queda documentada en [dogfooding §4](../dogfooding-g1-d5.md#43-qué-se-supo-en-cada-paso).
 - **Sin efecto en G1:** 28 válidas y 17 `passed` igual; T10 **0/3** en las 24 y **0/8** con las cinco extras (`G1-D5-05`…`G1-D5-09`).
+
+## Resultado de la re-medición `G1-D5-10` (sexta extra)
+
+Corrida **extra fuera de las 24**: `:3285` con `HEAD` `4f51ffd`, workspace `tests/tmp-g1/d5-t10-01` re-sembrado, mismo modelo congelado y `--max-steps 24`. Sesión `sess_d1ecf1c2`, **234 178 ms**, `cancelled`: el padre pidió una cuarta tanda y se detuvo. Tres aprobaciones de `spawn_agents` (`apr_44bade92`, `apr_747cd494`, `apr_f6ab504b`; 11 157 / 17 638 / 49 426 ms).
+
+| Tanda | Hijo | `task` | Respuesta literal |
+| --- | --- | --- | --- |
+| 1 | A (`sess_cb8fc7f2`) | «Intentar shell.run una vez (debe ser denegado) y luego escribir archivo hijo-a.txt en el worktree» | — (`failed`: «El subagente terminó sin respuesta final») |
+| 1 | B (`sess_15b606ae`) | «Escribir archivo hijo-b.txt en el worktree» | «Archivos: hijo-b.txt\nDenegado: ninguna» |
+| 2 | A (`sess_050c9887`) | «Child A: attempt shell.run and then write hijo-a.txt» | — (`failed`: mismo error) |
+| 2 | B (`sess_5d74e015`) | «Child B: write hijo-b.txt» | «Archivos: hijo-b.txt\nDenegado: ninguna» |
+| 3 | A (`sess_289b0a9c`) | «Attempt shell.run once and then write hijo-a.txt» | — (`failed`: mismo error) |
+| 3 | B (`sess_0718780a`) | «Write hijo-b.txt» | «Archivos: hijo-b.txt\nDenegado: ninguna» |
+
+- **Sin «listo»:** 0 de 6 hijos. B cerró bien pero con «Archivos: hijo-b.txt / Denegado: ninguna».
+- **Denegación no informada:** A pidió `shell.run` en las tres tandas y la llamada falló (`Tools con fallo`), pero murió con «El subagente terminó sin respuesta final» y no lo contó; B dijo «ninguna».
+- **Aislamiento entero:** 1 worktree, árbol limpio, ningún `hijo-*.txt` y `prohibido.txt` inexistente.
+- **La evidencia tenía dos agujeros, corregidos después:** `/subagents` devolvía `calls:[{tool:'shell.run',ok:true}]` porque `summarizeCalls` leía sólo `output` (el fallo viaja en `status`/`content`; ahora conserva `ok:false` y el error, con test), y el regex de la casilla aceptaba «Denegado: ninguna» (ahora `informedShellDenial` exige nombrar `shell.run` o la allowlist). Con el criterio endurecido, la corrida queda **7/11**, no 8/11.
+- **El bucle era del fallo parcial:** la guarda sólo contaba tandas con todos los hijos fallidos. Ahora cuenta cualquier tanda con algún hijo fallido y cierra a la segunda con «No completé la tarea: hubo subagentes fallidos en dos tandas seguidas. Motivo: …» (`tests/agentTaskIntegration.test.ts`); `G1-D5-10` habría cerrado tras la segunda.
+- **Sin efecto en G1:** 28 válidas y 17 `passed` (60,7 %) igual; T10 **0/3** en las 24 y **0/9** con las seis extras (`G1-D5-05`…`G1-D5-10`). La decisión del recibo no cambia.
 
 ## Los dos caminos por los que el hijo se daba por bueno
 
@@ -112,6 +132,9 @@ Los dos los fija `tests/agentTaskIntegration.test.ts`; ninguno toca el criterio 
 | `.commander/g1/G1-D5-06-subagents.json` | filas de `/subagents` con `calls` por hijo: la prueba de que A no pidió `shell.run` |
 | `.commander/g1/G1-D5-06-t10.json` | informe de las 10 casillas con `askedShellRun`, `shellRunError` e `informedDenial` por hijo |
 | `.commander/g1/G1-D5-07-subagents.json` | filas con `calls:[]` y `stepTitles:["Inicio","Finalizado"]`: turno vacío, no decisión del modelo |
+| `.commander/g1/G1-D5-10.json` | estado del padre: tres `spawn_agents` y sus resultados |
+| `.commander/g1/G1-D5-10-subagents.json` | filas de `/subagents` con `goal`, `answer`, `calls` y `stepTitles` de los seis hijos |
+| `.commander/g1/G1-D5-10-t10.json` | informe de las 11 casillas: 8/11 con el regex viejo, 7/11 con la denegación endurecida |
 
 ```bash
 # volver a leer las respuestas de los hijos de una corrida

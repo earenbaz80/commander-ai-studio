@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnChildrenFromResults } from '../agentSession';
+import { spawnBatchHadFailure, spawnChildrenFromResults } from '../agentSession';
 
 /**
  * G1-D5-09: en la corrida real los resultados de `spawn_agents` llegaron
@@ -36,6 +36,15 @@ test('lee los hijos cuando el resultado llega envuelto en { ok, data }', () => {
   assert.equal(hijos.length, 2, 'la guarda no puede quedarse en cero hijos');
   assert.equal(hijos[0].error, 'sin respuesta final');
   assert.equal(hijos[1].error, 'tiempo límite');
+});
+
+test('una tanda con un solo hijo fallido también cuenta para la racha', () => {
+  // G1-D5-10: A fallaba y B cerraba bien; el padre relanzó la tanda porque la
+  // guarda sólo miraba «todos fallidos».
+  assert.equal(spawnBatchHadFailure([{ ok: true }, { ok: false, error: 'sin respuesta final' }]), true);
+  assert.equal(spawnBatchHadFailure([{ ok: false }, { ok: false }]), true);
+  assert.equal(spawnBatchHadFailure([{ ok: true }, { ok: true }]), false);
+  assert.equal(spawnBatchHadFailure([]), false);
 });
 
 test('suma los hijos de varios spawns de la misma tanda y tolera resultados vacíos', () => {

@@ -1524,17 +1524,22 @@ export class AgentSession {
     }
     if (this.failOnLoopCut(results)) return;
 
-    // El modelo puede re-lanzar `spawn_agents` cuando todos los hijos fallan:
-    // en G1-D5-08 lo hizo tres veces y nunca cerró. A la segunda tanda seguida
-    // sin un solo hijo bueno se cierra informando del fallo, en vez de repetir.
+    // El modelo puede re-lanzar `spawn_agents` cuando falla algún hijo: en
+    // G1-D5-08 fallaron todos y en G1-D5-10 falló uno solo; en los dos casos
+    // repitió la tanda sin cerrar. A la segunda tanda seguida con algún hijo
+    // fallido se cierra informando, en vez de repetir.
     const spawnRuns = results.filter((r) => r.tool === 'spawn_agents');
     if (spawnRuns.length > 0) {
       const hijos = spawnChildrenFromResults(spawnRuns);
-      const todosFallidos = hijos.length > 0 && hijos.every((hijo: any) => hijo?.ok === false);
-      this.spawnFailureStreak = todosFallidos ? this.spawnFailureStreak + 1 : 0;
+      this.spawnFailureStreak = spawnBatchHadFailure(hijos) ? this.spawnFailureStreak + 1 : 0;
       if (this.spawnFailureStreak >= 2) {
-        const motivos = [...new Set(hijos.map((hijo: any) => String(hijo?.error ?? '').trim()).filter(Boolean))];
-        const finalAnswer = `No completé la tarea: los subagentes fallaron en dos tandas seguidas.${motivos.length ? ` Motivo: ${motivos.join(' | ')}` : ''}`.slice(0, 1000);
+        const fallidos = hijos.filter((hijo: any) => hijo?.ok === false);
+        const motivos = [...new Set(fallidos.map((hijo: any) => String(hijo?.error ?? '').trim()).filter(Boolean))];
+        const todosFallidos = hijos.length > 0 && fallidos.length === hijos.length;
+        const cierre = todosFallidos
+          ? 'No completé la tarea: los subagentes fallaron en dos tandas seguidas.'
+          : 'No completé la tarea: hubo subagentes fallidos en dos tandas seguidas.';
+        const finalAnswer = `${cierre}${motivos.length ? ` Motivo: ${motivos.join(' | ')}` : ''}`.slice(0, 1000);
         this.answer = finalAnswer;
         this.turns.push({ role: 'assistant', text: finalAnswer, ts: Date.now() });
         if (this.turns.length > 10) this.turns = this.turns.slice(-10);
@@ -1900,6 +1905,17 @@ export function removeSession(id: string): void {
   if (isValidSessionId(id)) {
     try { createSessionStore().remove(id); } catch { /* sin archivo */ }
   }
+}
+
+/**
+ * ¿La tanda de `spawn_agents` dejó algún hijo fallido?
+ *
+ * La racha cuenta también el fallo parcial: en G1-D5-10 un hijo cerraba bien y
+ * el otro no, y el padre relanzó la misma tanda tres veces porque la guarda
+ * sólo miraba «todos fallidos».
+ */
+export function spawnBatchHadFailure(children: any[]): boolean {
+  return children.some((hijo: any) => hijo?.ok === false);
 }
 
 /**
