@@ -35,8 +35,8 @@ Si el paso 3 falla, **se detiene el cierre**: G1 sigue NO CERRADO y el paso sigu
 
 ## 3. Paso 0 — congelar el árbol
 
-- [ ] Árbol limpio y commit anotado: el bloque se mide en **`bd61ad0`**. `git status --short` vacío; si `predev` regenera `public/avatars/manifest.json`, se restaura (es sólo fin de línea).
-- [ ] Worktree medido `tests/tmp-g1/cal4-repo` **detached en `bd61ad0`** y limpio. Se recreó con `git worktree add --detach tests/tmp-g1/cal4-repo bd61ad0` y `npm ci --ignore-scripts --no-audit --no-fund` dentro del worktree (738 paquetes; la junction de `node_modules` falló en Git Bash), más la siembra `--force --only d1-t1-01`.
+- [ ] Árbol limpio y commit anotado: el bloque se mide en **`41358e4`**. `git status --short` vacío; si `predev` regenera `public/avatars/manifest.json`, se restaura (es sólo fin de línea).
+- [ ] Worktree medido `tests/tmp-g1/cal4-repo` **detached en `41358e4`** y limpio. Se movió con `git -C tests/tmp-g1/cal4-repo checkout --detach 41358e4`; el lockfile es idéntico y no hace falta reinstalar. Si se recrea desde cero, usar `git worktree add --detach tests/tmp-g1/cal4-repo 41358e4` y `npm ci --ignore-scripts --no-audit --no-fund` antes de sembrar.
 - [ ] Servidor vivo en `:3283` con **`npm run dev`**: `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3283/api/health` → `200`. El script fija `PORT=3283`; el `57898` medido el 2026-11-16 vino de un `PORT=0` heredado del shell, que `server.ts` trata como puerto efímero para los tests.
 - [ ] Modelo y `maxSteps` congelados: `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`, `--max-steps 24`.
 - [ ] Ninguna otra sesión del CLI usando el puerto.
@@ -44,9 +44,9 @@ Si el paso 3 falla, **se detiene el cierre**: G1 sigue NO CERRADO y el paso sigu
 ```bash
 cd "G:/Proyectos AI/commander-ai-studio-2.5.1"
 git status --short
-git rev-parse --short HEAD                          # bd61ad0
+git rev-parse --short HEAD                          # 41358e4
 git -C tests/tmp-g1/cal4-repo status --short
-git -C tests/tmp-g1/cal4-repo rev-parse --short HEAD # bd61ad0
+git -C tests/tmp-g1/cal4-repo rev-parse --short HEAD # 41358e4
 npm run dev                                          # :3283 por defecto, en otra terminal
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3283/api/health
 ```
@@ -72,11 +72,11 @@ Se conserva como procedimiento para un bloque completo futuro. **No se re-ejecut
 
 ## 5. Paso 2 — bloque `CAL4H` (operador humano)
 
-Detalle completo en el [runbook CAL4H](g1-approval-cal4-human-runbook.md). Resumen ejecutable:
+Detalle completo en el [runbook CAL4H](g1-approval-cal4-human-runbook.md) y el [plan CAL4H](CAL4H-PLAN-2026-11-17.md). Resumen ejecutable:
 
 **Precondiciones**
 
-- [ ] Entorno preparado: árbol, worktree y servidor en **`bd61ad0`**, con `npm run dev` en `:3283` (ver §3).
+- [ ] Entorno preparado: árbol, worktree y servidor en **`41358e4`**, con `npm run dev` en `:3283` (ver §3).
 - [ ] Operador presente, con **60–90 min** reservados y sin otra tarea abierta.
 - [ ] Terminal real, no el panel del agente: `tty` responde un dispositivo (por ejemplo `/dev/ttys003`).
 - [ ] Sin teclas en cola y sin otra sesión en `:3283`.
@@ -93,7 +93,7 @@ for n in $(seq 22 41); do
 done
 ```
 
-> El script imprime `Siguiente: bash tests/tmp-g1/cal4-one.sh 23`, que es una ruta del proyecto: ignorá esa línea y usá el bucle o `bash ../cal4-one.sh 23`.
+> El script imprime `Siguiente: bash ../cal4-one.sh 23`; usá el bucle o ese comando desde `cal4-human`.
 
 **Por corrida**
 
@@ -109,7 +109,7 @@ done
 
 ```bash
 cd "G:/Proyectos AI/commander-ai-studio-2.5.1/tests/tmp-g1/cal4-human"
-npx tsx ../g1-cal4.ts summary
+node ../cal4-repo/node_modules/tsx/dist/cli.mjs ../g1-cal4.ts summary
 ```
 
 - [ ] Las 20 corridas ejecutadas y el primario con **n ≥ 40** decisiones incluidas.
@@ -134,7 +134,7 @@ Corrida **extra, fuera de las 24**, con el criterio de F0 intacto: los dos hijos
 
 ## 7. Paso 5 — recibos y actualización
 
-- [ ] `docs/parity/receipts/G1-APPROVAL-CAL4H-<fecha>.md`: operador, fecha, commit **`bd61ad0`**, `n`, p95, exclusiones, decisiones `deny` y decisión de la casilla. **No** se reutiliza el recibo de CAL4 ni se declara el `6838fa1` del runbook original.
+- [ ] Completar la [plantilla CAL4H](receipts/G1-APPROVAL-CAL4H-2026-11-17.md) con operador, fecha, commit **`41358e4`**, `n`, p95, exclusiones, decisiones `deny` y decisión de la casilla. **No** se reutiliza el recibo de CAL4 ni se declara el `6838fa1` del runbook original.
 - [ ] `docs/parity/receipts/G1-CIERRE-<fecha>.md`: las ocho reglas de [§7.1](dogfooding-g1.md#71-reglas-de-decisión-criterio-de-puerta) con su evidencia, tasa global, tabla por tarea con delta frente a F0, avisos de regresión de §7.2, seguridad, fallbacks, límites y decisión **CERRADO / NO CERRADO** en ese orden.
 - [ ] Si CAL4H cumple: `ROADMAP.md` y `ROADMAP_PARITY.md` pasan G1 a cerrada y recién entonces se marcan los criterios de F1/F2 que dependían de la puerta.
 - [ ] Si CAL4H no cumple: los roadmaps siguen como están (G1 abierta) y el recibo declara el siguiente paso de producto.
@@ -149,7 +149,7 @@ Corrida **extra, fuera de las 24**, con el criterio de F0 intacto: los dos hijos
 | **Tasa de éxito** | ficha → `dogfooding-g1.md` §5.3 → recibo de cierre | Sí | `passed / corridas válidas`, criterio idéntico a `evals/baseline.ts` |
 | Comparación F0 | `dogfooding-g1.md` §7 y §9 de este plan | Sí | Delta informativo; la puerta es la tasa global |
 | **Latencia de aprobación (dogfooding)** | `.commander/g1/<runId>.json` → ficha | Crudo no / ficha sí | Descriptiva; no decide la puerta |
-| **Latencia de aprobación (puerta)** | `.commander/g1/cal2/samples.jsonl` · `tests/tmp-g1/cal4-human/.commander/g1/cal4/samples.jsonl` | No | `npm run g1:cal2 -- add/import/summary` · `npx tsx ../g1-cal4.ts summary` |
+| **Latencia de aprobación (puerta)** | `.commander/g1/cal2/samples.jsonl` · `tests/tmp-g1/cal4-human/.commander/g1/cal4/samples.jsonl` | No | `npm run g1:cal2 -- add/import/summary` · `node ../cal4-repo/node_modules/tsx/dist/cli.mjs ../g1-cal4.ts summary` |
 | Baseline F0 | `evals/baseline-results.jsonl` + `baseline-2026-11.md` §6 | Sí | `npm run baseline` (sólo arnés) |
 | Decisión de la casilla | `receipts/G1-APPROVAL-CAL4H-*.md` | Sí | §5 de este plan |
 | Decisión de G1 | `receipts/G1-CIERRE-*.md` | Sí | §7 de este plan |
