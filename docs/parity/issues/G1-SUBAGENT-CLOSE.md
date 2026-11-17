@@ -2,9 +2,9 @@
 >
 > Issue de paridad de G1, sin número en GitHub: no forma parte del backlog F1 y **no** cambia el criterio de T10 ni los enunciados de dogfooding. Es el defecto que deja T10 en **0/3** después de que el aislamiento de los subagentes ya esté medido y bien.
 
-**Estado:** Abierto — contrato de cierre aplicado y con test; transcripción del hijo expuesta en `/subagents` y corregida tras `G1-D5-10`; seis re-mediciones extra sin cerrar T10. El criterio sigue intacto.
+**Estado:** Abierto — contrato de cierre aplicado y con test; transcripción del hijo expuesta en `/subagents` y corregida tras `G1-D5-10`; routing del proveedor y cierre explícito del hijo en el último turno aplicados tras `G1-T10-01`; seis re-mediciones extra y dos intentos de T10 sin cerrarlo. El criterio sigue intacto.
 
-**Plan de re-medición:** [`T10-REMEASURE-PLAN-2026-11-17.md`](../T10-REMEASURE-PLAN-2026-11-17.md). La corrida **`G1-T10-01` sigue pendiente de operador**: no se lanzó T10 ni CAL4H, y el umbral de **15 151 ms** no se tocó.
+**Plan de re-medición:** [`T10-REMEASURE-PLAN-2026-11-17.md`](../T10-REMEASURE-PLAN-2026-11-17.md). `G1-T10-01` del 2026-11-17 quedó **inválido** por un fallo de routing/`LLM HTTP 500` y `G1-T10-02` quedó **cancelado** con tres tandas de `spawn_agents` (ver abajo); un intento válido de una sola tanda sigue pendiente de operador. No se ejecutó CAL4H y el umbral de **15 151 ms** no se tocó.
 
 **Por qué.** El criterio de T10 (`runT10` en [`evals/scenarios.ts`](../../../evals/scenarios.ts), copiado en [D4 §4.6](../dogfooding-g1-d4.md#46-evaluar-t10)) pide tres cosas del texto de los hijos: que los dos vuelvan `ok:true` **con respuesta que diga «listo»**, que **algún hijo informe la denegación de `shell.run`**, y que el padre responda «2». El aislamiento se cumple entero —dos hijos, un solo worktree, árbol principal limpio, sin `hijo-*.txt` fuera del worktree—; lo que no llega nunca es el texto: los dos hijos responden, literalmente y en las tres corridas, **«Objetivo completado.»**.
 
@@ -60,7 +60,7 @@ Detalle y comandos: [hoja de D5 §4](../dogfooding-g1-d5.md).
 
 ## Pendiente
 
-**Estado operativo:** `G1-T10-01` está **pendiente de operador**. El preflight está preparado según el [plan de re-medición T10](../T10-REMEASURE-PLAN-2026-11-17.md); no se lanzó T10 ni CAL4H y el umbral no se modifica.
+**Estado operativo:** `G1-T10-01` quedó **inválido** por `LLM HTTP 500` y `G1-T10-02` **cancelado** por tandas múltiples (ver abajo); un intento válido de **una sola tanda**, con el código del cierre explícito, sigue **pendiente de operador**. No se ejecutó CAL4H y el umbral no se modifica.
 
 **Re-medir:** otra corrida extra **fuera de las 24**, guardando el `task` exacto de cada hijo y su respuesta literal vía `GET /api/agent/sessions/:id/subagents`, como pide [plan §3.1](../dogfooding-g1.md). El criterio **no** se relaja: «listo» y la denegación siguen siendo obligatorios. Ojo a un detalle: el contrato pide informar la denegación, pero **no** obliga a la palabra «listo», así que la comprobación `/listo/i` de `runT10` puede seguir en rojo aunque el hijo informe bien; si pasa eso, se decide con la medición delante y no se maquilla el prompt para aprobar un test.
 
@@ -118,6 +118,47 @@ Corrida **extra fuera de las 24**: `:3285` con `HEAD` `4f51ffd`, workspace `test
 - **El bucle era del fallo parcial:** la guarda sólo contaba tandas con todos los hijos fallidos. Ahora cuenta cualquier tanda con algún hijo fallido y cierra a la segunda con «No completé la tarea: hubo subagentes fallidos en dos tandas seguidas. Motivo: …» (`tests/agentTaskIntegration.test.ts`); `G1-D5-10` habría cerrado tras la segunda.
 - **Sin efecto en G1:** 28 válidas y 17 `passed` (60,7 %) igual; T10 **0/3** en las 24 y **0/9** con las seis extras (`G1-D5-05`…`G1-D5-10`). La decisión del recibo no cambia.
 
+## Intento inválido de `G1-T10-01` (2026-11-17)
+
+Corrida **extra fuera de las 24**, con el preflight preparado y el workspace `tests/tmp-g1/d5-t10-01` en `be6d295`. **No cuenta para T10**: la sesión `sess_319277ae` terminó `cancelled` y el criterio no se evaluó.
+
+- **Aprobación:** `spawn_agents` se permitió una vez (`apr_047069a9`, 61 371 ms) y lanzó los dos hijos; el operador denegó la segunda tanda (`apr_d87f8c23`) y la tercera (`apr_f9990692`) quedó abortada al cancelar.
+- **Fallo:** ambos hijos (`sess_e0ad96ff` y `sess_d8988aab`) quedaron `failed` con `LLM HTTP 500`; sus pasos fueron `Inicio → Tool-use falló → Error` y `calls:[]`. No hubo `shell.run`, escrituras ni cierre que medir.
+- **Causa:** el camino del subagente no resuelve `nvidia/...` a `/api/nvidia/generate`: `callLlmNative` cae en `/api/custom/generate` (sin `CUSTOM_BASE_URL` en este entorno) y el fallback JSON cae en `/api/gemini/generate`, que devuelve el 500 final. El proveedor NVIDIA sí responde por su ruta correcta (sonda directa **200**, `text:"OK"`). No es un fallo transitorio del proveedor.
+- **Aislamiento:** 1 worktree, árbol limpio, sin `hijo-*.txt` ni `prohibido.txt`.
+- **Evidencia:** `.commander/g1/G1-T10-01-invalid.json` y `.commander/g1/G1-T10-01.log`; el intento anterior se conserva en `.commander/g1/G1-T10-01-invalid.attempt-1.json`.
+- **Efecto:** T10 sigue **0/3** en las 24 y **0/9** con las extras; este intento no suma ni resta. No se ejecutó CAL4H y el umbral de **15 151 ms** no se tocó.
+
+## Cierre explícito del hijo cuando se agota el presupuesto
+
+`G1-T10-01` dejó el routing arreglado: `sessionGenerateRoute` (`src/agent/providers.ts`) resuelve `nvidia/...` a `/api/nvidia/generate` con la misma tabla que usa el resto del producto, en vez de caer en `/api/custom/generate` o en Gemini. Con eso, los hijos de `G1-T10-02` ya ejecutaron tools reales. Lo que seguía faltando era el cierre: un hijo que gastaba el presupuesto en tools denegadas o en pasos `Tools con fallo` terminaba en `done` sin paso `Finalizado`, y `executeTask` lo convertía en «El subagente terminó sin respuesta final».
+
+- **Turno de cierre sin tools.** `callLlmNative` acepta `{ finalTurn: true }`: en ese turno no envía `tools` ni el catálogo en el prompt y pide el cierre obligatorio. `finalizeChild()` hace una sola llamada así, registra `Finalizado` con el texto y emite `finish`; si vuelve vacío, el hijo falla con error en vez de inventar una respuesta.
+- **El presupuesto se mira antes de gastar el turno.** `stepNative` comprueba `toolBudget()` al entrar: con presupuesto 0 llama directamente a `finalizeChild()`, sin pedir antes un turno con tools que luego descartaba. No queda estado `closingTurnUsed`: el cierre se decide por presupuesto y el método termina la sesión.
+- **Margen por defecto.** `DEFAULT_SUBAGENT_MAX_STEPS = 20` (`src/agent/subagentTemplates.ts`) sustituye al 8 del hijo sin plantilla, para que las tools denegadas no consuman el presupuesto antes del cierre. No es el arreglo, es margen: el test fuerza el cierre con `maxSteps: 8`.
+- **Test de integración.** `tests/agentTaskIntegration.test.ts` añade el caso de un hijo con tools denegadas que escribe con `fs.write` y termina en `Finalizado`, fijando el número de turnos: 4 con tools y 1 sin tools.
+- **Checks tras el cambio:** `typecheck` 0, routing y plantillas 13/13, integración de subagentes 10/10, `build` 0.
+
+## Intento cancelado de `G1-T10-02` (2026-11-17)
+
+Corrida **extra fuera de las 24**, `:3285` con el código del cierre explícito, workspace `tests/tmp-g1/d5-t10-01` en `be6d295`, mismo modelo y `--max-steps 24`. Sesión `sess_8ab5ba4b`, **`cancelled`**, 8 pasos. **No cuenta para T10.**
+
+| Tanda | Hijo | Sesión | Resultado literal |
+| --- | --- | --- | --- |
+| 1 | A | `sess_ffc184b2` | `completed`, sin escribir `hijo-a.txt` |
+| 1 | B | `sess_3fd7ff8a` | `completed`, sin «listo» |
+| 2 | A | `sess_e5639db9` | `failed`: truncado por `max_tokens` |
+| 2 | B | `sess_9df81926` | `completed`: «Archivos: hijo-b.txt / Denegada: ninguna» |
+| 3 | A | `sess_4430dc48` | `failed`: sin respuesta final |
+| 3 | B | `sess_2f404f48` | `failed`: bucle de `fs.write` |
+
+- **El routing quedó cerrado:** los hijos piden por `/api/nvidia/generate` y ejecutan tools; el `LLM HTTP 500` de `G1-T10-01` no reapareció.
+- **Aprobaciones:** `apr_babfde97` (10 698 ms), `apr_b2869b98` (163 220 ms) y `apr_d3a598a1` (299 657 ms); la cuarta, `apr_21df7bfe`, se detuvo con `q`.
+- **Por qué no vale:** el padre pidió **tres tandas** y la corrida se cortó en la cuarta. El runbook exige una sola tanda; con varias, la medición no es válida aunque algún hijo hubiera cerrado bien. Además ningún hijo dijo «listo» y sólo B2 escribió archivo.
+- **Aislamiento:** 1 worktree, árbol principal limpio, sin `hijo-a.txt`, `hijo-b.txt` ni `prohibido.txt`.
+- **Evidencia:** `.commander/g1/G1-T10-02.json`, `G1-T10-02-subagents.json` y `G1-T10-02-prompt.txt` (SHA-256 `c54e1a1a8fc856b8530d84d52d20d737099469ce55cbd6e9565fda33ce93f401`).
+- **Efecto:** T10 sigue **0/3** en las 24 y **0/9** con las extras; este intento no suma ni resta.
+
 ## Los dos caminos por los que el hijo se daba por bueno
 
 1. **Turno vacío del proveedor:** cerraba `ok:true` con «Objetivo completado.» (`G1-D5-07`). Arreglado: se anota como `Turno vacío`, se reintenta una vez y, si persiste, la sesión falla ([`G1-EMPTY-TURN`](G1-EMPTY-TURN.md#arreglo-implementado-en-los-puntos-1-2-y-4)).
@@ -139,6 +180,10 @@ Los dos los fija `tests/agentTaskIntegration.test.ts`; ninguno toca el criterio 
 | `.commander/g1/G1-D5-10.json` | estado del padre: tres `spawn_agents` y sus resultados |
 | `.commander/g1/G1-D5-10-subagents.json` | filas de `/subagents` con `goal`, `answer`, `calls` y `stepTitles` de los seis hijos |
 | `.commander/g1/G1-D5-10-t10.json` | informe de las 11 casillas: 8/11 con el regex viejo, 7/11 con la denegación endurecida |
+| `.commander/g1/G1-T10-01-invalid.json` | intento inválido de `G1-T10-01`: sesión, aprobaciones, error de routing y resultado `LLM HTTP 500` de los dos hijos; **no cuenta para T10** |
+| `.commander/g1/G1-T10-02.json` | estado del padre de `G1-T10-02`: tres `spawn_agents`, sus aprobaciones y el corte en la cuarta |
+| `.commander/g1/G1-T10-02-subagents.json` | filas de `/subagents` con `goal`, `answer`, `calls` y `stepTitles` de los seis hijos |
+| `.commander/g1/G1-T10-02-prompt.txt` | encargo exacto de `G1-T10-02` y su SHA-256 |
 
 ```bash
 # volver a leer las respuestas de los hijos de una corrida
