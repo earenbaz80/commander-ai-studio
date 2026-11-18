@@ -125,6 +125,7 @@ import {
   proposeLocalRuntimeTuning,
 } from './src/lib/localRuntimeProposal';
 import { scoreRuntimeAsset, selectCudartAsset } from './src/lib/localRuntimeRelease';
+import { fetchChatWithOverflowRetry } from './src/lib/localPromptOverflow';
 import { readLocalRuntimeTuning, writeLocalRuntimeTuning } from './src/lib/localRuntimeSettings';
 
 dotenv.config();
@@ -3706,11 +3707,18 @@ body {
 // ==================== LOCAL MODELS (GGUF) ====================
 
 const localModelsDir = (() => {
+  const fromEnv = String(process.env.COMMANDER_LOCAL_MODELS_DIR || '').trim();
+  if (fromEnv) return fromEnv;
   const fromCwd = path.join(process.cwd(), 'local_models');
   if (fs.existsSync(fromCwd)) return fromCwd;
   return path.join(currentDir, '..', 'local_models');
 })();
 const runtimeDir = path.join(process.cwd(), 'runtime', 'llama');
+/**
+ * Seam de pruebas: si está seteada, `/generate` y `/stream` hablan con ese
+ * llama-server en vez de arrancar binarios. Sin la variable, runtime real.
+ */
+const localRuntimeUrlOverride = String(process.env.COMMANDER_LOCAL_RUNTIME_URL || '').trim().replace(/\/+$/, '');
 try {
   fs.mkdirSync(localModelsDir, { recursive: true });
   fs.mkdirSync(runtimeDir, { recursive: true });
@@ -4072,16 +4080,19 @@ app.post('/api/local-models/generate', async (req, res) => {
     const binaries = findLlamaBinaries(runtimeDir);
     // El server es el camino normal: mantiene el modelo cargado entre turnos y
     // expone Chat Completions. Sin server, se conserva el CLI de una pasada.
-    if (binaries.server) {
-      const started = await ensureLocalRuntimeFor(modelPath, { context: contextLength, gpuLayers });
-      if (!started.success) {
-        return res.status(503).json({
-          success: false,
-          error: started.error || 'No se pudo arrancar el runtime de llama.cpp',
-        });
+    if (binaries.server || localRuntimeUrlOverride) {
+      let baseUrl = localRuntimeUrlOverride;
+      if (!baseUrl) {
+        const started = await ensureLocalRuntimeFor(modelPath, { context: contextLength, gpuLayers });
+        if (!started.success) {
+          return res.status(503).json({
+            success: false,
+            error: started.error || 'No se pudo arrancar el runtime de llama.cpp',
+          });
+        }
+        baseUrl = localLlamaRuntime.getStatus().baseUrl || '';
       }
-      const runtime = localLlamaRuntime.getStatus();
-      if (!runtime.baseUrl) {
+      if (!baseUrl) {
         return res.status(503).json({ success: false, error: 'El runtime de llama.cpp no tiene endpoint' });
       }
       const history = Array.isArray(messages) && messages.length > 0
@@ -4092,21 +4103,23 @@ app.post('/api/local-models/generate', async (req, res) => {
               : []),
             { role: 'user', content: String(prompt || '') },
           ];
-      const upstream = await fetch(`${runtime.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: path.basename(modelPath),
-          messages: history,
-          temperature: Number(temperature),
-          max_tokens: Number(maxTokens),
-          // Reaprovecha el prefijo del turno anterior en vez de
-          // recalcularlo: el agente manda casi el mismo historial cada vez.
-          cache_prompt: true,
-          stream: false,
-          ...(Array.isArray(tools) && tools.length > 0 ? { tools } : {}),
-        }),
+      const attempt = await fetchChatWithOverflowRetry(`${baseUrl}/chat/completions`, {
+        model: path.basename(modelPath),
+        messages: history,
+        temperature: Number(temperature),
+        max_tokens: Number(maxTokens),
+        // Reaprovecha el prefijo del turno anterior en vez de
+        // recalcularlo: el agente manda casi el mismo historial cada vez.
+        cache_prompt: true,
+        stream: false,
+        ...(Array.isArray(tools) && tools.length > 0 ? { tools } : {}),
       });
+      if (attempt.trimmed) {
+        console.warn(
+          `[local-models] prompt recortado por exceso de contexto: ${attempt.droppedMessages} turnos fuera`
+        );
+      }
+      const upstream = attempt.response;
       if (!upstream.ok) {
         const detail = await upstream.text().catch(() => '');
         throw new Error(`llama-server HTTP ${upstream.status}${detail ? `: ${detail.slice(0, 300)}` : ''}`);
@@ -4205,24 +4218,27 @@ app.post('/api/local-models/stream', async (req, res) => {
     if (!modelPath || !fs.existsSync(modelPath)) {
       return res.status(404).json({ success: false, error: 'model file not found' });
     }
-    if (!findLlamaBinaries(runtimeDir).server) {
+    if (!findLlamaBinaries(runtimeDir).server && !localRuntimeUrlOverride) {
       return res.status(503).json({
         success: false,
         error: 'llama.cpp runtime not found. Descarga el runtime de llama.cpp para usar streaming.',
       });
     }
-    const ready = await ensureLocalRuntimeFor(modelPath, {
-      context: body.contextLength,
-      gpuLayers: body.gpuLayers,
-    });
-    if (!ready.success) {
-      return res.status(503).json({
-        success: false,
-        error: ready.error || 'No se pudo arrancar el runtime de llama.cpp',
+    let baseUrl = localRuntimeUrlOverride;
+    if (!baseUrl) {
+      const ready = await ensureLocalRuntimeFor(modelPath, {
+        context: body.contextLength,
+        gpuLayers: body.gpuLayers,
       });
+      if (!ready.success) {
+        return res.status(503).json({
+          success: false,
+          error: ready.error || 'No se pudo arrancar el runtime de llama.cpp',
+        });
+      }
+      baseUrl = localLlamaRuntime.getStatus().baseUrl || '';
     }
-    const runtime = localLlamaRuntime.getStatus();
-    if (!runtime.baseUrl) {
+    if (!baseUrl) {
       return res.status(503).json({ success: false, error: 'El runtime de llama.cpp no tiene endpoint' });
     }
 
@@ -4238,10 +4254,9 @@ app.post('/api/local-models/stream', async (req, res) => {
           { role: 'user', content: String(body.prompt || '') },
         ];
 
-    const upstream = await fetch(`${runtime.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream, application/json' },
-      body: JSON.stringify({
+    const attempt = await fetchChatWithOverflowRetry(
+      `${baseUrl}/chat/completions`,
+      {
         model: path.basename(modelPath),
         messages: history,
         temperature: Number(body.temperature ?? 0.7),
@@ -4250,9 +4265,15 @@ app.post('/api/local-models/stream', async (req, res) => {
         stream: true,
         stream_options: { include_usage: true },
         ...(Array.isArray(body.tools) && body.tools.length > 0 ? { tools: body.tools } : {}),
-      }),
-      signal: abort.signal,
-    });
+      },
+      { signal: abort.signal, headers: { Accept: 'text/event-stream, application/json' } }
+    );
+    if (attempt.trimmed) {
+      console.warn(
+        `[local-models/stream] prompt recortado por exceso de contexto: ${attempt.droppedMessages} turnos fuera`
+      );
+    }
+    const upstream = attempt.response;
     if (!upstream.ok) {
       const detail = await upstream.text().catch(() => '');
       return res.status(502).json({
