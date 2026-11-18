@@ -3944,15 +3944,27 @@ app.post('/api/local-models/runtime/start', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Modelo GGUF no encontrado' });
     }
     const tuning = localRuntimeTuningFrom(req.body);
+    // Lo que la petición no manda se completa con los ajustes guardados: un
+    // arranque desde el panel no debe perder jinja, flash-attn ni el MoE.
+    const effectiveTuning = { ...lastLocalRuntimeTuning, ...tuning };
+    // Sin contexto ni capas en la petición se deriva del GGUF y del hardware:
+    // forzar 8K y todas las capas a la GPU recortaba la ventana del modelo.
+    const needsProposal = !Number(req.body?.context) || req.body?.gpuLayers == null;
+    const proposed = needsProposal
+      ? proposeLocalRuntimeTuning({
+          profile: readGgufProfile(modelPath),
+          hardware: detectLocalHardware(),
+        }).proposed
+      : null;
     const result = await localLlamaRuntime.start({
       modelPath,
       modelName: path.basename(modelPath),
-      context: Number(req.body?.context) || 8_192,
-      gpuLayers: req.body?.gpuLayers == null ? 99 : Number(req.body.gpuLayers),
-      ...tuning,
+      context: Number(req.body?.context) || proposed?.context,
+      gpuLayers: req.body?.gpuLayers == null ? proposed?.gpuLayers : Number(req.body.gpuLayers),
+      ...effectiveTuning,
     });
     if (result.success) {
-      lastLocalRuntimeTuning = writeLocalRuntimeTuning({ ...lastLocalRuntimeTuning, ...tuning });
+      lastLocalRuntimeTuning = writeLocalRuntimeTuning(effectiveTuning);
     }
     return res.status(result.success ? 200 : 503).json(result);
   } catch (error: any) {
@@ -4106,13 +4118,18 @@ app.post('/api/local-models/generate', async (req, res) => {
       });
     }
 
+    // Sin llama-server, el CLI de una pasada también parte de la propuesta.
+    const proposed = proposeLocalRuntimeTuning({
+      profile: readGgufProfile(modelPath),
+      hardware: detectLocalHardware(),
+    }).proposed;
     const args = [
       '-m', modelPath,
       '-p', String(prompt || ''),
       '--temp', String(temperature),
       '-n', String(maxTokens),
-      '-c', String(Number(contextLength) || 8_192),
-      '-ngl', String(gpuLayers == null ? 0 : Number(gpuLayers)),
+      '-c', String(Number(contextLength) || proposed.context),
+      '-ngl', String(gpuLayers == null ? proposed.gpuLayers : Number(gpuLayers)),
     ];
     const proc = spawn(binaries.cli, args, { windowsHide: true });
     let stdout = '';
