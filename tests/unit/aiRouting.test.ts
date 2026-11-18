@@ -43,6 +43,7 @@ describe('resolveChatRoute', () => {
       expect(route.isLocal).toBe(true);
       expect(route.isHf).toBe(false);
       expect(route.endpoint).toBe('/api/local-models/generate');
+      expect(route.streamEndpoint).toBe('/api/local-models/stream');
     });
 
     it('reconoce el modelo descargado por hfRepoId sin prefijo local/', () => {

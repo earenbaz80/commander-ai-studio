@@ -4016,6 +4016,33 @@ app.post('/api/local-models/download', async (req, res) => {
   }
 });
 
+/**
+ * Deja el runtime sirviendo `modelPath`: reutiliza el proceso si ya tiene ese
+ * modelo y, si no, lo arranca con la propuesta del GGUF y el hardware más los
+ * ajustes guardados. Lo comparten el generate sin stream y el stream SSE.
+ */
+async function ensureLocalRuntimeFor(
+  modelPath: string,
+  options: { context?: unknown; gpuLayers?: unknown } = {}
+): Promise<{ success: boolean; error?: string }> {
+  const current = localLlamaRuntime.getStatus();
+  if (current.state === 'running' && current.modelPath === path.resolve(modelPath)) {
+    return { success: true };
+  }
+  const proposed = proposeLocalRuntimeTuning({
+    profile: readGgufProfile(modelPath),
+    hardware: detectLocalHardware(),
+  }).proposed;
+  const result = await localLlamaRuntime.start({
+    modelPath,
+    modelName: path.basename(modelPath),
+    context: Number(options.context) || proposed.context,
+    gpuLayers: options.gpuLayers == null ? proposed.gpuLayers : Number(options.gpuLayers),
+    ...mergeProposedTuning(lastLocalRuntimeTuning, proposed),
+  });
+  return { success: result.success, ...(result.error ? { error: result.error } : {}) };
+}
+
 app.post('/api/local-models/generate', async (req, res) => {
   try {
     const {
@@ -4040,30 +4067,12 @@ app.post('/api/local-models/generate', async (req, res) => {
     // El server es el camino normal: mantiene el modelo cargado entre turnos y
     // expone Chat Completions. Sin server, se conserva el CLI de una pasada.
     if (binaries.server) {
-      const current = localLlamaRuntime.getStatus();
-      const wantedPath = path.resolve(modelPath);
-      if (current.state !== 'running' || current.modelPath !== wantedPath) {
-        // Elegir un GGUF desde el selector no debe arrancar a ciegas: la
-        // propuesta del modelo y del hardware decide contexto, capas y, sobre
-        // todo, el reparto de expertos MoE. Los gustos guardados (jinja,
-        // flash-attn) mandan; lo específico del modelo lo decide el GGUF.
-        const proposed = proposeLocalRuntimeTuning({
-          profile: readGgufProfile(modelPath),
-          hardware: detectLocalHardware(),
-        }).proposed;
-        const started = await localLlamaRuntime.start({
-          modelPath,
-          modelName: path.basename(modelPath),
-          context: Number(contextLength) || proposed.context,
-          gpuLayers: gpuLayers == null ? proposed.gpuLayers : Number(gpuLayers),
-          ...mergeProposedTuning(lastLocalRuntimeTuning, proposed),
+      const started = await ensureLocalRuntimeFor(modelPath, { context: contextLength, gpuLayers });
+      if (!started.success) {
+        return res.status(503).json({
+          success: false,
+          error: started.error || 'No se pudo arrancar el runtime de llama.cpp',
         });
-        if (!started.success) {
-          return res.status(503).json({
-            success: false,
-            error: started.error || 'No se pudo arrancar el runtime de llama.cpp',
-          });
-        }
       }
       const runtime = localLlamaRuntime.getStatus();
       if (!runtime.baseUrl) {
@@ -4170,6 +4179,208 @@ app.post('/api/local-models/generate', async (req, res) => {
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err?.message || 'generate failed' });
+  }
+});
+
+/**
+ * Streaming del runtime nativo: proxy del SSE de llama-server en el mismo sobre
+ * que el resto de la app (`chunk`, `done`, `error`), para que el chat pinte la
+ * respuesta mientras se genera en vez de esperar el texto completo.
+ */
+app.post('/api/local-models/stream', async (req, res) => {
+  const started = Date.now();
+  const abort = requestAbort(req, res);
+  try {
+    const body = req.body || {};
+    const modelPath = localModelPath(localModelsDir, body.model);
+    if (!modelPath || !fs.existsSync(modelPath)) {
+      return res.status(404).json({ success: false, error: 'model file not found' });
+    }
+    if (!findLlamaBinaries(runtimeDir).server) {
+      return res.status(503).json({
+        success: false,
+        error: 'llama.cpp runtime not found. Descarga el runtime de llama.cpp para usar streaming.',
+      });
+    }
+    const ready = await ensureLocalRuntimeFor(modelPath, {
+      context: body.contextLength,
+      gpuLayers: body.gpuLayers,
+    });
+    if (!ready.success) {
+      return res.status(503).json({
+        success: false,
+        error: ready.error || 'No se pudo arrancar el runtime de llama.cpp',
+      });
+    }
+    const runtime = localLlamaRuntime.getStatus();
+    if (!runtime.baseUrl) {
+      return res.status(503).json({ success: false, error: 'El runtime de llama.cpp no tiene endpoint' });
+    }
+
+    const history = Array.isArray(body.messages) && body.messages.length > 0
+      ? body.messages.map((message: any) => ({
+          role: String(message?.role || 'user'),
+          content: String(message?.content || ''),
+        }))
+      : [
+          ...(String(body.systemInstruction || '').trim()
+            ? [{ role: 'system', content: String(body.systemInstruction) }]
+            : []),
+          { role: 'user', content: String(body.prompt || '') },
+        ];
+
+    const upstream = await fetch(`${runtime.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream, application/json' },
+      body: JSON.stringify({
+        model: path.basename(modelPath),
+        messages: history,
+        temperature: Number(body.temperature ?? 0.7),
+        max_tokens: Number(body.maxTokens ?? 2048),
+        cache_prompt: true,
+        stream: true,
+        stream_options: { include_usage: true },
+        ...(Array.isArray(body.tools) && body.tools.length > 0 ? { tools: body.tools } : {}),
+      }),
+      signal: abort.signal,
+    });
+    if (!upstream.ok) {
+      const detail = await upstream.text().catch(() => '');
+      return res.status(502).json({
+        success: false,
+        error: `llama-server HTTP ${upstream.status}${detail ? `: ${detail.slice(0, 300)}` : ''}`,
+      });
+    }
+
+    res.status(200);
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+    const send = (payload: unknown) => {
+      if (res.writableEnded) return;
+      try {
+        res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      } catch {
+        /* el cliente cerró el socket */
+      }
+    };
+
+    const usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+    const toolCalls = new Map<number, { id?: string; name?: string; arguments?: string }>();
+    let text = '';
+    let finishReason: string | null = null;
+
+    const finish = () => {
+      const raw = [...toolCalls.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([index, call]) => ({
+          id: call.id || `local-call-${index}`,
+          type: 'function',
+          function: { name: call.name || '', arguments: call.arguments || '{}' },
+        }));
+      send({
+        type: 'done',
+        fullText: text,
+        finishReason,
+        ...(raw.length > 0 ? { toolCalls: normalizeOpenAIToolCalls(raw) } : {}),
+        metrics: {
+          promptTokens: usage.prompt_tokens,
+          responseTokens: usage.completion_tokens,
+          totalTokens: usage.total_tokens,
+          latencyMs: Date.now() - started,
+        },
+      });
+      if (!res.writableEnded) res.end();
+    };
+
+    // Un runtime sin stream devuelve el JSON completo: se convierte al mismo
+    // sobre para que la UI no se quede en blanco.
+    const contentType = String(upstream.headers.get('content-type') || '');
+    if (!contentType.includes('text/event-stream')) {
+      const data = await upstream.json().catch(() => null);
+      const message = data?.choices?.[0]?.message || {};
+      text = String(message.content || '');
+      finishReason = data?.choices?.[0]?.finish_reason || null;
+      if (data?.usage) Object.assign(usage, data.usage);
+      if (Array.isArray(message.tool_calls)) {
+        message.tool_calls.forEach((call: any, index: number) => {
+          toolCalls.set(index, {
+            id: call?.id,
+            name: call?.function?.name,
+            arguments: call?.function?.arguments,
+          });
+        });
+      }
+      if (text) send({ type: 'chunk', text });
+      finish();
+      return;
+    }
+
+    const reader = upstream.body?.getReader();
+    if (!reader) throw new Error('llama-server no devolvió cuerpo de streaming');
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line.startsWith('data:')) continue;
+        const raw = line.slice(5).trim();
+        if (!raw || raw === '[DONE]') continue;
+        let chunk: any = null;
+        try {
+          chunk = JSON.parse(raw);
+        } catch {
+          continue;
+        }
+        if (chunk?.usage) Object.assign(usage, chunk.usage);
+        const choice = chunk?.choices?.[0];
+        if (!choice) continue;
+        if (choice.finish_reason) finishReason = choice.finish_reason;
+        const delta = choice.delta || {};
+        if (typeof delta.content === 'string' && delta.content) {
+          text += delta.content;
+          send({ type: 'chunk', text: delta.content });
+        }
+        if (Array.isArray(delta.tool_calls)) {
+          for (const call of delta.tool_calls) {
+            // llama.cpp manda los argumentos en fragmentos por índice.
+            const index = Number.isInteger(call?.index) ? Number(call.index) : 0;
+            const previous = toolCalls.get(index) || {};
+            toolCalls.set(index, {
+              id: call?.id || previous.id,
+              name: call?.function?.name
+                ? `${previous.name || ''}${call.function.name}`
+                : previous.name,
+              arguments: `${previous.arguments || ''}${call?.function?.arguments || ''}`,
+            });
+          }
+        }
+      }
+    }
+    finish();
+  } catch (error: any) {
+    if (res.writableEnded) return;
+    const message = abort.signal.aborted
+      ? String((abort.signal.reason as any)?.message || abort.signal.reason || 'Generación cancelada')
+      : error?.message || 'Streaming del modelo local falló';
+    if (!res.headersSent) {
+      return res.status(502).json({ success: false, error: message });
+    }
+    try {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
+      res.end();
+    } catch {
+      /* socket ya cerrado */
+    }
+  } finally {
+    abort.cleanup();
   }
 });
 

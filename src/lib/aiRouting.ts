@@ -145,6 +145,8 @@ export function resolveChatRoute({
       ? '/api/strata/stream'
       : isStrataLocal
         ? '/api/strata-local/stream'
+        : isLocal
+          ? '/api/local-models/stream'
         : isAnthropic
           ? '/api/anthropic/stream'
           : '/api/gemini/stream',
