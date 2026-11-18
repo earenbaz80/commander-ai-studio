@@ -22,6 +22,7 @@ import {
 import { useBrowserSessionFeed } from '../../hooks/useBrowserSessionFeed';
 import { useBrowserRecording } from '../../hooks/useBrowserRecording';
 import { formatMediaTime } from '../../artifacts/utils';
+import { downloadBase64 } from '../../utils/download';
 import type { Language } from '../../i18n/translations';
 import { deText } from '../../i18n/de';
 import {
@@ -62,21 +63,6 @@ function withScheme(value: string): string {
 function sessionOptionLabel(session: BrowserSessionInfo): string {
   const page = session.page.title || session.page.url || session.root;
   return `${session.id} · ${page}`;
-}
-
-/** Baja al disco un contenido base64 que ya viajó desde el servidor. */
-function downloadBase64File(data: string, mimeType: string, filename: string): void {
-  const binary = atob(data);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  const objectUrl = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
-  const link = document.createElement('a');
-  link.href = objectUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL?.(objectUrl), 1_000);
 }
 
 export const BrowserView: React.FC<{ projectPath: string; lang?: Language }> = ({
@@ -174,7 +160,7 @@ export const BrowserView: React.FC<{ projectPath: string; lang?: Language }> = (
     );
     try {
       const shot = await captureBrowserSessionScreenshot(session.id, captureFullPage);
-      downloadBase64File(
+      downloadBase64(
         shot.data,
         shot.mimeType,
         `navegador-${session.id}-${Date.now()}${captureFullPage ? '-completa' : ''}.png`,
@@ -192,7 +178,7 @@ export const BrowserView: React.FC<{ projectPath: string; lang?: Language }> = (
   const downloadFrame = useCallback(() => {
     if (!frame) return;
     const extension = frame.mimeType === 'image/jpeg' ? 'jpg' : 'png';
-    downloadBase64File(
+    downloadBase64(
       frame.data,
       frame.mimeType,
       `navegador-${session?.id || 'frame'}-frame-${frame.seq}.${extension}`,

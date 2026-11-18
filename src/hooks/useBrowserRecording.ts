@@ -8,8 +8,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BrowserFrame, BrowserSessionInfo } from '../utils/browserSessionApi';
 import { saveArtifact } from '../artifacts/store';
+import { buildRecordingLogs } from '../artifacts/recordingLogs';
 import { newArtifactId } from '../artifacts/utils';
-import type { ArtifactFrame, BrowserRecordingArtifact } from '../artifacts/types';
+import { getBrowserSessionLogs } from '../utils/browserSessionApi';
+import type { ArtifactFrame, BrowserRecordingArtifact, RecordingLogs } from '../artifacts/types';
 
 export const MAX_RECORDING_FRAMES = 180;
 export const MAX_RECORDING_MS = 120_000;
@@ -49,7 +51,7 @@ function toArtifactFrame(frame: BrowserFrame, firstTs: number): ArtifactFrame {
   };
 }
 
-function buildArtifact(draft: RecordingDraft): BrowserRecordingArtifact {
+function buildArtifact(draft: RecordingDraft, logs?: RecordingLogs): BrowserRecordingArtifact {
   const lastFrame = draft.frames[draft.frames.length - 1];
   return {
     id: draft.id,
@@ -62,7 +64,28 @@ function buildArtifact(draft: RecordingDraft): BrowserRecordingArtifact {
     viewport: draft.viewport,
     frames: draft.frames,
     comments: [],
+    ...(logs ? { logs } : {}),
   };
+}
+
+/**
+ * Consola y red de la sesión, recortadas a la ventana de la grabación.
+ *
+ * Es best-effort: si el servidor ya cerró la sesión o el fetch falla, la
+ * grabación se guarda sin logs en vez de perderse.
+ */
+async function captureLogs(draft: RecordingDraft): Promise<RecordingLogs | undefined> {
+  try {
+    const fetched = await getBrowserSessionLogs(draft.sessionId, 0, 500);
+    return buildRecordingLogs({
+      startedAt: draft.startedAt,
+      endedAt: Date.now(),
+      console: fetched.console,
+      network: fetched.network,
+    });
+  } catch {
+    return undefined;
+  }
 }
 
 export function useBrowserRecording(
@@ -96,7 +119,8 @@ export function useBrowserRecording(
     setSaving(true);
     setError('');
     try {
-      const artifact = buildArtifact(current);
+      const logs = await captureLogs(current);
+      const artifact = buildArtifact(current, logs);
       await saveArtifact(artifact);
       setSavedId(artifact.id);
       window.dispatchEvent(new CustomEvent('commander:artifact-created', { detail: { id: artifact.id } }));

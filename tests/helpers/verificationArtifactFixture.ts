@@ -77,7 +77,7 @@ export function buildVerificationArtifactFixture(): VerificationArtifactFixture 
     {
       id: 'approval-1',
       tool: 'fs.edit',
-      diff: '--- a/src/checkout.ts\n+++ b/src/checkout.ts\n@@ -1 +1 @@\n-export const total = 2;\n+export const total = 3;',
+      diff: '--- a/src/checkout.ts\n+++ b/src/checkout.ts\n@@ -1 +1 @@\n-export const total = 2;\n+export const total = 3;\n@@ -20,2 +20,2 @@\n-const tax = 0.1;\n+const tax = 0.2;\n const currency = "EUR";',
     },
     {
       id: 'approval-2',
@@ -173,6 +173,29 @@ export function buildVerificationArtifactFixture(): VerificationArtifactFixture 
         title: 'Checkout E2E',
       },
     ],
+    // Log de la ventana de grabación (F2-09): consola y red con timestamps.
+    logs: {
+      console: [
+        {
+          atMs: 0,
+          ts: FIXTURE_NOW,
+          type: 'error',
+          text: 'Uncaught TypeError: total is not a function',
+          url: '/checkout',
+        },
+      ],
+      network: [
+        {
+          atMs: 120,
+          ts: FIXTURE_NOW + 120,
+          kind: 'http',
+          method: 'GET',
+          url: '/api/checkout',
+          status: 500,
+          durationMs: 120,
+        },
+      ],
+    },
     comments: [],
   };
 

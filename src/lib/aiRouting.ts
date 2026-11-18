@@ -78,6 +78,9 @@ export function resolveChatRoute({
 
   const isLocal = provider === 'local' || modelId.startsWith('local/');
   const isStrataLocal = provider === 'strata-local' || modelId.startsWith('strata-local/');
+  // Strata cloud (Kronisys): prefijo propio; no es el host local ni
+  // HuggingFace, aunque el id lleve '/'.
+  const isStrata = provider === 'strata' || modelId.startsWith('strata/');
 
   const isFreeProvider =
     FREE_PROVIDERS.includes(provider as (typeof FREE_PROVIDERS)[number]) ||
@@ -87,6 +90,7 @@ export function resolveChatRoute({
   // heurística amplia para ids estilo `org/repo`, por eso va después de los
   // checks explícitos de prefijo y no puede applies a `local/` ni `custom/`.
   const isHf =
+    !isStrata &&
     !isFreeProvider &&
     !isLocal &&
     !isAnthropic &&
@@ -106,6 +110,8 @@ export function resolveChatRoute({
     endpoint = '/api/nvidia/generate';
   } else if (isAnthropic) {
     endpoint = '/api/anthropic/generate';
+  } else if (isStrata) {
+    endpoint = '/api/strata/generate';
   } else if (isHf) {
     endpoint = '/api/hf/generate';
   } else if (isFreeProvider || isCustom || isLocal) {
@@ -135,11 +141,13 @@ export function resolveChatRoute({
 
   return {
     endpoint,
-    streamEndpoint: isStrataLocal
-      ? '/api/strata-local/stream'
-      : isAnthropic
-        ? '/api/anthropic/stream'
-        : '/api/gemini/stream',
+    streamEndpoint: isStrata
+      ? '/api/strata/stream'
+      : isStrataLocal
+        ? '/api/strata-local/stream'
+        : isAnthropic
+          ? '/api/anthropic/stream'
+          : '/api/gemini/stream',
     isAnthropic,
     isFreeProvider,
     isCustom,

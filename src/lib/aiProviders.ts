@@ -71,6 +71,15 @@ export const PROVIDER_CONFIGS: Record<ProviderType, ProviderConfig> = {
     defaultEndpoint: '/api/strata-local/generate',
     streamEndpoint: '/api/strata-local/stream',
   },
+  strata: {
+    id: 'strata',
+    name: 'Strata AI',
+    supportsStreaming: true,
+    supportsTools: true,
+    supportsThinking: false,
+        defaultEndpoint: '/api/strata/generate',
+    streamEndpoint: '/api/strata/stream',
+  },
   openrouter: {
     id: 'openrouter',
     name: 'OpenRouter',
@@ -167,6 +176,7 @@ export function detectProvider(
   if (modelId.startsWith('ollama/')) return 'ollama';
   if (modelId.startsWith('lmstudio/')) return 'lmstudio';
   if (modelId.startsWith('strata-local/')) return 'strata-local';
+  if (modelId.startsWith('strata/')) return 'strata';
   if (modelId.startsWith('openai/')) return 'openai';
   if (modelId.startsWith('nvidia/')) return 'nvidia';
   if (modelId.startsWith('openrouter/')) return 'openrouter';

@@ -1,12 +1,17 @@
 /**
- * Falla si el reporte fusionado de Playwright no contiene exactamente la foto
- * esperada de la suite E2E.
+ * Falla si el reporte fusionado de Playwright no contiene las dos piezas con las
+ * que CI arma el artifact: el E2E del productor de artifacts
+ * (`agentVerificationArtifact.spec.ts`) y la suite general.
  *
- * El artifact de CI se construye fusionando dos blobs: el E2E del productor de
- * artifacts (`agentVerificationArtifact.spec.ts`, 2 casos) y la suite general
- * (81 ejecuciones). Si el merge pierde uno de los dos, el job puede terminar
- * verde con un artifact incompleto; este chequeo convierte esa pérdida en un
- * fallo antes de subir el reporte.
+ * Las comprobaciones son derivadas, no una foto congelada: agregar un spec o un
+ * caso no obliga a tocar este archivo. Lo que se exige es
+ *   1. que las dos piezas estén presentes — si `merge-reports` pierde un blob,
+ *      una de las dos queda vacía y el job igual terminaría verde;
+ *   2. que los proyectos de la suite general tengan los mismos conteos entre sí;
+ *   3. que cada archivo de la suite general corra en todos los proyectos;
+ *   4. que el E2E del artifact sólo aparezca en Chromium de escritorio;
+ *   5. que el reporte esté verde (`unexpected` y `flaky` en cero) y que sus
+ *      `stats` cuadren con las filas.
  *
  * Uso: `npm run check:playwright-report` después de `merge-reports`.
  * `PLAYWRIGHT_JSON_PATH` permite apuntar a otro `results.json` en local.
@@ -53,32 +58,9 @@ const REPORT_PATH =
   process.env.PLAYWRIGHT_JSON_PATH ??
   path.join('playwright-report', 'results.json');
 
-const EXPECTED_TOTAL = 83;
-const EXPECTED_STATS: Record<string, number> = {
-  expected: 72,
-  skipped: 11,
-  unexpected: 0,
-  flaky: 0,
-};
-const EXPECTED_PROJECTS: Record<string, number> = {
-  chromium: 29,
-  firefox: 27,
-  'mobile-chrome': 27,
-};
-const EXPECTED_FILES: Record<string, number> = {
-  'agentVerificationArtifact.spec.ts': 2,
-  'app.spec.ts': 57,
-  'contrast.spec.ts': 9,
-  'lmstudio-loading.spec.ts': 6,
-  'localModelHubLayout.spec.ts': 6,
-  'verificationArtifact.spec.ts': 3,
-};
-const EXPECTED_GENERAL = 81;
 const AGENT_FILE = 'agentVerificationArtifact.spec.ts';
-const AGENT_TITLES = [
-  'crea el artifact desde shell.run, lo abre y lo conserva al recargar',
-  'registra un exitCode 1 como failed y lo refleja en el informe',
-];
+const AGENT_PROJECT = 'chromium';
+const STATUS_KEYS = ['expected', 'skipped', 'unexpected', 'flaky'] as const;
 
 function collect(
   suites: PlaywrightSuite[] | undefined,
@@ -113,6 +95,10 @@ function countBy(
   return counts;
 }
 
+function describeCounts(counts: Record<string, number>, keys: string[]): string {
+  return keys.map((key) => `${key}=${counts[key] ?? 0}`).join(', ');
+}
+
 function loadReport(): PlaywrightReport {
   try {
     return JSON.parse(fs.readFileSync(REPORT_PATH, 'utf8')) as PlaywrightReport;
@@ -133,75 +119,91 @@ const rows: Row[] = [];
 collect(report.suites, undefined, rows);
 
 const errors: string[] = [];
-if (!report.stats) errors.push('results.json no contiene `stats`');
-const stats = report.stats ?? {};
-const byProject = countBy(rows, (row) => row.project);
-const byStatus = countBy(rows, (row) => row.status);
-const byFile = countBy(rows, (row) => row.file);
-
-function checkCount(label: string, actual: number, expected: number): void {
-  if (actual !== expected) {
-    errors.push(`${label}: esperado ${expected}, obtenido ${actual}`);
-  }
-}
-
-checkCount('ejecuciones totales', rows.length, EXPECTED_TOTAL);
-checkCount('stats.expected', stats.expected ?? 0, EXPECTED_STATS.expected);
-checkCount('stats.skipped', stats.skipped ?? 0, EXPECTED_STATS.skipped);
-checkCount('stats.unexpected', stats.unexpected ?? 0, EXPECTED_STATS.unexpected);
-checkCount('stats.flaky', stats.flaky ?? 0, EXPECTED_STATS.flaky);
-checkCount('filas expected', byStatus.expected ?? 0, EXPECTED_STATS.expected);
-checkCount('filas skipped', byStatus.skipped ?? 0, EXPECTED_STATS.skipped);
-checkCount(
-  'filas unexpected',
-  byStatus.unexpected ?? 0,
-  EXPECTED_STATS.unexpected
-);
-checkCount('filas flaky', byStatus.flaky ?? 0, EXPECTED_STATS.flaky);
-
-for (const [project, expected] of Object.entries(EXPECTED_PROJECTS)) {
-  checkCount(`proyecto ${project}`, byProject[project] ?? 0, expected);
-}
-for (const [file, expected] of Object.entries(EXPECTED_FILES)) {
-  checkCount(`archivo ${file}`, byFile[file] ?? 0, expected);
-}
-
-const extraProjects = Object.keys(byProject).filter(
-  (project) => !(project in EXPECTED_PROJECTS)
-);
-if (extraProjects.length > 0) {
-  errors.push(`proyectos no esperados: ${extraProjects.join(', ')}`);
-}
-const extraFiles = Object.keys(byFile).filter(
-  (file) => !(file in EXPECTED_FILES)
-);
-if (extraFiles.length > 0) {
-  errors.push(`archivos no esperados: ${extraFiles.join(', ')}`);
-}
+const stats = report.stats;
+if (!stats) errors.push('results.json no contiene `stats`');
 
 const agentRows = rows.filter((row) => row.file === AGENT_FILE);
-const agentTitles = new Set(agentRows.map((row) => row.title));
-checkCount(
-  'casos del E2E del artifact',
-  agentRows.length,
-  EXPECTED_FILES[AGENT_FILE]
-);
-for (const row of agentRows) {
-  if (row.project !== 'chromium') {
-    errors.push(`E2E del artifact en ${row.project}; sólo se espera chromium`);
-  }
-  if (row.status !== 'expected') {
-    errors.push(`E2E del artifact con estado ${row.status}; se esperaba expected`);
-  }
+const generalRows = rows.filter((row) => row.file !== AGENT_FILE);
+
+// 1. Las dos piezas del merge: si una se pierde, el artifact queda incompleto.
+if (agentRows.length === 0) {
+  errors.push(
+    `falta el E2E del artifact (${AGENT_FILE}): el blob del primer paso no llegó al merge`
+  );
 }
-for (const title of AGENT_TITLES) {
-  if (!agentTitles.has(title)) {
-    errors.push(`falta el caso del E2E del artifact: "${title}"`);
+if (generalRows.length === 0) {
+  errors.push('falta la suite general: el blob del segundo paso no llegó al merge');
+}
+
+// 2. El E2E del artifact es de Chromium de escritorio, y sólo de ahí.
+for (const row of agentRows) {
+  if (row.project !== AGENT_PROJECT) {
+    errors.push(
+      `E2E del artifact en ${row.project}: sólo se espera ${AGENT_PROJECT}`
+    );
   }
 }
 
-const generalRows = rows.filter((row) => row.file !== AGENT_FILE);
-checkCount('suite general', generalRows.length, EXPECTED_GENERAL);
+// 3. La suite general corre entera en cada proyecto, con los mismos conteos:
+//    un blob perdido deja un proyecto corto.
+const generalProjects = [...new Set(generalRows.map((row) => row.project))];
+const allProjects = [...new Set(rows.map((row) => row.project))];
+
+for (const project of allProjects) {
+  if (!generalProjects.includes(project)) {
+    errors.push(`el proyecto ${project} no tiene ejecuciones de la suite general`);
+  }
+}
+
+const generalByProject = countBy(generalRows, (row) => row.project);
+const projectTotals = generalProjects.map(
+  (project) => generalByProject[project] ?? 0
+);
+if (new Set(projectTotals).size > 1) {
+  errors.push(
+    'conteos desparejos entre proyectos de la suite general: ' +
+      describeCounts(generalByProject, generalProjects)
+  );
+}
+
+const generalFiles = [...new Set(generalRows.map((row) => row.file))].sort();
+for (const file of generalFiles) {
+  const byProject = countBy(
+    generalRows.filter((row) => row.file === file),
+    (row) => row.project
+  );
+  const counts = generalProjects.map((project) => byProject[project] ?? 0);
+  const label = describeCounts(byProject, generalProjects);
+  if (counts.some((count) => count === 0)) {
+    errors.push(`el archivo ${file} no corre en todos los proyectos: ${label}`);
+  } else if (new Set(counts).size > 1) {
+    errors.push(`conteos desparejos de ${file} entre proyectos: ${label}`);
+  }
+}
+
+// 4. Reporte verde, y los `stats` del merge cuadrando con lo que hay en el árbol.
+const byStatus = countBy(rows, (row) => row.status);
+const byProject = countBy(rows, (row) => row.project);
+
+for (const status of STATUS_KEYS) {
+  const fromStats = stats?.[status] ?? 0;
+  const fromRows = byStatus[status] ?? 0;
+  if (stats && fromStats !== fromRows) {
+    errors.push(
+      `stats.${status}=${fromStats} no coincide con las filas (${fromRows})`
+    );
+  }
+}
+if ((byStatus.unexpected ?? 0) > 0) {
+  errors.push(
+    `${byStatus.unexpected} ejecución(es) fallida(s): el reporte no está verde`
+  );
+}
+if ((byStatus.flaky ?? 0) > 0) {
+  errors.push(
+    `${byStatus.flaky} ejecución(es) flaky: el reporte no está verde`
+  );
+}
 
 if (errors.length > 0) {
   console.error(
@@ -209,20 +211,18 @@ if (errors.length > 0) {
   );
   for (const error of errors) console.error(`  - ${error}`);
   console.error(
-    '[check:playwright-report] el artifact no contiene la foto esperada: el job debe fallar.'
+    '[check:playwright-report] el artifact no contiene lo esperado: el job debe fallar.'
   );
   process.exit(1);
 }
 
-const projects = Object.entries(byProject)
-  .map(([project, count]) => `${project}=${count}`)
-  .join(', ');
 console.log(
   `[check:playwright-report] OK: ${rows.length} ejecuciones ` +
-    `(${byStatus.expected ?? 0} passed, ${byStatus.skipped ?? 0} skipped, ` +
+    `(${byStatus.expected ?? 0} expected, ${byStatus.skipped ?? 0} skipped, ` +
     `${byStatus.unexpected ?? 0} failed, ${byStatus.flaky ?? 0} flaky).`
 );
 console.log(
-  `[check:playwright-report] proyectos: ${projects}; ` +
-    `E2E del artifact=${agentRows.length}; suite general=${generalRows.length}.`
+  `[check:playwright-report] proyectos: ${describeCounts(byProject, allProjects)}; ` +
+    `E2E del artifact=${agentRows.length} (${AGENT_PROJECT}); ` +
+    `suite general=${generalRows.length} en ${generalFiles.length} archivo(s).`
 );

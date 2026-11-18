@@ -211,7 +211,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 **Objetivo:** que cada corrida deje evidencia revisable y exportable, no sólo mensajes en el chat.
 
-> **Desglose ejecutable:** [docs/parity/backlog-f2.md](docs/parity/backlog-f2.md) — F2-01 (contrato/store), F2-02 (evidencia de tests y entorno), F2-03 (diff y decisiones), F2-04 (informe local), F2-05 (visor), F2-06 (enlace a la grabación) y F2-07 (E2E local y límites) hechos. El E2E local cubre persistencia en Chromium; no sustituye la verificación visual en Electron ni el dogfooding de G1.
+> **Desglose ejecutable:** [docs/parity/backlog-f2.md](docs/parity/backlog-f2.md) — F2-01 (contrato/store), F2-02 (evidencia de tests y entorno), F2-03 (diff y decisiones), F2-04 (informe local), F2-05 (visor), F2-06 (enlace a la grabación), F2-07 (E2E local y límites), F2-08 (revisión por hunk y auditoría) y F2-09 (WebM, consola y red) hechos. El E2E local cubre persistencia en Chromium; no sustituye la verificación visual en Electron ni el dogfooding de G1.
 
 **Alcance**
 
@@ -232,7 +232,9 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 - [ ] El informe se abre desde el disco sin red, sin secretos y sin recursos externos.
 - [ ] Los artifacts sobreviven a reiniciar la app y siguen siendo locales; no requieren cuenta.
 
-> **Cierre del desglose (2026-11-09):** F2-01 a F2-07 están hechos. El E2E local de F2-07 demuestra persistencia en IndexedDB y recarga, pero los criterios de fase que exigen WebM, grabación de 30 s o revisión por hunk siguen fuera de alcance y no se marcan.
+> **Cierre del desglose (2026-11-09):** F2-01 a F2-07 están hechos. El E2E local de F2-07 demuestra persistencia en IndexedDB y recarga.
+>
+> **Actualización (2026-11-16):** F2-08 (revisión por hunk con atribución de la tool que aplicó cada hunk) y F2-09 (exportación WebM real, consola/red con timestamps y reproducción offline de 30 s) están hechos y verificados en Chromium. Con eso los criterios de fase quedan cubiertos por evidencia, pero **siguen sin marcar**: la regla del roadmap no cierra criterios de F2 con G1 abierto, y el dogfooding de 5 días no se ha medido. Queda además la verificación visual en Electron, que el E2E de Chromium no sustituye.
 
 ---
 

@@ -15,6 +15,7 @@ import { filterModelIds, isProviderEnabled, modelFilterOf } from '../lib/provide
 import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
 import { compatibleModelId } from '../lib/openaiCompatibleProviders';
 import { STRATA_LOCAL_PROVIDER_ID, STRATA_LOCAL_PROVIDER_NAME } from '../lib/strataLocal';
+import { STRATA_DEFAULT_MODEL } from './strata';
 
 export const NVIDIA_DEFAULT_MODEL = 'nvidia/nvidia/nemotron-3.5-lightning-30b-a3b';
 
@@ -118,6 +119,20 @@ export const PROVIDER_SPECS: ProviderSpec[] = [
       { name: 'apiKey', required: false, kind: 'secret' },
       { name: 'defaultModel', required: false, kind: 'text' },
     ],
+  },
+  {
+    // Strata alojado (Kronisys): API propia en `/v1/chat`, con fallback a las
+    // rutas OpenAI de la instancia local. Es un proveedor distinto de
+    // `strata-local`, que sólo habla con el host loopback.
+    id: 'strata',
+    name: 'Strata AI',
+    env: ['STRATA_API_KEY', 'STRATA_BASE_URL'],
+    fields: [
+      { name: 'apiKey', required: true, kind: 'secret' },
+      { name: 'baseUrl', required: false, kind: 'url' },
+      { name: 'defaultModel', required: false, kind: 'text' },
+    ],
+    defaultModel: STRATA_DEFAULT_MODEL,
   },
   {
     // Endpoint genérico, separado de LM Studio: vLLM, llama.cpp, oMLX, Zen…
@@ -271,10 +286,19 @@ const NVIDIA_FALLBACK_MODELS: CatalogModel[] = [
   { id: 'mistralai/mistral-7b-instruct-v0.3', name: 'Mistral 7B Instruct', provider: 'nvidia', contextWindow: '32K tokens' },
 ];
 
+const STRATA_FALLBACK_MODELS: CatalogModel[] = [
+  { id: 'strata/gpt-5.4', name: 'GPT-5.4 (Strata)', provider: 'strata', contextWindow: '128K tokens', supportsReasoning: true },
+  { id: 'strata/claude-sonnet-5-5', name: 'Claude Sonnet 5.5 (Strata)', provider: 'strata', contextWindow: '200K tokens', supportsReasoning: true },
+  { id: 'strata/grok-4.6', name: 'Grok 4.6 (Strata)', provider: 'strata', contextWindow: '128K tokens', supportsReasoning: true },
+  { id: 'strata/deepseek-v4-pro', name: 'DeepSeek V4 Pro (Strata)', provider: 'strata', contextWindow: '128K tokens', supportsReasoning: true },
+  { id: 'strata/gpt-6-astra', name: 'GPT-6 Astra (Strata)', provider: 'strata', contextWindow: '128K tokens', supportsReasoning: true },
+];
+
 /** Modelos que el catálogo base conoce y models.dev no publica (HF/Ollama/custom). */
 function fallbackModels(providerId: string): CatalogModel[] {
   if (providerId === 'openai') return [...OPENAI_FALLBACK_MODELS];
   if (providerId === 'nvidia') return [...NVIDIA_FALLBACK_MODELS];
+  if (providerId === 'strata') return [...STRATA_FALLBACK_MODELS];
   const source =
     providerId === 'google'
       ? GEMINI_MODELS
