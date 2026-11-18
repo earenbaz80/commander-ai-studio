@@ -416,20 +416,30 @@ export const LocalModelHubPanel: React.FC<LocalModelHubPanelProps> = ({
       if (!ok) return;
       // El binario CUDA no arranca sin las DLLs de cudart: se bajan juntos.
       const downloads = [
-        { url: String(info.url), filename: String(info.filename) },
+        { label: 'binario', url: String(info.url), filename: String(info.filename) },
         ...(info.cudartUrl && info.cudartFilename
-          ? [{ url: String(info.cudartUrl), filename: String(info.cudartFilename) }]
+          ? [{ label: 'cudart', url: String(info.cudartUrl), filename: String(info.cudartFilename) }]
           : []),
       ];
       let last: any = null;
       for (const item of downloads) {
-        const res = await fetch('/api/local-models/download-runtime', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ confirm: true, url: item.url, filename: item.filename }),
-        });
-        last = await res.json().catch(() => ({}));
-        if (!last.success) throw new Error(last.error || 'No se pudo descargar el runtime');
+        try {
+          const res = await fetch('/api/local-models/download-runtime', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirm: true, url: item.url, filename: item.filename }),
+          });
+          last = await res.json().catch(() => ({}));
+        } catch (networkError: any) {
+          throw new Error(
+            `No se pudo descargar el ${item.label} (${item.filename}): ${networkError?.message || 'error de red'}`
+          );
+        }
+        if (!last.success) {
+          throw new Error(
+            `No se pudo descargar el ${item.label} (${item.filename}): ${last.error || 'sin detalle del servidor'}`
+          );
+        }
       }
       setNotice(last?.extracted ? 'Runtime de llama.cpp instalado.' : 'Runtime descargado; extrae el archivo manualmente.');
       await refreshRuntime();
