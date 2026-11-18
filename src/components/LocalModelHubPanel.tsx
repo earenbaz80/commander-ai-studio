@@ -793,7 +793,7 @@ export const LocalModelHubPanel: React.FC<LocalModelHubPanelProps> = ({
                   checked={jinja}
                   onChange={(event) => setJinja(event.target.checked)}
                 />
-                JINJA (tool calling)
+                {L('JINJA (tool calling)', 'JINJA (tool calling)')}
               </label>
               <label className="flex items-center gap-1 text-[9px] text-[var(--nc-text-dim)]">
                 <input
@@ -806,7 +806,7 @@ export const LocalModelHubPanel: React.FC<LocalModelHubPanelProps> = ({
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               <label className="flex items-center gap-1 text-[9px] text-[var(--nc-text-dim)]">
-                MoE CPU
+                {L('MoE CPU', 'MoE CPU')}
                 <input
                   value={cpuMoeLayers}
                   onChange={(event) => setCpuMoeLayers(event.target.value)}
@@ -820,7 +820,7 @@ export const LocalModelHubPanel: React.FC<LocalModelHubPanelProps> = ({
                 />
               </label>
               <label className="flex items-center gap-1 text-[9px] text-[var(--nc-text-dim)]">
-                SPLIT GPU
+                {L('SPLIT GPU', 'SPLIT GPU')}
                 <input
                   value={tensorSplit}
                   onChange={(event) => setTensorSplit(event.target.value)}
