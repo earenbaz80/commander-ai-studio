@@ -28,6 +28,32 @@ describe('transcripción del subagente (G1-SUBAGENT-CLOSE)', () => {
     ]);
   });
 
+  it('conserva el fallo cuando el paso real guarda el error en `content`', () => {
+    // Forma real de `AgentSession.addStep` para una tool denegada (G1-D5-10):
+    // `output: r.data` queda `undefined` y el motivo viaja en `content`, con
+    // `status: 'failed'`. Antes se leía sólo `output` y la denegación se perdía.
+    const calls = summarizeCalls([
+      { type: 'tool_call', toolId: 'shell.run' },
+      {
+        type: 'tool_result',
+        toolId: 'shell.run',
+        title: 'shell.run',
+        content: 'Tool deshabilitada por la configuración de permisos: shell.run',
+        input: { command: 'echo test' },
+        output: undefined,
+        status: 'failed',
+      },
+    ]);
+
+    expect(calls).toEqual([
+      {
+        tool: 'shell.run',
+        ok: false,
+        error: 'Tool deshabilitada por la configuración de permisos: shell.run',
+      },
+    ]);
+  });
+
   it('la lista que sirve el endpoint lleva las llamadas del hijo cerrado', () => {
     startSubAgent({ id: 'sess_hijo', parentSessionId: 'sess_padre', goal: 'hijo-a', model: 'm' });
     finishSubAgent('sess_hijo', {

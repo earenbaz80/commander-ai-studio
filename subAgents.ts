@@ -68,9 +68,23 @@ export function summarizeStepTitles(
  * Empareja cada `tool_result` con la última llamada pendiente de la misma tool,
  * que es como los emite el bucle: una llamada, un resultado. Una llamada sin
  * resultado (cancelada a mitad) queda con `ok:null` en vez de desaparecer.
+ *
+ * El resultado de una tool que falla o se deniega no llega en `output`:
+ * `AgentSession.addStep` guarda `output: r.data` (undefined si falló), marca
+ * `status: 'failed'` y deja el motivo en `content`. Leer sólo `output` convertía
+ * toda denegación en `ok:true` y perdía el error (G1-D5-10 lo destapó con
+ * `shell.run`).
  */
 export function summarizeCalls(
-  steps: Array<{ type?: string; toolId?: string; output?: unknown }>,
+  steps: Array<{
+    type?: string;
+    toolId?: string;
+    title?: string;
+    input?: unknown;
+    output?: unknown;
+    status?: string;
+    content?: unknown;
+  }>,
   max = 40
 ): SubAgentCall[] {
   const calls: SubAgentCall[] = [];
@@ -81,17 +95,20 @@ export function summarizeCalls(
     }
     if (step.type !== 'tool_result' || !step.toolId) continue;
     const output = (step.output ?? {}) as { ok?: unknown; error?: unknown };
+    const failed = step.status === 'failed' || output.ok === false;
+    const reason = [output.error, failed ? step.content : undefined].find(
+      (value): value is string => typeof value === 'string' && value.trim() !== ''
+    );
     let tail = -1;
     for (let i = calls.length - 1; i >= 0; i -= 1) {
       if (calls[i].tool === step.toolId && calls[i].ok === null) { tail = i; break; }
     }
-    const ok = output.ok !== false;
-    const error = typeof output.error === 'string' && output.error !== '' ? output.error.slice(0, 300) : undefined;
+    const call: SubAgentCall = { tool: step.toolId, ok: !failed, ...(reason ? { error: reason.slice(0, 300) } : {}) };
     if (tail >= 0) {
-      calls[tail] = { ...calls[tail], ok, ...(error ? { error } : {}) };
+      calls[tail] = { ...calls[tail], ...call };
     } else {
       // Resultado sin llamada previa: se anota igual, no se descarta el dato.
-      calls.push({ tool: step.toolId, ok, ...(error ? { error } : {}) });
+      calls.push(call);
     }
   }
   return calls.length > max ? calls.slice(-max) : calls;

@@ -2,7 +2,7 @@
 
 > **Estado:** revisado contra el árbol, 2026-11-07. Complementa [ROADMAP_UX.md](ROADMAP_UX.md) y [ROADMAP_PARITY.md](ROADMAP_PARITY.md); no los sustituye.
 >
-> **Objetivo:** cerrar los huecos de plataforma frente a un entorno como Freebuff sin dejar de ser local-first por defecto. Cada fase debe poder entregarse y probarse por separado. Las fases 0–2 y el agente de GitHub Actions ya están implementadas en código; GitHub quedó verificado el 2026-11-10 y Linear salió del alcance por decisión explícita. El estado distingue código de verificación real.
+> **Objetivo:** cerrar los huecos de plataforma frente a un entorno como Freebuff sin dejar de ser local-first por defecto. Cada fase debe poder entregarse y probarse por separado. Las fases 0–2 están implementadas; GitHub quedó verificado el 2026-11-10 (OAuth y Actions), Linear salió del alcance por decisión explícita y Vercel queda en pausa hasta G3. El estado distingue código de verificación real.
 
 ## Principios
 
@@ -21,26 +21,26 @@
 | Publicación local | **Hecho** | `server.ts` sirve `/published/<slug>/<entorno>/`; `PublishView.tsx` ya tiene la pestaña **Publicar** |
 | Build antes de publicar | **Hecho** | `createRelease({ build: true })` ejecuta `npm run build` con timeout y límites de archivos/tamaño |
 | Contrato de despliegue | **Hecho** | `deploy/types.ts` incluye `configured`; `deploy/adapter.ts`, `deploy/stateStore.ts` y `commander.app.json`; el estado local conserva `remote` con migración tolerante |
-| Hosting público | **Implementado; verificación contra proveedor fuera de alcance (2026-11-10)** | `deploy/vercelAdapter.ts` sube la release ya construida, con preview, promoción, rollback y logs. `tests/unit/vercelAdapter.e2e.test.ts` recorre el ciclo contra un servidor HTTP local que implementa el contrato; no es una cuenta Vercel |
+| Hosting público | **Implementado; verificación en pausa hasta G3 (2026-11-10)** | `deploy/vercelAdapter.ts` sube la release ya construida, con preview, promoción, rollback y logs. `tests/unit/vercelAdapter.e2e.test.ts` recorre el ciclo contra un servidor HTTP local que implementa el contrato; no es una cuenta Vercel |
 | Navegador del agente | **Hecho** | `browserSession.ts` y `src/agent/tools/browser.ts` usan Playwright; la misma sesión alimenta frames, consola y red |
 | Panel Navegador | **Hecho** | `BrowserView.tsx` pinta frames JPEG por SSE (700 ms), envía entrada real, selecciona sesión, captura screenshots y graba; `LiveConsole`/`NetworkMonitor` leen eventos reales |
 | Grabaciones y artifacts | **Hecho local** | `useBrowserRecording.ts` captura frames; `ArtifactsView.tsx` reproduce, guarda en IndexedDB y permite comentarios inline. Límite: 120 s/180 frames, sin MP4, export ni visor remoto |
 | Hosting SSR/Workers | **Falta** | El adaptador Vercel sólo acepta `static`/`spa`; `detectProject` identifica `worker`/`ssr` pero no hay adaptador que los despliegue |
 | Backend para apps publicadas | **Falta** | No hay `BackendAdapter` ni bindings de la app desplegada. Existe `/api/backend` local multiinquilino (auth, registros, archivos) como base, pero no aprovisiona ni despliega ese backend |
 | Realtime para apps publicadas | **Falta** | El SSE/WebSocket existente es del agente/terminal, no de las apps del usuario |
-| Conectores nativos | **Parcial: Linear + GitHub** | `src/integrations/` tiene OAuth PKCE, vault AES-256-GCM, refresh, revocación remota y UI para Linear y GitHub; `linear` expone `whoami`, `list_teams`, `list_issues`, `create_issue`; `github.pr`/`github.comment` usan OAuth o `GITHUB_TOKEN`. Falta validación OAuth real |
-| Automatización CI | **Implementado; no ejecutado en GitHub** | `.github/workflows/commander-agent.yml` y `scripts/github-agent.ts` reutilizan el CLI headless; hay tests de parser y stream, pero no una corrida real en GitHub |
+| Conectores nativos | **GitHub verificado; Linear fuera de alcance** | `src/integrations/` tiene OAuth PKCE, vault AES-256-GCM, refresh, revocación remota y UI para Linear y GitHub; `linear` expone `whoami`, `list_teams`, `list_issues`, `create_issue`; `github.pr`/`github.comment` usan OAuth o `GITHUB_TOKEN`. GitHub con OAuth real verificado (recibo §8); Linear no se configura (fuera de alcance desde 2026-11-10) |
+| Automatización CI | **Verificado (2026-11-10)** | `.github/workflows/commander-agent.yml` y `scripts/github-agent.ts` reutilizan el CLI headless; corrida real con PR y comentario (recibo §11) |
 | Skills de cuenta | **Parcial** | `skills/loader.ts` carga skills locales; hay catálogo público y marketplace de plugins, pero no sync de cuenta |
 | Plantillas | **Parcial** | `src/data/composerTemplates.ts` tiene 5 plantillas; no hay galería curada equivalente |
 | Ejecución en nube | **Falta** | El agente corre en el servidor Node/Electron local |
 
 ## Orden recomendado (repriorizado 2026-11-07)
 
-0. **Cerrar la verificación real de lo ya construido** (Vercel, Linear y GitHub Actions). No es una fase nueva: una capacidad no pasa a “hecho” sólo porque compile y tenga tests con mocks.
+0. **Cerrar la verificación real de lo ya construido**: GitHub (OAuth y Actions) ya está verificado; Linear queda fuera de alcance y Vercel en pausa hasta G3. No es una fase nueva: una capacidad no pasa a “hecho” sólo porque compile y tenga tests con mocks.
 1. **Backend gestionado para apps publicadas** (auth, base de datos, storage). Es el hueco de producto más grande que queda.
 2. **SSR/Workers y dominios personalizados** para que el hosting no se limite a builds estáticas/SPA.
 3. **Realtime para apps**, una vez exista el backend y el modelo de auth por app.
-4. **Conectores**: verificar Linear y GitHub con cuentas reales; el segundo conector ya existe.
+4. **Conectores**: GitHub ya está verificado con cuenta real; Linear queda fuera de alcance (2026-11-10).
 5. **Skills de cuenta y plantillas curadas**.
 6. **Workspaces remotos** (sólo si se decide dejar de ser local-first; no arrancar por imitación).
 
@@ -94,16 +94,16 @@ El navegador real y los artifacts locales ya no están en la cola: están implem
 
 ### Decisión tomada
 
-- **Proveedor:** Vercel para el primer corte.
+- **Proveedor:** Vercel para el primer corte, **en pausa hasta G3**; el proveedor definitivo se decide en G3.
 - **Alcance:** builds `static`/`spa`; `worker`/`ssr` se detectan y se rechazan con un mensaje claro.
 - **Auth:** `VERCEL_TOKEN` + `VERCEL_PROJECT_ID` (y `VERCEL_TEAM_ID` opcional) en el servidor; el token nunca llega al renderer.
 - **Entornos:** preview y producción fijos, con promoción y rollback por deployment. **Sin dominios personalizados ni previews por rama** en este corte.
 
 ---
 
-## Fase 1 — Hosting remoto de estáticos — IMPLEMENTADO; FALTA VERIFICACIÓN REAL
+## Fase 1 — Hosting remoto de estáticos — IMPLEMENTADO; VERIFICACIÓN EN PAUSA HASTA G3
 
-**Estado:** adaptador, rutas y UI implementados (2026-11-07). La cobertura es con `fetch` simulado: **no hay evidencia de un despliegue real contra Vercel**.
+**Estado:** adaptador, rutas y UI implementados (2026-11-07). La cobertura es con `fetch` simulado: **no hay evidencia de un despliegue real contra Vercel; la verificación queda en pausa hasta G3**.
 
 **Objetivo:** que una release local se pueda abrir en una URL pública, con preview, producción y rollback.
 
@@ -319,9 +319,9 @@ El navegador real y los artifacts locales ya no están en la cola: están implem
 
 ---
 
-## Fase 5 — Conectores nativos — PARCIAL: LINEAR + GITHUB IMPLEMENTADOS
+## Fase 5 — Conectores nativos — GITHUB VERIFICADO; LINEAR FUERA DE ALCANCE
 
-**Estado:** Linear y GitHub están implementados en código (2026-11-07); ningún flujo OAuth real se validó con una cuenta. **Duración restante:** verificación real; el marco ya admite más conectores.
+**Estado:** GitHub está verificado con OAuth real y Actions (recibo `F0-LOCAL-2026-11-10` §8 y §11); Linear queda fuera de alcance por decisión (2026-11-10). **Duración restante:** ninguna para lo verificado; el marco ya admite más conectores.
 
 **Objetivo:** pasar de “MCP genérico” a conectores OAuth de un clic, con tokens persistentes y herramientas tipadas.
 
@@ -352,8 +352,8 @@ El navegador real y los artifacts locales ya no están en la cola: están implem
 
 ### Criterios de aceptación
 
-- [ ] Conectar, usar una herramienta y desconectar Linear o GitHub con una cuenta real. **Pendiente:** no se ejecutó el OAuth completo contra ninguno de los dos; los tests no cubren la autorización real.
-- [ ] El token sobrevive a un reinicio y se refresca si expira. **Implementado** con vault AES-256-GCM y refresh de un solo vuelo; GitHub también admite tokens sin expiración, pero **no verificado contra proveedores reales**.
+- [x] Conectar, usar una herramienta y desconectar GitHub con una cuenta real (recibo §8). **Linear:** fuera de alcance (2026-11-10).
+- [ ] El token sobrevive a un reinicio y se refresca si expira. **Implementado** con vault AES-256-GCM y refresh de un solo vuelo; GitHub también admite tokens sin expiración, pero **el refresco no está verificado**.
 - [x] Revocar elimina el token local y no deja copias en logs.
 - [x] Los scopes son visibles antes de autorizar (`read,write` en Linear; `repo,read:user` en GitHub).
 - [x] Un fallo de OAuth no bloquea el resto de la app.
@@ -362,9 +362,9 @@ El navegador real y los artifacts locales ya no están en la cola: están implem
 
 ### Pendiente real
 
-- Configurar credenciales de Linear y GitHub y probar autorización, callback, uso de herramientas, refresh y revocación con cuentas reales.
+- GitHub: OAuth, uso y revocación ya verificados (recibo §8); Linear no se configura (fuera de alcance desde 2026-11-10).
 - Revisar los scopes de GitHub (`repo` es amplio) y decidir si se ofrece una variante `public_repo` para repos públicos.
-- Documentar en la UI el estado exacto de cada conector (implementado, no verificado) sin presentarlo como integración lista para producción.
+- Documentar en la UI el estado exacto de cada conector (GitHub verificado; Linear fuera de alcance) sin presentarlo como integración lista para producción.
 
 ---
 
@@ -446,7 +446,7 @@ Esto cambia el modelo del producto. Si Commander sigue siendo una app personal l
 - `.github/workflows/commander-agent.yml` permite lanzar el agente desde un issue o manualmente.
 - `scripts/github-agent.ts` y `src/github/agentCommand.ts` reutilizan el CLI headless; no hay un segundo agente.
 - Se corrigió `fs_read` en `agentClient.ts` para que el flujo headless pueda leer archivos.
-- **Estado:** implementado y con tests de parser/stream (`tests/unit/githubAgent.test.ts`), pero **no ejecutado en GitHub ni con un modelo real**. Falta configurar la clave, hacer push y completar una corrida.
+- **Estado:** verificado el 2026-11-10 en el repo de prueba: corrida real con `/commander` en modo plan y `--write`, PR y comentario (recibo §11). Tests de parser/stream en `tests/unit/githubAgent.test.ts`.
 
 ---
 
@@ -455,7 +455,7 @@ Esto cambia el modelo del producto. Si Commander sigue siendo una app personal l
 | Fase | Estado | Valor | Esfuerzo restante | Dependencias | Prioridad |
 | --- | --- | --- | --- | --- | --- |
 | 0. Contrato | Hecho | Alto (base) | — | Ninguna | — |
-| 1. Hosting estático | Implementado; verificación contra proveedor **fuera de alcance (2026-11-10)** | Alto | — | Proveedor en G3 | En pausa |
+| 1. Hosting estático | Implementado; verificación **en pausa hasta G3 (2026-11-10)** | Alto | — | Proveedor en G3 | En pausa |
 | 2. Navegador + artifacts | Hecho con límites | Alto | Bajo (fps/export) | Ninguna | P2 pulir |
 | 3. Backend | Pendiente | Muy alto | Alto | Proveedor y auth por app | **P0** |
 | 4. Realtime | Pendiente | Medio | Medio | Fase 3 | P1 |
@@ -465,7 +465,7 @@ Esto cambia el modelo del producto. Si Commander sigue siendo una app personal l
 
 ## Métricas de éxito
 
-- **Hosting real:** una app estática publicada, abierta y promovida con una cuenta real de Vercel. Hoy hay evidencia con `fetch` simulado y con un E2E local contra el contrato de Vercel, pero no con una cuenta real.
+- **Hosting real:** una app estática publicada, abierta y promovida con una cuenta real de Vercel. Hoy hay evidencia con `fetch` simulado y con un E2E local contra el contrato de Vercel, pero no con una cuenta real; queda en pausa hasta G3.
 - **Tiempo a URL pública:** objetivo < 3 minutos; **no medido contra Vercel**.
 - **Éxito de despliegue:** objetivo ≥ 95% en la app de ejemplo y 3 proyectos reales; pendiente de la primera corrida real.
 - **Rollback:** objetivo < 30 segundos y sin rebuild; el camino existe, falta medirlo.
@@ -473,7 +473,7 @@ Esto cambia el modelo del producto. Si Commander sigue siendo una app personal l
 - **Navegador:** consola y red reales; stream a ~1.4 fps, no 10–15 fps. 0 datos simulados en la ruta de preview.
 - **Artifacts:** grabar, recargar y comentar sin pérdida; tests de UI en verde, sin verificación visual en Electron.
 - **Backend:** dos cuentas aisladas en la app de ejemplo; 401/403 correctos. Pendiente.
-- **Conectores:** Linear y GitHub conectar/usar/revocar con cuentas reales; refresh y scopes pendientes de validación.
+- **Conectores:** GitHub conectar/usar/revocar verificado con cuenta real (recibo §8); Linear fuera de alcance.
 - **Skills:** misma skill disponible en dos máquinas tras login. Pendiente.
 
 ## Riesgos y mitigaciones
@@ -486,8 +486,8 @@ Esto cambia el modelo del producto. Si Commander sigue siendo una app personal l
 | El servidor de contrato local se confunde con Vercel | El E2E y la documentación lo declaran explícitamente; la verificación real sigue pendiente |
 | SSR/Workers no cabe en el modelo estático | `detectProject` rechaza `worker`/`ssr` con mensaje claro; no publicar una SPA rota |
 | El backend filtra datos entre usuarios | Aislamiento por tenant, filtros server-side por `user.id`, pruebas con dos cuentas |
-| Linear no se probó con OAuth real | Configurar credenciales y probar autorización, refresco y revocación antes de añadir el segundo conector |
-| GitHub Actions nunca corrió en GitHub | Hacer una corrida real con modelo y clave; no presentarlo como automatización validada |
+| Linear queda fuera de alcance por decisión (2026-11-10) | No se configura ni se declara verificado; si se retoma, exige su propio recibo antes de volver a la matriz |
+| GitHub Actions ya corrió (2026-11-10) | Mantener el recibo §11 y repetir la corrida ante cambios del workflow; no presentar como validado lo que no tenga recibo |
 | Los artifacts locales se confunden con el visor remoto de Fase 7 | Mantener la distinción en la UI y en la documentación; no prometer artifacts remotos |
 | El stream del navegador va a ~1.4 fps | Documentado; falta un fallback de captura bajo demanda |
 | La fase 7 convierte el proyecto en otra cosa | Puerta de decisión explícita; no arrancar sin aprobación |
@@ -504,11 +504,11 @@ Esto cambia el modelo del producto. Si Commander sigue siendo una app personal l
 
 ## Siguiente corte recomendado (2026-11-07; alcance ajustado 2026-11-10)
 
-> **Actualizado 2026-11-10:** Vercel y Linear quedaron **fuera de alcance por decisión explícita** (sólo hay cuenta de GitHub). Lo que sigue se conserva como historial. El corte vigente es medir la línea base de F0, correr G1 y decidir proveedor en G3 para 5A. Detalle: [docs/parity/receipts/F0-LOCAL-2026-11-10.md](docs/parity/receipts/F0-LOCAL-2026-11-10.md).
+> **Actualizado 2026-11-10:** Linear quedó **fuera de alcance por decisión explícita** y Vercel **en pausa hasta G3** (sólo hay cuenta de GitHub). Lo que sigue se conserva como historial. El corte vigente es medir la línea base de F0, correr G1 y decidir proveedor en G3 para 5A. Detalle: [docs/parity/receipts/F0-LOCAL-2026-11-10.md](docs/parity/receipts/F0-LOCAL-2026-11-10.md).
 
 **Ahora — P0: verificar lo construido**
 
-- ~~Desplegar una app Vite real en Vercel~~ **fuera de alcance (2026-11-10)**.
+- ~~Desplegar una app Vite real en Vercel~~ **en pausa hasta G3 (2026-11-10)**.
 - ~~Configurar Linear y completar OAuth~~ **fuera de alcance (2026-11-10)**.
 - Ejecutar el workflow de GitHub Actions con un modelo real. **Hecho (2026-11-10).**
 - Medir la línea base de 24 corridas de F0, que es lo único que falta para G0.

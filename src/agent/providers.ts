@@ -1,5 +1,7 @@
 import { AGENT_FUNCTION_DECLARATIONS } from './fnTools';
 import { FREEBUFF_TOOL_MODELS } from '../config/freebuffModels';
+import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
+import { resolveEndpoint } from '../lib/aiProviders';
 
 /**
  * Normalización de tool-calling entre proveedores.
@@ -64,6 +66,17 @@ export function isReasoningModel(model?: string): boolean {
 /** Presupuesto de salida por turno; el doble para los que razonan. */
 export function agentMaxTokens(model?: string): number {
   return isReasoningModel(model) ? 4096 : 2048;
+}
+
+/**
+ * Ruta interna que usa la sesión del servidor para pedir el siguiente turno.
+ *
+ * `resolveEndpoint` es la única fuente de verdad de rutas de proveedor: los
+ * mapas manuales de `callLlmNative`/`callLlmJson` no incluían `nvidia/` y los
+ * hijos de T10 terminaban en `/api/custom/generate` o en Gemini (G1-T10-01).
+ */
+export function sessionGenerateRoute(model?: string): string {
+  return resolveEndpoint(model || GEMINI_DEFAULT_MODEL);
 }
 
 /**

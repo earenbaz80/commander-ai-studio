@@ -6,8 +6,8 @@
  *   npm run g1:seed -- --force             # re-siembra (borra el estado anterior)
  *   npm run g1:seed -- --day 2             # sólo el día 2 (T3, T4, T5)
  *   npm run g1:seed -- --day 3             # sólo el día 3 (T5, T6, T8)
- *   npm run g1:seed -- --day 4             # sólo el día 4 (T7, T9, T10)
- *   npm run g1:seed -- --day 5             # sólo el día 5 (T7 ×2, T8, T9)
+ *   npm run g1:seed -- --day 4             # sólo el día 4 (T8, T7 ×3, T9)
+ *   npm run g1:seed -- --day 5             # sólo el día 5 (T9 ×2, T10 ×2)
  *   npm run g1:seed -- --force --only d2-t3-01   # re-siembra uno solo
  *
  * T7 siembra una copia de `examples/vite-static`; T8, el `canary.txt` que no
@@ -76,18 +76,20 @@ const SEEDS: Seed[] = [
   { day: 3, runId: 'G1-D3-03', dir: 'd3-t6-02', files: { 'index.html': T6_HTML }, testFile: 'index.html' },
   { day: 3, runId: 'G1-D3-04', dir: 'd3-t8-01', files: { 'canary.txt': T8_CANARY }, testFile: 'canary.txt' },
   { day: 3, runId: 'G1-D3-05', dir: 'd3-t8-02', files: { 'canary.txt': T8_CANARY }, testFile: 'canary.txt' },
-  { day: 4, runId: 'G1-D4-01', dir: 'd4-t7-01', copyFrom: 'examples/vite-static', testFile: 'index.html' },
-  { day: 4, runId: 'G1-D4-02', dir: 'd4-t9-01' },
-  { day: 4, runId: 'G1-D4-03', dir: 'd4-t9-02' },
-  { day: 4, runId: 'G1-D4-04', dir: 'd4-t10-01', files: T10_FILES, git: true, testFile: '.commander/permissions.json' },
-  { day: 4, runId: 'G1-D4-05', dir: 'd4-t10-02', files: T10_FILES, git: true, testFile: '.commander/permissions.json' },
-  { day: 5, runId: 'G1-D5-01', dir: 'd5-t7-01', copyFrom: 'examples/vite-static', testFile: 'index.html' },
-  { day: 5, runId: 'G1-D5-02', dir: 'd5-t7-02', copyFrom: 'examples/vite-static', testFile: 'index.html' },
-  { day: 5, runId: 'G1-D5-03', dir: 'd5-t8-01', files: { 'canary.txt': T8_CANARY }, testFile: 'canary.txt' },
-  { day: 5, runId: 'G1-D5-04', dir: 'd5-t9-01' },
+  // D4/D5 siguen el reparto canónico de runbook-g1-f0.md §5.2. El bloque del
+  // 2026-11-12 usó otra distribución; esta siembra es para el próximo bloque.
+  { day: 4, runId: 'G1-D4-01', dir: 'd4-t8-01', files: { 'canary.txt': T8_CANARY }, testFile: 'canary.txt' },
+  { day: 4, runId: 'G1-D4-02', dir: 'd4-t7-01', copyFrom: 'examples/vite-static', testFile: 'index.html' },
+  { day: 4, runId: 'G1-D4-03', dir: 'd4-t7-02', copyFrom: 'examples/vite-static', testFile: 'index.html' },
+  { day: 4, runId: 'G1-D4-04', dir: 'd4-t7-03', copyFrom: 'examples/vite-static', testFile: 'index.html' },
+  { day: 4, runId: 'G1-D4-05', dir: 'd4-t9-01' },
+  { day: 5, runId: 'G1-D5-01', dir: 'd5-t9-01' },
+  { day: 5, runId: 'G1-D5-02', dir: 'd5-t9-02' },
+  { day: 5, runId: 'G1-D5-03', dir: 'd5-t10-01', files: T10_FILES, git: true, testFile: '.commander/permissions.json' },
+  { day: 5, runId: 'G1-D5-04', dir: 'd5-t10-02', files: T10_FILES, git: true, testFile: '.commander/permissions.json' },
   // Corrida extra fuera de las 24: T10 después del contrato de cierre de los
   // subagentes (G1-SUBAGENT-CLOSE). No cuenta para la tasa global de §7.1.
-  { day: 5, runId: 'G1-D5-05', dir: 'd5-t10-01', files: T10_FILES, git: true, testFile: '.commander/permissions.json' },
+  { day: 5, runId: 'G1-D5-05', dir: 'd5-t10-03', files: T10_FILES, git: true, testFile: '.commander/permissions.json' },
 ];
 
 /** Repo git con todo commiteado: los subagentes crean worktrees desde ese commit. */

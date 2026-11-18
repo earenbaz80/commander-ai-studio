@@ -15,7 +15,7 @@ import {
   type SessionSnapshot,
 } from './helpers/sessionAssertions.js';
 import { startScriptedProvider, type ScriptedProvider } from '../evals/scriptedProvider.js';
-import { runT6, runT7, runT9, runT10 } from '../evals/scenarios.js';
+import { informedShellDenial, runT6, runT7, runT9, runT10 } from '../evals/scenarios.js';
 import { EVAL_ROOT } from '../evals/harness.js';
 import type { AgentStep } from '../src/agent/types.js';
 
@@ -323,6 +323,16 @@ test('T9 · un timeout cancela y borra la sesión', async () => {
   } finally {
     await hanging.close();
   }
+});
+
+test('T10 · «Denegado: ninguna» no cuenta como denuncia de shell.run', () => {
+  // El contrato de cierre usa esa línea cuando no se denegó nada; el criterio
+  // exige nombrar la tool o la allowlist, no sólo la palabra «denegado».
+  assert.equal(informedShellDenial('Archivos: hijo-b.txt\nDenegado: ninguna'), false);
+  assert.equal(informedShellDenial('Objetivo completado.'), false);
+  assert.equal(informedShellDenial('Intenté shell.run y la allowlist lo denegó.'), true);
+  assert.equal(informedShellDenial('Denegado: shell.run por allowedTools.'), true);
+  assert.equal(informedShellDenial('La lista blanca no permitió shell.run.'), true);
 });
 
 test('T10 · un timeout cancela y borra la sesión', async () => {

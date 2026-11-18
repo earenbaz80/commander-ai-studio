@@ -24,8 +24,14 @@ import { decide, needsHumanApproval } from './src/agent/permissionRules';
 import { enforceTool, getPermissions, type Permissions } from './permissions';
 import { createWorktree, removeWorktree, type WorktreeResult } from './worktrees';
 import { resolveSubagentPolicy } from './src/agent/subagentTemplates';
-import { agentMaxTokens, toolDialectForModel, toOpenAITools } from './src/agent/providers';
+import { agentMaxTokens, sessionGenerateRoute, toolDialectForModel, toOpenAITools } from './src/agent/providers';
 import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from './src/agent/fnTools';
+import { spawnBatchHadFailure, spawnChildrenFromResults, spawnFailureClosingMessage } from './src/agent/spawnStreak';
+
+// La guarda vive en `src/agent/spawnStreak` para que el CLI la importe sin
+// arrastrar este módulo (y con él `browserSession`/`mcp`); se re-exporta para
+// no romper a quien ya la importaba de aquí.
+export { spawnBatchHadFailure, spawnChildrenFromResults } from './src/agent/spawnStreak';
 import { PLAN_TOOL, normalizePlan } from './src/agent/plan';
 import { TOOL_REGISTRY } from './src/agent/registry';
 import { LoopGuard, type LoopCut } from './src/agent/identicalCalls';
@@ -419,24 +425,21 @@ const ALLOWED_TOOLS = ['fs.read', 'fs.write', 'fs.edit', 'fs.glob', 'fs.list', '
 
 async function callLlmNative(
   cfg: SessionConfig,
-  ctx: { goal: string; cwd: string; plan: AgentPlanItem[]; recentSteps: any[]; toolSchema: string; agentsMd: string; turns: { role: string; text: string }[]; systemExtra?: string }
-  , signal?: AbortSignal
+  ctx: { goal: string; cwd: string; plan: AgentPlanItem[]; recentSteps: any[]; toolSchema: string; agentsMd: string; turns: { role: string; text: string }[]; systemExtra?: string; visibleTools?: string[] | null }
+  , signal?: AbortSignal,
+  opts: { finalTurn?: boolean } = {}
 ): Promise<{ thought: string; calls: { name: string; args: any }[] }> {
   const model = cfg.model || GEMINI_DEFAULT_MODEL;
   const dialect = toolDialectForModel(model);
   const turns = ctx.turns || [];
-  const user = `OBJETIVO: ${ctx.goal}\nCWD: ${ctx.cwd}\n\nPLAN ACTUAL:\n${JSON.stringify(ctx.plan, null, 2)}\n\nULTIMOS PASOS:\n${JSON.stringify(ctx.recentSteps.slice(-10), null, 2)}\n\nHISTORIAL:\n${turns.slice(-8).map((t) => `${t.role.toUpperCase()}: ${t.text.slice(0, 1200)}`).join('\n\n')}\n\nTOOLS:\n${ctx.toolSchema}${ctx.systemExtra ? `\n${ctx.systemExtra}` : ''}`;
-  const systemInstruction = `Eres un agente autónomo de código. Razona brevemente en texto y llama herramientas para avanzar hacia: ${ctx.goal}. Si el objetivo está cumplido, responde SOLO texto final sin llamar herramientas. Antes de editar, localiza el código con fs.glob/fs.grep y léelo con fs.read para tener el texto exacto: los cambios pequeños van con fs.edit y un oldString idéntico al del archivo.${ctx.agentsMd ? `\nREGLAS DEL REPO:\n${ctx.agentsMd.slice(0, 4000)}` : ''}${childDirectives(cfg)}`;
+  const finalTurn = opts.finalTurn === true;
+  const toolsSection = finalTurn ? '' : `\n\nTOOLS:\n${ctx.toolSchema}`;
+  const user = `OBJETIVO: ${ctx.goal}\nCWD: ${ctx.cwd}\n\nPLAN ACTUAL:\n${JSON.stringify(ctx.plan, null, 2)}\n\nULTIMOS PASOS:\n${JSON.stringify(ctx.recentSteps.slice(-10), null, 2)}\n\nHISTORIAL:\n${turns.slice(-8).map((t) => `${t.role.toUpperCase()}: ${t.text.slice(0, 1200)}`).join('\n\n')}${toolsSection}${ctx.systemExtra ? `\n${ctx.systemExtra}` : ''}`;
+  const systemInstruction = `Eres un agente autónomo de código. Razona brevemente en texto y llama herramientas para avanzar hacia: ${ctx.goal}. Si el objetivo está cumplido, responde SOLO texto final sin llamar herramientas. Antes de editar, localiza el código con fs.glob/fs.grep y léelo con fs.read para tener el texto exacto: los cambios pequeños van con fs.edit y un oldString idéntico al del archivo.${ctx.agentsMd ? `\nREGLAS DEL REPO:\n${ctx.agentsMd.slice(0, 4000)}` : ''}${childDirectives(cfg)}${finalTurn ? '\nÚLTIMO TURNO: no llames herramientas. Escribe ahora el cierre obligatorio, con lo que hiciste y lo que se te denegó.' : ''}`;
 
   if (dialect === 'json-text') return { thought: '', calls: [] };
 
-  const route =
-    dialect === 'gemini' ? '/api/gemini/generate'
-    : model.startsWith('openrouter/') ? '/api/openrouter/generate'
-    : model.startsWith('ollama/') ? '/api/ollama/generate'
-    : model.startsWith('lmstudio/') ? '/api/lmstudio/generate'
-    : model.startsWith('freebuff/') ? '/api/freebuff/generate'
-    : '/api/custom/generate';
+  const route = sessionGenerateRoute(model);
 
   const payload: Record<string, unknown> = {
     contents: user,
@@ -454,9 +457,19 @@ async function callLlmNative(
   };
   // La sesión corre en el servidor, sin usuario al otro lado: `ask_user` no
   // puede resolverse aquí y no se le ofrece al modelo.
-  const declarations = AGENT_FUNCTION_DECLARATIONS.filter((d) => d.name !== 'ask_user');
-  if (dialect === 'gemini') payload.tools = [{ functionDeclarations: declarations }];
-  else payload.tools = toOpenAITools(declarations);
+  // La misma allowlist manda en las declaraciones nativas: si la tool no está
+  // permitida, no se le ofrece al proveedor y el modelo no la llama.
+  const visible = ctx.visibleTools ?? null;
+  const declarations = AGENT_FUNCTION_DECLARATIONS.filter((d) => {
+    if (d.name === 'ask_user') return false;
+    if (!visible) return true;
+    const tool = mapFunctionCall(d.name, {})?.tool;
+    return tool != null && visible.includes(tool);
+  });
+  if (!finalTurn) {
+    if (dialect === 'gemini') payload.tools = [{ functionDeclarations: declarations }];
+    else payload.tools = toOpenAITools(declarations);
+  }
 
   const res = await fetch(`${getServerBaseUrl()}${route}`, {
     method: 'POST',
@@ -481,10 +494,11 @@ async function callLlmNative(
 
 async function callLlmJson(
   cfg: SessionConfig,
-  ctx: { goal: string; cwd: string; plan: AgentPlanItem[]; recentSteps: any[]; toolSchema: string; agentsMd: string; history: { role: string; content: string }[] }
-  , signal?: AbortSignal
+  ctx: { goal: string; cwd: string; plan: AgentPlanItem[]; recentSteps: any[]; toolSchema: string; agentsMd: string; history: { role: string; content: string }[]; visibleTools?: string[] | null }, signal?: AbortSignal,
+  opts: { finalTurn?: boolean } = {}
 ): Promise<{ thought?: string; plan?: { id: string; text: string; done: boolean }[]; toolCalls?: { id: string; tool: string; input: unknown }[]; answer?: string; finish?: boolean }> {
   const model = cfg.model || GEMINI_DEFAULT_MODEL;
+  const finalTurn = opts.finalTurn === true;
   const system = `Eres un agente autónomo pragmático para ingeniería de código.
 
 REGLAS:
@@ -499,7 +513,7 @@ REGLAS:
 - Si el comando shell es potencialmente destructivo, lo marcarás pero ejecutará solo con aprobación.
 - Sé minimalista. Un tool_call a la vez si es incierto.
 - Si ya cumpliste el objetivo, responde con {"finish": true, "answer": "..."}.
-${ctx.agentsMd ? `\nREGLAS DEL REPO (AGENTS.md):\n${ctx.agentsMd.slice(0, 4000)}\n` : ''}${childDirectives(cfg)}
+${ctx.agentsMd ? `\nREGLAS DEL REPO (AGENTS.md):\n${ctx.agentsMd.slice(0, 4000)}\n` : ''}${childDirectives(cfg)}${finalTurn ? '\nÚLTIMO TURNO: no propongas toolCalls. Responde SOLO {"finish": true, "answer": "..."} con el cierre obligatorio, con lo que hiciste y lo que se te denegó.' : ''}
 
 FORMATO JSON:
 {
@@ -520,18 +534,12 @@ ULTIMOS PASOS:
 ${JSON.stringify(ctx.recentSteps.slice(-10), null, 2)}
 
 HISTORIAL BREVE:
-${JSON.stringify(ctx.history.slice(-6).map((m) => ({ role: m.role, content: m.content.slice(0, 4000) })), null, 2)}
+${JSON.stringify(ctx.history.slice(-6).map((m) => ({ role: m.role, content: m.content.slice(0, 4000) })), null, 2)}${finalTurn ? '' : `
 
 TOOLS:
-${ctx.toolSchema}`;
+${ctx.toolSchema}`}`;
 
-  const route = model.startsWith('custom/') ? '/api/custom/generate'
-    : model.startsWith('openrouter/') ? '/api/openrouter/generate'
-    : model.startsWith('pollinations/') ? '/api/pollinations/generate'
-    : model.startsWith('freebuff/') ? '/api/freebuff/generate'
-    : model.startsWith('ollama/') ? '/api/ollama/generate'
-    : model.startsWith('lmstudio/') ? '/api/lmstudio/generate'
-    : '/api/gemini/generate';
+  const route = sessionGenerateRoute(model);
 
   const payload = {
     model: model.startsWith('custom/') ? (cfg.keys?.CUSTOM_MODEL || model) : model,
@@ -917,12 +925,28 @@ export class AgentSession {
     return full;
   }
 
+  /**
+   * Allowlist efectiva de la sesión; `null` = todas las del proyecto.
+   *
+   * Es la misma lista con la que `enforceTool` deniega. El catálogo salía del
+   * registro entero, así que un hijo con `allowedTools:['fs.read','fs.write']`
+   * seguía viendo —y llamando— `fs.list`, `fs.glob`, `git.status` o
+   * `shell.run`: cada llamada se denegaba y el hijo gastaba sus pasos antes de
+   * llegar al turno de cierre (G1-T10-06: 21 pasos en tools denegadas y un
+   * cierre con «Llamando a fs.glob…»).
+   */
+  private visibleToolIds(): string[] | null {
+    return this.effectivePermissions().allowedTools ?? null;
+  }
+
   private toolSchema(): string {
-    return JSON.stringify(
-      Object.values(TOOL_REGISTRY).map((t) => ({ id: t.id, description: t.description, danger: t.danger })),
-      null,
-      2
-    ) + (this.mcpSchema ? `\n${this.mcpSchema}` : '');
+    const visible = this.visibleToolIds();
+    const tools = Object.values(TOOL_REGISTRY)
+      .filter((t) => !visible || visible.includes(t.id))
+      .map((t) => ({ id: t.id, description: t.description, danger: t.danger }));
+    // El esquema MCP sólo se anuncia si la sesión puede usar sus tools.
+    const conMcp = Boolean(this.mcpSchema) && (!visible || visible.includes('mcp.call') || visible.includes('mcp.list'));
+    return JSON.stringify(tools, null, 2) + (conMcp ? `\n${this.mcpSchema}` : '');
   }
 
   async start() {
@@ -1358,18 +1382,33 @@ export class AgentSession {
 
   private async step() {
     if (!this.running) return;
+    const recentSteps = this.steps.slice(-12).map((s) => ({
+      id: s.id, type: s.type, toolId: s.toolId, title: s.title,
+      content: (s.content || '').slice(0, 500), status: s.status, ts: s.ts,
+    }));
+
     if (this.steps.length >= this.maxSteps) {
+      // Un hijo con contrato de cierre no se rinde en «Límite»: gasta un turno
+      // sin tools, igual que cuando se acaba el presupuesto de tools. Antes
+      // `maxSteps` lo mataba con `done` sin `Finalizado` y el padre recibía un
+      // hijo fallido aunque hubiera trabajo hecho (G1-T10-05, hijo A).
+      if (this.cfg.closingContract) {
+        try {
+          await this.finalizeChild(recentSteps);
+        } catch (e: any) {
+          if (this.stopReason) return;
+          const msg = String(e?.message || e);
+          this.addStep({ type: 'thought', title: 'Error', content: msg, status: 'failed' });
+          this.fail(msg);
+        }
+        return;
+      }
       this.addStep({ type: 'thought', title: 'Límite', content: `maxSteps=${this.maxSteps} alcanzado.`, status: 'completed' });
       this.status = 'done';
       this.running = false;
       this.emit({ type: 'status', status: 'done' });
       return;
     }
-
-    const recentSteps = this.steps.slice(-12).map((s) => ({
-      id: s.id, type: s.type, toolId: s.toolId, title: s.title,
-      content: (s.content || '').slice(0, 500), status: s.status, ts: s.ts,
-    }));
 
     try {
       if (toolDialectForModel(this.cfg.model) !== 'json-text') {
@@ -1389,12 +1428,64 @@ export class AgentSession {
     }
   }
 
+  /**
+   * Último turno del hijo cuando ya no tiene presupuesto para tools o pasos.
+   *
+   * No se sintetiza una respuesta: se pide al modelo un turno SIN tools para
+   * que emita el cierre obligatorio. Cubre los dos presupuestos que cerraban
+   * en `done` sin `Finalizado` (y que `executeTask` convertía en «sin respuesta
+   * final»): el de tools (G1-T10-01) y el de `maxSteps`, que cortaba en `Límite`
+   * antes de pedir el cierre (G1-T10-05, hijo A). Los hijos con dialecto
+   * json-text también cierran: `callLlmJson` acepta el mismo `finalTurn`.
+   */
+  private async finalizeChild(recentSteps: any[]) {
+    let answer: string;
+    if (toolDialectForModel(this.cfg.model) === 'json-text') {
+      const final = await callLlmJson(this.cfg, {
+        goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
+        toolSchema: this.toolSchema(),
+        visibleTools: this.visibleToolIds(), agentsMd: this.agentsMd,
+        history: this.turns.map((turn) => ({ role: turn.role, content: turn.text })),
+      }, this.abortCtrl.signal, { finalTurn: true });
+      answer = String(final.answer ?? final.thought ?? '').trim();
+    } else {
+      const final = await callLlmNative(this.cfg, {
+        goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
+        toolSchema: this.toolSchema(),
+        visibleTools: this.visibleToolIds(), agentsMd: this.agentsMd, turns: this.turns,
+      }, this.abortCtrl.signal, { finalTurn: true });
+      answer = String(final.thought || '').trim();
+    }
+    if (!answer) {
+      this.fail('El subagente agotó el presupuesto sin una respuesta de cierre.');
+      return;
+    }
+    this.answer = answer;
+    this.turns.push({ role: 'assistant', text: answer, ts: Date.now() });
+    if (this.turns.length > 10) this.turns = this.turns.slice(-10);
+    this.addStep({ type: 'thought', title: 'Finalizado', content: answer, status: 'completed' });
+    this.emit({ type: 'finish', answer });
+    this.status = 'done';
+    this.running = false;
+    this.emit({ type: 'status', status: 'done' });
+  }
+
   private async stepNative(recentSteps: any[]) {
+    const budget = this.toolBudget();
+    // El presupuesto se comprueba antes de pedir otro turno con tools: si el
+    // hijo ya no puede ejecutar ninguna, se gasta directamente su turno de
+    // cierre sin tools. Antes se hacía una llamada con tools que se descartaba.
+    if (this.cfg.closingContract && budget <= 0) {
+      await this.finalizeChild(recentSteps);
+      return;
+    }
+
     let native;
     try {
       native = await callLlmNative(this.cfg, {
         goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
-        toolSchema: this.toolSchema(), agentsMd: this.agentsMd, turns: this.turns,
+        toolSchema: this.toolSchema(),
+        visibleTools: this.visibleToolIds(), agentsMd: this.agentsMd, turns: this.turns,
       }, this.abortCtrl.signal);
     } catch (e: any) {
       // Abortado: reintentar en modo JSON volvería a pedirle al proveedor justo
@@ -1487,7 +1578,6 @@ export class AgentSession {
       return;
     }
 
-    const budget = this.toolBudget();
     if (budget <= 0) {
       this.turns.push({ role: 'assistant', text: native.thought || '(sin salida)', ts: Date.now() });
       this.status = 'done';
@@ -1524,17 +1614,17 @@ export class AgentSession {
     }
     if (this.failOnLoopCut(results)) return;
 
-    // El modelo puede re-lanzar `spawn_agents` cuando todos los hijos fallan:
-    // en G1-D5-08 lo hizo tres veces y nunca cerró. A la segunda tanda seguida
-    // sin un solo hijo bueno se cierra informando del fallo, en vez de repetir.
+    // El modelo puede re-lanzar `spawn_agents` cuando falla algún hijo: en
+    // G1-D5-08 fallaron todos y en G1-D5-10 falló uno solo; en los dos casos
+    // repitió la tanda sin cerrar. A la segunda tanda seguida con algún hijo
+    // fallido se cierra informando, en vez de repetir.
     const spawnRuns = results.filter((r) => r.tool === 'spawn_agents');
     if (spawnRuns.length > 0) {
       const hijos = spawnChildrenFromResults(spawnRuns);
-      const todosFallidos = hijos.length > 0 && hijos.every((hijo: any) => hijo?.ok === false);
-      this.spawnFailureStreak = todosFallidos ? this.spawnFailureStreak + 1 : 0;
+      this.spawnFailureStreak = spawnBatchHadFailure(hijos) ? this.spawnFailureStreak + 1 : 0;
       if (this.spawnFailureStreak >= 2) {
-        const motivos = [...new Set(hijos.map((hijo: any) => String(hijo?.error ?? '').trim()).filter(Boolean))];
-        const finalAnswer = `No completé la tarea: los subagentes fallaron en dos tandas seguidas.${motivos.length ? ` Motivo: ${motivos.join(' | ')}` : ''}`.slice(0, 1000);
+        // Texto compartido con el CLI: ver `spawnFailureClosingMessage`.
+        const finalAnswer = spawnFailureClosingMessage(hijos);
         this.answer = finalAnswer;
         this.turns.push({ role: 'assistant', text: finalAnswer, ts: Date.now() });
         if (this.turns.length > 10) this.turns = this.turns.slice(-10);
@@ -1550,7 +1640,8 @@ export class AgentSession {
   private async stepJson(recentSteps: any[]) {
     const llmRes = await callLlmJson(this.cfg, {
       goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
-      toolSchema: this.toolSchema(), agentsMd: this.agentsMd,
+      toolSchema: this.toolSchema(),
+      visibleTools: this.visibleToolIds(), agentsMd: this.agentsMd,
       // Los resultados de tools viven en `turns`; el resumen de `recentSteps`
       // no lleva su contenido y el modelo acababa releyendo los archivos.
       history: this.turns.map((turn) => ({ role: turn.role, content: turn.text })),
@@ -1581,7 +1672,18 @@ export class AgentSession {
 
     const calls = (llmRes.toolCalls || []).filter((tc) => ALLOWED_TOOLS.includes(tc.tool)).slice(0, 5);
     const budget = this.toolBudget();
-    if (budget <= 0) { this.status = 'done'; this.running = false; this.emit({ type: 'status', status: 'done' }); return; }
+    if (budget <= 0) {
+      // El hijo cierra igual que en la vía nativa: un `done` sin `Finalizado`
+      // llega al padre como hijo fallido aunque haya trabajo hecho.
+      if (this.cfg.closingContract) {
+        await this.finalizeChild(recentSteps);
+        return;
+      }
+      this.status = 'done';
+      this.running = false;
+      this.emit({ type: 'status', status: 'done' });
+      return;
+    }
     const executable = calls.slice(0, budget);
 
     if (executable.length > 0) {
@@ -1902,20 +2004,4 @@ export function removeSession(id: string): void {
   }
 }
 
-/**
- * Hijos devueltos por cada `spawn_agents` de una tanda de tools.
- *
- * La forma depende de dónde se ejecutó la tool: en proceso el resultado es
- * `{ results, spawned, capped }`, pero el CLI ejecuta las tools contra
- * `/api/agent/tool` y recibe el sobre entero, `{ ok, data: { results, … } }`.
- * G1-D5-09 lo destapó: la guarda leía sólo la primera forma, así que el padre
- * relanzó `spawn_agents` cuatro veces sin que la cuenta de tandas fallidas
- * subiera nunca.
- */
-export function spawnChildrenFromResults(results: any[]): any[] {
-  return results.flatMap((r) => {
-    const entrada = (r?.data ?? r) as any;
-    const lista = entrada?.results ?? entrada?.data?.results;
-    return Array.isArray(lista) ? lista : [];
-  });
-}
+

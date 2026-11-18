@@ -33,8 +33,6 @@ import {
   toggleModelFilter,
 } from '../../lib/providerFilters';
 import { slugifyProviderId } from '../../lib/openaiCompatibleProviders';
-import { STRATA_LOCAL_DEFAULT_BASE_URL } from '../../lib/strataLocal';
-import { StrataRuntimePanel } from './StrataRuntimePanel';
 
 interface AvailableProvider {
   id: string;
@@ -59,22 +57,6 @@ const isHttpUrl = (value: string): boolean => {
   }
 };
 
-/** Un host remoto por HTTP necesita confirmación antes de mandar una clave. */
-const isRemoteHttpUrl = (value: string): boolean => {
-  try {
-    const parsed = new URL(value);
-    if (parsed.protocol !== 'http:') return false;
-    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
-    return !(
-      host === 'localhost' ||
-      host === '::1' ||
-      host === '0:0:0:0:0:0:0:1' ||
-      /^127(?:\.\d{1,3}){3}$/.test(host)
-    );
-  } catch {
-    return false;
-  }
-};
 
 interface ProviderField {
   name: string;
@@ -114,19 +96,6 @@ interface ProviderEntry {
   probeError?: string;
   /** Añadido por el usuario como endpoint OpenAI-compatible. */
   custom?: boolean;
-  /** Strata: `/v1/status` confirmó la identidad del host. */
-  identity?: 'verified' | 'unverified' | string;
-  /** Strata: el host respondió, pero rechazó la API key. */
-  auth?: boolean;
-  /** Strata: la URL es el monitor, no el servidor del modelo. */
-  monitor?: { engineUrls: string[] };
-  /** Strata: hay un modelo cargado. */
-  loaded?: boolean;
-  model?: string;
-  warning?: string;
-  /** Strata: opt-in explícito para HTTP remoto. */
-  allowInsecure?: boolean;
-  keyBlocked?: boolean;
 }
 
 type AddCheckStatus = 'incompatible' | 'auth' | 'unreachable';
@@ -180,10 +149,6 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
   const liveCheckSeq = React.useRef(0);
   /** Búsqueda dentro de los modelos de cada proveedor. */
   const [modelQuery, setModelQuery] = useState<Record<string, string>>({});
-  /** Telemetría de runtime de Strata, sólo se pide al abrir su panel. */
-  const [strataRuntime, setStrataRuntime] = useState<Record<string, any>>({});
-  const [runtimeBusy, setRuntimeBusy] = useState<string | null>(null);
-  const [strataAllowInsecure, setStrataAllowInsecure] = useState(false);
 
   const t = useCallback(
     (es: string, en: string, de: string) => (lang === 'es' ? es : lang === 'de' ? de : en),
@@ -410,8 +375,6 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
     const next: Record<string, string> = {};
     for (const field of provider.fields) next[field.name] = '';
     if (provider.id === 'ollama') next.host = 'http://localhost:11434';
-    if (provider.id === 'strata-local') next.baseUrl = provider.host || STRATA_LOCAL_DEFAULT_BASE_URL;
-    setStrataAllowInsecure(provider.allowInsecure === true);
     setDraft(next);
     setFilterDraft((prev) => ({
       ...prev,
@@ -436,7 +399,6 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
         return;
       }
       const payloadConfig: Record<string, unknown> = { ...config };
-      if (provider.id === 'strata-local') payloadConfig.allowInsecure = strataAllowInsecure;
       const res = await fetch('/api/providers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -503,28 +465,6 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
         message = ok
           ? t(`${data.models?.length ?? 0} modelos`, `${data.models?.length ?? 0} models`, `${data.models?.length ?? 0} Modelle`)
           : data.error || t('Sin respuesta', 'No response', 'Keine Antwort');
-      } else if (provider.id === 'strata-local') {
-        const res = await fetch('/api/strata-local/health', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            baseUrl: draft.baseUrl || provider.host || STRATA_LOCAL_DEFAULT_BASE_URL,
-            apiKey: draft.apiKey,
-            allowInsecure: strataAllowInsecure,
-          }),
-        });
-        const data = await res.json().catch(() => ({}));
-        ok = data.ok === true || data.success === true;
-        const loadedModel = typeof data.model === 'string' && data.model ? data.model : '';
-        const identity = data.identity === 'verified' ? '' : t(' · identidad no verificada', ' · identity unverified', ' · Identität nicht verifiziert');
-        message = ok
-          ? t(
-              `${data.loaded === false ? 'Strata responde, sin modelo cargado' : `Strata responde${loadedModel ? ` · ${loadedModel}` : ''}`} · ${data.count ?? data.models?.length ?? 0} modelos · ${data.latencyMs ?? 0} ms${identity}`,
-              `${data.loaded === false ? 'Strata responds, no model loaded' : `Strata responds${loadedModel ? ` · ${loadedModel}` : ''}`} · ${data.count ?? data.models?.length ?? 0} models · ${data.latencyMs ?? 0} ms${identity}`,
-              `${data.loaded === false ? 'Strata antwortet, kein Modell geladen' : `Strata antwortet${loadedModel ? ` · ${loadedModel}` : ''}`} · ${data.count ?? data.models?.length ?? 0} Modelle · ${data.latencyMs ?? 0} ms${identity}`
-            )
-          : data.error || t('Sin respuesta', 'No response', 'Keine Antwort');
       } else if (provider.id === 'custom') {
         const res = await fetch('/api/custom/models', {
           method: 'POST',
@@ -566,33 +506,6 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
       setTesting(null);
     }
   };
-
-  /** Telemetría bajo demanda: no se sondea el host mientras el panel está cerrado. */
-  const loadStrataRuntime = async (provider: ProviderEntry) => {
-    setRuntimeBusy(provider.id);
-    try {
-      const res = await fetch('/api/strata-local/runtime', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          baseUrl: draft.baseUrl || provider.host || STRATA_LOCAL_DEFAULT_BASE_URL,
-          apiKey: draft.apiKey,
-          allowInsecure: strataAllowInsecure,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      setStrataRuntime((prev) => ({ ...prev, [provider.id]: data }));
-    } catch (e: any) {
-      setStrataRuntime((prev) => ({
-        ...prev,
-        [provider.id]: { ok: false, error: e?.message || t('No se pudo leer el runtime', 'Could not read runtime', 'Runtime konnte nicht gelesen werden') },
-      }));
-    } finally {
-      setRuntimeBusy(null);
-    }
-  };
-
   /** PATCH de filtros: no exige credenciales como el POST de configuración. */
   const patchProvider = async (provider: ProviderEntry, patch: Record<string, unknown>): Promise<boolean> => {
     setBusy(provider.id);
@@ -1037,8 +950,6 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
             const open = openId === provider.id;
             const result = testResults[provider.id];
             const isBusy = busy === provider.id;
-            const runtimeData = strataRuntime[provider.id];
-            const strataEngineUrl = provider.monitor?.engineUrls?.[0] || '';
             const modelSearch = (modelQuery[provider.id] ?? '').trim().toLowerCase();
             const visibleModels = modelSearch
               ? provider.allModels.filter(
@@ -1095,43 +1006,11 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                       >
                         <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" aria-hidden="true" />
                         <span>
-                          {provider.id === 'strata-local' && provider.monitor ? (
-                            <>
-                              {t(
-                                'Esa URL es el monitor de Strata, no el servidor del modelo.',
-                                'That URL is the Strata monitor, not the model server.',
-                                'Diese URL ist der Strata-Monitor, nicht der Modellserver.'
-                              )}{' '}
-                              {strataEngineUrl
-                                ? t(
-                                    `El motor real está en ${strataEngineUrl}.`,
-                                    `The real engine is at ${strataEngineUrl}.`,
-                                    `Der echte Motor läuft unter ${strataEngineUrl}.`
-                                  )
-                                : t(
-                                    'El monitor no tiene ningún motor listo; inicia el modelo en Strata.',
-                                    'The monitor has no ready engine; load a model in Strata.',
-                                    'Der Monitor hat keinen bereiten Motor; lade ein Modell in Strata.'
-                                  )}{' '}
-                              {t(
-                                'Copia esa URL en Host y guarda la API key del motor; ahora falta o no coincide.',
-                                'Use that URL in Host and save the engine API key; it is missing or does not match.',
-                                'Trage diese URL als Host ein und speichere den API-Schlüssel des Motors; er fehlt oder stimmt nicht.'
-                              )}
-                            </>
-                          ) : provider.id === 'strata-local' && provider.auth ? (
-                            t(
-                              'Strata respondió, pero la API key falta o no coincide. Revísala en el campo de arriba.',
-                              'Strata answered, but the API key is missing or does not match. Check it in the field above.',
-                              'Strata antwortet, aber der API-Schlüssel fehlt oder stimmt nicht. Prüfe ihn im Feld oben.'
-                            )
-                          ) : (
-                            <>
                               {t(
                                 `Sin respuesta en ${provider.host}.`,
                                 `No response at ${provider.host}.`,
                                 `Keine Antwort unter ${provider.host}.`
-                              )}{' '}
+                            )}{' '}
                               {provider.id === 'lmstudio'
                                 ? t(
                                     'Comprueba que LM Studio esté abierto y sirviendo en esa IP y puerto.',
@@ -1144,8 +1023,6 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                                     'Prüfe, ob der lokale Server läuft und von hier erreichbar ist.'
                                   )}
                               {provider.probeError ? ` (${provider.probeError})` : ''}
-                            </>
-                          )}
                         </span>
                       </div>
                     )}
@@ -1183,51 +1060,6 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                         )}
                       </p>
                     )}
-
-                    {provider.id === 'strata-local' &&
-                      (provider.warning ||
-                        (provider.reachable !== false &&
-                          (provider.loaded === false || provider.identity === 'unverified'))) && (
-                      <div
-                        role="status"
-                        className="mt-1 border border-amber-400/40 bg-amber-400/10 px-1.5 py-1 text-[9px] leading-snug text-amber-200"
-                      >
-                        {provider.warning ||
-                          (provider.loaded === false
-                            ? t('El host responde, pero no hay ningún modelo cargado en Strata.', 'The host answers, but no model is loaded in Strata.', 'Der Host antwortet, aber in Strata ist kein Modell geladen.')
-                            : t('El host responde como OpenAI-compatible, pero /v1/status no confirmó que sea Strata.', 'The host answers as OpenAI-compatible, but /v1/status did not confirm it is Strata.', 'Der Host antwortet OpenAI-kompatibel, aber /v1/status hat Strata nicht bestätigt.'))}
-                      </div>
-                    )}
-
-                    {provider.id === 'strata-local' && (
-                      <p className="pt-1 text-[9px] leading-snug text-[var(--nc-text)] opacity-70">
-                        {t(
-                          'Host local de Strata. Por defecto http://127.0.0.1:8080/v1; STRATA_PORT o STRATA_LOCAL_BASE_URL lo sobrescriben. La API key es STRATA_API_KEY si el servidor la tiene activada.',
-                          'Local Strata host. Defaults to http://127.0.0.1:8080/v1; STRATA_PORT or STRATA_LOCAL_BASE_URL override it. The API key is STRATA_API_KEY when the server has one.',
-                          'Lokaler Strata-Host. Standard http://127.0.0.1:8080/v1; STRATA_PORT oder STRATA_LOCAL_BASE_URL überschreiben ihn. Der API-Schlüssel ist STRATA_API_KEY, falls der Server einen hat.'
-                        )}
-                      </p>
-                    )}
-
-                    {provider.id === 'strata-local' &&
-                      isRemoteHttpUrl(draft.baseUrl || provider.host || '') && (
-                        <label className="mt-1 flex items-start gap-1 border border-red-400/40 bg-red-400/10 px-1.5 py-1 text-[9px] leading-snug text-red-200">
-                          <input
-                            type="checkbox"
-                            checked={strataAllowInsecure}
-                            onChange={(event) => setStrataAllowInsecure(event.target.checked)}
-                            className="mt-0.5"
-                          />
-                          <span>
-                            {t(
-                              'Confirmo que este host remoto usa HTTP sin cifrar y acepto enviar la API key por esa red.',
-                              'I confirm this remote host uses unencrypted HTTP and accept sending the API key over that network.',
-                              'Ich bestätige, dass dieser entfernte Host unverschlüsseltes HTTP nutzt, und akzeptiere, den API-Schlüssel über dieses Netzwerk zu senden.'
-                            )}
-                          </span>
-                        </label>
-                      )}
-
                     {provider.id === 'custom' && (
                       <p className="pt-1 text-[9px] leading-snug text-[var(--nc-text)] opacity-70">
                         {t(
@@ -1353,19 +1185,6 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                         <span className={`text-[10px] ${result.ok ? 'text-emerald-300' : 'text-red-300'}`}>{result.message}</span>
                       )}
                     </div>
-
-                    {provider.id === 'strata-local' && (
-                      <StrataRuntimePanel
-                        runtime={runtimeData}
-                        defaultModel={provider.defaultModel}
-                        baseUrl={draft.baseUrl || provider.host || STRATA_LOCAL_DEFAULT_BASE_URL}
-                        apiKey={draft.apiKey}
-                        busy={runtimeBusy === provider.id}
-                        onCheck={() => void loadStrataRuntime(provider)}
-                        t={t}
-                      />
-                    )}
-
                     {provider.allModels.length > 0 && (
                       <div className="pt-1">
                         <div className="flex items-center justify-between gap-2 text-[9px] text-[var(--nc-text)]">
