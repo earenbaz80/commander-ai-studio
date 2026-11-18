@@ -114,7 +114,15 @@ import {
   LocalLlamaRuntimeManager,
   findLlamaBinaries,
   localModelPath,
+  type LocalRuntimeTuning,
 } from './src/lib/localLlamaRuntime';
+import { readGgufProfile } from './src/lib/ggufProfile';
+import {
+  detectLocalHardware,
+  mergeProposedTuning,
+  proposeLocalRuntimeTuning,
+} from './src/lib/localRuntimeProposal';
+import { readLocalRuntimeTuning, writeLocalRuntimeTuning } from './src/lib/localRuntimeSettings';
 
 dotenv.config();
 
@@ -3586,6 +3594,33 @@ const localLlamaRuntime = new LocalLlamaRuntimeManager({
   findBinaries: () => findLlamaBinaries(runtimeDir),
 });
 
+/**
+ * Ajustes del motor nativo que llegan de la UI o del turno del agente.
+ * Se recuerdan para que el arranque automático desde el selector conserve la
+ * configuración con la que se cargó un modelo grande (expertos MoE en RAM,
+ * caché KV cuantizada) y se persisten en .commander/local-runtime.json para que
+ * un reinicio de Commander no vuelva en silencio a los valores por defecto.
+ */
+let lastLocalRuntimeTuning: LocalRuntimeTuning = readLocalRuntimeTuning();
+
+function localRuntimeTuningFrom(body: any): LocalRuntimeTuning {
+  const moe = body?.cpuMoeLayers;
+  const text = (value: unknown) => (typeof value === 'string' ? value : undefined);
+  const cacheTypeK = text(body?.cacheTypeK);
+  const cacheTypeV = text(body?.cacheTypeV);
+  const tensorSplit = text(body?.tensorSplit);
+  return {
+    ...(typeof body?.jinja === 'boolean' ? { jinja: body.jinja } : {}),
+    ...(typeof body?.flashAttention === 'boolean' ? { flashAttention: body.flashAttention } : {}),
+    ...(moe === undefined || moe === null || String(moe).trim() === ''
+      ? {}
+      : { cpuMoeLayers: Number(moe) }),
+    ...(cacheTypeK ? { cacheTypeK } : {}),
+    ...(cacheTypeV ? { cacheTypeV } : {}),
+    ...(tensorSplit ? { tensorSplit } : {}),
+  };
+}
+
 function detectLlamaBinary(): string | null {
   const binaries = findLlamaBinaries(runtimeDir);
   return binaries.server || binaries.cli || null;
@@ -3746,18 +3781,51 @@ app.get('/api/local-models/runtime', (_req, res) => {
   });
 });
 
+/**
+ * Ajustes propuestos para un GGUF: lee su cabecera (capas, expertos, ventana) y
+ * la memoria real de la máquina. El panel los muestra antes de arrancar, así que
+ * el usuario no tiene que adivinar el --n-cpu-moe.
+ */
+app.get('/api/local-models/runtime/proposal', (req, res) => {
+  try {
+    const modelPath = localModelPath(localModelsDir, req.query.model);
+    if (!modelPath || !fs.existsSync(modelPath)) {
+      return res.status(404).json({ success: false, error: 'Modelo GGUF no encontrado' });
+    }
+    const profile = readGgufProfile(modelPath);
+    const hardware = detectLocalHardware();
+    const proposal = proposeLocalRuntimeTuning({ profile, hardware });
+    return res.json({
+      success: true,
+      model: path.basename(modelPath),
+      profile,
+      hardware,
+      // Ajustes guardados: el panel los prefiere sobre la propuesta derivada.
+      saved: lastLocalRuntimeTuning,
+      ...proposal,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error?.message || 'No se pudo proponer los ajustes' });
+  }
+});
+
 app.post('/api/local-models/runtime/start', async (req, res) => {
   try {
     const modelPath = localModelPath(localModelsDir, req.body?.model);
     if (!modelPath || !fs.existsSync(modelPath)) {
       return res.status(404).json({ success: false, error: 'Modelo GGUF no encontrado' });
     }
+    const tuning = localRuntimeTuningFrom(req.body);
     const result = await localLlamaRuntime.start({
       modelPath,
       modelName: path.basename(modelPath),
       context: Number(req.body?.context) || 8_192,
       gpuLayers: req.body?.gpuLayers == null ? 99 : Number(req.body.gpuLayers),
+      ...tuning,
     });
+    if (result.success) {
+      lastLocalRuntimeTuning = writeLocalRuntimeTuning({ ...lastLocalRuntimeTuning, ...tuning });
+    }
     return res.status(result.success ? 200 : 503).json(result);
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error?.message || 'No se pudo arrancar el runtime' });
@@ -3835,11 +3903,20 @@ app.post('/api/local-models/generate', async (req, res) => {
       const current = localLlamaRuntime.getStatus();
       const wantedPath = path.resolve(modelPath);
       if (current.state !== 'running' || current.modelPath !== wantedPath) {
+        // Elegir un GGUF desde el selector no debe arrancar a ciegas: la
+        // propuesta del modelo y del hardware decide contexto, capas y, sobre
+        // todo, el reparto de expertos MoE. Los gustos guardados (jinja,
+        // flash-attn) mandan; lo específico del modelo lo decide el GGUF.
+        const proposed = proposeLocalRuntimeTuning({
+          profile: readGgufProfile(modelPath),
+          hardware: detectLocalHardware(),
+        }).proposed;
         const started = await localLlamaRuntime.start({
           modelPath,
           modelName: path.basename(modelPath),
-          context: Number(contextLength) || 8_192,
-          gpuLayers: gpuLayers == null ? 99 : Number(gpuLayers),
+          context: Number(contextLength) || proposed.context,
+          gpuLayers: gpuLayers == null ? proposed.gpuLayers : Number(gpuLayers),
+          ...mergeProposedTuning(lastLocalRuntimeTuning, proposed),
         });
         if (!started.success) {
           return res.status(503).json({
