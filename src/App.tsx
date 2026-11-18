@@ -984,7 +984,7 @@ export default function App() {
         return;
       }
 
-      if (!isHf && (selectedProvider === 'google' || selectedProvider === 'anthropic' || isStrataLocal)) {
+      if (!isHf && (selectedProvider === 'google' || selectedProvider === 'anthropic' || isStrataLocal || isLocal)) {
         // Streaming SSE en tiempo real (Google Gemini, Anthropic Claude y Strata local)
         const botMsgId = (Date.now() + 1).toString();
         currentBotMsgId = botMsgId;

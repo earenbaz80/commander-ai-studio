@@ -165,7 +165,14 @@ test('audit-watch: la prueba ejercita crear, comentar, cerrar y verificar', () =
 
 test('CI: el gate de producción va antes del lint y node:test antes de Vitest', () => {
   assert.match(ci, /push:\n\s+branches: \[main, develop\]/, 'push en main y develop');
-  assert.match(ci, /pull_request:\n\s+branches: \[main\]/, 'PRs contra main');
+  // El trigger de PR no filtra por rama base: con `branches: [main]` un PR
+  // apilado —cuya base es otra rama del stack— no veía ni un check, y el único
+  // CI que veía ese código era el del fondo del stack.
+  assert.match(ci, /pull_request:\n\s+types: \[/, 'el trigger de PR acepta cualquier base');
+  assert.ok(
+    !/pull_request:\n\s+branches:/.test(ci),
+    'el trigger de PR no vuelve a limitarse a una rama base'
+  );
 
   const pasos = pasosDe(jobDe(ci, 'lint-and-test'));
   // Comparación exacta del `run:`: `npm run test:node` contiene `npm run test`
@@ -213,6 +220,16 @@ test('CI: el gate audita producción, no la cadena de tooling', () => {
 test('CI: build depende del gate y e2e del build', () => {
   assert.match(jobDe(ci, 'build'), /needs: lint-and-test/, 'no se construye sin lint ni tests');
   assert.match(jobDe(ci, 'e2e'), /needs: build/, 'el e2e usa el build');
+  // Lo caro se paga una vez por stack, no una por nivel: build, package y e2e
+  // corren en los PRs contra `main` (y en `push`), no en los PRs apilados. Sin
+  // esta guarda, correr CI en cada nivel del stack multiplica minutos de runner.
+  for (const job of ['build', 'package', 'e2e']) {
+    assert.match(
+      jobDe(ci, job),
+      /if: github\.event_name != 'pull_request' \|\| github\.base_ref == 'main'/,
+      `\`${job}\` sólo corre en PRs contra \`main\``
+    );
+  }
 });
 
 test('CI: el job de lógica corre sólo el proyecto node y en paralelo', () => {

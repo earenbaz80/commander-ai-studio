@@ -46,11 +46,13 @@ import { CONTENT_SECURITY_POLICY } from './security';
 import { clearStrataLocalApiKey, getConfig, getConfigPath, getEnvProviderIds, getGlobalConfigPath, getProviderFileConfig, getProviderSecret, loadConfig, removeOpenAiCompatibleProvider, removeProviderConfig } from './src/config/index';
 import { PROVIDER_SPECS, NVIDIA_DEFAULT_MODEL, buildProviderList, customProviderSpecs, describeProvider, getAllProviderCatalog, getProviderCatalog } from './src/providers/registry';
 import { parseCompatibleModelId, slugifyProviderId } from './src/lib/openaiCompatibleProviders';
+import { filterModelIds } from './src/lib/providerFilters';
 import { probeLocalProvider } from './src/providers/localProbe';
 import {
   normalizeStrataLocalBaseUrl,
   probeStrataLocal,
   strataLocalEndpointInfo,
+  strataLocalModelId,
   strataLocalModelName,
   STRATA_LOCAL_PROVIDER_ID,
   type StrataLocalModelInfo,
@@ -114,7 +116,16 @@ import {
   LocalLlamaRuntimeManager,
   findLlamaBinaries,
   localModelPath,
+  type LocalRuntimeTuning,
 } from './src/lib/localLlamaRuntime';
+import { readGgufProfile } from './src/lib/ggufProfile';
+import {
+  detectLocalHardware,
+  mergeProposedTuning,
+  proposeLocalRuntimeTuning,
+} from './src/lib/localRuntimeProposal';
+import { scoreRuntimeAsset, selectCudartAsset } from './src/lib/localRuntimeRelease';
+import { readLocalRuntimeTuning, writeLocalRuntimeTuning } from './src/lib/localRuntimeSettings';
 
 dotenv.config();
 
@@ -1340,11 +1351,62 @@ app.get('/api/providers', async (req, res) => {
       ollama: process.env.OLLAMA_HOST || config?.ollama?.host || 'http://localhost:11434',
       lmstudio: await resolveLmstudioHost(req),
       custom: process.env.CUSTOM_BASE_URL || config?.custom?.baseUrl || '',
+      [STRATA_LOCAL_PROVIDER_ID]: resolveStrataLocalBaseUrl(),
     };
     providers = await Promise.all(
       providers.map(async (provider) => {
         const host = localHosts[provider.id];
         if (!host) return provider;
+        // Strata Serving puede exigir API key: la sonda genérica no la manda y
+        // marcaría como caído un host que sí responde.
+        if (provider.id === STRATA_LOCAL_PROVIDER_ID) {
+          const endpoint = strataLocalEndpointInfo(host);
+          const configuredKey = resolveStrataLocalApiKey();
+          const allowInsecure = strataLocalSettings().allowInsecure;
+          const apiKey = safeStrataLocalApiKey(host, configuredKey, allowInsecure);
+          const probe = await probeStrataLocal(host, apiKey, { timeoutMs: 1_500 });
+          // El gestor también enseña los modelos que existen ahora en el host,
+          // incluido el cargado que sólo aparezca en `/v1/status`.
+          const liveModels = probe.entries.map((entry) => ({
+            id: strataLocalModelId(entry.id),
+            name: entry.name || entry.id,
+            provider: STRATA_LOCAL_PROVIDER_ID,
+            ...(entry.contextWindow
+              ? { contextWindow: `${Math.round(entry.contextWindow / 1000)}K tokens` }
+              : {}),
+            ...(entry.supportsTools !== undefined ? { supportsTools: entry.supportsTools } : {}),
+            ...(entry.inputModalities?.includes('image') ? { supportsImage: true } : {}),
+          }));
+          const visibleModels = filterModelIds(liveModels, {
+            whitelist: provider.whitelist,
+            blacklist: provider.blacklist,
+          });
+          return {
+            ...provider,
+            ...(liveModels.length > 0
+              ? {
+                  models: visibleModels,
+                  allModels: liveModels,
+                  modelCount: visibleModels.length,
+                  totalModels: liveModels.length,
+                }
+              : {}),
+            host,
+            allowInsecure: allowInsecure === true,
+            ...(endpoint.insecureRemote && !apiKey && configuredKey ? { keyBlocked: true } : {}),
+            // El host responde: se ofrece como local aunque no haya fichero de
+            // config. Sin respuesta sigue «sin configurar», que era el defecto.
+            ...(probe.ok && !provider.configured ? { configured: true, source: 'local' } : {}),
+            reachable: probe.ok,
+            identity: probe.identity,
+            ...(probe.status === 'auth' ? { auth: true } : {}),
+            ...(probe.monitor ? { monitor: probe.monitor } : {}),
+            ...(typeof probe.loaded === 'boolean' ? { loaded: probe.loaded } : {}),
+            ...(probe.model ? { model: probe.model } : {}),
+            ...(endpoint.warning ? { warning: endpoint.warning } : {}),
+            ...(probe.ok ? {} : { probeError: probe.error || `HTTP ${probe.httpStatus ?? 0}` }),
+          };
+        }
         const probe = await probeLocalProvider(provider.id, host);
         return {
           ...provider,
@@ -1909,6 +1971,81 @@ app.post('/api/strata-local/compact', async (req, res) => {
     abort.cleanup();
   }
 });
+
+/**
+ * Modelos de Strata para el selector. Si el host está apagado se conserva la
+ * última detección, igual que con Ollama y LM Studio.
+ */
+async function strataLocalCatalog(): Promise<{
+  live: boolean;
+  baseUrl: string;
+  loaded?: boolean;
+  model?: string;
+  identity: 'verified' | 'unverified';
+  warning?: string;
+  entries: Array<{
+    id: string;
+    name: string;
+    provider: string;
+    context_window?: number;
+    context_length?: number;
+    supportsTools?: boolean;
+    supportsParallelTools?: boolean;
+    tags: string[];
+  }>;
+}> {
+  const baseUrl = resolveStrataLocalBaseUrl();
+  const endpoint = strataLocalEndpointInfo(baseUrl);
+  let liveModels: string[] = [];
+  let liveEntries: StrataLocalModelInfo[] = [];
+  let identity: 'verified' | 'unverified' = 'unverified';
+  let loaded: boolean | undefined;
+  let model: string | undefined;
+  try {
+    const probe = await probeStrataLocal(
+      baseUrl,
+      safeStrataLocalApiKey(baseUrl, resolveStrataLocalApiKey(), strataLocalSettings().allowInsecure),
+      { timeoutMs: 2_000 }
+    );
+    liveModels = probe.models;
+    liveEntries = probe.entries;
+    identity = probe.identity;
+    loaded = probe.loaded;
+    model = probe.model;
+    if (probe.ok) rememberLocalModels(STRATA_LOCAL_PROVIDER_ID, baseUrl, probe.models);
+  } catch {
+    /* se usa la caché */
+  }
+  const ids = liveModels.length > 0 ? liveModels : cachedLocalModels(STRATA_LOCAL_PROVIDER_ID, baseUrl).models;
+  const metadata = new Map(liveEntries.map((entry) => [entry.id, entry]));
+  return {
+    live: liveModels.length > 0,
+    baseUrl,
+    ...(typeof loaded === 'boolean' ? { loaded } : {}),
+    ...(model ? { model } : {}),
+    identity,
+    ...(endpoint.warning ? { warning: endpoint.warning } : {}),
+    entries: ids.map((id) => {
+      const info = metadata.get(id);
+      return {
+        id: strataLocalModelId(id),
+        name: info?.name || id,
+        provider: STRATA_LOCAL_PROVIDER_ID,
+        ...(info?.contextWindow
+          ? {
+              context_window: info.contextWindow,
+              context_length: info.contextWindow,
+            }
+          : {}),
+        ...(info?.supportsTools !== undefined ? { supportsTools: info.supportsTools } : {}),
+        ...(info?.supportsParallelTools !== undefined
+          ? { supportsParallelTools: info.supportsParallelTools }
+          : {}),
+        tags: liveModels.length > 0 ? ['local'] : ['local', 'guardado'],
+      };
+    }),
+  };
+}
 
 app.post('/api/strata-local/models', async (req, res) => {
   try {
@@ -3586,6 +3723,38 @@ const localLlamaRuntime = new LocalLlamaRuntimeManager({
   findBinaries: () => findLlamaBinaries(runtimeDir),
 });
 
+/**
+ * Ajustes del motor nativo que llegan de la UI o del turno del agente.
+ * Se recuerdan para que el arranque automático desde el selector conserve la
+ * configuración con la que se cargó un modelo grande (expertos MoE en RAM,
+ * caché KV cuantizada) y se persisten en .commander/local-runtime.json para que
+ * un reinicio de Commander no vuelva en silencio a los valores por defecto.
+ */
+let lastLocalRuntimeTuning: LocalRuntimeTuning = readLocalRuntimeTuning();
+
+function localRuntimeTuningFrom(body: any): LocalRuntimeTuning {
+  const moe = body?.cpuMoeLayers;
+  const text = (value: unknown) => (typeof value === 'string' ? value : undefined);
+  const cacheTypeK = text(body?.cacheTypeK);
+  const cacheTypeV = text(body?.cacheTypeV);
+  const tensorSplit = text(body?.tensorSplit);
+  const cacheReuse =
+    body?.cacheReuse === undefined || body?.cacheReuse === null || String(body.cacheReuse).trim() === ''
+      ? undefined
+      : Number(body.cacheReuse);
+  return {
+    ...(typeof body?.jinja === 'boolean' ? { jinja: body.jinja } : {}),
+    ...(typeof body?.flashAttention === 'boolean' ? { flashAttention: body.flashAttention } : {}),
+    ...(moe === undefined || moe === null || String(moe).trim() === ''
+      ? {}
+      : { cpuMoeLayers: Number(moe) }),
+    ...(cacheTypeK ? { cacheTypeK } : {}),
+    ...(cacheTypeV ? { cacheTypeV } : {}),
+    ...(tensorSplit ? { tensorSplit } : {}),
+    ...(cacheReuse === undefined ? {} : { cacheReuse }),
+  };
+}
+
 function detectLlamaBinary(): string | null {
   const binaries = findLlamaBinaries(runtimeDir);
   return binaries.server || binaries.cli || null;
@@ -3746,18 +3915,63 @@ app.get('/api/local-models/runtime', (_req, res) => {
   });
 });
 
+/**
+ * Ajustes propuestos para un GGUF: lee su cabecera (capas, expertos, ventana) y
+ * la memoria real de la máquina. El panel los muestra antes de arrancar, así que
+ * el usuario no tiene que adivinar el --n-cpu-moe.
+ */
+app.get('/api/local-models/runtime/proposal', (req, res) => {
+  try {
+    const modelPath = localModelPath(localModelsDir, req.query.model);
+    if (!modelPath || !fs.existsSync(modelPath)) {
+      return res.status(404).json({ success: false, error: 'Modelo GGUF no encontrado' });
+    }
+    const profile = readGgufProfile(modelPath);
+    const hardware = detectLocalHardware();
+    const proposal = proposeLocalRuntimeTuning({ profile, hardware });
+    return res.json({
+      success: true,
+      model: path.basename(modelPath),
+      profile,
+      hardware,
+      // Ajustes guardados: el panel los prefiere sobre la propuesta derivada.
+      saved: lastLocalRuntimeTuning,
+      ...proposal,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error?.message || 'No se pudo proponer los ajustes' });
+  }
+});
+
 app.post('/api/local-models/runtime/start', async (req, res) => {
   try {
     const modelPath = localModelPath(localModelsDir, req.body?.model);
     if (!modelPath || !fs.existsSync(modelPath)) {
       return res.status(404).json({ success: false, error: 'Modelo GGUF no encontrado' });
     }
+    const tuning = localRuntimeTuningFrom(req.body);
+    // Lo que la petición no manda se completa con los ajustes guardados: un
+    // arranque desde el panel no debe perder jinja, flash-attn ni el MoE.
+    const effectiveTuning = { ...lastLocalRuntimeTuning, ...tuning };
+    // Sin contexto ni capas en la petición se deriva del GGUF y del hardware:
+    // forzar 8K y todas las capas a la GPU recortaba la ventana del modelo.
+    const needsProposal = !Number(req.body?.context) || req.body?.gpuLayers == null;
+    const proposed = needsProposal
+      ? proposeLocalRuntimeTuning({
+          profile: readGgufProfile(modelPath),
+          hardware: detectLocalHardware(),
+        }).proposed
+      : null;
     const result = await localLlamaRuntime.start({
       modelPath,
       modelName: path.basename(modelPath),
-      context: Number(req.body?.context) || 8_192,
-      gpuLayers: req.body?.gpuLayers == null ? 99 : Number(req.body.gpuLayers),
+      context: Number(req.body?.context) || proposed?.context,
+      gpuLayers: req.body?.gpuLayers == null ? proposed?.gpuLayers : Number(req.body.gpuLayers),
+      ...effectiveTuning,
     });
+    if (result.success) {
+      lastLocalRuntimeTuning = writeLocalRuntimeTuning(effectiveTuning);
+    }
     return res.status(result.success ? 200 : 503).json(result);
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error?.message || 'No se pudo arrancar el runtime' });
@@ -3808,6 +4022,33 @@ app.post('/api/local-models/download', async (req, res) => {
   }
 });
 
+/**
+ * Deja el runtime sirviendo `modelPath`: reutiliza el proceso si ya tiene ese
+ * modelo y, si no, lo arranca con la propuesta del GGUF y el hardware más los
+ * ajustes guardados. Lo comparten el generate sin stream y el stream SSE.
+ */
+async function ensureLocalRuntimeFor(
+  modelPath: string,
+  options: { context?: unknown; gpuLayers?: unknown } = {}
+): Promise<{ success: boolean; error?: string }> {
+  const current = localLlamaRuntime.getStatus();
+  if (current.state === 'running' && current.modelPath === path.resolve(modelPath)) {
+    return { success: true };
+  }
+  const proposed = proposeLocalRuntimeTuning({
+    profile: readGgufProfile(modelPath),
+    hardware: detectLocalHardware(),
+  }).proposed;
+  const result = await localLlamaRuntime.start({
+    modelPath,
+    modelName: path.basename(modelPath),
+    context: Number(options.context) || proposed.context,
+    gpuLayers: options.gpuLayers == null ? proposed.gpuLayers : Number(options.gpuLayers),
+    ...mergeProposedTuning(lastLocalRuntimeTuning, proposed),
+  });
+  return { success: result.success, ...(result.error ? { error: result.error } : {}) };
+}
+
 app.post('/api/local-models/generate', async (req, res) => {
   try {
     const {
@@ -3832,21 +4073,12 @@ app.post('/api/local-models/generate', async (req, res) => {
     // El server es el camino normal: mantiene el modelo cargado entre turnos y
     // expone Chat Completions. Sin server, se conserva el CLI de una pasada.
     if (binaries.server) {
-      const current = localLlamaRuntime.getStatus();
-      const wantedPath = path.resolve(modelPath);
-      if (current.state !== 'running' || current.modelPath !== wantedPath) {
-        const started = await localLlamaRuntime.start({
-          modelPath,
-          modelName: path.basename(modelPath),
-          context: Number(contextLength) || 8_192,
-          gpuLayers: gpuLayers == null ? 99 : Number(gpuLayers),
+      const started = await ensureLocalRuntimeFor(modelPath, { context: contextLength, gpuLayers });
+      if (!started.success) {
+        return res.status(503).json({
+          success: false,
+          error: started.error || 'No se pudo arrancar el runtime de llama.cpp',
         });
-        if (!started.success) {
-          return res.status(503).json({
-            success: false,
-            error: started.error || 'No se pudo arrancar el runtime de llama.cpp',
-          });
-        }
       }
       const runtime = localLlamaRuntime.getStatus();
       if (!runtime.baseUrl) {
@@ -3868,6 +4100,9 @@ app.post('/api/local-models/generate', async (req, res) => {
           messages: history,
           temperature: Number(temperature),
           max_tokens: Number(maxTokens),
+          // Reaprovecha el prefijo del turno anterior en vez de
+          // recalcularlo: el agente manda casi el mismo historial cada vez.
+          cache_prompt: true,
           stream: false,
           ...(Array.isArray(tools) && tools.length > 0 ? { tools } : {}),
         }),
@@ -3901,13 +4136,18 @@ app.post('/api/local-models/generate', async (req, res) => {
       });
     }
 
+    // Sin llama-server, el CLI de una pasada también parte de la propuesta.
+    const proposed = proposeLocalRuntimeTuning({
+      profile: readGgufProfile(modelPath),
+      hardware: detectLocalHardware(),
+    }).proposed;
     const args = [
       '-m', modelPath,
       '-p', String(prompt || ''),
       '--temp', String(temperature),
       '-n', String(maxTokens),
-      '-c', String(Number(contextLength) || 8_192),
-      '-ngl', String(gpuLayers == null ? 0 : Number(gpuLayers)),
+      '-c', String(Number(contextLength) || proposed.context),
+      '-ngl', String(gpuLayers == null ? proposed.gpuLayers : Number(gpuLayers)),
     ];
     const proc = spawn(binaries.cli, args, { windowsHide: true });
     let stdout = '';
@@ -3951,6 +4191,208 @@ app.post('/api/local-models/generate', async (req, res) => {
   }
 });
 
+/**
+ * Streaming del runtime nativo: proxy del SSE de llama-server en el mismo sobre
+ * que el resto de la app (`chunk`, `done`, `error`), para que el chat pinte la
+ * respuesta mientras se genera en vez de esperar el texto completo.
+ */
+app.post('/api/local-models/stream', async (req, res) => {
+  const started = Date.now();
+  const abort = requestAbort(req, res);
+  try {
+    const body = req.body || {};
+    const modelPath = localModelPath(localModelsDir, body.model);
+    if (!modelPath || !fs.existsSync(modelPath)) {
+      return res.status(404).json({ success: false, error: 'model file not found' });
+    }
+    if (!findLlamaBinaries(runtimeDir).server) {
+      return res.status(503).json({
+        success: false,
+        error: 'llama.cpp runtime not found. Descarga el runtime de llama.cpp para usar streaming.',
+      });
+    }
+    const ready = await ensureLocalRuntimeFor(modelPath, {
+      context: body.contextLength,
+      gpuLayers: body.gpuLayers,
+    });
+    if (!ready.success) {
+      return res.status(503).json({
+        success: false,
+        error: ready.error || 'No se pudo arrancar el runtime de llama.cpp',
+      });
+    }
+    const runtime = localLlamaRuntime.getStatus();
+    if (!runtime.baseUrl) {
+      return res.status(503).json({ success: false, error: 'El runtime de llama.cpp no tiene endpoint' });
+    }
+
+    const history = Array.isArray(body.messages) && body.messages.length > 0
+      ? body.messages.map((message: any) => ({
+          role: String(message?.role || 'user'),
+          content: String(message?.content || ''),
+        }))
+      : [
+          ...(String(body.systemInstruction || '').trim()
+            ? [{ role: 'system', content: String(body.systemInstruction) }]
+            : []),
+          { role: 'user', content: String(body.prompt || '') },
+        ];
+
+    const upstream = await fetch(`${runtime.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream, application/json' },
+      body: JSON.stringify({
+        model: path.basename(modelPath),
+        messages: history,
+        temperature: Number(body.temperature ?? 0.7),
+        max_tokens: Number(body.maxTokens ?? 2048),
+        cache_prompt: true,
+        stream: true,
+        stream_options: { include_usage: true },
+        ...(Array.isArray(body.tools) && body.tools.length > 0 ? { tools: body.tools } : {}),
+      }),
+      signal: abort.signal,
+    });
+    if (!upstream.ok) {
+      const detail = await upstream.text().catch(() => '');
+      return res.status(502).json({
+        success: false,
+        error: `llama-server HTTP ${upstream.status}${detail ? `: ${detail.slice(0, 300)}` : ''}`,
+      });
+    }
+
+    res.status(200);
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+    const send = (payload: unknown) => {
+      if (res.writableEnded) return;
+      try {
+        res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      } catch {
+        /* el cliente cerró el socket */
+      }
+    };
+
+    const usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+    const toolCalls = new Map<number, { id?: string; name?: string; arguments?: string }>();
+    let text = '';
+    let finishReason: string | null = null;
+
+    const finish = () => {
+      const raw = [...toolCalls.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([index, call]) => ({
+          id: call.id || `local-call-${index}`,
+          type: 'function',
+          function: { name: call.name || '', arguments: call.arguments || '{}' },
+        }));
+      send({
+        type: 'done',
+        fullText: text,
+        finishReason,
+        ...(raw.length > 0 ? { toolCalls: normalizeOpenAIToolCalls(raw) } : {}),
+        metrics: {
+          promptTokens: usage.prompt_tokens,
+          responseTokens: usage.completion_tokens,
+          totalTokens: usage.total_tokens,
+          latencyMs: Date.now() - started,
+        },
+      });
+      if (!res.writableEnded) res.end();
+    };
+
+    // Un runtime sin stream devuelve el JSON completo: se convierte al mismo
+    // sobre para que la UI no se quede en blanco.
+    const contentType = String(upstream.headers.get('content-type') || '');
+    if (!contentType.includes('text/event-stream')) {
+      const data = await upstream.json().catch(() => null);
+      const message = data?.choices?.[0]?.message || {};
+      text = String(message.content || '');
+      finishReason = data?.choices?.[0]?.finish_reason || null;
+      if (data?.usage) Object.assign(usage, data.usage);
+      if (Array.isArray(message.tool_calls)) {
+        message.tool_calls.forEach((call: any, index: number) => {
+          toolCalls.set(index, {
+            id: call?.id,
+            name: call?.function?.name,
+            arguments: call?.function?.arguments,
+          });
+        });
+      }
+      if (text) send({ type: 'chunk', text });
+      finish();
+      return;
+    }
+
+    const reader = upstream.body?.getReader();
+    if (!reader) throw new Error('llama-server no devolvió cuerpo de streaming');
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line.startsWith('data:')) continue;
+        const raw = line.slice(5).trim();
+        if (!raw || raw === '[DONE]') continue;
+        let chunk: any = null;
+        try {
+          chunk = JSON.parse(raw);
+        } catch {
+          continue;
+        }
+        if (chunk?.usage) Object.assign(usage, chunk.usage);
+        const choice = chunk?.choices?.[0];
+        if (!choice) continue;
+        if (choice.finish_reason) finishReason = choice.finish_reason;
+        const delta = choice.delta || {};
+        if (typeof delta.content === 'string' && delta.content) {
+          text += delta.content;
+          send({ type: 'chunk', text: delta.content });
+        }
+        if (Array.isArray(delta.tool_calls)) {
+          for (const call of delta.tool_calls) {
+            // llama.cpp manda los argumentos en fragmentos por índice.
+            const index = Number.isInteger(call?.index) ? Number(call.index) : 0;
+            const previous = toolCalls.get(index) || {};
+            toolCalls.set(index, {
+              id: call?.id || previous.id,
+              name: call?.function?.name
+                ? `${previous.name || ''}${call.function.name}`
+                : previous.name,
+              arguments: `${previous.arguments || ''}${call?.function?.arguments || ''}`,
+            });
+          }
+        }
+      }
+    }
+    finish();
+  } catch (error: any) {
+    if (res.writableEnded) return;
+    const message = abort.signal.aborted
+      ? String((abort.signal.reason as any)?.message || abort.signal.reason || 'Generación cancelada')
+      : error?.message || 'Streaming del modelo local falló';
+    if (!res.headersSent) {
+      return res.status(502).json({ success: false, error: message });
+    }
+    try {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
+      res.end();
+    } catch {
+      /* socket ya cerrado */
+    }
+  } finally {
+    abort.cleanup();
+  }
+});
+
 // ==================== LLAMA RUNTIME DOWNLOAD (OPT-IN) ====================
 
 app.get('/api/local-models/runtime-release-info', async (_req, res) => {
@@ -3971,17 +4413,19 @@ app.get('/api/local-models/runtime-release-info', async (_req, res) => {
     }
     const releaseList = await relRes.json();
     const releases = Array.isArray(releaseList) ? releaseList : [];
-    // Preferir CPU evita bajar el runtime CUDA (cientos de MB) en equipos sin
-    // GPU; Vulkan es la siguiente opción razonable.
-    const assetScore = (asset: any): number => {
-      const name = String(asset?.name || '').toLowerCase();
-      let score = 0;
-      if (name.includes('cudart')) score -= 100;
-      if (name.includes('-cpu-')) score += 50;
-      if (name.includes('vulkan')) score += 20;
-      if (name.startsWith('llama-')) score += 10;
-      return score;
-    };
+    // Con GPU instalada conviene la build CUDA: con la de CPU el runtime
+    // arranca sin dispositivos y el `-ngl` de la propuesta no offloadea nada.
+    // Sin GPU se evita bajar cientos de MB de CUDA y se usa la de CPU.
+    const hardware = (() => {
+      try {
+        return detectLocalHardware();
+      } catch {
+        return { gpuCount: 0 } as { gpuCount: number; gpuName?: string };
+      }
+    })();
+    const hasGpu = hardware.gpuCount > 0;
+    const assetScore = (asset: any): number =>
+      scoreRuntimeAsset(String(asset?.name || ''), { hasGpu });
     let rel: any = null;
     let matched: any[] = [];
     let picked: any = null;
@@ -4014,6 +4458,14 @@ app.get('/api/local-models/runtime-release-info', async (_req, res) => {
         error: 'No hay binarios de llama.cpp para esta plataforma en los releases recientes',
       });
     }
+    const cudart = selectCudartAsset(matched, picked);
+    const variant = /cuda/i.test(picked.name)
+      ? 'cuda'
+      : /vulkan/i.test(picked.name)
+        ? 'vulkan'
+        : /cpu/i.test(picked.name)
+          ? 'cpu'
+          : 'otro';
     res.json({
       success: !!picked,
       platform: osKey,
@@ -4024,6 +4476,10 @@ app.get('/api/local-models/runtime-release-info', async (_req, res) => {
       runtimeDir,
       hasLlamaRuntime: !!detectLlamaBinary(),
       allMatches: matched.map((a: any) => a.name),
+      variant,
+      gpu: { detected: hasGpu, ...(hardware.gpuName ? { name: hardware.gpuName } : {}) },
+      cudartUrl: cudart?.browser_download_url || null,
+      cudartFilename: cudart?.name || null,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err?.message || 'Failed to query GitHub' });
@@ -4693,7 +5149,7 @@ async function fetchModelsDevCatalog(): Promise<ModelsDevModel[]> {
 
 app.get('/api/models/live', async (req, res) => {
   try {
-    const [modelsDevModels, ollamaModels, lmstudioResult, nvidiaModels] = await Promise.all([
+    const [modelsDevModels, ollamaModels, lmstudioResult, nvidiaModels, strataLocalResult] = await Promise.all([
       fetchModelsDevCatalog(),
       (async () => {
         try {
@@ -4745,6 +5201,7 @@ app.get('/api/models/live', async (req, res) => {
         };
       })(),
       fetchNvidiaLiveModels(),
+      strataLocalCatalog(),
     ]);
 
     // Proveedores añadidos por el usuario: sus modelos no están en models.dev,
@@ -4792,16 +5249,33 @@ app.get('/api/models/live', async (req, res) => {
         const split = splitGgufParts(record.filename);
         return !split || split.index === 1;
       })
-      .map((record) => ({
-        id: `local/${record.filename}`,
-        name: record.filename,
-        provider: 'local' as const,
-        contextWindow: '8K tokens',
-        contextLength: 8_192,
-        description: `GGUF local · ${record.quantization}`,
-        supportsTools: false,
-        tags: ['local', 'gguf'],
-      }));
+      .map((record) => {
+        // Ventana y tamaño reales salen de la cabecera del GGUF: publicar 8K
+        // fijos recortaba el contexto de modelos que declaran 32K o más.
+        const recordPath = localModelPath(localModelsDir, record.filename);
+        const profile = recordPath ? readGgufProfile(recordPath) : null;
+        const contextLength = profile?.contextLength || 8_192;
+        const sizeBytes = record.sizeBytes || profile?.tensorBytes || 0;
+        const sizeMb = record.sizeMb || Math.round(sizeBytes / (1024 * 1024));
+        return {
+          id: `local/${record.filename}`,
+          name: record.filename,
+          provider: 'local' as const,
+          contextLength,
+          context_window: contextLength,
+          contextWindow:
+            contextLength >= 1000
+              ? `${Math.floor(contextLength / 1000)}K tokens`
+              : `${contextLength} tokens`,
+          description: `GGUF local · ${record.quantization}${sizeMb ? ` · ${sizeMb} MB` : ''}`,
+          // llama.cpp sólo llama tools si el GGUF trae plantilla de chat y el
+          // motor arranca con `--jinja`.
+          supportsTools: Boolean(profile?.hasChatTemplate && lastLocalRuntimeTuning.jinja !== false),
+          sizeBytes,
+          sizeMb,
+          tags: ['local', 'gguf'],
+        };
+      });
 
     // Un servidor local apagado no vacía el selector: se listan los modelos de
     // la última detección guardada. Ollama tiene un solo host; LM Studio une
@@ -4848,6 +5322,14 @@ app.get('/api/models/live', async (req, res) => {
       })),
       ...ollamaList,
       ...lmstudioResult.entries,
+      ...strataLocalResult.entries.map((entry) => ({
+        ...entry,
+        name: entry.name || entry.id,
+        contextLength: entry.context_length,
+        ...(entry.context_window
+          ? { contextWindow: `${Math.round(entry.context_window / 1000)}K tokens` }
+          : {}),
+      })),
       ...nvidiaModels,
       ...nativeLocalEntries,
       ...compatibleEntries,
@@ -4869,6 +5351,15 @@ app.get('/api/models/live', async (req, res) => {
         configured: st.configured,
         source: st.source,
         name: spec?.name || p,
+        ...(p === STRATA_LOCAL_PROVIDER_ID
+          ? {
+              ...(typeof strataLocalResult.loaded === 'boolean' ? { loaded: strataLocalResult.loaded } : {}),
+              ...(strataLocalResult.model ? { model: strataLocalResult.model } : {}),
+              identity: strataLocalResult.identity,
+              cached: !strataLocalResult.live,
+              ...(strataLocalResult.warning ? { warning: strataLocalResult.warning } : {}),
+            }
+          : {}),
       };
     }
     // Los proveedores sin entradas en el catálogo (HF, custom, freebuff) deben
@@ -4881,6 +5372,19 @@ app.get('/api/models/live', async (req, res) => {
     providerStatus.ollama = { available: ollamaList.length > 0, count: ollamaList.length, configured: true, source: 'local', ...(ollamaLive ? {} : { cached: true }) };
     providerStatus.lmstudio = { available: lmstudioResult.entries.length > 0, count: lmstudioResult.entries.length, configured: true, source: 'local', name: 'LM Studio', ...(lmstudioLive ? {} : { cached: true }) };
     providerStatus.local = { available: nativeLocalEntries.length > 0, count: nativeLocalEntries.length, configured: true, source: 'local', name: 'Commander (GGUF)' };
+    providerStatus[STRATA_LOCAL_PROVIDER_ID] = {
+      ...(providerStatus[STRATA_LOCAL_PROVIDER_ID] || {}),
+      available: strataLocalResult.entries.length > 0,
+      count: strataLocalResult.entries.length,
+      configured: true,
+      source: 'local',
+      name: 'Strata (local)',
+      identity: strataLocalResult.identity,
+      ...(typeof strataLocalResult.loaded === 'boolean' ? { loaded: strataLocalResult.loaded } : {}),
+      ...(strataLocalResult.model ? { model: strataLocalResult.model } : {}),
+      ...(strataLocalResult.entries.length > 0 && !strataLocalResult.live ? { cached: true } : {}),
+      ...(strataLocalResult.warning ? { warning: strataLocalResult.warning } : {}),
+    };
     // Los añadidos están configurados por definición: existen porque se guardó
     // su URL base, aunque ahora no respondan.
     for (const spec of addedProviders) {

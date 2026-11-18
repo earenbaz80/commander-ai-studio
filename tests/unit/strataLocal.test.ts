@@ -11,6 +11,9 @@ import {
   strataLocalModelName,
   STRATA_LOCAL_DEFAULT_BASE_URL,
 } from '../../src/lib/strataLocal';
+import { PROVIDER_SPECS, describeProvider } from '../../src/providers/registry';
+import { detectProvider, resolveEndpoint } from '../../src/lib/aiProviders';
+import { resolveChatRoute } from '../../src/lib/aiRouting';
 
 /**
  * Strata local comparte el contrato OpenAI-compatible, pero tiene su propio id
@@ -38,6 +41,28 @@ afterEach(async () => {
       (server) => new Promise<void>((resolve) => server.close(() => resolve()))
     )
   );
+});
+
+describe('registro y enrutado de Strata local', () => {
+  test('vuelve al gestor con host, clave y modelo por defecto', () => {
+    const spec = PROVIDER_SPECS.find((item) => item.id === 'strata-local');
+    expect(spec).toBeTruthy();
+    expect(spec!.fields.map((field) => field.name)).toEqual(['baseUrl', 'apiKey', 'defaultModel']);
+  });
+
+  test('no se anuncia configurado sin host ni credenciales', () => {
+    const spec = PROVIDER_SPECS.find((item) => item.id === 'strata-local')!;
+    expect(describeProvider(spec, {}, new Set())).toEqual({ configured: false, missing: [], source: 'none' });
+    expect(
+      describeProvider(spec, { 'strata-local': { baseUrl: 'http://127.0.0.1:8080/v1' } }, new Set())
+    ).toMatchObject({ configured: true, source: 'file' });
+  });
+
+  test('el modelo detectado se resuelve a la ruta de Strata, no a HuggingFace', () => {
+    expect(detectProvider('strata-local/modelo-local', 'google', [])).toBe('strata-local');
+    expect(resolveEndpoint('strata-local/modelo-local')).toBe('/api/strata-local/generate');
+    expect(resolveChatRoute({ modelId: 'strata-local/modelo-local' }).endpoint).toBe('/api/strata-local/generate');
+  });
 });
 
 describe('helpers de Strata local', () => {

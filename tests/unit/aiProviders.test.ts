@@ -61,6 +61,7 @@ describe('resolveEndpoint', () => {
     expect(resolveEndpoint('openai/gpt-4.1')).toBe('/api/openai/generate');
     expect(resolveEndpoint('nvidia/meta/llama-3.3-70b-instruct')).toBe('/api/nvidia/generate');
     expect(resolveEndpoint('local/modelo.gguf')).toBe('/api/local-models/generate');
+    expect(resolveStreamEndpoint('local/modelo.gguf')).toBe('/api/local-models/stream');
     expect(resolveEndpoint('strata/gpt-5.4')).toBe('/api/strata/generate');
     expect(resolveEndpoint('org/repo')).toBe('/api/hf/generate');
   });

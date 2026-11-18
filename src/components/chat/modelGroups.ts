@@ -46,6 +46,7 @@ export const MODEL_GROUPS: ModelGroup[] = [
   { id: 'google', label: 'Google Gemini', models: GEMINI_MODELS },
   { id: 'huggingface', label: 'HuggingFace (Local)', models: HUGGINGFACE_MODELS },
   { id: 'ollama', label: 'Ollama (Local)', models: OLLAMA_MODELS },
+  { id: 'strata-local', label: 'Strata (local)', models: [] },
   { id: 'local', label: 'Commander (GGUF)', models: [] },
   { id: 'openrouter', label: 'OpenRouter', models: OPENROUTER_FREE_MODELS },
   { id: 'custom', label: 'OpenAI-compatible', models: CUSTOM_MODELS },
@@ -58,7 +59,7 @@ export const providerLabel = (id: string): string =>
   id;
 
 /** Orden estable de los grupos; los proveedores nuevos caen al final. */
-const GROUP_ORDER = ['google', 'openai', 'anthropic', 'nvidia', 'xai', 'openrouter', 'huggingface', 'ollama', 'lmstudio', 'custom', 'freebuff', 'local'];
+const GROUP_ORDER = ['google', 'openai', 'anthropic', 'nvidia', 'xai', 'openrouter', 'huggingface', 'ollama', 'lmstudio', 'strata-local', 'custom', 'freebuff', 'local'];
 
 /**
  * Agrupa cualquier catálogo (incluido el vivo) por proveedor.
@@ -100,4 +101,4 @@ export const findModel = (id: string): AIModel | undefined =>
 
 /** `true` si el id corresponde a un servidor local (Ollama / LM Studio). */
 export const isLocalModelId = (id: string): boolean =>
-  id.startsWith('ollama/') || id.startsWith('lmstudio/');
+  id.startsWith('ollama/') || id.startsWith('lmstudio/') || id.startsWith('strata-local/');

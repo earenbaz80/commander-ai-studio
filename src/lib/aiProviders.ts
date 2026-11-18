@@ -139,7 +139,8 @@ export const PROVIDER_CONFIGS: Record<ProviderType, ProviderConfig> = {
   local: {
     id: 'local',
     name: 'Local (GGUF via llama.cpp)',
-    supportsStreaming: false,
+    supportsStreaming: true,
+    streamEndpoint: '/api/local-models/stream',
     supportsTools: false,
     supportsThinking: true,
     defaultEndpoint: '/api/local-models/generate',
@@ -253,7 +254,7 @@ export function resolveEndpoint(
   const { streaming = false, fallback = 'google' } = opts;
   const provider = detectProvider(modelId, fallback, []);
   const config = PROVIDER_CONFIGS[provider];
-  // Sólo google y anthropic exponen stream; el resto usa su endpoint normal.
+  // Sólo google, anthropic y los modelos locales exponen stream propio.
   if (streaming && config.streamEndpoint) return config.streamEndpoint;
   return config.defaultEndpoint;
 }
