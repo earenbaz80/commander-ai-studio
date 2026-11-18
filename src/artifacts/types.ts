@@ -41,6 +41,42 @@ export interface ArtifactComment {
   resolved: boolean;
 }
 
+/** Entrada de consola capturada por la sesión de Playwright. */
+export interface RecordingConsoleEntry {
+  /** Milisegundos desde el primer frame de la grabación. */
+  atMs: number;
+  /** Marca de tiempo original del servidor. */
+  ts: number;
+  type: string;
+  text: string;
+  url?: string;
+}
+
+/** Petición HTTP o fallo de red, con la misma línea de tiempo que los frames. */
+export interface RecordingNetworkEntry {
+  atMs: number;
+  ts: number;
+  kind: 'http' | 'failed';
+  method: string;
+  url: string;
+  status?: number;
+  error?: string;
+  durationMs: number;
+  resourceType?: string;
+}
+
+/**
+ * Consola y red de una grabación.
+ *
+ * `omitted` cuenta entradas descartadas por los topes del productor: el visor
+ * puede decirlo en vez de fingir que el log está completo.
+ */
+export interface RecordingLogs {
+  console: RecordingConsoleEntry[];
+  network: RecordingNetworkEntry[];
+  omitted?: { console: number; network: number };
+}
+
 export interface BrowserRecordingArtifact {
   id: string;
   kind: 'browser-recording';
@@ -52,6 +88,8 @@ export interface BrowserRecordingArtifact {
   viewport: { width: number; height: number };
   frames: ArtifactFrame[];
   comments: ArtifactComment[];
+  /** Consola/red de la sesión durante la grabación; ausente en artifacts viejos. */
+  logs?: RecordingLogs;
 }
 
 /** Resultado global de la corrida que produjo el artifact. */
@@ -65,6 +103,60 @@ export interface VerificationDecision {
   reason?: string;
 }
 
+/** Revisión de un hunk: pendiente hasta que el usuario decide. */
+export type VerificationHunkDecision = 'pending' | 'accepted' | 'rejected';
+
+/** Quién revisó el hunk; la app local sólo produce `user`. */
+export type VerificationHunkReviewer = 'user' | 'agent' | 'policy';
+
+/** Aprobación que aplicó el hunk (auditoría de "quién aplicó qué"). */
+export interface VerificationHunkAttribution {
+  hunkId: string;
+  stepId: string;
+  tool: string;
+  decision: ApprovalDecision;
+}
+
+/** Decisión guardada por el usuario sobre un hunk concreto. */
+export interface VerificationHunkReview {
+  hunkId: string;
+  decision: Exclude<VerificationHunkDecision, 'pending'>;
+  reviewedBy: VerificationHunkReviewer;
+  reviewedAt: number;
+  note?: string;
+}
+
+/**
+ * Hunk parseado del patch. No se guarda en el artifact: se deriva del patch
+ * para no duplicar texto, y las decisiones viven en `VerificationDiff.reviews`.
+ */
+export interface VerificationHunk {
+  /** Id estable derivado del archivo y del rango (`src/app.ts@12`). */
+  id: string;
+  file: string;
+  /** Cabecera `@@ -a,b +c,d @@` tal como vino en el patch. */
+  header: string;
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  /** Líneas del hunk, incluida su cabecera. */
+  lines: string[];
+  /** Índice de la cabecera dentro del patch (0-based). */
+  headerLine: number;
+  /** Índice exclusivo del final del hunk dentro del patch. */
+  endLine: number;
+  decision: VerificationHunkDecision;
+  reviewedBy?: VerificationHunkReviewer;
+  reviewedAt?: number;
+  note?: string;
+  appliedBy?: {
+    stepId: string;
+    tool: string;
+    decision: ApprovalDecision;
+  };
+}
+
 /** Diff revisable; el patch completo se conserva para exportarlo. */
 export interface VerificationDiff {
   /** Patch unificado original de la aprobación; el informe no lo regenera. */
@@ -72,6 +164,10 @@ export interface VerificationDiff {
   files: string[];
   base?: string;
   head?: string;
+  /** Revisiones por hunk; el patch no se reescribe al revisar. */
+  reviews?: VerificationHunkReview[];
+  /** Qué paso y tool aplicaron cada hunk. */
+  attributions?: VerificationHunkAttribution[];
 }
 
 export type VerificationTestStatus = 'passed' | 'failed' | 'not-run';

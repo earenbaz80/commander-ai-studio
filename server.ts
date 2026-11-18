@@ -58,6 +58,7 @@ import {
   type StrataLocalModelInfo,
 } from './src/lib/strataLocal';
 import { mergeStrataToolCallFragment, normalizeStrataToolCalls } from './src/lib/strataTools';
+import { generateStrataChat, streamStrataChat, STRATA_DEFAULT_MODEL } from './src/providers/strata';
 import { StrataLifecycleManager } from './src/lib/strataLifecycle';
 import { deleteStrataApiKey, getStrataApiKey, normalizeStrataApiKey, saveStrataApiKey } from './src/lib/strataKeyStore';
 import { redactStrataSecret } from './src/lib/strataRedaction';
@@ -5575,6 +5576,127 @@ app.post('/api/strata-local/generate', async (req, res) => {
     strataTools: { supportsParallelTools: preflight.info?.supportsParallelTools },
     fetcher: (input, init) => fetchStrataWithRetry(fetch, input, init ?? {}, { secret: apiKey }),
   });
+});
+
+/**
+ * Strata alojado (Kronisys). Clave: cuerpo → STRATA_API_KEY → panel. Base:
+ * cuerpo → panel; el adaptador aplica STRATA_BASE_URL y el host público. Sin
+ * clave se responde 400 sin tocar la red.
+ */
+/**
+ * Resolución compartida de clave, base y modelo de Strata alojado para que
+ * `/api/strata/generate` y `/api/strata/stream` no puedan divergir.
+ * Clave: cuerpo → STRATA_API_KEY → panel; base: cuerpo → panel; modelo:
+ * cuerpo → panel → STRATA_DEFAULT_MODEL. `apiKey` nulo ⇒ 400 sin tocar la red.
+ */
+function resolveStrataCloudCredentials(req: any): {
+  apiKey: string | null;
+  baseUrl?: string;
+  model: string;
+} {
+  const body = req.body || {};
+  return {
+    apiKey:
+      (typeof body.apiKey === 'string' ? body.apiKey.trim() : '') ||
+      process.env.STRATA_API_KEY ||
+      getProviderSecret('strata', 'apiKey') ||
+      null,
+    baseUrl: body.baseUrl || getProviderSecret('strata', 'baseUrl'),
+    model: body.model || getProviderSecret('strata', 'defaultModel') || STRATA_DEFAULT_MODEL,
+  };
+}
+
+app.post('/api/strata/generate', async (req, res) => {
+  const { apiKey, baseUrl, model } = resolveStrataCloudCredentials(req);
+  if (!apiKey) {
+    return res.status(400).json({ success: false, error: 'STRATA_API_KEY requerida' });
+  }
+  const body = req.body || {};
+  try {
+    const result = await generateStrataChat({
+      apiKey,
+      baseUrl,
+      model,
+      prompt: body.prompt,
+      messages: body.messages,
+      systemInstruction: body.systemInstruction,
+    });
+    return res.json({ success: true, text: result.content, model: result.model });
+  } catch (error) {
+    return res.status(502).json({ success: false, error: (error as Error).message });
+  }
+});
+
+/**
+ * Streaming de Strata cloud con el mismo sobre SSE que strata-local: `chunk`,
+ * `done` y `error`. Si el host no expone stream, el adaptador entrega el texto
+ * completo como un único `chunk`.
+ */
+app.post('/api/strata/stream', async (req, res) => {
+  const started = Date.now();
+  const abort = requestAbort(req, res);
+  try {
+    const { apiKey, baseUrl, model } = resolveStrataCloudCredentials(req);
+    const body = req.body || {};
+    if (!apiKey) {
+      return res.status(400).json({ success: false, error: 'STRATA_API_KEY requerida' });
+    }
+
+    res.status(200);
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+    const send = (payload: unknown) => {
+      if (res.writableEnded) return;
+      try {
+        res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      } catch {
+        /* el cliente cerró el socket */
+      }
+    };
+
+    let fullText = '';
+    let streamDone: { model: string; usage?: unknown } | null = null;
+    for await (const event of streamStrataChat({
+      apiKey,
+      baseUrl,
+      model,
+      prompt: body.prompt,
+      messages: body.messages,
+      systemInstruction: body.systemInstruction,
+      signal: abort.signal,
+    })) {
+      if (event.type === 'chunk') {
+        fullText += event.text;
+        send({ type: 'chunk', text: event.text });
+      } else {
+        streamDone = event;
+      }
+    }
+    // Un solo `done`, al agotar el stream: aunque el adaptador emitiera más de
+    // uno, el cliente no puede recibirlo dos veces.
+    send({
+      type: 'done',
+      fullText,
+      model: streamDone?.model ?? model,
+      usage: streamDone?.usage ?? null,
+      metrics: { latencyMs: Date.now() - started },
+    });
+    if (!res.writableEnded) res.end();
+  } catch (error) {
+    const message = abort.signal.aborted ? 'Generación cancelada' : (error as Error).message;
+    if (!res.headersSent) return res.status(502).json({ success: false, error: message });
+    try {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
+      res.end();
+    } catch {
+      /* socket cerrado */
+    }
+  } finally {
+    abort.cleanup();
+  }
 });
 
 /**
