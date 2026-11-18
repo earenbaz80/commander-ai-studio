@@ -4,7 +4,7 @@
  *
  * El artifact de CI se construye fusionando dos blobs: el E2E del productor de
  * artifacts (`agentVerificationArtifact.spec.ts`, 2 casos) y la suite general
- * (81 ejecuciones). Si el merge pierde uno de los dos, el job puede terminar
+ * (90 ejecuciones). Si el merge pierde uno de los dos, el job puede terminar
  * verde con un artifact incompleto; este chequeo convierte esa pérdida en un
  * fallo antes de subir el reporte.
  *
@@ -53,17 +53,17 @@ const REPORT_PATH =
   process.env.PLAYWRIGHT_JSON_PATH ??
   path.join('playwright-report', 'results.json');
 
-const EXPECTED_TOTAL = 83;
+const EXPECTED_TOTAL = 92;
 const EXPECTED_STATS: Record<string, number> = {
-  expected: 72,
-  skipped: 11,
+  expected: 74,
+  skipped: 18,
   unexpected: 0,
   flaky: 0,
 };
 const EXPECTED_PROJECTS: Record<string, number> = {
-  chromium: 29,
-  firefox: 27,
-  'mobile-chrome': 27,
+  chromium: 32,
+  firefox: 30,
+  'mobile-chrome': 30,
 };
 const EXPECTED_FILES: Record<string, number> = {
   'agentVerificationArtifact.spec.ts': 2,
@@ -71,9 +71,10 @@ const EXPECTED_FILES: Record<string, number> = {
   'contrast.spec.ts': 9,
   'lmstudio-loading.spec.ts': 6,
   'localModelHubLayout.spec.ts': 6,
+  'recordingWebm.spec.ts': 9,
   'verificationArtifact.spec.ts': 3,
 };
-const EXPECTED_GENERAL = 81;
+const EXPECTED_GENERAL = 90;
 const AGENT_FILE = 'agentVerificationArtifact.spec.ts';
 const AGENT_TITLES = [
   'crea el artifact desde shell.run, lo abre y lo conserva al recargar',
