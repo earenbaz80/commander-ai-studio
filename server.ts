@@ -124,6 +124,7 @@ import {
   mergeProposedTuning,
   proposeLocalRuntimeTuning,
 } from './src/lib/localRuntimeProposal';
+import { scoreRuntimeAsset, selectCudartAsset } from './src/lib/localRuntimeRelease';
 import { readLocalRuntimeTuning, writeLocalRuntimeTuning } from './src/lib/localRuntimeSettings';
 
 dotenv.config();
@@ -4412,17 +4413,19 @@ app.get('/api/local-models/runtime-release-info', async (_req, res) => {
     }
     const releaseList = await relRes.json();
     const releases = Array.isArray(releaseList) ? releaseList : [];
-    // Preferir CPU evita bajar el runtime CUDA (cientos de MB) en equipos sin
-    // GPU; Vulkan es la siguiente opción razonable.
-    const assetScore = (asset: any): number => {
-      const name = String(asset?.name || '').toLowerCase();
-      let score = 0;
-      if (name.includes('cudart')) score -= 100;
-      if (name.includes('-cpu-')) score += 50;
-      if (name.includes('vulkan')) score += 20;
-      if (name.startsWith('llama-')) score += 10;
-      return score;
-    };
+    // Con GPU instalada conviene la build CUDA: con la de CPU el runtime
+    // arranca sin dispositivos y el `-ngl` de la propuesta no offloadea nada.
+    // Sin GPU se evita bajar cientos de MB de CUDA y se usa la de CPU.
+    const hardware = (() => {
+      try {
+        return detectLocalHardware();
+      } catch {
+        return { gpuCount: 0 } as { gpuCount: number; gpuName?: string };
+      }
+    })();
+    const hasGpu = hardware.gpuCount > 0;
+    const assetScore = (asset: any): number =>
+      scoreRuntimeAsset(String(asset?.name || ''), { hasGpu });
     let rel: any = null;
     let matched: any[] = [];
     let picked: any = null;
@@ -4455,6 +4458,14 @@ app.get('/api/local-models/runtime-release-info', async (_req, res) => {
         error: 'No hay binarios de llama.cpp para esta plataforma en los releases recientes',
       });
     }
+    const cudart = selectCudartAsset(matched, picked);
+    const variant = /cuda/i.test(picked.name)
+      ? 'cuda'
+      : /vulkan/i.test(picked.name)
+        ? 'vulkan'
+        : /cpu/i.test(picked.name)
+          ? 'cpu'
+          : 'otro';
     res.json({
       success: !!picked,
       platform: osKey,
@@ -4465,6 +4476,10 @@ app.get('/api/local-models/runtime-release-info', async (_req, res) => {
       runtimeDir,
       hasLlamaRuntime: !!detectLlamaBinary(),
       allMatches: matched.map((a: any) => a.name),
+      variant,
+      gpu: { detected: hasGpu, ...(hardware.gpuName ? { name: hardware.gpuName } : {}) },
+      cudartUrl: cudart?.browser_download_url || null,
+      cudartFilename: cudart?.name || null,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err?.message || 'Failed to query GitHub' });
