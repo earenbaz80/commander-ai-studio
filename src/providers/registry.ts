@@ -111,6 +111,9 @@ export const PROVIDER_SPECS: ProviderSpec[] = [
     ],
   },
   {
+    // Strata Serving en loopback. Comparte el contrato OpenAI-compatible con
+    // `strata` (cloud), pero es otro host: se sondea aparte para no mezclar sus
+    // modelos ni su API key con los del proveedor alojado.
     id: STRATA_LOCAL_PROVIDER_ID,
     name: STRATA_LOCAL_PROVIDER_NAME,
     env: ['STRATA_LOCAL_BASE_URL', 'STRATA_PORT', 'STRATA_API_KEY', 'STRATA_LOCAL_API_KEY'],
