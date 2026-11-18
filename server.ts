@@ -4058,6 +4058,8 @@ async function ensureLocalRuntimeFor(
 }
 
 app.post('/api/local-models/generate', async (req, res) => {
+  // Sin señal, un cliente que abandona deja generando y ocupa el slot único.
+  const abort = requestAbort(req, res);
   try {
     const {
       model,
@@ -4113,7 +4115,7 @@ app.post('/api/local-models/generate', async (req, res) => {
         cache_prompt: true,
         stream: false,
         ...(Array.isArray(tools) && tools.length > 0 ? { tools } : {}),
-      });
+      }, { signal: abort.signal });
       if (attempt.trimmed) {
         console.warn(
           `[local-models] prompt recortado por exceso de contexto: ${attempt.droppedMessages} turnos fuera`
@@ -4200,7 +4202,11 @@ app.post('/api/local-models/generate', async (req, res) => {
       res.status(500).json({ success: false, error: err.message });
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || 'generate failed' });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, error: err?.message || 'generate failed' });
+    }
+  } finally {
+    abort.cleanup();
   }
 });
 
