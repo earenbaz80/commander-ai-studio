@@ -14,6 +14,7 @@ import { CUSTOM_MODELS, GEMINI_MODELS, HUGGINGFACE_MODELS, OLLAMA_MODELS } from 
 import { filterModelIds, isProviderEnabled, modelFilterOf } from '../lib/providerFilters';
 import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
 import { compatibleModelId } from '../lib/openaiCompatibleProviders';
+import { STRATA_LOCAL_PROVIDER_ID, STRATA_LOCAL_PROVIDER_NAME } from '../lib/strataLocal';
 import { STRATA_DEFAULT_MODEL } from './strata';
 
 export const NVIDIA_DEFAULT_MODEL = 'nvidia/nvidia/nemotron-3.5-lightning-30b-a3b';
@@ -107,6 +108,16 @@ export const PROVIDER_SPECS: ProviderSpec[] = [
     fields: [
       { name: 'host', required: false, kind: 'url' },
       { name: 'localHost', required: false, kind: 'url' },
+    ],
+  },
+  {
+    id: STRATA_LOCAL_PROVIDER_ID,
+    name: STRATA_LOCAL_PROVIDER_NAME,
+    env: ['STRATA_LOCAL_BASE_URL', 'STRATA_PORT', 'STRATA_API_KEY', 'STRATA_LOCAL_API_KEY'],
+    fields: [
+      { name: 'baseUrl', required: false, kind: 'url' },
+      { name: 'apiKey', required: false, kind: 'secret' },
+      { name: 'defaultModel', required: false, kind: 'text' },
     ],
   },
   {
@@ -330,7 +341,7 @@ export function describeProvider(
   // que esté en el fichero marcaría como «sin configurar» algo que funciona.
   const missing = fromEnv ? [] : spec.fields.filter((f) => f.required && !filled(f.name)).map((f) => f.name);
   const hasAny = spec.fields.some((f) => filled(f.name));
-  const local = spec.id === 'ollama' || spec.id === 'lmstudio';
+  const local = spec.id === 'ollama' || spec.id === 'lmstudio' || spec.id === STRATA_LOCAL_PROVIDER_ID;
 
   return {
     configured: missing.length === 0 && (hasAny || fromEnv || local),

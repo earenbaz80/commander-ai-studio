@@ -1252,19 +1252,16 @@ test('Strata local detecta /v1/models y enruta su prefijo por el contrato OpenAI
     const vaultRaw = fs.readFileSync(vaultFile, 'utf8');
     assert.doesNotMatch(vaultRaw, new RegExp(secret));
 
-    // El gestor de proveedores también descubre el modelo que el host tiene
-    // cargado, no sólo el catálogo vacío de models.dev.
+    // El descubrimiento del modelo cargado (`model`/`loaded` en
+    // `/api/providers`) viaja con `strataLocalCatalog`, que este tramo retira
+    // y vuelve a sumar el del runtime local junto con su panel. Aquí queda la
+    // garantía de que el proveedor sigue registrado después de guardar su
+    // configuración.
     const providerList = await srv.request('GET', '/api/providers');
     const strataProvider = providerList.body.providers.find(
       (provider: any) => provider.id === 'strata-local'
     );
-    assert.equal(strataProvider?.model, 'strata-demo');
-    assert.equal(strataProvider?.loaded, true);
-    assert.deepEqual(
-      strataProvider?.allModels.map((model: any) => model.id),
-      ['strata-local/strata-demo']
-    );
-    assert.equal(strataProvider?.modelCount, 1);
+    assert.equal(strataProvider?.id, 'strata-local');
 
     // Al borrar el proveedor también se borra la credencial cifrada y no queda
     // una copia en la config global.
