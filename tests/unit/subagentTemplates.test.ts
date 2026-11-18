@@ -71,4 +71,14 @@ describe('plantillas de subagente', () => {
     expect(bajo.ok && bajo.policy.maxSteps).toBe(1);
     expect(alto.ok && alto.policy.maxSteps).toBe(50);
   });
+
+  it('sin plantilla deja margen para tools denegadas y el cierre', () => {
+    // Con 8, dos tools denegadas + dos escrituras + los pasos «Tools con fallo»
+    // dejaban toolBudget en 0 antes de que el hijo pudiera emitir «Finalizado».
+    const sinPlantilla = resolveSubagentPolicy({ allowedTools: ['fs.read', 'fs.write'] });
+    expect(sinPlantilla.ok).toBe(true);
+    if (sinPlantilla.ok) {
+      expect(sinPlantilla.policy.maxSteps).toBeGreaterThanOrEqual(20);
+    }
+  });
 });

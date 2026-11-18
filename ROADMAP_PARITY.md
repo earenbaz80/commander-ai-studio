@@ -1,6 +1,7 @@
 # Plan de paridad — Commander AI Studio vs. OpenCode, Antigravity y Freebuff
 
 > **Estado:** propuesta revisada contra el árbol 2.5.1 y la documentación oficial, 2026-11-07.
+> **Estado G1 (2026-11-16):** dogfooding ejecutado el 2026-11-12 (28 válidas, 17/28) y puerta **NO CERRADA** por el p95 de aprobación; rige la salida B de la [hoja de decisión](docs/parity/g1-approval-gate-decision.md). Recibo: [G1-DOGFOOD-2026-11-12](docs/parity/receipts/G1-DOGFOOD-2026-11-12.md).
 > **Horizonte:** 9–12 semanas de trabajo efectivo para el alcance comprometido (P0 + P1) con 2 personas; 12–16 semanas con una. Las estimaciones son de orden de magnitud (±30%), no fechas comprometidas.
 > **Documentos relacionados:** [ROADMAP_PLATFORM.md](ROADMAP_PLATFORM.md) (hosting, backend y conectores), [ROADMAP_UX.md](ROADMAP_UX.md) (UX) y [AGENTS.md](AGENTS.md) (reglas del repo).
 > **Numeración:** las fases F0–F6 de este documento son propias del plan de paridad; no renumeran ni sustituyen las fases de `ROADMAP_PLATFORM.md`.
@@ -45,10 +46,10 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 | Permisos, aprobaciones y undo | **V** | `permissionRules`, `AgentApprovalModal`, checkpoints y `undoStep`/`redo` | La política vive sobre todo en la UI de escritorio |
 | Sesiones | **V** | `src/agent/sessions.ts`, rutas de sesiones y threads del servidor | No hay reanudación desde CLI ni desde un cliente remoto |
 | Navegador y artifacts | **V/P** | `browserSession.ts`, `BrowserView.tsx`, `useBrowserRecording.ts`, `ArtifactsView.tsx` | Frames a ~1,4 fps; sin exportación, sin MP4 y sin verificación visual en Electron |
-| Publicación estática/SPA | **V local; remoto fuera de alcance** | `publisher.ts`, `deploy/vercelAdapter.ts`, tests de contrato | Sin proveedor verificado por decisión (2026-11-10); sin SSR/Workers |
+| Publicación estática/SPA | **V local; remoto en pausa hasta G3** | `publisher.ts`, `deploy/vercelAdapter.ts`, tests de contrato | Sin proveedor verificado; verificación en pausa hasta G3 (2026-11-10); sin SSR/Workers |
 | Backend multiinquilino | **V local** | `backend/tenantStore.ts`, `backend/routes.ts`, `tests/tenantBackend.test.ts` (6/6) | No aprovisiona bindings para apps publicadas |
 | Integraciones GitHub/Linear | **V GitHub; Linear fuera de alcance** | `src/integrations/`, rutas OAuth, vault AES-256-GCM | GitHub con OAuth real verificado (recibo §8); Linear no se configura |
-| GitHub Actions | **I** | `.github/workflows/commander-agent.yml`, `scripts/github-agent.ts` | No hay una corrida real en GitHub |
+| GitHub Actions | **V** | `.github/workflows/commander-agent.yml`, `scripts/github-agent.ts` | Corrida real en el repo de prueba con PR y comentario (recibo `F0-LOCAL-2026-11-10` §11) |
 | CLI | **P** | `bin/commander.ts`, `src/cli/repl.ts`, `src/cli/agentClient.ts`, `src/cli/tui.ts` | REPL multi-turno, `ask_user`, `--resume`/`--fork`, diff por hunk y paridad de permisos del escritorio (F1-07) operativos |
 | Extensión de VS Code | **P** | `vscode-extension/` | Scaffold: webview que lanza `npx commander agent`; no es un IDE integrado |
 | Skills/plugins/MCP | **V/P** | `skills/`, `pluginsRuntime.ts`, `src/agent/mcp.ts` | Hooks sólo `beforeTool`/`afterTool`; sin lifecycle completo ni marketplace propio |
@@ -123,7 +124,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 | ID | Hueco | Por qué importa | Fase | Prioridad |
 | --- | --- | --- | --- | --- |
-| P0-1 | Verdad externa de GitHub y Actions, y línea base de 24 corridas (Vercel y Linear fuera de alcance desde 2026-11-10) | Hoy hay código con mocks; afirmar paridad sin recibo erosiona la confianza | F0 | **P0** |
+| P0-1 | Verdad externa de GitHub y Actions, y línea base de 24 corridas (Vercel en pausa hasta G3; Linear fuera de alcance desde 2026-11-10) | Hoy hay código con mocks; afirmar paridad sin recibo erosiona la confianza | F0 | **P0** |
 | P0-2 | CLI/TUI de primera clase con approvals y `ask_user` | Es la superficie principal de OpenCode/Antigravity/Freebuff y hoy Commander sólo tiene una pasada | F1 | **P0** |
 | P0-3 | Sesión única y plan persistente entre escritorio y CLI | Sin continuidad, el usuario pierde el trabajo al cambiar de superficie | F1 | **P0** |
 | P1-0 | Artifact de verificación: plan + diff + tests + grabación | Es lo que hace revisable y confiable una corrida; Antigravity ya lo vende | F2 | **P1** |
@@ -142,33 +143,33 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 > **Estado 2026-11-07 (histórico) — bloqueada en G0.** En esta máquina no hay credenciales de Vercel, GitHub ni Linear (ni `.env`, ni variables de entorno, ni conectores OAuth), así que ninguna fila externa está verificada. Lo medido en local, lo que falta y el runbook para cerrarla están en [docs/parity/baseline-2026-11.md](docs/parity/baseline-2026-11.md).
 >
-> **Decisión de alcance 2026-11-10 — F0 sin Vercel ni Linear.** El usuario sólo dispone de cuenta de GitHub y decidió explícitamente no configurar Vercel ni Linear. Esas filas salen del alcance de F0 y quedan marcadas como **fuera de alcance por decisión**, no como pendientes. F0 se cierra con GitHub (OAuth real y Actions, ya verificados con recibos) y la línea base de 24 corridas. Recibos en [docs/parity/receipts/F0-LOCAL-2026-11-10.md](docs/parity/receipts/F0-LOCAL-2026-11-10.md); orden de ejecución en [docs/parity/runbook-g1-f0.md](docs/parity/runbook-g1-f0.md).
+> **Decisión de alcance 2026-11-10 — F0 sin Vercel ni Linear.** El usuario sólo dispone de cuenta de GitHub y decidió explícitamente no configurar Vercel ni Linear. **Vercel queda en pausa hasta G3** y **Linear fuera de alcance por decisión**; ninguna de las dos bloquea F0 ni se marca como pendiente. F0 se cierra con GitHub (OAuth real y Actions, ya ejecutados y verificados con recibos) y la línea base de 24 corridas. Recibos en [docs/parity/receipts/F0-LOCAL-2026-11-10.md](docs/parity/receipts/F0-LOCAL-2026-11-10.md); orden de ejecución en [docs/parity/runbook-g1-f0.md](docs/parity/runbook-g1-f0.md).
 >
-> **Cierre 2026-11-11 — F0/G0 cerrados.** La línea base de 24 corridas se completó con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`: 8/24, 0 timeouts y 0 inválidas. La paridad es baja, pero la muestra es válida y sirve de referencia para G1; el dogfooding sigue pendiente.
+> **Cierre 2026-11-11 — F0/G0 cerrados.** La línea base de 24 corridas se completó con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`: 8/24, 0 timeouts y 0 inválidas. La paridad es baja, pero la muestra es válida y sirve de referencia para G1; en esa fecha el dogfooding seguía pendiente.
 
 **Alcance**
 
 - Verificar con cuentas reales, dentro del alcance vigente:
   - OAuth de GitHub: conectar, leer un PR, comentar con aprobación, revocar y comprobar que el token no aparece en UI/logs;
   - GitHub Actions: `/commander` en modo plan y `--write` en un repo de prueba, con PR y comentario reales.
-- **Fuera de alcance por decisión (2026-11-10):** despliegue estático/SPA en Vercel y OAuth de Linear. No hay cuenta de ninguno de los dos y el usuario decidió no crearlas; no se simulan ni se declaran verificados. El hosting remoto se decide en G3, al abordar 5A.
+- **Vercel en pausa hasta G3; Linear fuera de alcance (2026-11-10):** despliegue estático/SPA en Vercel y OAuth de Linear. No hay cuenta de ninguno de los dos; Vercel se retoma al abordar 5A en G3 y Linear no se configura. No se simulan ni se declaran verificados.
 - Medir 10 tareas canónicas (bugfix, feature pequeña, refactor, tests, revisión, browser, deploy, permiso denegado, resume y subagente) con 2 corridas; 3 corridas en las 4 críticas. Registrar éxito, pasos, tokens/costo, aprobaciones, duración y fallos.
 - Revisar la matriz de este documento y marcar cada fila con evidencia o con “sin verificar”.
 - Corregir sólo los defectos que impidan la verificación; no abrir features nuevas.
 
 **Criterios de aceptación**
 
-- [—] ~~App Vite de ejemplo con URL real de preview y producción y content types correctos~~ **fuera de alcance por decisión (2026-11-10):** no hay cuenta de Vercel.
-- [—] ~~Rollback real en menos de 30 s y estado persistente tras reiniciar contra el proveedor~~ **fuera de alcance por decisión (2026-11-10).**
+- [—] ~~App Vite de ejemplo con URL real de preview y producción y content types correctos~~ **en pausa hasta G3 (2026-11-10):** no hay cuenta de Vercel.
+- [—] ~~Rollback real en menos de 30 s y estado persistente tras reiniciar contra el proveedor~~ **en pausa hasta G3 (2026-11-10).**
 - [x] GitHub completa OAuth real: lectura de un PR, comentario con aprobación y revocación que invalida el acceso (recibo `F0-LOCAL-2026-11-10` §8).
 - [x] GitHub Actions ejecuta `/commander` en modo plan y `--write` en el repo de prueba; el comentario y el PR son reales (recibo `F0-LOCAL-2026-11-10` §11).
 - [—] ~~Linear completa OAuth real~~ **fuera de alcance por decisión (2026-11-10):** no hay cuenta de Linear.
-- [x] Ningún token, `.env`, source map ni secreto aparece en artifacts, logs o respuestas (árbol, runs reales y PR revisados; no hay deployments de Vercel en alcance).
+- [x] Ningún token, `.env`, source map ni secreto aparece en artifacts, logs o respuestas (árbol, runs reales y PR revisados; no hay deployments de Vercel en este corte).
 - [x] Existe `docs/parity/baseline-2026-11.md` con metodología, resultados y limitaciones.
 - [x] `tsc --noEmit`, `vite build` y las pruebas focalizadas siguen en verde (recibo `F0-LOCAL-2026-11-10` §2).
 - [x] La línea base de 24 corridas (T1–T10) está medida y registrada con NVIDIA (8/24, 0 timeouts, 0 inválidas).
 
-**Puerta G0: CERRADA (2026-11-11).** GitHub está verificado (OAuth y Actions, con recibos) y la línea base de 24 corridas quedó registrada con NVIDIA (8/24, 0 timeouts, 0 inválidas). Vercel y Linear no forman parte de la puerta desde la decisión de alcance del 2026-11-10. G1 sigue abierta hasta el dogfooding, y 5A (hosting SSR/Workers) sigue necesitando una decisión de proveedor en G3.
+**Puerta G0: CERRADA (2026-11-11).** GitHub está verificado (OAuth y Actions, con recibos) y la línea base de 24 corridas quedó registrada con NVIDIA (8/24, 0 timeouts, 0 inválidas). **Vercel queda en pausa hasta G3** y **Linear fuera de alcance** desde la decisión del 2026-11-10; ninguna de las dos forma parte de la puerta. G1 sigue abierta: el dogfooding se ejecutó el 2026-11-12 y la casilla del p95 de aprobación quedó en rojo. 5A (hosting SSR/Workers) sigue necesitando una decisión de proveedor en G3.
 
 ---
 
@@ -201,9 +202,9 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 - [x] 10 casos adversariales de permisos (shell, escritura, red, MCP, subagente) no ejecutan nada fuera de política.
 - [x] Pruebas focalizadas del CLI/sesiones, `tsc --noEmit` y `vite build` en verde.
 
-**Puerta G1:** dogfooding de 5 días con el CLI como superficie principal. Si la latencia de aprobación o la tasa de éxito retrocede frente a F0, no se empieza F2 hasta corregirlo.
+**Puerta G1:** dogfooding de 5 días con el CLI como superficie principal. Si la latencia de aprobación o la tasa de éxito retrocede frente a F0, no se empieza F2 hasta corregirlo. Medido el 2026-11-12: la tasa no retrocede (17/28 frente a 8/24), pero el p95 de aprobación queda en rojo (76 982 ms, n=40).
 
-> **Estado G1 (2026-11-09): NO CERRADO.** Los 14 issues de F1 están cerrados y la suite focalizada pasa (70/70 CLI, 30/30 agente/sesiones), pero no se ejecutó el dogfooding de 5 días. F0/G0 está cerrado y la baseline NVIDIA de 24 corridas es válida (8/24, 0 timeouts), así que falta el dogfooding para comparar latencia/éxito. No se declara paridad. F2-01 (contrato/store), F2-02 (evidencia de tests en `shell.run`), F2-03 (diff y decisiones), F2-04 (informe local Markdown/HTML), F2-05 (visor de artifacts), F2-06 (enlace a la grabación) y F2-07 (E2E local y límites) avanzaron; F2-02 es aditivo sobre la tool y F2-03/F2-04 son módulos puros, así que ninguno cambia el bucle ni las aprobaciones; G1 sigue abierto y no se cierra hasta ejecutar el dogfooding.
+> **Estado G1 (2026-11-16): NO CERRADO, con el dogfooding ya ejecutado.** D1–D5 se corrieron el 2026-11-12 con modelo y `maxSteps` congelados: 24 corridas planificadas medidas, 28 válidas, **17 `passed` (60,7 %)** frente a 8/24 (33,3 %) de F0, 0 escrituras sin aprobación, 0 duplicadas en `--resume`, 0 secretos y 0 fallbacks ([recibo](docs/parity/receipts/G1-DOGFOOD-2026-11-12.md)). De las ocho reglas de la puerta, siete están en verde; la única en rojo es el **p95 de aprobación ≤ 15 151 ms**: 76 982 ms (n=40, operador automatizado), 65 056 ms en CAL2 (n=6) y 26 501 ms en CAL4 (n=41), bloque este último **no válido como muestra humana** porque el PTY lo condujo el agente. La [hoja de decisión](docs/parity/g1-approval-gate-decision.md) deja rigiendo la **salida B** sin firma: la referencia no se toca y la casilla sólo pasa a verde con un `CAL4H` humano con `latencyMs`, n ≥ 40 y ≤ 2 de 40 por encima. CAL4H está preparado y **no ejecutado**; T10 sigue 0/3 con issue propio y no es regla de puerta. Los 14 issues de F1 siguen cerrados y F2-01 a F2-09 están hechos, pero **ninguna fase que dependa de la puerta se marca cerrada**.
 
 ---
 
@@ -211,7 +212,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 **Objetivo:** que cada corrida deje evidencia revisable y exportable, no sólo mensajes en el chat.
 
-> **Desglose ejecutable:** [docs/parity/backlog-f2.md](docs/parity/backlog-f2.md) — F2-01 (contrato/store), F2-02 (evidencia de tests y entorno), F2-03 (diff y decisiones), F2-04 (informe local), F2-05 (visor), F2-06 (enlace a la grabación), F2-07 (E2E local y límites), F2-08 (revisión por hunk y auditoría) y F2-09 (WebM, consola y red) hechos. El E2E local cubre persistencia en Chromium; no sustituye la verificación visual en Electron ni el dogfooding de G1.
+> **Desglose ejecutable:** [docs/parity/backlog-f2.md](docs/parity/backlog-f2.md) — F2-01 (contrato/store), F2-02 (evidencia de tests y entorno), F2-03 (diff y decisiones), F2-04 (informe local), F2-05 (visor), F2-06 (enlace a la grabación), F2-07 (E2E local y límites), F2-08 (revisión por hunk y auditoría) y F2-09 (WebM, consola y red) hechos. El E2E local cubre persistencia en Chromium; no sustituye la verificación visual en Electron ni el cierre de G1: el dogfooding ya se ejecutó el 2026-11-12 y la puerta sigue abierta por el p95 de aprobación.
 
 **Alcance**
 
@@ -234,7 +235,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 
 > **Cierre del desglose (2026-11-09):** F2-01 a F2-07 están hechos. El E2E local de F2-07 demuestra persistencia en IndexedDB y recarga.
 >
-> **Actualización (2026-11-16):** F2-08 (revisión por hunk con atribución de la tool que aplicó cada hunk) y F2-09 (exportación WebM real, consola/red con timestamps y reproducción offline de 30 s) están hechos y verificados en Chromium. Con eso los criterios de fase quedan cubiertos por evidencia, pero **siguen sin marcar**: la regla del roadmap no cierra criterios de F2 con G1 abierto, y el dogfooding de 5 días no se ha medido. Queda además la verificación visual en Electron, que el E2E de Chromium no sustituye.
+> **Actualización (2026-11-16):** F2-08 (revisión por hunk con atribución de la tool que aplicó cada hunk) y F2-09 (exportación WebM real, consola/red con timestamps y reproducción offline de 30 s) están hechos y verificados en Chromium. Con eso los criterios de fase quedan cubiertos por evidencia, pero **siguen sin marcar**: la regla del roadmap no cierra criterios de F2 con G1 abierto, y el dogfooding de 5 días ya se ejecutó el 2026-11-12 (17/28, sin cerrar la puerta por el p95 de aprobación). Queda además la verificación visual en Electron, que el E2E de Chromium no sustituye.
 
 ---
 
@@ -382,7 +383,7 @@ Una fase termina sólo si:
 
 | Riesgo | Prob. | Impacto | Mitigación |
 | --- | --- | --- | --- |
-| Falta la credencial real de un proveedor (Vercel y Linear ya están fuera de alcance) | Media | Medio | F0 mide lo que sí hay (GitHub) y no declara paridad con mocks; un proveedor nuevo exige su propio recibo antes de volver a la matriz. |
+| Falta la credencial real de un proveedor (Vercel en pausa hasta G3 y Linear fuera de alcance) | Media | Medio | F0 mide lo que sí hay (GitHub) y no declara paridad con mocks; un proveedor nuevo exige su propio recibo antes de volver a la matriz. |
 | El alcance crece por comparar tres productos a la vez | Alta | Alto | Puertas G0–G3, no objetivos y fases separadas; F6 sólo con aprobación. |
 | El pair remoto expone código o approvals | Media | Alto | Loopback por defecto, enlace de un uso, caducidad, cookie, Origin/CSRF, control lease, revisión de seguridad. |
 | Cambian las APIs de proveedores | Media | Medio | Adaptadores, tests de contrato, versiones y recibos por release. |
@@ -447,4 +448,4 @@ Documentación oficial consultada el **2026-11-07**. Los productos cambian rápi
 
 ---
 
-**Siguiente acción recomendada:** ejecutar F0 con credenciales reales y publicar `docs/parity/baseline-2026-11.md`; sin ese recibo, este plan sigue siendo una hipótesis de trabajo, no una declaración de paridad.
+**Siguiente acción recomendada:** cerrar la casilla del p95 con un bloque `CAL4H` conducido por una persona y re-medir T10; sin esas dos piezas, G1 sigue **NO CERRADO** y ninguna fase que dependa de la puerta se marca cerrada.

@@ -79,6 +79,13 @@ export type PolicyResolution =
 const MODES: SubagentMode[] = ['build', 'plan', 'readonly'];
 
 /**
+ * Presupuesto por defecto del hijo sin plantilla. Con 8, las tools denegadas y
+ * los pasos «Tools con fallo» consumían el presupuesto antes del turno de
+ * cierre; el hijo terminaba en `done` sin `Finalizado` (G1-T10-01).
+ */
+const DEFAULT_SUBAGENT_MAX_STEPS = 20;
+
+/**
  * Tools que no pueden entrar en una allowlist de plan/readonly. `shell.run`
  * queda fuera de esta lista a propósito: las plantillas de sólo lectura ya lo
  * usan para inspeccionar y su allowlist de comandos es la que manda.
@@ -147,8 +154,8 @@ export function resolveSubagentPolicy(input: {
   const invalid = validateAllowedTools(allowedTools, mode);
   if (invalid) return { ok: false, error: invalid };
 
-  const rawSteps = Number(input.maxSteps ?? template?.defaultMaxSteps ?? 8);
-  const maxSteps = Math.min(Math.max(Number.isFinite(rawSteps) ? Math.trunc(rawSteps) : 8, 1), 50);
+  const rawSteps = Number(input.maxSteps ?? template?.defaultMaxSteps ?? DEFAULT_SUBAGENT_MAX_STEPS);
+  const maxSteps = Math.min(Math.max(Number.isFinite(rawSteps) ? Math.trunc(rawSteps) : DEFAULT_SUBAGENT_MAX_STEPS, 1), 50);
   return { ok: true, policy: { allowedTools, mode, maxSteps } };
 }
 

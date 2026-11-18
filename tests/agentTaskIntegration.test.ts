@@ -234,21 +234,24 @@ test('si el turno sigue vacío tras el reintento, el hijo queda fallido en vez d
   }
 });
 
-test('un hijo que termina en `done` sin `Finalizado` queda incompleto, no con una respuesta inventada', async () => {
+test('un hijo que agota maxSteps antes del primer turno gasta igualmente su turno sin tools', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
-  const objetivo = `hijo-sin-cierre-${Date.now()}`;
-  const padre = createSession({ goal: 'padre de la prueba de cierre ausente', cwd: dir });
-  let llamadas = 0;
+  const objetivo = `hijo-limite-antes-de-turnos-${Date.now()}`;
+  const padre = createSession({ goal: 'padre de la prueba de límite en seco', cwd: dir });
+  let turnos = 0;
+  let turnosSinTools = 0;
 
-  globalThis.fetch = (async () => {
-    llamadas += 1;
-    return { ok: true, status: 200, json: async () => ({ text: 'nunca llega', functionCalls: [] }) } as any;
+  globalThis.fetch = (async (_url: any, init?: any) => {
+    const body = JSON.parse(String(init?.body || '{}'));
+    turnos += 1;
+    if (!body.tools) turnosSinTools += 1;
+    return { ok: true, status: 200, json: async () => ({ text: 'Archivos: ninguno\nDenegado: ninguna', functionCalls: [] }) } as any;
   }) as any;
 
   try {
-    // `maxSteps: 1` se agota antes del primer turno: la sesión cierra en `done`
-    // con el paso `Límite` y sin `Finalizado`, que es el caso que se colaba como
-    // `ok:true` con «Subagente completado sin respuesta explícita».
+    // `maxSteps: 1` se agota antes del primer turno con tools. Antes cerraba en
+    // `done` con `Límite` y sin `Finalizado`, y el padre lo contaba como hijo
+    // fallido aunque el hijo no había hecho nada mal.
     const res: any = await executeAgentTool('task', {
       root: dir,
       parentSessionId: padre.id,
@@ -256,18 +259,88 @@ test('un hijo que termina en `done` sin `Finalizado` queda incompleto, no con un
       maxSteps: 1,
     });
 
-    assert.equal(llamadas, 0, 'el límite se alcanza antes de pedir ningún turno');
-    assert.equal(res.ok, false, 'un `done` sin respuesta no puede darse por bueno');
-    assert.match(String(res.error), /sin respuesta final/i);
-    assert.equal(res.answer, undefined, 'no se inventa una respuesta');
+    assert.equal(turnos, 1, 'pide el cierre aunque el presupuesto de pasos ya esté agotado');
+    assert.equal(turnosSinTools, 1, 'ese turno no lleva tools');
+    assert.equal(res.ok, true, JSON.stringify(res).slice(0, 400));
+    assert.match(String(res.answer), /Archivos: ninguno/);
 
     const [fila] = listSubAgents(padre.id);
-    assert.equal(fila.status, 'failed');
-    assert.match(String(fila.error), /sin respuesta final/i);
-    assert.equal(fila.answer, undefined);
-    assert.deepEqual(fila.stepTitles, ['Inicio', 'Límite'], 'la fila deja ver por qué cerró sin responder');
+    assert.equal(fila.status, 'completed');
+    assert.equal(fila.answer, res.answer);
+    assert.deepEqual(fila.stepTitles, ['Inicio', 'Finalizado'], 'cierra con `Finalizado`, no con `Límite`');
     assert.deepEqual(fila.calls, []);
   } finally {
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('un hijo que agota maxSteps tras trabajar gasta un turno sin tools y termina en `Finalizado`', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const objetivo = `hijo-agota-maxsteps-${Date.now()}`;
+  const padre = createSession({ goal: 'padre de la prueba de límite tras trabajar', cwd: dir });
+  const stopApprovals = autoApprove(objetivo);
+  let turnosConTools = 0;
+  let turnosFinales = 0;
+
+  globalThis.fetch = (async (_url: any, init?: any) => {
+    const body = JSON.parse(String(init?.body || '{}'));
+    if (!body.tools) {
+      turnosFinales += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          text: 'Archivos: hijo-max.txt\nDenegado: fs.list por allowlist. listo',
+          functionCalls: [],
+        }),
+      } as any;
+    }
+
+    turnosConTools += 1;
+    const call = (name: string, args: Record<string, unknown>) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ text: 'trabajando', functionCalls: [{ name, args }] }),
+    } as any);
+
+    if (turnosConTools === 1) return call('fs_list', { path: dir });
+    if (turnosConTools === 2) return call('fs_write', { path: 'hijo-max.txt', content: 'hecho' });
+    throw new Error(`llamada con tools inesperada: ${turnosConTools}`);
+  }) as any;
+
+  try {
+    // Inicio (1) + turno denegado (razonamiento, resultado y aviso: 3) + turno
+    // con la escritura (razonamiento y resultado: 2) = 6. Con el tope justo ahí,
+    // el bucle entra al guard de `maxSteps` y no al del presupuesto de tools.
+    // Ése es el camino que en G1-T10-05 moría en `Límite` sin `Finalizado`.
+    const res: any = await executeAgentTool('task', {
+      root: dir,
+      parentSessionId: padre.id,
+      goal: objetivo,
+      allowedTools: ['fs.write'],
+      maxSteps: 6,
+    });
+
+    assert.equal(res.ok, true, JSON.stringify(res).slice(0, 400));
+    assert.match(String(res.answer), /listo/i);
+    assert.match(String(res.answer), /Denegado:.*fs\.list/i);
+    assert.equal(fs.readFileSync(path.join(dir, 'hijo-max.txt'), 'utf8'), 'hecho');
+    assert.equal(turnosConTools, 2, 'trabaja con tools hasta el tope de pasos');
+    assert.equal(turnosFinales, 1, 'al agotar maxSteps gasta exactamente un turno sin tools');
+
+    const [fila] = listSubAgents(padre.id);
+    assert.equal(fila.status, 'completed');
+    assert.equal(fila.answer, res.answer);
+    assert.equal(fila.stepTitles?.at(-1), 'Finalizado', 'la fila termina en el cierre real');
+    assert.ok(
+      !fila.stepTitles?.includes('Límite'),
+      `no muere en el paso de límite: ${JSON.stringify(fila.stepTitles)}`
+    );
+  } finally {
+    stopApprovals();
     removeSession(padre.id);
     clearSubAgents(padre.id);
     fs.rmSync(dir, { recursive: true, force: true });
@@ -334,6 +407,77 @@ test('si los hijos fallan dos tandas seguidas, el padre se detiene e informa, si
       2,
       'dos resultados de spawn anotados, ni uno más'
     );
+  } finally {
+    clearInterval(stopApprovals);
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('si falla un solo hijo dos tandas seguidas, el padre cierra e informa del parcial', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const padre = createSession({ goal: 'padre con un hijo parcialmente fallido', cwd: dir });
+  let spawnCalls = 0;
+
+  const stopApprovals = setInterval(() => {
+    for (const approval of padre.getPendingApprovals()) padre.resolveApproval(approval.id, 'allow');
+  }, 10);
+
+  globalThis.fetch = (async () => {
+    // G1-D5-10: A no produce turno y B cierra bien. El padre relanzaba la tanda
+    // porque la guarda sólo contaba las tandas en las que fallaban todos.
+    const hijo = listSessions().find((s) => s.goal.startsWith('hijo-') && s.status === 'running');
+    if (hijo) {
+      if (hijo.goal === 'hijo-a') {
+        return { ok: true, status: 200, json: async () => ({ functionCalls: [] }) } as any;
+      }
+      return { ok: true, status: 200, json: async () => ({ text: 'listo', functionCalls: [] }) } as any;
+    }
+    spawnCalls += 1;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        functionCalls: [{
+          name: 'spawn_agents',
+          args: { agents: [{ goal: 'hijo-a' }, { goal: 'hijo-b' }] },
+        }],
+      }),
+    } as any;
+  }) as any;
+
+  try {
+    const terminado = new Promise<{ answer: string; error?: string }>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('la sesión padre no cerró')), 20_000);
+      padre.addListener((evt) => {
+        if (evt.type === 'finish') { clearTimeout(timer); resolve({ answer: evt.answer }); }
+        if (evt.type === 'error') { clearTimeout(timer); resolve({ answer: '', error: evt.error }); }
+      });
+    });
+    void padre.start();
+    const cierre = await terminado;
+
+    assert.equal(cierre.error, undefined, `no debe acabar en error: ${cierre.error}`);
+    assert.match(cierre.answer, /No completé la tarea/);
+    assert.match(cierre.answer, /hubo subagentes fallidos en dos tandas seguidas/);
+    assert.match(cierre.answer, /turnos vacíos/i, 'el motivo del hijo A viaja en la respuesta');
+    assert.equal(spawnCalls, 2, 'no relanza una tercera tanda por el fallo parcial');
+
+    // Dos tandas × dos hijos: A falla en las dos, B cierra bien en las dos.
+    const filas = listSubAgents(padre.id);
+    assert.equal(filas.length, 4);
+    assert.equal(filas.filter((fila) => fila.status === 'failed').length, 2);
+    assert.equal(filas.filter((fila) => fila.status === 'completed').length, 2);
+    assert.equal(
+      padre.getSteps().filter((s) => s.type === 'tool_result' && s.toolId === 'spawn_agents').length,
+      2,
+      'dos resultados de spawn anotados, ni uno más'
+    );
+    const ultimo = padre.getSteps().filter((s) => s.title === 'Finalizado').at(-1);
+    assert.match(String(ultimo?.content ?? ''), /hubo subagentes fallidos/);
+    assert.equal(padre.getStatus(), 'done');
   } finally {
     clearInterval(stopApprovals);
     removeSession(padre.id);
@@ -426,6 +570,153 @@ test('un turno que sólo actualiza el plan no se toma por respuesta final', asyn
     assert.equal(fs.readFileSync(path.join(dir, 'plan.txt'), 'utf8'), 'ok', 'el trabajo se hizo después del plan');
   } finally {
     stopApprovals();
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('un hijo con tools denegadas escribe y gasta su turno final en `Finalizado`', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const objetivo = `hijo-cierre-con-denegadas-${Date.now()}`;
+  const padre = createSession({ goal: 'padre de la prueba de cierre reservado', cwd: dir });
+  const stopApprovals = autoApprove(objetivo);
+  let turnosConTools = 0;
+  let turnosFinales = 0;
+
+  globalThis.fetch = (async (_url: any, init?: any) => {
+    const body = JSON.parse(String(init?.body || '{}'));
+    // El turno reservado para cerrar se reconoce porque no lleva tools.
+    if (!body.tools) {
+      turnosFinales += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          text: 'Archivos: hijo-a.txt\nDenegado: fs.list y fs.glob por allowlist. listo',
+          functionCalls: [],
+        }),
+      } as any;
+    }
+
+    turnosConTools += 1;
+    const call = (name: string, args: Record<string, unknown>) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ functionCalls: [{ name, args }] }),
+    } as any);
+
+    if (turnosConTools === 1) return call('fs_list', { path: dir });
+    if (turnosConTools === 2) return call('fs_glob', { pattern: '*' });
+    if (turnosConTools === 3) return call('fs_write', { path: 'hijo-a.txt', content: 'hola' });
+    if (turnosConTools === 4) return call('fs_read', { path: 'hijo-a.txt' });
+    throw new Error(`llamada con tools inesperada: ${turnosConTools}`);
+  }) as any;
+
+  try {
+    const res: any = await executeAgentTool('task', {
+      root: dir,
+      parentSessionId: padre.id,
+      goal: objetivo,
+      allowedTools: ['fs.read', 'fs.write'],
+      maxSteps: 8,
+    });
+
+    assert.equal(res.ok, true, JSON.stringify(res).slice(0, 400));
+    assert.match(String(res.answer), /listo/i);
+    assert.match(String(res.answer), /Denegado:.*fs\.list/i);
+    assert.equal(fs.readFileSync(path.join(dir, 'hijo-a.txt'), 'utf8'), 'hola');
+    assert.equal(turnosConTools, 4, 'no pide un turno con tools cuando ya no queda presupuesto');
+    assert.equal(turnosFinales, 1, 'usa exactamente un turno sin tools para cerrar');
+
+    const [fila] = listSubAgents(padre.id);
+    assert.equal(fila.status, 'completed');
+    assert.equal(fila.answer, res.answer);
+    assert.equal(fila.stepTitles?.at(-1), 'Finalizado', 'la fila termina en el cierre real');
+    assert.ok(
+      fila.calls?.some((c) => c.tool === 'fs.write' && c.ok === true),
+      `la escritura quedó registrada: ${JSON.stringify(fila.calls)}`
+    );
+    assert.ok(
+      fila.calls?.some((c) => c.tool === 'fs.list' && c.ok === false),
+      `la denegación quedó registrada: ${JSON.stringify(fila.calls)}`
+    );
+  } finally {
+    stopApprovals();
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+test('el catálogo del hijo respeta allowedTools: no le ofrece fs.list, fs.glob, git.status ni shell.run', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const padre = createSession({ goal: 'padre de la prueba de catálogo', cwd: dir });
+  const objetivo = `catalogo-${Date.now()}`;
+  const pedidos: any[] = [];
+
+  // El hijo no llama tools: interesa el sobre que se le manda al proveedor.
+  globalThis.fetch = (async (_url: any, init: any) => {
+    pedidos.push(JSON.parse(String(init?.body ?? '{}')));
+    return { ok: true, status: 200, json: async () => ({ text: 'Archivos: ninguno\nDenegado: ninguna', functionCalls: [] }) } as any;
+  }) as any;
+
+  try {
+    const res: any = await executeAgentTool('task', {
+      root: dir,
+      parentSessionId: padre.id,
+      goal: objetivo,
+      allowedTools: ['fs.read', 'fs.write'],
+    });
+    assert.equal(res.ok, true, `el subagente debe completar: ${JSON.stringify(res).slice(0, 400)}`);
+
+    const pedido = pedidos[0];
+    assert.ok(pedido, 'el hijo pidió al menos un turno');
+    const prompt = String(pedido.contents ?? pedido.prompt ?? '');
+    assert.ok(prompt.includes('TOOLS:'), 'el prompt lleva la sección de tools');
+    const catalogo = prompt.slice(prompt.indexOf('TOOLS:'));
+
+    for (const permitida of ['fs.read', 'fs.write']) {
+      assert.match(catalogo, new RegExp(permitida.replace('.', '\\.')), `el catálogo debe ofrecer ${permitida}`);
+    }
+    for (const denegada of ['fs.list', 'fs.glob', 'shell.run', 'git.status']) {
+      assert.doesNotMatch(catalogo, new RegExp(denegada.replace('.', '\\.')), `el catálogo no debe ofrecer ${denegada}`);
+    }
+
+    const declaradas: string[] = (pedido.tools?.[0]?.functionDeclarations ?? []).map((d: any) => String(d.name));
+    assert.ok(declaradas.includes('fs_read') && declaradas.includes('fs_write'), 'las declaraciones nativas siguen la allowlist');
+    for (const fuera of ['fs_list', 'fs_glob', 'shell_run', 'git_status']) {
+      assert.equal(declaradas.includes(fuera), false, `no se declara ${fuera} al proveedor`);
+    }
+  } finally {
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('sin allowlist el hijo sigue viendo el catálogo completo', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const padre = createSession({ goal: 'padre de la prueba de catálogo completo', cwd: dir });
+  const objetivo = `catalogo-completo-${Date.now()}`;
+  let prompt = '';
+
+  globalThis.fetch = (async (_url: any, init: any) => {
+    const pedido = JSON.parse(String(init?.body ?? '{}'));
+    prompt = String(pedido.contents ?? pedido.prompt ?? '');
+    return { ok: true, status: 200, json: async () => ({ text: 'Archivos: ninguno\nDenegado: ninguna', functionCalls: [] }) } as any;
+  }) as any;
+
+  try {
+    const res: any = await executeAgentTool('task', { root: dir, parentSessionId: padre.id, goal: objetivo });
+    assert.equal(res.ok, true, `el subagente debe completar: ${JSON.stringify(res).slice(0, 400)}`);
+    const catalogo = prompt.slice(prompt.indexOf('TOOLS:'));
+    for (const id of ['fs.read', 'fs.write', 'shell.run', 'fs.list']) {
+      assert.match(catalogo, new RegExp(id.replace('.', '\\.')), `sin allowlist el catálogo mantiene ${id}`);
+    }
+  } finally {
     removeSession(padre.id);
     clearSubAgents(padre.id);
     fs.rmSync(dir, { recursive: true, force: true });

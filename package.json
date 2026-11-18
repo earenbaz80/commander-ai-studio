@@ -11,7 +11,7 @@
   "private": true,
   "scripts": {
     "predev": "npm run avatars:sync",
-    "dev": "cross-env NODE_ENV=development npx tsx server.ts",
+    "dev": "cross-env NODE_ENV=development PORT=3283 npx tsx server.ts",
     "dev:legacy": "concurrently \"cross-env NODE_ENV=development npx tsx server.ts\" \"vite\"",
     "avatars:sync": "tsx scripts/avatars-sync.ts",
     "avatars:audit": "tsx scripts/avatars-audit.ts",

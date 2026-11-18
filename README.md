@@ -15,7 +15,7 @@ Requiere Node.js 22.13+ (el backend usa `node:sqlite`).
 
 1. `npm install`
 2. Copia `.env.example` a `.env` y define `GEMINI_API_KEY`
-3. `npm run dev` → http://localhost:3000
+3. `npm run dev` → http://localhost:3283 (el script fija `PORT=3283`; un `PORT` exportado no lo cambia)
 4. Checks: `npm run lint`, `npm test` ([suite Vitest](#suite-de-tests-vitest)), `npm run test:node` ([suite node y server compartido](#suite-de-tests-node))
 
 ### Avatares
