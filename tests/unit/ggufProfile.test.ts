@@ -36,7 +36,7 @@ const kvStrings = (key: string, values: string[]): Buffer =>
 const tensor = (name: string, dims: number[], type: number): Buffer =>
   Buffer.concat([str(name), u32(dims.length), ...dims.map(u64), u32(type), u64(0)]);
 
-function buildGguf(options: { magic?: number } = {}): Buffer {
+function buildGguf(options: { magic?: number; withChatTemplate?: boolean } = {}): Buffer {
   const arch = 'qwen3moe';
   const kvs = [
     kvString('general.architecture', arch),
@@ -45,6 +45,9 @@ function buildGguf(options: { magic?: number } = {}): Buffer {
     kvU32(`${arch}.expert_used_count`, 2),
     kvU32(`${arch}.context_length`, 4_096),
     kvStrings('tokenizer.ggml.tokens', ['a', 'b', 'c']),
+    ...(options.withChatTemplate === false
+      ? []
+      : [kvString('tokenizer.chat_template', '{% for m in messages %}{{ m.content }}{% endfor %}')]),
   ];
   const tensors = [
     tensor('token_embd.weight', [8, 4], 1),
@@ -91,6 +94,13 @@ describe('perfil GGUF', () => {
     // Embedding F16 [8,4] = 64 B + 4 densas F32 [8,8] = 1 024 B.
     expect(profile?.denseBytes).toBe(1_088);
     expect(profile?.tensorBytes).toBe(2_112);
+    // Con plantilla de chat, llama.cpp con `--jinja` puede emitir tool calls.
+    expect(profile?.hasChatTemplate).toBe(true);
+  });
+
+  test('sin tokenizer.chat_template el modelo no puede llamar tools', () => {
+    const profile = readGgufProfile(writeTemp(buildGguf({ withChatTemplate: false })));
+    expect(profile?.hasChatTemplate).toBe(false);
   });
 
   test('devuelve null si el archivo no es GGUF', () => {

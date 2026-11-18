@@ -25,6 +25,7 @@ function moeProfile(overrides: Partial<GgufProfile> = {}): GgufProfile {
     denseBytes: 2 * GiB,
     expertLayerCount: 48,
     moe: true,
+    hasChatTemplate: true,
     ...overrides,
   };
 }
@@ -39,6 +40,7 @@ function denseProfile(overrides: Partial<GgufProfile> = {}): GgufProfile {
     denseBytes: 40 * GiB,
     expertLayerCount: 0,
     moe: false,
+    hasChatTemplate: true,
     ...overrides,
   };
 }

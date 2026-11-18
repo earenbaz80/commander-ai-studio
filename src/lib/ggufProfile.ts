@@ -26,6 +26,11 @@ export interface GgufProfile {
   /** Capas distintas que contienen tensores de expertos. */
   expertLayerCount: number;
   moe: boolean;
+  /**
+   * El GGUF declara `tokenizer.chat_template`, así que con `--jinja` el motor
+   * puede aplicar la plantilla y emitir llamadas a tools.
+   */
+  hasChatTemplate: boolean;
 }
 
 interface TensorSpec {
@@ -255,9 +260,19 @@ function parseGguf(cursor: GgufCursor): GgufProfile {
   if (kvCount > 1_000_000 || tensorCount > 1_000_000) throw new Error('Cabecera GGUF fuera de rango');
 
   const meta = new Map<string, string | number>();
+  let hasChatTemplate = false;
   for (let index = 0; index < kvCount; index += 1) {
     const key = cursor.string();
     const type = cursor.u32();
+    // La plantilla completa puede ocupar kilobytes: basta con saber si existe.
+    if (key === 'tokenizer.chat_template') {
+      if (type === 8) {
+        hasChatTemplate = cursor.string().trim().length > 0;
+      } else {
+        skipValue(cursor, type);
+      }
+      continue;
+    }
     const wanted =
       key === 'general.architecture' ||
       /\.(block_count|expert_count|expert_used_count|context_length)$/.test(key);
@@ -325,6 +340,7 @@ function parseGguf(cursor: GgufCursor): GgufProfile {
     denseBytes,
     expertLayerCount,
     moe,
+    hasChatTemplate,
   };
 }
 

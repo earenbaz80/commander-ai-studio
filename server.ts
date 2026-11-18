@@ -4998,16 +4998,33 @@ app.get('/api/models/live', async (req, res) => {
         const split = splitGgufParts(record.filename);
         return !split || split.index === 1;
       })
-      .map((record) => ({
-        id: `local/${record.filename}`,
-        name: record.filename,
-        provider: 'local' as const,
-        contextWindow: '8K tokens',
-        contextLength: 8_192,
-        description: `GGUF local · ${record.quantization}`,
-        supportsTools: false,
-        tags: ['local', 'gguf'],
-      }));
+      .map((record) => {
+        // Ventana y tamaño reales salen de la cabecera del GGUF: publicar 8K
+        // fijos recortaba el contexto de modelos que declaran 32K o más.
+        const recordPath = localModelPath(localModelsDir, record.filename);
+        const profile = recordPath ? readGgufProfile(recordPath) : null;
+        const contextLength = profile?.contextLength || 8_192;
+        const sizeBytes = record.sizeBytes || profile?.tensorBytes || 0;
+        const sizeMb = record.sizeMb || Math.round(sizeBytes / (1024 * 1024));
+        return {
+          id: `local/${record.filename}`,
+          name: record.filename,
+          provider: 'local' as const,
+          contextLength,
+          context_window: contextLength,
+          contextWindow:
+            contextLength >= 1000
+              ? `${Math.floor(contextLength / 1000)}K tokens`
+              : `${contextLength} tokens`,
+          description: `GGUF local · ${record.quantization}${sizeMb ? ` · ${sizeMb} MB` : ''}`,
+          // llama.cpp sólo llama tools si el GGUF trae plantilla de chat y el
+          // motor arranca con `--jinja`.
+          supportsTools: Boolean(profile?.hasChatTemplate && lastLocalRuntimeTuning.jinja !== false),
+          sizeBytes,
+          sizeMb,
+          tags: ['local', 'gguf'],
+        };
+      });
 
     // Un servidor local apagado no vacía el selector: se listan los modelos de
     // la última detección guardada. Ollama tiene un solo host; LM Studio une
