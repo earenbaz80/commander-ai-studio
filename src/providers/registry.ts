@@ -111,6 +111,9 @@ export const PROVIDER_SPECS: ProviderSpec[] = [
     ],
   },
   {
+    // Strata Serving en loopback. Comparte el contrato OpenAI-compatible con
+    // `strata` (cloud), pero es otro host: se sondea aparte para no mezclar sus
+    // modelos ni su API key con los del proveedor alojado.
     id: STRATA_LOCAL_PROVIDER_ID,
     name: STRATA_LOCAL_PROVIDER_NAME,
     env: ['STRATA_LOCAL_BASE_URL', 'STRATA_PORT', 'STRATA_API_KEY', 'STRATA_LOCAL_API_KEY'],
@@ -341,7 +344,7 @@ export function describeProvider(
   // que esté en el fichero marcaría como «sin configurar» algo que funciona.
   const missing = fromEnv ? [] : spec.fields.filter((f) => f.required && !filled(f.name)).map((f) => f.name);
   const hasAny = spec.fields.some((f) => filled(f.name));
-  const local = spec.id === 'ollama' || spec.id === 'lmstudio' || spec.id === STRATA_LOCAL_PROVIDER_ID;
+  const local = spec.id === 'ollama' || spec.id === 'lmstudio';
 
   return {
     configured: missing.length === 0 && (hasAny || fromEnv || local),

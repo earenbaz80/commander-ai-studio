@@ -20,7 +20,11 @@ import type {
   LocalGgufFile,
   LocalModelRecord,
 } from '../lib/localModelHub';
-import type { LocalRuntimeStatus } from '../lib/localLlamaRuntime';
+import type { LocalRuntimeStatus, LocalRuntimeTuning } from '../lib/localLlamaRuntime';
+import type {
+  LocalRuntimeProposal,
+  LocalRuntimeProposedTuning,
+} from '../lib/localRuntimeProposal';
 import { splitGgufParts } from '../lib/ggufName';
 
 interface HubModel {
@@ -36,6 +40,18 @@ type HubFile = LocalGgufFile;
 type DownloadJob = LocalDownloadJob;
 type RuntimeStatus = LocalRuntimeStatus & {
   availability?: { available: boolean; server?: string; cli?: string };
+};
+
+type RuntimeProposal = LocalRuntimeProposal & {
+  /** Ajustes guardados en disco que prevalecen sobre la propuesta derivada. */
+  saved?: LocalRuntimeTuning;
+  profile?: { moe?: boolean } | null;
+  hardware?: {
+    vramTotalMb?: number;
+    vramFreeMb?: number;
+    ramTotalGb?: number;
+    gpuName?: string;
+  };
 };
 
 interface LocalModelHubPanelProps {
@@ -90,6 +106,15 @@ export const LocalModelHubPanel: React.FC<LocalModelHubPanelProps> = ({
   const [context, setContext] = useState('8192');
   const [gpuLayers, setGpuLayers] = useState('99');
   const [runtimeModel, setRuntimeModel] = useState('');
+  const [advanced, setAdvanced] = useState(false);
+  const [jinja, setJinja] = useState(true);
+  const [flashAttention, setFlashAttention] = useState(true);
+  const [cpuMoeLayers, setCpuMoeLayers] = useState('');
+  const [cacheTypeK, setCacheTypeK] = useState('');
+  const [cacheTypeV, setCacheTypeV] = useState('');
+  const [tensorSplit, setTensorSplit] = useState('');
+  const [proposal, setProposal] = useState<RuntimeProposal | null>(null);
+  const [proposalLoading, setProposalLoading] = useState(false);
   const [runtimeBusy, setRuntimeBusy] = useState(false);
   const [runtimeDownloadBusy, setRuntimeDownloadBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -130,6 +155,18 @@ export const LocalModelHubPanel: React.FC<LocalModelHubPanelProps> = ({
     }
   }, [onRuntimeStatusChange]);
 
+  /** Vuelca una propuesta en los campos editables del runtime. */
+  const applyProposed = useCallback((proposed: Partial<LocalRuntimeProposedTuning>) => {
+    setContext(String(proposed.context ?? 8192));
+    setGpuLayers(String(proposed.gpuLayers ?? 99));
+    setCpuMoeLayers(proposed.cpuMoeLayers == null ? '' : String(proposed.cpuMoeLayers));
+    setCacheTypeK(proposed.cacheTypeK || '');
+    setCacheTypeV(proposed.cacheTypeV || '');
+    setJinja(proposed.jinja !== false);
+    setFlashAttention(proposed.flashAttention !== false);
+    setTensorSplit(proposed.tensorSplit || '');
+  }, []);
+
   const search = useCallback(async (value = query) => {
     setSearching(true);
     setSearchError('');
@@ -152,6 +189,40 @@ export const LocalModelHubPanel: React.FC<LocalModelHubPanelProps> = ({
     // Sólo al entrar al panel; después se refresca con acciones explícitas.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Al elegir un modelo, Commander lee su cabecera GGUF y la memoria de la
+  // máquina, y deja los campos con los valores propuestos antes de arrancar.
+  useEffect(() => {
+    if (!runtimeModel) {
+      setProposal(null);
+      return;
+    }
+    let alive = true;
+    setProposalLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/local-models/runtime/proposal?model=${encodeURIComponent(runtimeModel)}`
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!alive || !data.success) return;
+        setProposal(data as RuntimeProposal);
+        // Los ajustes guardados ganan: si el usuario apagó jinja o fijó un
+        // reparto MoE, el reinicio no debe volver a los valores por defecto.
+        applyProposed({
+          ...((data.proposed || {}) as Partial<LocalRuntimeProposedTuning>),
+          ...((data.saved || {}) as LocalRuntimeTuning),
+        });
+      } catch {
+        /* la propuesta es opcional: quedan los valores por defecto */
+      } finally {
+        if (alive) setProposalLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [runtimeModel, applyProposed]);
 
   useEffect(() => {
     let alive = true;
@@ -296,6 +367,12 @@ export const LocalModelHubPanel: React.FC<LocalModelHubPanelProps> = ({
           model: runtimeModel,
           context: Number(context) || 8192,
           gpuLayers: Number(gpuLayers),
+          jinja,
+          flashAttention,
+          cpuMoeLayers,
+          cacheTypeK,
+          cacheTypeV,
+          tensorSplit,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -337,14 +414,34 @@ export const LocalModelHubPanel: React.FC<LocalModelHubPanelProps> = ({
         `Descargar runtime de llama.cpp?\n\n${info.filename}\n${info.url}\n\nSe instalará en runtime/llama.`
       );
       if (!ok) return;
-      const res = await fetch('/api/local-models/download-runtime', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm: true, url: info.url, filename: info.filename }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!data.success) throw new Error(data.error || 'No se pudo descargar el runtime');
-      setNotice(data.extracted ? 'Runtime de llama.cpp instalado.' : 'Runtime descargado; extrae el archivo manualmente.');
+      // El binario CUDA no arranca sin las DLLs de cudart: se bajan juntos.
+      const downloads = [
+        { label: 'binario', url: String(info.url), filename: String(info.filename) },
+        ...(info.cudartUrl && info.cudartFilename
+          ? [{ label: 'cudart', url: String(info.cudartUrl), filename: String(info.cudartFilename) }]
+          : []),
+      ];
+      let last: any = null;
+      for (const item of downloads) {
+        try {
+          const res = await fetch('/api/local-models/download-runtime', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirm: true, url: item.url, filename: item.filename }),
+          });
+          last = await res.json().catch(() => ({}));
+        } catch (networkError: any) {
+          throw new Error(
+            `No se pudo descargar el ${item.label} (${item.filename}): ${networkError?.message || 'error de red'}`
+          );
+        }
+        if (!last.success) {
+          throw new Error(
+            `No se pudo descargar el ${item.label} (${item.filename}): ${last.error || 'sin detalle del servidor'}`
+          );
+        }
+      }
+      setNotice(last?.extracted ? 'Runtime de llama.cpp instalado.' : 'Runtime descargado; extrae el archivo manualmente.');
       await refreshRuntime();
     } catch (e: any) {
       setError(e?.message || 'No se pudo descargar el runtime');
@@ -570,6 +667,59 @@ export const LocalModelHubPanel: React.FC<LocalModelHubPanelProps> = ({
             </button>
           </div>
         )}
+        {proposalLoading && (
+          <div className="flex items-center gap-1 text-[9px] text-[var(--nc-text-dim)]">
+            <Loader2 className="h-3 w-3 animate-spin" />{' '}
+            {L('Leyendo el GGUF y la memoria disponible…', 'Reading GGUF and available memory…')}
+          </div>
+        )}
+        {proposal && !proposalLoading && (
+          <div className="space-y-1 border border-[var(--nc-text-accent)]/60 bg-[var(--nc-bg-deep)] p-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[10px] font-bold text-[var(--nc-text-accent)]">
+                {L('PROPUESTA AUTOMÁTICA', 'AUTOMATIC PROPOSAL')}
+                {proposal.profile?.moe ? ' · MoE' : ''}
+              </span>
+              <button
+                type="button"
+                onClick={() => applyProposed(proposal.proposed)}
+                className="border border-[var(--nc-text-accent)] px-2 py-0.5 text-[9px] font-bold text-[var(--nc-text-accent)]"
+              >
+                {L('USAR PROPUESTA', 'USE PROPOSAL')}
+              </button>
+            </div>
+            <div className="break-all text-[9px] text-white">
+              {proposal.proposed.context} ctx · {proposal.proposed.gpuLayers}{' '}
+              {L('capas GPU', 'GPU layers')}
+              {proposal.proposed.cpuMoeLayers
+                ? ` · --n-cpu-moe ${proposal.proposed.cpuMoeLayers}`
+                : ''}
+              {proposal.proposed.cacheTypeK ? ` · KV ${proposal.proposed.cacheTypeK}` : ''}
+              {proposal.proposed.tensorSplit ? ` · split ${proposal.proposed.tensorSplit}` : ''}
+            </div>
+            {proposal.hardware?.vramTotalMb ? (
+              <div className="text-[9px] text-[var(--nc-text-dim)]">
+                {L('VRAM', 'VRAM')}{' '}
+                {Math.round(proposal.hardware.vramFreeMb ?? proposal.hardware.vramTotalMb)}/
+                {Math.round(proposal.hardware.vramTotalMb)} MB
+                {proposal.hardware.gpuName ? ` · ${proposal.hardware.gpuName}` : ''}
+                {proposal.hardware.ramTotalGb ? ` · RAM ${proposal.hardware.ramTotalGb} GB` : ''}
+              </div>
+            ) : (
+              <div className="text-[9px] text-amber-200">
+                {L(
+                  'Sin VRAM detectada (nvidia-smi no responde): el reparto de expertos queda a mano.',
+                  'No VRAM detected (nvidia-smi unavailable): expert split stays manual.'
+                )}
+              </div>
+            )}
+            {proposal.notes.map((note) => (
+              <div key={note} className="break-words text-[9px] text-[var(--nc-text-dim)]">
+                · {note}
+              </div>
+            ))}
+          </div>
+        )}
         <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_5rem_5rem_auto]">
           <select
             value={runtimeModel}
@@ -619,9 +769,122 @@ export const LocalModelHubPanel: React.FC<LocalModelHubPanelProps> = ({
             </button>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={() => setAdvanced((value) => !value)}
+          className="border border-[var(--nc-border-light)] px-2 py-0.5 text-[9px] font-bold text-[var(--nc-text-accent)]"
+        >
+          {advanced
+            ? L('OCULTAR AJUSTES', 'HIDE SETTINGS')
+            : L('AJUSTES DE MODELO GRANDE', 'LARGE MODEL SETTINGS')}
+        </button>
+        {advanced && (
+          <div className="space-y-2 border border-[var(--nc-border-light)]/60 p-2">
+            <div className="text-[9px] text-[var(--nc-text-dim)]">
+              {L(
+                'Los modelos grandes de Strata corren aquí, sin conectar con Strata: expertos MoE en RAM, capas densas en GPU y caché KV cuantizada.',
+                'Strata’s large models run here, without connecting to Strata: MoE experts in RAM, dense layers on GPU and quantized KV cache.'
+              )}
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="flex items-center gap-1 text-[9px] text-[var(--nc-text-dim)]">
+                <input
+                  type="checkbox"
+                  checked={jinja}
+                  onChange={(event) => setJinja(event.target.checked)}
+                />
+                {L('JINJA (tool calling)', 'JINJA (tool calling)')}
+              </label>
+              <label className="flex items-center gap-1 text-[9px] text-[var(--nc-text-dim)]">
+                <input
+                  type="checkbox"
+                  checked={flashAttention}
+                  onChange={(event) => setFlashAttention(event.target.checked)}
+                />
+                FLASH-ATTN
+              </label>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="flex items-center gap-1 text-[9px] text-[var(--nc-text-dim)]">
+                {L('MoE CPU', 'MoE CPU')}
+                <input
+                  value={cpuMoeLayers}
+                  onChange={(event) => setCpuMoeLayers(event.target.value)}
+                  inputMode="numeric"
+                  placeholder="24"
+                  title={L(
+                    'Capas de expertos que quedan en RAM (--n-cpu-moe). Permite un MoE grande con poca VRAM.',
+                    'Expert layers kept in RAM (--n-cpu-moe). Lets a large MoE run with little VRAM.'
+                  )}
+                  className="min-w-0 w-full border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] px-1 py-1 text-[10px] text-white outline-none"
+                />
+              </label>
+              <label className="flex items-center gap-1 text-[9px] text-[var(--nc-text-dim)]">
+                {L('SPLIT GPU', 'SPLIT GPU')}
+                <input
+                  value={tensorSplit}
+                  onChange={(event) => setTensorSplit(event.target.value)}
+                  placeholder="1,1"
+                  title={L(
+                    'Proporción por GPU (--tensor-split), por ejemplo 1,1 con dos GPU.',
+                    'Share per GPU (--tensor-split), for example 1,1 with two GPUs.'
+                  )}
+                  className="min-w-0 w-full border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] px-1 py-1 text-[10px] text-white outline-none"
+                />
+              </label>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="flex items-center gap-1 text-[9px] text-[var(--nc-text-dim)]">
+                KV K
+                <select
+                  value={cacheTypeK}
+                  onChange={(event) => setCacheTypeK(event.target.value)}
+                  title={L(
+                    'Tipo de la caché KV de claves (--cache-type-k); q8_0 ahorra VRAM con contexto grande.',
+                    'Key KV cache type (--cache-type-k); q8_0 saves VRAM with a large context.'
+                  )}
+                  className="min-w-0 w-full border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] px-1 py-1 text-[10px] text-white outline-none"
+                >
+                  <option value="">auto</option>
+                  <option value="f16">f16</option>
+                  <option value="f8_e4m3">f8_e4m3</option>
+                  <option value="q8_0">q8_0</option>
+                  <option value="q5_1">q5_1</option>
+                  <option value="q4_1">q4_1</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-1 text-[9px] text-[var(--nc-text-dim)]">
+                KV V
+                <select
+                  value={cacheTypeV}
+                  onChange={(event) => setCacheTypeV(event.target.value)}
+                  title={L(
+                    'Tipo de la caché KV de valores (--cache-type-v).',
+                    'Value KV cache type (--cache-type-v).'
+                  )}
+                  className="min-w-0 w-full border border-[var(--nc-border-light)] bg-[var(--nc-bg-main)] px-1 py-1 text-[10px] text-white outline-none"
+                >
+                  <option value="">auto</option>
+                  <option value="f16">f16</option>
+                  <option value="f8_e4m3">f8_e4m3</option>
+                  <option value="q8_0">q8_0</option>
+                  <option value="q5_1">q5_1</option>
+                  <option value="q4_1">q4_1</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        )}
         {runtime?.state === 'running' && (
           <div className="break-all text-[9px] text-emerald-200">
-            {runtime.model} · {runtime.context} ctx · {runtime.gpuLayers} {L('capas GPU', 'GPU layers')} · {runtime.baseUrl}
+            {runtime.model} · {runtime.context} ctx · {runtime.gpuLayers} {L('capas GPU', 'GPU layers')}
+            {runtime.cpuMoeLayers
+              ? ` · ${runtime.cpuMoeLayers} ${L('capas MoE en CPU', 'MoE layers on CPU')}`
+              : ''}
+            {runtime.cacheTypeK || runtime.cacheTypeV
+              ? ` · KV ${runtime.cacheTypeK || 'auto'}/${runtime.cacheTypeV || 'auto'}`
+              : ''}
+            {runtime.tensorSplit ? ` · split ${runtime.tensorSplit}` : ''} · {runtime.baseUrl}
           </div>
         )}
         {runtime?.error && <div className="text-[9px] text-red-300">{runtime.error}</div>}

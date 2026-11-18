@@ -1277,11 +1277,11 @@ describe('ChatPlayground', () => {
       fireEvent.click(screen.getByText(/Avanzado|Advanced/));
       const dialog = await screen.findByRole('dialog');
       expect(within(dialog).getByText(/Configuración avanzada|Advanced settings/)).toBeInTheDocument();
-      // El modal ya no incluye selector de modo (se usa el toggle rápido);
-      // verifica que sí tenga tools y globs.
-      expect(within(dialog).getByText(/Tools permitidas|Allowed tools/)).toBeInTheDocument();
-      expect(within(dialog).getByText(/Globs de lectura|Read globs/)).toBeInTheDocument();
-      expect(within(dialog).getByText(/Globs de escritura|Write globs/)).toBeInTheDocument();
+      // El modal pinta sus campos cuando resuelve /api/permissions: se espera
+      // cada sección en vez de asumir que ya están en el primer render.
+      expect(await within(dialog).findByText(/Tools permitidas|Allowed tools/)).toBeInTheDocument();
+      expect(await within(dialog).findByText(/Globs de lectura|Read globs/)).toBeInTheDocument();
+      expect(await within(dialog).findByText(/Globs de escritura|Write globs/)).toBeInTheDocument();
     });
   });
 

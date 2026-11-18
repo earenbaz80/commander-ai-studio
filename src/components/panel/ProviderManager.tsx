@@ -33,6 +33,7 @@ import {
   toggleModelFilter,
 } from '../../lib/providerFilters';
 import { slugifyProviderId } from '../../lib/openaiCompatibleProviders';
+import { STRATA_LOCAL_DEFAULT_BASE_URL } from '../../lib/strataLocal';
 
 interface AvailableProvider {
   id: string;
@@ -57,6 +58,23 @@ const isHttpUrl = (value: string): boolean => {
   }
 };
 
+
+/** Un host remoto por HTTP necesita confirmación antes de mandar una clave. */
+const isRemoteHttpUrl = (value: string): boolean => {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'http:') return false;
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    return !(
+      host === 'localhost' ||
+      host === '::1' ||
+      host === '0:0:0:0:0:0:0:1' ||
+      /^127(?:\.\d{1,3}){3}$/.test(host)
+    );
+  } catch {
+    return false;
+  }
+};
 
 interface ProviderField {
   name: string;
@@ -96,6 +114,19 @@ interface ProviderEntry {
   probeError?: string;
   /** Añadido por el usuario como endpoint OpenAI-compatible. */
   custom?: boolean;
+  /** Strata: `/v1/status` confirmó la identidad del host. */
+  identity?: 'verified' | 'unverified' | string;
+  /** Strata: el host respondió, pero rechazó la API key. */
+  auth?: boolean;
+  /** Strata: la URL es el monitor, no el servidor del modelo. */
+  monitor?: { engineUrls: string[] };
+  /** Strata: hay un modelo cargado. */
+  loaded?: boolean;
+  model?: string;
+  warning?: string;
+  /** Strata: opt-in explícito para HTTP remoto. */
+  allowInsecure?: boolean;
+  keyBlocked?: boolean;
 }
 
 type AddCheckStatus = 'incompatible' | 'auth' | 'unreachable';
@@ -149,6 +180,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
   const liveCheckSeq = React.useRef(0);
   /** Búsqueda dentro de los modelos de cada proveedor. */
   const [modelQuery, setModelQuery] = useState<Record<string, string>>({});
+  const [strataAllowInsecure, setStrataAllowInsecure] = useState(false);
 
   const t = useCallback(
     (es: string, en: string, de: string) => (lang === 'es' ? es : lang === 'de' ? de : en),
@@ -375,6 +407,8 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
     const next: Record<string, string> = {};
     for (const field of provider.fields) next[field.name] = '';
     if (provider.id === 'ollama') next.host = 'http://localhost:11434';
+    if (provider.id === 'strata-local') next.baseUrl = provider.host || STRATA_LOCAL_DEFAULT_BASE_URL;
+    setStrataAllowInsecure(provider.allowInsecure === true);
     setDraft(next);
     setFilterDraft((prev) => ({
       ...prev,
@@ -399,6 +433,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
         return;
       }
       const payloadConfig: Record<string, unknown> = { ...config };
+      if (provider.id === 'strata-local') payloadConfig.allowInsecure = strataAllowInsecure;
       const res = await fetch('/api/providers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -464,6 +499,28 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
         ok = data.success === true;
         message = ok
           ? t(`${data.models?.length ?? 0} modelos`, `${data.models?.length ?? 0} models`, `${data.models?.length ?? 0} Modelle`)
+          : data.error || t('Sin respuesta', 'No response', 'Keine Antwort');
+      } else if (provider.id === 'strata-local') {
+        const res = await fetch('/api/strata-local/health', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            baseUrl: draft.baseUrl || provider.host || STRATA_LOCAL_DEFAULT_BASE_URL,
+            apiKey: draft.apiKey,
+            allowInsecure: strataAllowInsecure,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        ok = data.ok === true || data.success === true;
+        const loadedModel = typeof data.model === 'string' && data.model ? data.model : '';
+        const identity = data.identity === 'verified' ? '' : t(' · identidad no verificada', ' · identity unverified', ' · Identität nicht verifiziert');
+        message = ok
+          ? t(
+              `${data.loaded === false ? 'Strata responde, sin modelo cargado' : `Strata responde${loadedModel ? ` · ${loadedModel}` : ''}`} · ${data.count ?? data.models?.length ?? 0} modelos · ${data.latencyMs ?? 0} ms${identity}`,
+              `${data.loaded === false ? 'Strata responds, no model loaded' : `Strata responds${loadedModel ? ` · ${loadedModel}` : ''}`} · ${data.count ?? data.models?.length ?? 0} models · ${data.latencyMs ?? 0} ms${identity}`,
+              `${data.loaded === false ? 'Strata antwortet, kein Modell geladen' : `Strata antwortet${loadedModel ? ` · ${loadedModel}` : ''}`} · ${data.count ?? data.models?.length ?? 0} Modelle · ${data.latencyMs ?? 0} ms${identity}`
+            )
           : data.error || t('Sin respuesta', 'No response', 'Keine Antwort');
       } else if (provider.id === 'custom') {
         const res = await fetch('/api/custom/models', {
@@ -1026,6 +1083,54 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                         </span>
                       </div>
                     )}
+                    {provider.id === 'strata-local' && provider.monitor && (
+                      <div
+                        role="status"
+                        className="mt-1 border border-amber-400/40 bg-amber-400/10 px-1.5 py-1 text-[9px] leading-snug text-amber-200"
+                      >
+                        {t(
+                          'Esa URL es el monitor de Strata, no el servidor del modelo.',
+                          'That URL is the Strata monitor, not the model server.',
+                          'Diese URL ist der Strata-Monitor, nicht der Modellserver.'
+                        )}{' '}
+                        {provider.monitor.engineUrls[0]
+                          ? t(
+                              `El motor real está en ${provider.monitor.engineUrls[0]}. Copia esa URL en Host y guarda la API key del motor.`,
+                              `The real engine is at ${provider.monitor.engineUrls[0]}. Use that URL in Host and save the engine API key.`,
+                              `Der echte Motor läuft unter ${provider.monitor.engineUrls[0]}. Trage diese URL als Host ein und speichere den API-Schlüssel des Motors.`
+                            )
+                          : t(
+                              'El monitor no tiene ningún motor listo; inicia el modelo en Strata y usa la URL que muestre.',
+                              'The monitor has no ready engine; load a model in Strata and use the URL it shows.',
+                              'Der Monitor hat keinen bereiten Motor; lade ein Modell in Strata und nutze die angezeigte URL.'
+                            )}
+                      </div>
+                    )}
+                    {provider.id === 'strata-local' && provider.auth && (
+                      <div
+                        role="status"
+                        className="mt-1 border border-red-400/40 bg-red-400/10 px-1.5 py-1 text-[9px] leading-snug text-red-200"
+                      >
+                        {t(
+                          'Strata respondió, pero la API key falta o no coincide. Revísala en el campo de arriba.',
+                          'Strata answered, but the API key is missing or does not match. Check it in the field above.',
+                          'Strata antwortet, aber der API-Schlüssel fehlt oder stimmt nicht. Prüfe ihn im Feld oben.'
+                        )}
+                      </div>
+                    )}
+                    {provider.id === 'strata-local' &&
+                      provider.reachable !== false &&
+                      (provider.warning || provider.loaded === false || provider.identity === 'unverified') && (
+                      <div
+                        role="status"
+                        className="mt-1 border border-amber-400/40 bg-amber-400/10 px-1.5 py-1 text-[9px] leading-snug text-amber-200"
+                      >
+                        {provider.warning ||
+                          (provider.loaded === false
+                            ? t('El host responde, pero no hay ningún modelo cargado en Strata.', 'The host answers, but no model is loaded in Strata.', 'Der Host antwortet, aber in Strata ist kein Modell geladen.')
+                            : t('El host responde como OpenAI-compatible, pero /v1/status no confirmó que sea Strata.', 'The host answers as OpenAI-compatible, but /v1/status did not confirm it is Strata.', 'Der Host antwortet OpenAI-kompatibel, aber /v1/status hat Strata nicht bestätigt.'))}
+                      </div>
+                    )}
                     {provider.env.length > 0 && (
                       <div className="pt-2 text-[9px] text-[var(--nc-text)] break-all">
                         {t('También por entorno:', 'Also via env:', 'Auch per Umgebung:')} {provider.env.join(' / ')}
@@ -1060,6 +1165,33 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({ isOpen = false
                         )}
                       </p>
                     )}
+                    {provider.id === 'strata-local' && (
+                      <p className="pt-1 text-[9px] leading-snug text-[var(--nc-text)] opacity-70">
+                        {t(
+                          'Host local de Strata. Por defecto http://127.0.0.1:8080/v1; STRATA_PORT o STRATA_LOCAL_BASE_URL lo sobrescriben. La API key es STRATA_API_KEY si el servidor la tiene activada.',
+                          'Local Strata host. Defaults to http://127.0.0.1:8080/v1; STRATA_PORT or STRATA_LOCAL_BASE_URL override it. The API key is STRATA_API_KEY when the server has one.',
+                          'Lokaler Strata-Host. Standard http://127.0.0.1:8080/v1; STRATA_PORT oder STRATA_LOCAL_BASE_URL überschreiben ihn. Der API-Schlüssel ist STRATA_API_KEY, falls der Server einen hat.'
+                        )}
+                      </p>
+                    )}
+                    {provider.id === 'strata-local' &&
+                      isRemoteHttpUrl(draft.baseUrl || provider.host || '') && (
+                        <label className="mt-1 flex items-start gap-1 border border-red-400/40 bg-red-400/10 px-1.5 py-1 text-[9px] leading-snug text-red-200">
+                          <input
+                            type="checkbox"
+                            checked={strataAllowInsecure}
+                            onChange={(event) => setStrataAllowInsecure(event.target.checked)}
+                            className="mt-0.5"
+                          />
+                          <span>
+                            {t(
+                              'Confirmo que este host remoto usa HTTP sin cifrar y acepto enviar la API key por esa red.',
+                              'I confirm this remote host uses unencrypted HTTP and accept sending the API key over that network.',
+                              'Ich bestätige, dass dieser entfernte Host unverschlüsseltes HTTP nutzt, und akzeptiere, den API-Schlüssel über dieses Netzwerk zu senden.'
+                            )}
+                          </span>
+                        </label>
+                      )}
                     {provider.id === 'custom' && (
                       <p className="pt-1 text-[9px] leading-snug text-[var(--nc-text)] opacity-70">
                         {t(

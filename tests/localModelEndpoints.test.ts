@@ -46,11 +46,23 @@ test('POST /api/local-models/runtime/start sin modelo responde 404 y no arranca'
   assert.equal(res.body.success, false);
 });
 
+test('GET /api/local-models/runtime/proposal sin modelo responde 404 y no propone nada', async () => {
+  const res = await srv.request('GET', '/api/local-models/runtime/proposal?model=no-existe.gguf');
+  assert.equal(res.status, 404);
+  assert.equal(res.body.success, false);
+});
+
 test('POST /api/local-models/hub/download rechaza nombres que no son GGUF', async () => {
   const res = await srv.request('POST', '/api/local-models/hub/download', {
     repoId: 'org/modelo',
     filename: '../modelo.bin',
   });
   assert.equal(res.status, 400);
+  assert.equal(res.body.success, false);
+});
+
+test('POST /api/local-models/stream sin modelo responde 404 y no abre SSE', async () => {
+  const res = await srv.request('POST', '/api/local-models/stream', { model: 'no-existe.gguf' });
+  assert.equal(res.status, 404);
   assert.equal(res.body.success, false);
 });
