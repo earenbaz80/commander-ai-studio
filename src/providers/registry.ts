@@ -344,7 +344,7 @@ export function describeProvider(
   // que esté en el fichero marcaría como «sin configurar» algo que funciona.
   const missing = fromEnv ? [] : spec.fields.filter((f) => f.required && !filled(f.name)).map((f) => f.name);
   const hasAny = spec.fields.some((f) => filled(f.name));
-  const local = spec.id === 'ollama' || spec.id === 'lmstudio' || spec.id === STRATA_LOCAL_PROVIDER_ID;
+  const local = spec.id === 'ollama' || spec.id === 'lmstudio';
 
   return {
     configured: missing.length === 0 && (hasAny || fromEnv || local),
