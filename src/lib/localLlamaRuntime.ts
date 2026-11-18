@@ -39,6 +39,14 @@ export interface LocalRuntimeTuning {
   /**
    * `--cache-reuse N`: tokens mínimos para reaprovechar la caché KV
    * desplazada entre turnos del agente. 0 desactiva el flag.
+   *
+   * Medido con la build 12375: no cambia nada en la práctica, así que no vale
+   * la pena volver a investigarlo. La reutilización de prefijo ya la hace
+   * `cache_prompt` (activo por defecto) y el shift de caché nunca ocurre:
+   * cuando el prompt excede la ventana el servidor responde HTTP 400 en vez
+   * de desplazar el KV. Compactando ~370 tokens de cola al final de un turno,
+   * sin el flag fueron 73 reusados / 896 computados / 2158 ms y con
+   * `--cache-reuse 256`, 73 / 896 / 2209 ms: la diferencia es ruido.
    */
   cacheReuse?: number;
 }
@@ -160,8 +168,9 @@ export function normalizeLocalRuntimeTuning(
     throw new Error('tensor-split inválido (proporciones por GPU, por ejemplo 1,1)');
   }
 
-  // Sin valor se activa el 256 del binario: es el mínimo con el que
-  // llama.cpp reaprovecha bloques entre turnos sin recalcular el prefijo.
+  // Sin valor se usa 256 (el default del binario es 0). Ver la nota del
+  // campo `cacheReuse`: con la build medida el flag no cambia la caché real,
+  // pero se manda explícito para que el ajuste quede visible y persistido.
   const rawCacheReuse = input.cacheReuse;
   const cacheReuse =
     rawCacheReuse === undefined || rawCacheReuse === null || String(rawCacheReuse).trim() === ''
