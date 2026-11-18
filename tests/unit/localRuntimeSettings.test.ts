@@ -89,6 +89,13 @@ describe('ajustes persistidos del runtime', () => {
     ).toEqual({ flashAttention: false });
   });
 
+  test('conserva cache-reuse dentro del rango y descarta el resto', () => {
+    expect(sanitizeLocalRuntimeTuning({ cacheReuse: 512 })).toEqual({ cacheReuse: 512 });
+    expect(sanitizeLocalRuntimeTuning({ cacheReuse: 0 })).toEqual({ cacheReuse: 0 });
+    expect(sanitizeLocalRuntimeTuning({ cacheReuse: -1 })).toEqual({});
+    expect(sanitizeLocalRuntimeTuning({ cacheReuse: 'mucho' as any })).toEqual({});
+  });
+
   test('COMMANDER_LOCAL_RUNTIME_SETTINGS aísla la ruta del archivo', () => {
     const root = tempDir();
     const override = path.join(tempDir(), 'custom', 'runtime.json');

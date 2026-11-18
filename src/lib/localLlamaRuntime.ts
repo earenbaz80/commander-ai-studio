@@ -36,6 +36,11 @@ export interface LocalRuntimeTuning {
   cacheTypeV?: string;
   /** `--tensor-split`: proporción por GPU, por ejemplo `1,1`. */
   tensorSplit?: string;
+  /**
+   * `--cache-reuse N`: tokens mínimos para reaprovechar la caché KV
+   * desplazada entre turnos del agente. 0 desactiva el flag.
+   */
+  cacheReuse?: number;
 }
 
 /** Ajustes ya validados y listos para construir argumentos o comparar procesos. */
@@ -46,6 +51,7 @@ export interface NormalizedLocalRuntimeTuning {
   cacheTypeK?: string;
   cacheTypeV?: string;
   tensorSplit?: string;
+  cacheReuse: number;
 }
 
 export interface LocalRuntimeStatus {
@@ -67,6 +73,7 @@ export interface LocalRuntimeStatus {
   cacheTypeK?: string;
   cacheTypeV?: string;
   tensorSplit?: string;
+  cacheReuse?: number;
 }
 
 export interface LocalRuntimeResult extends LocalRuntimeStatus {
@@ -153,6 +160,17 @@ export function normalizeLocalRuntimeTuning(
     throw new Error('tensor-split inválido (proporciones por GPU, por ejemplo 1,1)');
   }
 
+  // Sin valor se activa el 256 del binario: es el mínimo con el que
+  // llama.cpp reaprovecha bloques entre turnos sin recalcular el prefijo.
+  const rawCacheReuse = input.cacheReuse;
+  const cacheReuse =
+    rawCacheReuse === undefined || rawCacheReuse === null || String(rawCacheReuse).trim() === ''
+      ? 256
+      : Math.round(Number(rawCacheReuse));
+  if (!Number.isFinite(cacheReuse) || cacheReuse < 0 || cacheReuse > 8192) {
+    throw new Error('cache-reuse inválido (0–8192 tokens)');
+  }
+
   const quantized = [cacheTypeK, cacheTypeV].some((type) => !!type && QUANTIZED_KV_TYPES.has(type));
   if (quantized && !flashAttention) {
     throw new Error('La caché KV cuantizada requiere flash-attn');
@@ -165,6 +183,7 @@ export function normalizeLocalRuntimeTuning(
     ...(cacheTypeK ? { cacheTypeK } : {}),
     ...(cacheTypeV ? { cacheTypeV } : {}),
     ...(tensorSplitRaw ? { tensorSplit: tensorSplitRaw } : {}),
+    cacheReuse,
   };
 }
 
@@ -202,6 +221,7 @@ export function buildLlamaServerArgs(input: LlamaServerArgsInput): string[] {
     ...(input.cacheTypeK ? ['--cache-type-k', input.cacheTypeK] : []),
     ...(input.cacheTypeV ? ['--cache-type-v', input.cacheTypeV] : []),
     ...(input.tensorSplit ? ['--tensor-split', input.tensorSplit] : []),
+    ...(input.cacheReuse > 0 ? ['--cache-reuse', String(input.cacheReuse)] : []),
   ];
 }
 
@@ -279,7 +299,8 @@ function sameTuning(
     (current.cpuMoeLayers ?? undefined) === tuning.cpuMoeLayers &&
     (current.cacheTypeK ?? undefined) === tuning.cacheTypeK &&
     (current.cacheTypeV ?? undefined) === tuning.cacheTypeV &&
-    (current.tensorSplit ?? undefined) === tuning.tensorSplit
+    (current.tensorSplit ?? undefined) === tuning.tensorSplit &&
+    (current.cacheReuse ?? undefined) === tuning.cacheReuse
   );
 }
 

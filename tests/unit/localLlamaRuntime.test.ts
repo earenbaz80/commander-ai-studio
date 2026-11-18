@@ -98,6 +98,8 @@ describe('runtime nativo de llama.cpp', () => {
       '--jinja',
       '--flash-attn',
       'on',
+      '--cache-reuse',
+      '256',
     ]);
 
     const stopped = await manager.stop();
@@ -158,6 +160,8 @@ describe('runtime nativo de llama.cpp', () => {
       'q8_0',
       '--tensor-split',
       '1,1',
+      '--cache-reuse',
+      '256',
     ]);
 
     // Los mismos ajustes reutilizan el proceso vivo.
@@ -195,6 +199,12 @@ describe('runtime nativo de llama.cpp', () => {
     expect(started.success).toBe(true);
     expect(calls[0]).toContain('--no-jinja');
     expect(calls[0][calls[0].indexOf('--flash-attn') + 1]).toBe('off');
+  });
+
+  test('reaprovecha el prompt con --cache-reuse 256 y permite apagarlo con 0', () => {
+    expect(normalizeLocalRuntimeTuning({}).cacheReuse).toBe(256);
+    expect(normalizeLocalRuntimeTuning({ cacheReuse: 0 }).cacheReuse).toBe(0);
+    expect(() => normalizeLocalRuntimeTuning({ cacheReuse: 99_999 })).toThrow('cache-reuse');
   });
 
   test('acepta todos los tipos de caché KV de la build instalada', () => {

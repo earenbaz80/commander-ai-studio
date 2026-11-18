@@ -3737,6 +3737,10 @@ function localRuntimeTuningFrom(body: any): LocalRuntimeTuning {
   const cacheTypeK = text(body?.cacheTypeK);
   const cacheTypeV = text(body?.cacheTypeV);
   const tensorSplit = text(body?.tensorSplit);
+  const cacheReuse =
+    body?.cacheReuse === undefined || body?.cacheReuse === null || String(body.cacheReuse).trim() === ''
+      ? undefined
+      : Number(body.cacheReuse);
   return {
     ...(typeof body?.jinja === 'boolean' ? { jinja: body.jinja } : {}),
     ...(typeof body?.flashAttention === 'boolean' ? { flashAttention: body.flashAttention } : {}),
@@ -3746,6 +3750,7 @@ function localRuntimeTuningFrom(body: any): LocalRuntimeTuning {
     ...(cacheTypeK ? { cacheTypeK } : {}),
     ...(cacheTypeV ? { cacheTypeV } : {}),
     ...(tensorSplit ? { tensorSplit } : {}),
+    ...(cacheReuse === undefined ? {} : { cacheReuse }),
   };
 }
 
@@ -4094,6 +4099,9 @@ app.post('/api/local-models/generate', async (req, res) => {
           messages: history,
           temperature: Number(temperature),
           max_tokens: Number(maxTokens),
+          // Reaprovecha el prefijo del turno anterior en vez de
+          // recalcularlo: el agente manda casi el mismo historial cada vez.
+          cache_prompt: true,
           stream: false,
           ...(Array.isArray(tools) && tools.length > 0 ? { tools } : {}),
         }),

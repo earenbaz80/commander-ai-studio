@@ -38,6 +38,10 @@ export function sanitizeLocalRuntimeTuning(raw: unknown): LocalRuntimeTuning {
   const record = raw as Record<string, unknown>;
   const tuning: LocalRuntimeTuning = {};
   if (typeof record.jinja === 'boolean') tuning.jinja = record.jinja;
+  const reuse = record.cacheReuse;
+  if (typeof reuse === 'number' && Number.isFinite(reuse) && reuse >= 0 && reuse <= 8192) {
+    tuning.cacheReuse = Math.round(reuse);
+  }
   if (typeof record.flashAttention === 'boolean') tuning.flashAttention = record.flashAttention;
 
   const moe = Number(record.cpuMoeLayers);
