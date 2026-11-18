@@ -46,6 +46,7 @@
     "lint:fix": "eslint src --fix",
     "typecheck": "tsc --noEmit",
     "check:index": "tsx scripts/check-index.ts",
+    "bench:local": "tsx scripts/bench-local-runtime.ts",
     "audit:loop-guard": "tsx scripts/audit-loop-guard.ts",
     "check:issue-status": "tsx scripts/sync-issue-status.ts --check",
     "check:criteria": "tsx scripts/check-issue-criteria.ts",
