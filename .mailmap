@@ -1,0 +1,5 @@
+# Una sola firma: todo alias del mismo autor se muestra con el nombre y el
+# correo canónicos. Así `git shortlog`, `contributors` y `git log` no parten al
+# mismo autor en dos personas por usar el correo noreply de GitHub.
+Edel Arencibia Baez <edelarencibiabaez@gmail.com> <earenbaz80@users.noreply.github.com>
+Edel Arencibia Baez <edelarencibiabaez@gmail.com> earenbaz80 <edelarencibiabaez@gmail.com>
