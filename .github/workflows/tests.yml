@@ -70,6 +70,16 @@ jobs:
       - name: Tipos (tsc --noEmit)
         run: npm run typecheck
 
+      # `prepack` construye el bundle del CLI, pero ningún job empaquetaba:
+      # un `bin`, un `files` o un banner roto pasaba inadvertido hasta publicar.
+      # Barato aquí porque `npm ci` ya está hecho. El segundo paso corre
+      # `npm pack` y arranca el ejecutable empaquetado.
+      - name: Bundle del CLI (build:cli)
+        run: npm run build:cli
+
+      - name: Paquete del CLI (npm pack + smoke)
+        run: npm run check:cli-package
+
       # `npm ci` instala el paquete de Playwright pero no sus navegadores. Los
       # tests de browser del servidor lanzan Chromium, así que hay que bajarlo
       # antes de la suite de node:test.

@@ -273,3 +273,23 @@ test('los workflows no invocan scripts ni ficheros que no existan', () => {
     }
   }
 });
+
+test('CI: una guardia construye y empaqueta el CLI', () => {
+  const pasos = pasosDe(jobDe(ci, 'lint-and-test'));
+  const esRun = (paso: string, comando: string) =>
+    paso.split('\n').some((l) => l.trim() === `run: ${comando}`);
+
+  // `prepack` construye el bundle, pero sin un job que empaquete nadie lo
+  // ejecuta: el `bin`, `files` o el banner podían romperse en silencio.
+  const build = pasos.findIndex((p) => esRun(p, 'npm run build:cli'));
+  const pack = pasos.findIndex((p) => esRun(p, 'npm run check:cli-package'));
+  assert.ok(build >= 0, 'falta el paso que construye el bundle del CLI');
+  assert.ok(pack >= 0, 'falta el paso que empaqueta y prueba el CLI');
+  assert.ok(build < pack, 'el bundle se construye antes de empaquetarlo');
+
+  // El script es el que mide: si se vacía, el job queda verde sin comprobar nada.
+  const guion = leer('scripts/check-cli-package.mjs');
+  assert.match(guion, /'pack'/, 'el script corre npm pack');
+  assert.match(guion, /cli-dist\/commander\.mjs/, 'comprueba el bundle en el tarball');
+  assert.match(guion, /--version/, 'ejecuta el bundle empaquetado');
+});
