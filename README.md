@@ -8,6 +8,7 @@ Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos
 - [LM Studio](docs/API.md#lm-studio): generación, carga automática del modelo y aviso de contexto en la UI.
 - [Plan de paridad](ROADMAP_PARITY.md): comparación con OpenCode, Antigravity y Freebuff, fases y criterios de aceptación.
 - [Roadmap de evolución](ROADMAP.md): resumen de paridad, plataforma y UX, con estado, puertas y secuencia.
+- [Roadmap autónomo (publicado)](https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html): vista web del camino al multiagente autónomo, con el porcentaje por fase; el fuente es docs/roadmap-autonomo.html.
 
 ## Run Locally
 
