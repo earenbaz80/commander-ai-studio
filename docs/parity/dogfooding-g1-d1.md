@@ -21,7 +21,7 @@ Tiempo estimado: 10–20 min por corrida y ~15 min de preflight. Presupuesto dur
 
 ### 2.1 Árbol limpio y commit fijo
 
-El runbook exige `git status --porcelain` vacío. **Hoy el árbol no está limpio**: hay un cambio de Strata en `src/App.tsx` sin commitear, además del resto del worktree.
+El runbook exige `git status --porcelain` vacío. **En D1 el árbol no estaba limpio**: había un cambio de Strata en `src/App.tsx` sin commitear, además del resto del worktree. Ese trabajo ya está integrado: el proveedor cloud se retiró en `6024ece` y no queda nada en `stash` (corrección 2026-11-19).
 
 Elegir una opción y anotarla en el registro de D1:
 
@@ -37,7 +37,7 @@ git status --porcelain      # debe estar vacío
 git check-ignore -v .env    # .env sigue ignorado
 ```
 
-**Aplicado en D1:** opción **B**. Se commiteó primero la documentación del plan (`06951d7`, 3 archivos) y el trabajo de Strata a medias quedó en `stash@{0}` («WIP Strata provider - pausado para D1 de G1»). Árbol limpio en `06951d7` durante todas las corridas; el stash se recupera al terminar el dogfooding.
+**Aplicado en D1:** opción **B**. Se commiteó primero la documentación del plan (`06951d7`, 3 archivos) y el trabajo de Strata a medias quedó en `stash@{0}` («WIP Strata provider - pausado para D1 de G1»). Árbol limpio en `06951d7` durante todas las corridas. **Corrección (2026-11-19):** ese `stash@{0}` ya no existe (`git stash list` está vacío): el WIP se integró en la pila de Strata y el proveedor cloud se retiró en `6024ece`. El proveedor Strata vigente es sólo `strata-local`. La nota original se conserva como registro de lo que se hizo en D1.
 
 ### 2.2 Entorno
 
@@ -417,7 +417,7 @@ Lo que queda demostrado: el CLI pide aprobación con diff para `fs.edit` y `shel
 
 D2 ejecuta **T3 ×2, T4 ×2 y T5 ×1** (`G1-D2-01`…`05`), ya preparado en [dogfooding-g1-d2.md](dogfooding-g1-d2.md) con sus cinco workspaces sembrados. T5 es una revisión local de `parse.mjs` sin modificar archivos (el criterio que midió F0), no un PR real.
 
-**Estado de partida:** D1 cerrado con 3/5; no quedan corridas pendientes. El proveedor respondió el 2026-11-12 por la mañana (09:26–09:33) con el mismo modelo congelado, el servidor `3283` en pie y `src/`/`bin/` sin cambios desde `06951d7` (HEAD `eff4aea` sólo toca `docs/`, `evals/` y `scripts/`). Árbol limpio; el WIP de Strata sigue en `stash@{0}`.
+**Estado de partida:** D1 cerrado con 3/5; no quedan corridas pendientes. El proveedor respondió el 2026-11-12 por la mañana (09:26–09:33) con el mismo modelo congelado, el servidor `3283` en pie y `src/`/`bin/` sin cambios desde `06951d7` (HEAD `eff4aea` sólo toca `docs/`, `evals/` y `scripts/`). Árbol limpio; el WIP de Strata quedó en `stash@{0}`, que hoy ya no existe (ver §2.1).
 
 **Avisos que D2 debe vigilar:** (1) el bucle de `G1-D1-04` es de lecturas idénticas (42 `fs.read` sobre dos archivos), y `fs.propose.edit` no escribe en disco aunque devuelva `changed:true` — una propuesta sin aplicar también agota la corrida sin escribir y cuenta como `failed` ([issue](issues/G1-T2-READ-LOOP.md)); (2) la «Política de test obligatorio» exige editar un test y ejecutar `node --test` antes de cerrar, y el modelo puede ignorarla hasta el límite de pasos. En T5 cualquier intento de escritura se deniega (`d`), que es el caso de denegación que D1 no llegó a probar.
 

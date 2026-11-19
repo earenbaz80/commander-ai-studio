@@ -367,7 +367,7 @@ Sólo con el recibo y el diario D1–D5:
 
 | Riesgo | Prob. | Mitigación |
 | --- | --- | --- |
-| Árbol sucio al empezar (hoy hay un cambio de Strata sin commitear) | Alta | Fijar commit antes de D1; sin árbol limpio no hay corrida válida |
+| Árbol sucio al empezar (en D1 había un cambio de Strata sin commitear; hoy está integrado) | Alta | Fijar commit antes de D1; sin árbol limpio no hay corrida válida |
 | `--json` o pipe anula las aprobaciones | Alta | TTY real en T1–T5 y T8; evidencia desde la API de sesiones |
 | Proveedor gratuito con cuota o latencia variable | Media | Registrar timeouts; no cambiar de modelo; repetir sólo si es `invalid` |
 | Workspace de T5/T7 compartido entre corridas | Media | Un workspace por `runId`; T5 es revisión local de `parse.mjs` (sin PR), T7 una copia de `examples/vite-static` |

@@ -27,15 +27,15 @@ Marcas que el arnés acepta en la respuesta (≥2, sin distinguir mayúsculas): 
 
 ### 2.1 Árbol limpio y commit fijo
 
-D1 dejó el árbol limpio y el WIP de Strata en `stash@{0}`. Al cerrar D1 el HEAD es `eff4aea`: desde `2017515` sólo cambiaron `docs/`, `evals/` y `scripts/` (fixtures compartidos y script de siembra), con `src/` y `bin/` intactos. D2 no cambia código: si el HEAD se mueve sólo por documentación, se anota; si cambia código, se repiten los gates de §2.3.
+D1 dejó el árbol limpio y el WIP de Strata en `stash@{0}` (hoy ya no existe: el proveedor cloud se retiró en `6024ece`). Al cerrar D1 el HEAD es `eff4aea`: desde `2017515` sólo cambiaron `docs/`, `evals/` y `scripts/` (fixtures compartidos y script de siembra), con `src/` y `bin/` intactos. D2 no cambia código: si el HEAD se mueve sólo por documentación, se anota; si cambia código, se repiten los gates de §2.3.
 
 ```bash
 git rev-parse HEAD
 git status --porcelain      # debe estar vacío
-git stash list | head -n 1  # stash@{0} sigue ahí hasta cerrar G1
+git stash list | head -n 1  # en D2 seguía ahí; hoy la lista está vacía
 ```
 
-No aplicar el stash durante el dogfooding.
+No aplicar el stash durante el dogfooding. (Hoy ya no aplica: el stash no existe.)
 
 ### 2.2 Entorno
 
@@ -397,4 +397,4 @@ D3 ejecuta **T5 ×1, T6 ×2 y T8 ×2** (`G1-D3-01`…`05`). T6 necesita el servi
 
 **Lo que D2 no cubrió:** la denegación de una **escritura**. T5 fue la primera ocasión para probarla, pero el agente nunca intentó escribir `parse.mjs`; la única denegación de D2 fue de un `shell.run` de sondeo que además la allowlist habría rechazado. Queda para D3, donde T8 comprueba justamente que una escritura fuera del workspace falla cerrada con decisión `deny`.
 
-Antes de D3: confirmar commit y modelo, árbol limpio y el stash de Strata intacto.
+Antes de D3: confirmar commit y modelo y árbol limpio (el stash de Strata ya no existe).

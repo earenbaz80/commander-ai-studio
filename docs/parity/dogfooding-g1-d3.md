@@ -44,10 +44,10 @@ Esta hoja esperaba «ninguna aprobación» en T6. En el CLI real **cada acción 
 ```bash
 git rev-parse HEAD
 git status --porcelain      # debe estar vacío
-git stash list | head -n 1  # stash@{0} sigue ahí hasta cerrar G1
+git stash list | head -n 1  # en D3 seguía ahí; hoy la lista está vacía
 ```
 
-No aplicar el stash durante el dogfooding.
+No aplicar el stash durante el dogfooding. (Hoy ya no aplica: el stash no existe.)
 
 ### 2.2 Entorno
 
@@ -490,6 +490,6 @@ D4 ejecuta **T7 ×1, T9 ×2 y T10 ×2**. T7 publica dos releases de `examples/vi
 Antes de D4:
 
 1. Defectos de §6: (a) descartado en §6.3 (la tool no escribe; se probó el gate y se retiró), (b) en §6.2 y (c) en §6.1. Volver a pasar `npm run typecheck && npm run build`.
-2. Confirmar commit, modelo, árbol limpio y el stash de Strata intacto.
+2. Confirmar commit, modelo y árbol limpio (el stash de Strata ya no existe).
 3. Previews de T6: los dos procesos `npm run g1:preview` (3411/3412) se levantaron para la repetición de §5.4 y se pararon al terminar; comprobar que ambos puertos responden `000` antes de empezar D4.
 4. Limpiar restos de T8 en los workspaces (`d3-t8-01/02` deben quedar sólo con `canary.txt`).

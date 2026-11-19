@@ -36,10 +36,10 @@ Los subagentes con `worktree:true` crean un worktree desde el commit del workspa
 ```bash
 git rev-parse HEAD
 git status --porcelain      # debe estar vacío
-git stash list | head -n 1  # stash@{0} sigue ahí hasta cerrar G1
+git stash list | head -n 1  # en D4 seguía ahí; hoy la lista está vacía
 ```
 
-No aplicar el stash durante el dogfooding. D4 no cambia `src/` ni `bin/`: desde `293d249` sólo se tocaron `docs/`, `evals/` y `scripts/` (fixture de política y siembra de D4). Si el HEAD se moviera por código, se repiten los gates de §2.3.
+No aplicar el stash durante el dogfooding. (Hoy ya no aplica: el stash no existe.) D4 no cambia `src/` ni `bin/`: desde `293d249` sólo se tocaron `docs/`, `evals/` y `scripts/` (fixture de política y siembra de D4). Si el HEAD se moviera por código, se repiten los gates de §2.3.
 
 ### 2.2 Entorno
 
