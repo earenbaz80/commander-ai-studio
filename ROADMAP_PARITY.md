@@ -1,5 +1,8 @@
 # Plan de paridad — Commander AI Studio vs. OpenCode, Antigravity y Freebuff
 
+> **Roadmap de ejecución (visual):** [docs/roadmap-autonomo.html](docs/roadmap-autonomo.html) — **57,1 %** hacia el multiagente autónomo (2026-11-19), 11 de 27 pasos cerrados.
+> Cada paso se marca allí al cerrarse, con su evidencia y su peso; el porcentaje global es la media ponderada por paso y fase.
+
 > **Estado:** propuesta revisada contra el árbol 2.5.1 y la documentación oficial, 2026-11-07.
 > **Estado G1 (2026-11-16):** dogfooding ejecutado el 2026-11-12 (28 válidas, 17/28) y puerta **NO CERRADA** por el p95 de aprobación; rige la salida B de la [hoja de decisión](docs/parity/g1-approval-gate-decision.md). Recibo: [G1-DOGFOOD-2026-11-12](docs/parity/receipts/G1-DOGFOOD-2026-11-12.md).
 > **Horizonte:** 9–12 semanas de trabajo efectivo para el alcance comprometido (P0 + P1) con 2 personas; 12–16 semanas con una. Las estimaciones son de orden de magnitud (±30%), no fechas comprometidas.

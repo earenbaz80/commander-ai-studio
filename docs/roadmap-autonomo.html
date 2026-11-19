@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Commander — Roadmap hacia el multiagente autónomo</title>
+<style>
+  :root {
+    --bg: #000080;
+    --panel: #000060;
+    --panel-2: #00004d;
+    --cyan: #00ffff;
+    --yellow: #ffff55;
+    --text: #dfe6ff;
+    --dim: #9fb2d8;
+    --ok: #55ff88;
+    --warn: #ffff55;
+    --bad: #ff7777;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 18px 20px 40px;
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.45 "Courier New", ui-monospace, Consolas, monospace;
+  }
+  header.top {
+    border: 2px solid var(--cyan);
+    background: var(--panel);
+    padding: 12px 14px;
+    margin-bottom: 14px;
+  }
+  h1 { margin: 0 0 4px; font-size: 18px; color: var(--yellow); letter-spacing: .4px; }
+  .sub { color: var(--dim); }
+  .global { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .big { font-size: 34px; color: var(--cyan); font-weight: bold; line-height: 1; }
+  .bar { position: relative; flex: 1 1 320px; height: 14px; border: 1px solid var(--cyan); background: var(--panel-2); min-width: 200px; }
+  .bar > span { display: block; height: 100%; background: repeating-linear-gradient(90deg, var(--cyan) 0 8px, #00c8c8 8px 16px); }
+  .counts { color: var(--dim); }
+  .phase { border: 1px solid #2f4bb0; background: var(--panel-2); margin: 12px 0; }
+  .phase > .head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid #2f4bb0; background: #000070; }
+  .phase .name { color: var(--yellow); font-weight: bold; }
+  .phase .goal { color: var(--dim); flex: 1 1 260px; }
+  .phase .pct { color: var(--cyan); min-width: 48px; text-align: right; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 10px; vertical-align: top; border-bottom: 1px dotted #21388c; }
+  th { color: var(--dim); font-weight: normal; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+  tr.done td { background: rgba(85, 255, 136, .05); }
+  .mark { white-space: nowrap; font-weight: bold; }
+  .mark.done { color: var(--ok); }
+  .mark.partial { color: var(--warn); }
+  .mark.todo { color: var(--dim); }
+  .step { color: #fff; }
+  .evidence { color: var(--dim); font-size: 12px; display: block; margin-top: 2px; }
+  .mini { width: 110px; }
+  .mini .bar { height: 8px; min-width: 0; }
+  .val { color: var(--cyan); text-align: right; width: 46px; white-space: nowrap; }
+  .w { color: #6f86c4; font-size: 11px; }
+  footer { margin-top: 16px; border-top: 1px solid #2f4bb0; padding-top: 10px; color: var(--dim); }
+  footer b { color: var(--yellow); }
+  a { color: var(--cyan); }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>COMMANDER AI STUDIO — hacia el multiagente autónomo de codificación</h1>
+  <div class="sub">Estado al <span id="updated"></span> · cada paso vale por evidencia verificable, no por compilar</div>
+  <div class="global">
+    <div class="big" id="global-pct">—</div>
+    <div class="bar"><span id="global-bar" style="width:0%"></span></div>
+    <div class="counts" id="global-counts"></div>
+  </div>
+</header>
+<main id="phases"></main>
+<footer>
+  <div><b>Reglas de marcado.</b> Un paso llega a 100 % sólo con evidencia en el árbol o una corrida real (test, recibo, instalación comprobada). <span class="mark done">[x]</span> cerrado · <span class="mark partial">[~]</span> en curso · <span class="mark todo">[ ]</span> sin empezar.</div>
+  <div style="margin-top:6px"><b>Cómo se actualiza.</b> Los datos viven en el bloque <code>&lt;script id="plan"&gt;</code> de este archivo (peso y % por paso). Al cerrar un paso se sube su <code>progress</code> y se anota la evidencia; los porcentajes de fase y el global se recalculan ponderados al abrir la página.</div>
+  <div style="margin-top:6px"><b>Fuentes.</b> docs/parity/baseline-2026-11.md · docs/parity/dogfooding-g1-d5.md · tests/agentLoop.test.ts · tests/cli/verifyGate.test.ts · tests/cli/defaultPermissions.test.ts · npm run build:cli.</div>
+</footer>
+
+<script type="application/json" id="plan">
+{
+  "updated": "2026-11-19",
+  "phases": [
+    {
+      "id": "F0",
+      "name": "F0 · Núcleo del agente",
+      "goal": "Bucle, tools, permisos, verificación, sesiones y CLI: lo que ya sostiene una corrida real.",
+      "steps": [
+        { "id": "F0-1", "title": "Bucle del agente con tools (fs, shell, git, code, browser, mcp)", "weight": 2, "progress": 100, "evidence": "src/agent/loop.ts · src/agent/registry.ts · tests/agentLoop.test.ts (26)" },
+        { "id": "F0-2", "title": "Modos build / plan / readonly y plan vivo (update_plan)", "weight": 1, "progress": 100, "evidence": "permissions.ts (enforceTool) · src/agent/plan.ts · REPL /plan /build /review" },
+        { "id": "F0-3", "title": "Permisos por proyecto, aprobaciones con diff y undo/redo", "weight": 2, "progress": 100, "evidence": "permissionRules.ts · AgentApprovalModal · checkpoints + undoStep" },
+        { "id": "F0-4", "title": "Reglas por defecto: leer, tests y build sin aprobación", "weight": 1, "progress": 100, "evidence": "T1: 3→2 aprobaciones por corrida (4→2 con gate) · tests/cli/defaultPermissions.test.ts" },
+        { "id": "F0-5", "title": "Gate de verificación tras editar código (no cerrar en rojo)", "weight": 2, "progress": 100, "evidence": "src/agent/verifyGate.ts · T4 demostrado · 3 CLI + 12 unit" },
+        { "id": "F0-6", "title": "Sesiones persistentes, --resume y --fork", "weight": 1, "progress": 100, "evidence": "agentSession.ts · src/cli/agentClient.ts · tests/cli/e2e.test.ts" },
+        { "id": "F0-7", "title": "Multi-proveedor y multi-modelo intercambiables", "weight": 1, "progress": 100, "evidence": "src/agent/providers.ts · evals con Gemini/NVIDIA/Qwen locales" },
+        { "id": "F0-8", "title": "Presupuesto y compactación de contexto (lecturas que sobreviven)", "weight": 1, "progress": 100, "evidence": "contextBudget.ts · outputBudget.ts · tests de compactación" },
+        { "id": "F0-9", "title": "Subagentes: spawn_agents ≤6, 6 plantillas, worktree, allowlist y contrato de cierre", "weight": 2, "progress": 100, "evidence": "src/agent/tools/{task,spawnAgents}.ts · subagentTemplates.ts · tests/agent/subagents.test.ts" },
+        { "id": "F0-10", "title": "CLI instalable (bundle + bin + prepack + tarball verificado)", "weight": 2, "progress": 95, "evidence": "scripts/build-cli.mjs · tarball 1,1 MB · commander --version/doctor desde instalación global · guardián en CI (build:cli + npm pack + smoke) · sin private y con deps mínimas, npm i -g real instala 3 paquetes · falta publicar en npm" }
+      ]
+    },
+    {
+      "id": "F1",
+      "name": "F1 · Fiabilidad medida",
+      "goal": "Que la autonomía se pueda demostrar: subagentes que cierran bien, baseline y gate en todas las superficies.",
+      "steps": [
+        { "id": "F1-1", "title": "T10: dos subagentes en paralelo que cierran bien (allowlist + worktree)", "weight": 3, "progress": 35, "evidence": "0/9 corridas; G1-T10-08 4/6 · arreglado: cierre por maxSteps, guarda de racha, catálogo filtrado, turno vacío; falta la respuesta final de los hijos" },
+        { "id": "F1-2", "title": "Baseline de 24 corridas en verde sostenido", "weight": 3, "progress": 30, "evidence": "F0: 8/24 (T1 3/3, T7 3/3, T3 y T5 1/2, resto 0)" },
+        { "id": "F1-3", "title": "Gate de verificación también en escritorio y servidor", "weight": 2, "progress": 0, "evidence": "hoy cableado sólo en el bucle del CLI (src/cli/agentClient.ts)" },
+        { "id": "F1-4", "title": "Dogfooding G1 cerrado (5 días, 24 corridas comparadas)", "weight": 2, "progress": 60, "evidence": "D5 4/4 passed; G1 NO CERRADA por p95 de aprobación y T10 · recibo G1-DOGFOOD-2026-11-12" },
+        { "id": "F1-5", "title": "Reparación autónoma rojo→verde sin intervención humana", "weight": 2, "progress": 40, "evidence": "el gate devuelve la salida real y bloquea el cierre; falta medir cuántas corridas llegan solas al verde" },
+        { "id": "F1-6", "title": "Arnés determinista de escenarios T1–T10 en CI", "weight": 1, "progress": 100, "evidence": "evals/harness.ts · evals/scenarios.ts · tests/evalsScenarios.test.ts" }
+      ]
+    },
+    {
+      "id": "F2",
+      "name": "F2 · Distribución del CLI",
+      "goal": "Que cualquiera pueda instalarlo y usarlo sin clonar el repo.",
+      "steps": [
+        { "id": "F2-1", "title": "Publicar en el registro de npm", "weight": 2, "progress": 85, "evidence": "sin private, deps mínimas y tarball de 1,1 MB · falta cuenta npm y versión" },
+        { "id": "F2-2", "title": "Paquete adelgazado (sólo dependencias del CLI)", "weight": 2, "progress": 100, "evidence": "dependencies = node-pty; npm i -g instala 3 paquetes (antes 273)" },
+        { "id": "F2-3", "title": "commander serve / build desde el paquete instalado", "weight": 1, "progress": 0, "evidence": "necesitan dist/, public/ y vite, que no viajan en el tarball" },
+        { "id": "F2-4", "title": "Extensión de VS Code funcional (no scaffold)", "weight": 1, "progress": 25, "evidence": "vscode-extension/ lanza el CLI headless; no es un IDE integrado" }
+      ]
+    },
+    {
+      "id": "F3",
+      "name": "F3 · Continuidad de superficies",
+      "goal": "Misma tarea en terminal, escritorio, web y móvil, con sandbox y repos conectados.",
+      "steps": [
+        { "id": "F3-1", "title": "Web/nube: sesiones accesibles fuera de la máquina", "weight": 2, "progress": 20, "evidence": "API de sesiones + SSE existen; el server sólo escucha en local, sin hosting" },
+        { "id": "F3-2", "title": "Sandbox de ejecución aislado por sesión (remoto)", "weight": 2, "progress": 10, "evidence": "worktrees aislados y vm para code.run; no hay contenedor ni ejecución remota" },
+        { "id": "F3-3", "title": "Conectar repositorio de GitHub (OAuth + clonar/abrir)", "weight": 2, "progress": 25, "evidence": "OAuth GitHub y github.pr/github.comment reales; no hay clonar ni abrir repo desde la app" },
+        { "id": "F3-4", "title": "App móvil para seguir o retomar sesiones", "weight": 2, "progress": 5, "evidence": "sólo metas PWA y scripts capacitor:add; no hay proyecto Android/iOS" }
+      ]
+    },
+    {
+      "id": "F4",
+      "name": "F4 · Plataforma",
+      "goal": "Lo que hace que el agente entregue producto y no sólo parches.",
+      "steps": [
+        { "id": "F4-1", "title": "Aprovisionar y desplegar el backend de las apps publicadas", "weight": 1, "progress": 30, "evidence": "backend multiinquilino local + publisher; despliegue remoto en pausa hasta G3" },
+        { "id": "F4-2", "title": "Marketplace propio de skills/plugins", "weight": 1, "progress": 20, "evidence": "catálogo de plugins de Claude ya integrado; sin marketplace propio" },
+        { "id": "F4-3", "title": "Coste y tokens por corrida (observabilidad)", "weight": 1, "progress": 20, "evidence": "recordMetric guarda tool/duración; la baseline no estima tokens ni coste" }
+      ]
+    }
+  ]
+}
+</script>
+
+<script>
+  const plan = JSON.parse(document.getElementById('plan').textContent);
+  const state = (p) => (p >= 100 ? 'done' : p > 0 ? 'partial' : 'todo');
+  const mark = (p) => (p >= 100 ? '[x]' : p > 0 ? '[~]' : '[ ]');
+  const pct = (n) => `${Math.round(n)} %`;
+
+  document.getElementById('updated').textContent = plan.updated;
+
+  const main = document.getElementById('phases');
+  let gWeight = 0;
+  let gProgress = 0;
+  let stepsTotal = 0;
+  let stepsDone = 0;
+
+  for (const phase of plan.phases) {
+    const weight = phase.steps.reduce((a, s) => a + s.weight, 0);
+    const done = phase.steps.filter((s) => s.progress >= 100).length;
+    const value = phase.steps.reduce((a, s) => a + s.weight * s.progress, 0) / weight;
+    gWeight += weight;
+    gProgress += weight * value;
+    stepsTotal += phase.steps.length;
+    stepsDone += done;
+
+    const section = document.createElement('section');
+    section.className = 'phase';
+    section.innerHTML = `
+      <div class="head">
+        <span class="name">${phase.name}</span>
+        <span class="goal">${phase.goal}</span>
+        <span class="pct">${pct(value)}</span>
+        <span class="w">${done}/${phase.steps.length} pasos</span>
+      </div>
+      <div class="bar" style="border:0"><span style="width:${value}%"></span></div>
+      <table>
+        <thead><tr><th></th><th>Paso</th><th class="mini">Avance</th><th class="val">%</th></tr></thead>
+        <tbody></tbody>
+      </table>`;
+    const tbody = section.querySelector('tbody');
+    for (const step of phase.steps) {
+      const tr = document.createElement('tr');
+      tr.className = step.progress >= 100 ? 'done' : '';
+      tr.innerHTML = `
+        <td class="mark ${state(step.progress)}">${mark(step.progress)}</td>
+        <td><span class="step">${step.title}</span><span class="evidence">${step.evidence}</span></td>
+        <td class="mini"><div class="bar"><span style="width:${step.progress}%"></span></div></td>
+        <td class="val">${step.progress}%</td>`;
+      tbody.appendChild(tr);
+    }
+    main.appendChild(section);
+  }
+
+  const globalValue = gProgress / gWeight;
+  document.getElementById('global-pct').textContent = pct(globalValue);
+  document.getElementById('global-bar').style.width = `${globalValue}%`;
+  document.getElementById('global-counts').textContent =
+    `${stepsDone} de ${stepsTotal} pasos cerrados · media ponderada por importancia`;
+</script>
+</body>
+</html>
