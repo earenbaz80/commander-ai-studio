@@ -58,11 +58,19 @@
   .val { color: var(--cyan); text-align: right; width: 46px; white-space: nowrap; }
   .w { color: #6f86c4; font-size: 11px; }
   footer { margin-top: 16px; border-top: 1px solid #2f4bb0; padding-top: 10px; color: var(--dim); }
+  .aviso { margin: 0 0 12px; padding: 7px 10px; border-left: 3px solid var(--yellow); background: var(--panel-2); color: var(--dim); }
+  .aviso a { color: var(--cyan); }
+  .aviso[hidden] { display: none; }
   footer b { color: var(--yellow); }
   a { color: var(--cyan); }
 </style>
 </head>
 <body>
+<!-- El visor de GitHub muestra los .html como código y no los ejecuta: este
+     aviso indica dónde verlo. En el sitio de Pages apuntaría a la página que ya
+     se está viendo, así que ahí se oculta. -->
+<p class="aviso" id="aviso-pages">Versión gráfica publicada: <a href="https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html">earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html</a></p>
+<script>if (location.hostname.endsWith("github.io")) document.getElementById("aviso-pages").hidden = true;</script>
 <header class="top">
   <h1>COMMANDER AI STUDIO — hacia el multiagente autónomo de codificación</h1>
   <div class="sub">Estado al <span id="updated"></span> · cada paso vale por evidencia verificable, no por compilar</div>
