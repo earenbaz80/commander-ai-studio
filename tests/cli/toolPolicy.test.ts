@@ -170,7 +170,7 @@ describe('política de herramientas para tests en el CLI', () => {
     );
   });
 
-  test('no ofrece code_run y normaliza el test antes de pedir aprobación', async (t) => {
+  test('no ofrece code_run y normaliza el test sin pedir aprobación', async (t) => {
     const fake = await startFakeAgentServer();
     t.after(() => fake.close());
     const events: CliEventV2[] = [];
@@ -193,7 +193,7 @@ describe('política de herramientas para tests en el CLI', () => {
     });
 
     assert.equal(result.answer, 'Listo: el faro funciona.');
-    assert.equal(approvalCommand, 'node --test math.test.mjs', 'la aprobación ve el comando canónico');
+    assert.equal(approvalCommand, null, 'la verificación canónica no pide aprobación');
 
     const toolRequest = fake.requests.find((request) => request.path === '/api/agent/run-tool');
     assert.equal(toolRequest?.body?.toolId, 'shell.run');
@@ -210,12 +210,10 @@ describe('política de herramientas para tests en el CLI', () => {
     assert.equal(names.includes('code_run'), false, 'code.run no se ofrece en el CLI');
     assert.equal(names.includes('shell_run'), true, 'shell.run sigue disponible');
 
-    const approval = events.find((event) => event.type === 'approval_request');
-    assert.equal(approval?.type, 'approval_request');
-    if (approval?.type === 'approval_request') {
-      assert.equal(approval.approval.tool, 'shell.run');
-      const input = approval.approval.input as Record<string, unknown>;
-      assert.equal(input.command, 'node --test math.test.mjs');
-    }
+    assert.equal(
+      events.some((event) => event.type === 'approval_request'),
+      false,
+      'el comando normalizado ya está permitido por defecto'
+    );
   });
 });

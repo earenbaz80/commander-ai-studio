@@ -766,7 +766,7 @@ describe('CLI E2E con proveedor falso (F1-14)', () => {
       toolId: 'shell.run',
       title: 'shell.run',
       content: 'ok',
-      input: { command: 'node --test math.test.mjs' },
+      input: { command: 'node check-port.mjs' },
       status: 'completed',
       ts: Date.now() - 1_000,
       approval: { id: 'apr_seed', decision: 'allow', latencyMs: 10 },

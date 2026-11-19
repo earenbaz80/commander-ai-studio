@@ -521,7 +521,7 @@ describe('aprobación de tools mutantes en el CLI', () => {
         'step_previous_shell',
         'shell.run',
         { id: 'apr_seed', decision: 'allow', latencyMs: 10 },
-        { input: { command: 'node --test math.test.mjs' }, ts: Date.now() - 1_000 }
+        { input: { command: 'node check-port.mjs' }, ts: Date.now() - 1_000 }
       )
     );
     fake.seedSession(seeded);
@@ -566,7 +566,7 @@ describe('aprobación de tools mutantes en el CLI', () => {
         'step_previous_shell',
         'shell.run',
         { id: 'apr_seed', decision: 'allow', latencyMs: 10 },
-        { input: { command: 'node --test math.test.mjs' }, ts: Date.now() - 2_000 }
+        { input: { command: 'node check-port.mjs' }, ts: Date.now() - 2_000 }
       ),
       resultStep(
         'step_previous_edit',
@@ -616,7 +616,7 @@ describe('aprobación de tools mutantes en el CLI', () => {
         'step_previous_denied',
         'shell.run',
         { id: 'apr_denied', decision: 'deny', latencyMs: 10 },
-        { input: { command: 'node --test math.test.mjs' }, status: 'failed', ts: Date.now() - 1_000 }
+        { input: { command: 'node check-port.mjs' }, status: 'failed', ts: Date.now() - 1_000 }
       )
     );
     fake.seedSession(seeded);
@@ -656,7 +656,7 @@ describe('aprobación de tools mutantes en el CLI', () => {
         'step_previous_legacy',
         'shell.run',
         undefined,
-        { input: { command: 'node --test math.test.mjs' }, status: 'completed', ts: Date.now() - 1_000 }
+        { input: { command: 'node check-port.mjs' }, status: 'completed', ts: Date.now() - 1_000 }
       )
     );
     fake.seedSession(seeded);
@@ -696,7 +696,7 @@ describe('aprobación de tools mutantes en el CLI', () => {
         'step_previous_failed',
         'shell.run',
         { id: 'apr_failed', decision: 'allow', latencyMs: 10 },
-        { input: { command: 'node --test math.test.mjs' }, status: 'failed', ts: Date.now() - 1_000 }
+        { input: { command: 'node check-port.mjs' }, status: 'failed', ts: Date.now() - 1_000 }
       )
     );
     fake.seedSession(seeded);
@@ -772,7 +772,9 @@ describe('aprobación de tools mutantes en el CLI', () => {
     });
 
     assert.equal(result.answer, 'Listo: el faro funciona.');
-    assert.equal(shellApprovals, 2, 'la edición intermedia limpia la huella de la repetición');
+    // Los tests/build ya no piden aprobación: re-correr la verificación tras
+    // editar es el bucle normal y no pasa por el gate humano.
+    assert.equal(shellApprovals, 0, 'la verificación no pide aprobación');
     assert.equal(
       countShellRuns(fake),
       2,

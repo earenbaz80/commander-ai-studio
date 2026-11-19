@@ -1,5 +1,5 @@
 import { uid } from './id';
-import { decide } from './permissionRules';
+import { decide, effectiveRules, loadRules } from './permissionRules';
 import { checkpointPaths, nextUndoCandidate } from './undoRedo';
 import type {
   AgentState,
@@ -161,7 +161,9 @@ export class AgentOrchestrator {
 
     // Reglas por patrón: `deny` bloquea sin preguntar, `allow` ejecuta sin
     // modal y `ask` fuerza el modal aunque la tool no lo pidiera.
-    const rule = decide(toolId, input);
+    // Las reglas por defecto (tests/build sin aprobación) se aplican antes que
+    // las del usuario; una regla explícita del proyecto sigue ganando.
+    const rule = decide(toolId, input, effectiveRules(loadRules()));
     if (rule === 'deny') {
       this.recordFailed('tool_call', toolId, 'Bloqueado por regla de permisos', input);
       return { ok: false, error: `Bloqueado por regla de permisos (${toolId})` };

@@ -53,6 +53,7 @@ import {
   isTruncationError,
 } from '../agent/outputBudget';
 import { MAX_VERIFY_REFUSALS, VerifyGate } from '../agent/verifyGate';
+import { DEFAULT_PERMISSION_RULES, decide } from '../agent/permissionRules';
 
 /**
  * Nombre heredado del contrato. A partir de F1-01 es el evento v2 completo
@@ -101,6 +102,12 @@ export interface RunAgentOptions {
    * (headless/--json); el REPL y la TUI pasan el menú interactivo.
    */
   requestApproval?: (approval: ApprovalRequestV2) => Promise<ApprovalDecision | null>;
+  /**
+   * Reglas por defecto: lectura, tests y build dentro del workspace sin
+   * aprobación; escribir y comandos de riesgo siguen preguntando.
+   * `false` las desactiva (opt-out y medición del ahorro).
+   */
+  defaultPermissionRules?: boolean;
   /** Cancela el turno en vuelo (Ctrl+C del REPL). */
   signal?: AbortSignal;
   /** Modo del turno; plan/readonly no ofrecen tools que mutan el workspace. */
@@ -281,11 +288,19 @@ const MUTATING_TOOLS = new Set([
  * el gate. En modo plan/readonly la tool entera sigue bloqueada (ver el filtro
  * de `mode !== 'build'`).
  */
-function needsApproval(tool: string, input: Record<string, unknown>): boolean {
+function needsApproval(
+  tool: string,
+  input: Record<string, unknown>,
+  useDefaultRules = true
+): boolean {
   if (!MUTATING_TOOLS.has(tool)) return false;
   if (tool === 'git.worktree') {
     return String(input.action ?? '').trim().toLowerCase() !== 'list';
   }
+  // Lectura, tests y build no preguntan: las reglas por defecto cubren los
+  // comandos de verificación; escribir y lo que no encaja en un patrón sigue
+  // pidiendo aprobación.
+  if (useDefaultRules && decide(tool, input, DEFAULT_PERMISSION_RULES) === 'allow') return false;
   return true;
 }
 
@@ -1488,7 +1503,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       // un diff y no tocan disco (G1-D3 §6.3). Pedir aprobación sin enseñar el
       // diff sólo añade ruido; lo que escribe de verdad es `fs.write`, que sí
       // pasa por este prompt.
-      if (needsApproval(mapped.tool, input)) {
+      if (needsApproval(mapped.tool, input, opts.defaultPermissionRules !== false)) {
         const approvalKey = `${goal}\u0000${mapped.tool}`;
         // `allow-session` no puede auto-permitir una repetición idéntica: el
         // mismo comando ya ejecutado vuelve a pasar por confirmación explícita.

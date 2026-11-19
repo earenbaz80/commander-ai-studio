@@ -96,6 +96,40 @@ export function mergeRuleSets(
 }
 
 /**
+ * Reglas por defecto: leer, testear y compilar no piden aprobación.
+ *
+ * El bucle gastaba una aprobación humana por cada `shell.run` de verificación
+ * (p95 de 26 820 ms en CAL4, 3 aprobaciones por corrida de T1). Las lecturas ya
+ * no preguntaban porque sólo las tools mutantes pasan por el gate; lo que
+ * faltaba era el equivalente para la verificación. Se permiten sólo comandos
+ * de tests, build, typecheck y lint: escribir sigue preguntando, y todo lo que
+ * no encaja en un patrón cae en el comportamiento normal (preguntar).
+ *
+ * El usuario puede sobrescribirlas con una regla propia del mismo tool y
+ * patrón: `mergeRuleSets` deja ganar a la entrante.
+ */
+export const DEFAULT_PERMISSION_RULES: PermissionRule[] = [
+  { tool: 'shell.run', pattern: 'node --test*', decision: 'allow' },
+  { tool: 'shell.run', pattern: 'npm test*', decision: 'allow' },
+  { tool: 'shell.run', pattern: 'npm run test*', decision: 'allow' },
+  { tool: 'shell.run', pattern: 'npm run build*', decision: 'allow' },
+  { tool: 'shell.run', pattern: 'npm run typecheck*', decision: 'allow' },
+  { tool: 'shell.run', pattern: 'npm run verify*', decision: 'allow' },
+  { tool: 'shell.run', pattern: 'npm run lint*', decision: 'allow' },
+  { tool: 'shell.run', pattern: 'npx vitest*', decision: 'allow' },
+  { tool: 'shell.run', pattern: 'npx jest*', decision: 'allow' },
+  { tool: 'shell.run', pattern: 'npx tsc*', decision: 'allow' },
+  { tool: 'shell.run', pattern: 'tsc*', decision: 'allow' },
+  { tool: 'shell.run', pattern: 'vitest*', decision: 'allow' },
+  { tool: 'shell.run', pattern: 'jest*', decision: 'allow' },
+];
+
+/** Reglas del usuario sobre las de por defecto: mismas tool+patrón, gana la suya. */
+export function effectiveRules(userRules: PermissionRule[] = []): PermissionRule[] {
+  return mergeRuleSets(DEFAULT_PERMISSION_RULES, userRules);
+}
+
+/**
  * ¿Hace falta preguntar al humano?
  *
  * `deny` no llega aquí: el motor de tools lo corta antes de ejecutar y no se

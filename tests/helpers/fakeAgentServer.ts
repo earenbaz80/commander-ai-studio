@@ -58,6 +58,8 @@ export type FakeScenario =
   | 't4-verify'
   | 't4-no-verify'
   | 't4-red-always'
+  | 't1-bugfix'
+  | 'risky-shell'
   | 'llm-error';
 
 export interface FakeRequest {
@@ -173,6 +175,8 @@ const SCENARIOS: FakeScenario[] = [
   't4-verify',
   't4-no-verify',
   't4-red-always',
+  't1-bugfix',
+  'risky-shell',
   'llm-error',
 ];
 
@@ -211,19 +215,22 @@ function turnFor(scenario: FakeScenario, turn: number): ModelTurn {
         ? { text: 'Voy a escribir.', functionCalls: [WRITE_CALL] }
         : { text: FINAL_TEXT, functionCalls: [] };
     case 'shell-same-twice':
+      // Comando que no es verificación: la repetición de un shell.run
+      // idéntico sigue exigiendo confirmación explícita (los tests y el
+      // build ya no preguntan).
       return turn <= 2
         ? {
-            text: turn === 1 ? 'Corro el test.' : 'Repito el mismo test.',
-            functionCalls: [{ name: 'shell_run', args: { command: 'node --test math.test.mjs' } }],
+            text: turn === 1 ? 'Corro el comando.' : 'Repito el mismo comando.',
+            functionCalls: [{ name: 'shell_run', args: { command: 'node check-port.mjs' } }],
           }
         : { text: FINAL_TEXT, functionCalls: [] };
     case 'shell-same-after-failed-edit':
-      // El test corre, una edición falla (no cambia el workspace) y el mismo
-      // test se repite: la huella de shell.run debe seguir viva.
+      // El comando corre, una edición falla (no cambia el workspace) y el
+      // mismo comando se repite: la huella de shell.run debe seguir viva.
       return turn === 1
         ? {
-            text: 'Corro el test.',
-            functionCalls: [{ name: 'shell_run', args: { command: 'node --test math.test.mjs' } }],
+            text: 'Corro el comando.',
+            functionCalls: [{ name: 'shell_run', args: { command: 'node check-port.mjs' } }],
           }
         : turn === 2
           ? {
@@ -232,8 +239,8 @@ function turnFor(scenario: FakeScenario, turn: number): ModelTurn {
             }
           : turn === 3
             ? {
-                text: 'Repito el mismo test.',
-                functionCalls: [{ name: 'shell_run', args: { command: 'node --test math.test.mjs' } }],
+                text: 'Repito el mismo comando.',
+                functionCalls: [{ name: 'shell_run', args: { command: 'node check-port.mjs' } }],
               }
             : { text: FINAL_TEXT, functionCalls: [] };
     case 'tool-write-twice':
@@ -508,6 +515,38 @@ function turnFor(scenario: FakeScenario, turn: number): ModelTurn {
       return turn === 1 ? { text: '', functionCalls: [] } : { text: FINAL_TEXT, functionCalls: [] };
     case 'truncated-always':
       return { text: '', functionCalls: [] };
+    case 'risky-shell':
+      // Comando fuera de la verificación: con las reglas por defecto sigue
+      // pidiendo aprobación.
+      return turn === 1
+        ? { text: 'Empujo el commit.', functionCalls: [{ name: 'shell_run', args: { command: 'git push origin main' } }] }
+        : { text: 'Listo.', functionCalls: [] };
+    case 't1-bugfix':
+      // T1 canónico: leer, arreglar, verificar (rojo), ajustar y verificar
+      // (verde). Sirve para contar cuántas aprobaciones se ahorran.
+      return turn === 1
+        ? { text: 'Leo el bug.', functionCalls: [{ name: 'fs_read', args: { path: 'math.mjs' } }] }
+        : turn === 2
+          ? {
+              text: 'Arreglo el redondeo.',
+              functionCalls: [{ name: 'fs_edit', args: { path: 'math.mjs', oldString: 'a', newString: 'b' } }],
+            }
+          : turn === 3
+            ? {
+                text: 'Verifico.',
+                functionCalls: [{ name: 'shell_run', args: { command: 'node --test math.test.mjs' } }],
+              }
+            : turn === 4
+              ? {
+                  text: 'Ajusto el caso límite.',
+                  functionCalls: [{ name: 'fs_edit', args: { path: 'math.mjs', oldString: 'b', newString: 'c' } }],
+                }
+              : turn === 5
+                ? {
+                    text: 'Verifico otra vez.',
+                    functionCalls: [{ name: 'shell_run', args: { command: 'node --test math.test.mjs' } }],
+                  }
+                : { text: 'Listo: math.mjs corregido y test en verde.', functionCalls: [] };
     case 't4-verify':
       // T4: edita código y test, corre el test (rojo) e intenta cerrar; el gate
       // lo devuelve, corrige y vuelve a correr (verde) antes de cerrar.
