@@ -13,3 +13,20 @@
 - Estilo: TypeScript estricto, Tailwind, UI retro Norton (azul #000080, cyan #00ffff, amarillo #ffff55).
 - Responde con JSON válido al orquestador: thought/plan/toolCalls/answer/finish.
 - Si terminas, marca `finish:true` con resumen de archivos tocados.
+
+## Referencias de PR con la firma vieja (no reintentar)
+
+El 2026-11-19 se reescribió el historial para que la firma sea una sola. `main`, la
+tag `v2.5.1` y las 12 tags `archive/*` (borradas del remoto) quedaron limpias. Lo
+único que sigue apuntando a los commits viejos son los `refs/pull/N/head` de 11 PRs
+cerrados (#1, 23, 24, 25, 27, 29, 30, 33, 34, 35, 36), y **no existe una vía que los
+limpie sin perder el historial de revisión**:
+
+- Los `refs/pull/*` son de sólo lectura: `git push --mirror` falla en ellos por diseño ([docs](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)).
+- No hay endpoint ni opción de UI para borrar un PR: la API sólo permite cerrarlo, y borrar la rama deja el PR y su ref en pie.
+- Soporte de GitHub borra PRs **sólo con datos sensibles**, y al hacerlo elimina conversación, reviews y diffs: justo lo que se quiere conservar.
+- Reescribir la rama del PR no reescribe el ref, y en estos PRs la rama ya estaba borrada, así que no hay nada que empujar.
+
+Lo único disponible sin perder nada es **archivar** esos PRs: salen de la vista pública (quien no tiene triage o más recibe 404) y el historial queda para el mantenedor, pero los refs y sus commits siguen existiendo ([docs](https://docs.github.com/en/communities/moderating-comments-and-conversations/archive-pull-requests)). No se archivaron: es una decisión del dueño del repo.
+
+**No volver a reescribir el historial por este motivo.** Los commits nuevos están cubiertos por `npm run check:commit-signature` y el hook `.husky/commit-msg`.
