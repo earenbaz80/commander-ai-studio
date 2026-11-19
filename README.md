@@ -417,6 +417,43 @@ Cada pasada live se anota en `evals/results.jsonl` con el commit (`git rev-parse
 
 Runpm run build:server to regenerate electron/server.cjs and electron/server.mjs from server.ts.
 
+## Banco del runtime local (`npm run bench:local`)
+
+Mide si el streaming nativo se nota: compara `POST /api/local-models/stream` contra `POST /api/local-models/generate` con el mismo turno que arma el agente —system prompt de `buildSystemPrompt`, catálogo real de tools y un paso ya ejecutado— y reporta **primer token** (TTFT), **total**, tokens y chunks por segundo, con la mediana de 3 repeticiones alternando el orden para que la caché de prefijo no favorezca a uno.
+
+Requisitos: la app corriendo (`npm run dev`, el banco apunta por defecto a `http://127.0.0.1:3283`), el runtime de llama.cpp instalado y el `.gguf` en `local_models/`.
+
+El banco **no descarga, instala ni reemplaza** nada del runtime: sólo usa los endpoints del servidor y lee `/api/local-models/runtime`. Si el runtime tiene otro modelo cargado se niega a seguir para no cambiarte el que estás usando; `--allow-restart` lo permite.
+
+```bash
+npm run bench:local                                                # 0.5B por defecto, 3 reps, turno corto
+npm run bench:local -- --model Qwen2.5-7B-Instruct-Q4_K_M.gguf --long
+npm run bench:local -- --cold --reps 2 --json bench.json           # sin caché de prompt
+npm run bench:local -- --app http://127.0.0.1:3287 --pad 6         # otro puerto, turno avanzado
+```
+
+| flag | efecto |
+| --- | --- |
+| `--app <url>` | App a medir (default `http://127.0.0.1:3283`). |
+| `--model <archivo>` | GGUF de `local_models`; por defecto el que tenga cargado el runtime, o el 0.5B. |
+| `--reps <n>` | Repeticiones por modo (default 3). |
+| `--max-tokens <n>` | Tokens máximos de la respuesta (default 256). |
+| `--context <n>` | `contextLength` que se le pide al runtime (default 16384). |
+| `--long` | Pide un plan de 4 párrafos en vez de un paso corto. |
+| `--cold` | Prefijo distinto en cada petición: mide sin caché de prompt. |
+| `--pad <n>` | Agrega n bloques de historial (~400 tokens cada uno). |
+| `--allow-restart` | Permite que el bench cambie el modelo cargado. |
+| `--json <ruta>` | Guarda las mediciones crudas. |
+
+Cómo leerlo:
+
+- **primer token**: lo que aparece en pantalla primero. En la respuesta completa coincide con el total, porque el texto llega de una vez; por eso la diferencia entre las dos filas es lo que gana el streaming.
+- **prefijo cacheado** (default): el prompt se repite, así que `cache_prompt` reutiliza el historial y el primer token sale casi inmediato. **`--cold`** cambia el prefijo en cada petición y expone el costo real de evaluar system + tools (≈9.000 tokens en el 7B).
+- **chunks/s** depende de cómo agrupe llama.cpp los deltas (a veces 2 tokens por evento), así que puede quedar por debajo de t/s.
+- El calentamiento (carga del modelo en el runtime) se informa aparte y no entra en las medianas.
+
+Medición de referencia con Qwen2.5-7B-Instruct Q4_K_M y 9.080 tokens de prompt: prefijo cacheado, primer token **37 ms** contra **4.819 ms** de la respuesta completa; prefijo frío, **2.355 ms** contra **7.770 ms**. Generación sostenida 72–74 t/s.
+
 ## Firma de código
 
 **No se firma.** Commander AI Studio es una aplicación personal: no se vende ni se distribuye a terceros, así que no hay certificado de firma de código ni se va a comprar. Los instaladores salen `NotSigned` y Windows SmartScreen mostrará el aviso de editor desconocido la primera vez; es lo esperado.
