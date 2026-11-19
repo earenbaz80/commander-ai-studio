@@ -352,3 +352,24 @@ test('Pages: publica docs/ con los permisos mínimos', () => {
   assert.match(pasos[configura], /enablement: true/, 'habilita Pages si no lo está');
   assert.match(job, /url: \$\{\{ steps\.deployment\.outputs\.page_url \}\}/, 'el job expone la URL publicada');
 });
+
+test('CI: la firma de los commits se revisa con historia completa', () => {
+  const job = jobDe(ci, 'lint-and-test');
+  const pasos = pasosDe(job);
+  const paso = pasos.find((p) =>
+    p.split('\n').some((l) => l.trim() === 'run: npm run check:commit-signature')
+  );
+  assert.ok(paso, 'falta el paso que revisa la firma de los commits');
+  // Sin historia completa el script no ve los commits viejos y pasaría en falso.
+  assert.match(job, /fetch-depth: 0/, 'el job trae la historia completa');
+
+  // El hook local es la primera barrera, pero se saltea con --no-verify: por
+  // eso el paso de CI existe y por eso esto se comprueba junto.
+  assert.ok(fs.existsSync('.husky/commit-msg'), 'existe el hook commit-msg');
+  assert.match(
+    leer('.husky/commit-msg'),
+    /check:commit-signature/
+    , 'el hook corre el mismo script'
+  );
+  assert.match(leer('scripts/check-commit-signature.ts'), /co-authored-by/i, 'el script mira co-autoría');
+});

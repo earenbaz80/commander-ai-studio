@@ -1,0 +1,9 @@
+#!/bin/sh
+# Guardia local: el mensaje no puede llevar trailers de IA ni co-autoría. Corre
+# con el mensaje todavía sin commitear, así que se corrige con `git commit` otra
+# vez en lugar de descubrirlo en CI.
+if ! command -v npm >/dev/null 2>&1; then
+  echo "[commit-msg] npm no está en PATH: se omite check:commit-signature" >&2
+  exit 0
+fi
+npm run --silent check:commit-signature -- --message-file "$1"

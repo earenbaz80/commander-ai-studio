@@ -43,6 +43,12 @@ jobs:
       - name: Índice de git sano
         run: npm run check:index
 
+      # La firma única se rompe sin que nada compile distinto: cualquier
+      # herramienta puede volver a pegar su trailer. Se revisa el historial
+      # completo, que en este job no es superficial (fetch-depth: 0).
+      - name: Firmas de los commits
+        run: npm run check:commit-signature
+
       # Hermano sin red de `sync:issue-status`: aquél pregunta a GitHub y gasta
       # cuota; éste compara la tabla con el cuerpo versionado, así que también
       # puede correr en el PR de un fork sin token.
