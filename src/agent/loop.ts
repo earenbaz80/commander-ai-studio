@@ -104,6 +104,8 @@ export class AgentLoop {
   private llm: AgentLLMClient;
   private agentsMd = '';
   private mcpSchema = '';
+  /** Allowlist del proyecto (`allowedTools`), leída por HTTP en `prepare`. */
+  private projectAllowedTools: string[] | null = null;
   private turns: { role: string; text: string }[] = [];
   private readIndex: ReadIndex = createReadIndex();
   private noProgressSteps = 0;
@@ -117,6 +119,52 @@ export class AgentLoop {
   }
 
   /**
+   * Sección TOOLS del prompt: catálogo del registro acotado a la allowlist del
+   * proyecto (`allowedTools` de `.commander/permissions.json`) más MCP.
+   *
+   * Antes salía el registro entero: el modelo veía y pedía tools que
+   * `enforceTool` iba a denegar al ejecutar, y gastaba pasos ahí. Con la lista
+   * recortada el prompt y la puerta de ejecución dicen lo mismo.
+   */
+  toolSchema(): string {
+    const allowed = this.projectAllowedTools;
+    const tools = Object.values(TOOL_REGISTRY)
+      .filter((t) => !allowed || allowed.includes(t.id))
+      .map((t) => ({
+        id: t.id,
+        description: t.description,
+        danger: t.danger,
+        endsAgentStep: t.endsAgentStep !== false,
+      }));
+    // El esquema MCP sólo se anuncia si la sesión puede usar sus tools.
+    const conMcp = Boolean(this.mcpSchema) && (!allowed || allowed.includes('mcp.call') || allowed.includes('mcp.list'));
+    return JSON.stringify(tools, null, 2) + (conMcp ? `\n${this.mcpSchema}` : '');
+  }
+
+  /**
+   * Allowlist del proyecto tal como la ve el servidor.
+   *
+   * El bucle corre en el navegador y la política vive en el proyecto, así que
+   * se pide por HTTP: es la misma lista con la que `enforceTool` rechaza las
+   * llamadas. Sin servidor (o con un root sin permisos) queda `null` y el
+   * prompt ofrece el catálogo completo: el prompt es una ayuda, la puerta
+   * sigue siendo la del servidor.
+   */
+  private async loadProjectAllowlist(): Promise<string[] | null> {
+    const root = this.task?.cwd;
+    try {
+      const q = root ? `?root=${encodeURIComponent(root)}` : '';
+      const r = await fetch(`/api/permissions${q}`);
+      if (!r.ok) return null;
+      const data: any = await r.json();
+      const list = data?.permissions?.allowedTools;
+      return Array.isArray(list) ? list.map(String) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Pre-vuelo compartido por `start` y `resume`: reglas del repo, tools MCP y
    * skills. No toca el log de pasos, así que no consume presupuesto de maxSteps.
    */
@@ -125,6 +173,8 @@ export class AgentLoop {
     const mcpParts = await this.loadMCPTools();
     this.agentsMd = rules?.text ?? '';
     this.mcpSchema = mcpParts.join('\n').slice(0, 2000);
+    // La allowlist del proyecto manda en el schema, no sólo en la ejecución.
+    this.projectAllowedTools = await this.loadProjectAllowlist();
     // Skills disponibles (no bloqueante).
     try {
       const r = await fetch('/api/skills');
@@ -243,25 +293,6 @@ export class AgentLoop {
     } catch { /* backend sin /api/mcp */ }
 
     return parts;
-  }
-
-  async spawnSubagent(goal: string, maxSteps = 8): Promise<string> {
-    const subId = uid('sub');
-    this.orchestrator.addThought('Subagente', `Lanzando ${subId}: ${goal}`);
-    const subLoop = new AgentLoop(this.orchestrator, this.model, this.llm);
-    subLoop.agentsMd = this.agentsMd;
-    // Ejecuta como tarea acotada compartiendo orchestrator (steps quedan en log principal)
-    const prevTask = this.task;
-    this.task = prevTask ? { ...prevTask, goal, maxSteps } : { id: subId, goal, cwd: '.', maxSteps };
-    for (let i = 0; i < maxSteps && this.running; i++) {
-      await this.stepOnce();
-      if (this.timer) { clearTimeout(this.timer); this.timer = null; }
-      const st = this.orchestrator.getState();
-      const last = st.steps[st.steps.length - 1];
-      if (last?.title === 'Finalizado') break;
-    }
-    if (prevTask) this.task = prevTask;
-    return subId;
   }
 
   private pushTurn(role: string, text: string) {
@@ -413,11 +444,7 @@ export class AgentLoop {
           goal: this.task.goal,
           cwd: this.task.cwd,
           history: [],
-          toolSchema: JSON.stringify(
-            Object.values(TOOL_REGISTRY).map((t) => ({ id: t.id, description: t.description, danger: t.danger, endsAgentStep: t.endsAgentStep !== false })),
-            null,
-            2
-          ) + (this.mcpSchema ? `\n${this.mcpSchema}` : ''),
+          toolSchema: this.toolSchema(),
           recentSteps,
           plan,
           agentsMd: this.agentsMd,
@@ -510,11 +537,7 @@ export class AgentLoop {
         // lleva el contenido de las tools. Sin esto el modelo relee el archivo
         // porque sólo ve el resumen de pasos, no lo que devolvió fs.read.
         history: this.turns.map((turn) => ({ role: turn.role, content: turn.text })) as any,
-        toolSchema: JSON.stringify(
-          Object.values(TOOL_REGISTRY).map((t) => ({ id: t.id, description: t.description, danger: t.danger, endsAgentStep: t.endsAgentStep !== false })),
-          null,
-          2
-        ) + (this.mcpSchema ? `\n${this.mcpSchema}` : ''),
+        toolSchema: this.toolSchema(),
         recentSteps,
         plan,
         agentsMd: this.agentsMd,

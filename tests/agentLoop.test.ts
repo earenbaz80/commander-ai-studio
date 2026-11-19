@@ -188,16 +188,92 @@ test('AgentLoop con un modelo Freebuff sin tool-calls cae a JSON en texto', asyn
   loop.stop();
 });
 
-test('AgentLoop spawnSubagent ejecuta tarea acotada', async () => {
-  const { loop, getState } = createLoop('gemini-2.0-flash');
+/**
+ * El bucle de escritorio no tiene allowlist propia. Sus subagentes son
+ * sesiones del servidor (`task`/`spawn_agents` → `executeTask`) y allí
+ * `AgentSession` filtra catálogo y declaraciones por `allowedTools`
+ * (`tests/agentTaskIntegration.test.ts`). Aquí se fija que el padre siga
+ * ofreciendo el catálogo completo, para que un filtro accidental no deje la
+ * app sin tools.
+ */
+test('el prompt del bucle de escritorio ofrece el catálogo completo', async () => {
+  const { orchestrator } = createMockOrchestrator();
+  const schemas: string[] = [];
+  const client: AgentLLMClient = {
+    callJson: async (ctx) => {
+      schemas.push(ctx.toolSchema);
+      return { thought: 'fin', finish: true, answer: 'listo' };
+    },
+    callTools: async (ctx) => {
+      schemas.push(ctx.toolSchema);
+      return { thought: 'fin', calls: [] };
+    },
+  };
+  const loop = new AgentLoop(orchestrator, 'gemini-2.0-flash', client);
 
-  const task: AgentTask = { id: 'test-7', goal: 'Test goal', cwd: '.', maxSteps: 5 };
-  await loop.start(task);
+  await loop.start({ id: 'test-catalogo', goal: 'Test goal', cwd: '.', maxSteps: 3 });
+  loop.stop();
 
-  const subId = await loop.spawnSubagent('Sub goal', 3);
-  assert.ok(subId.startsWith('sub'), `subId debería empezar por "sub" (obtenido: ${subId})`);
-  const state = getState();
-  assert.ok(state.steps.some((s) => s.title === 'Subagente'), 'Debería registrar el lanzamiento del subagente');
+  assert.ok(schemas.length > 0, 'el loop pidió al menos un turno');
+  const ids = JSON.parse(schemas[0]).map((t: { id: string }) => t.id);
+  for (const tool of ['fs.read', 'fs.write', 'shell.run', 'git.status']) {
+    assert.ok(ids.includes(tool), `el catálogo completo debe ofrecer ${tool}`);
+  }
+});
+
+/**
+ * El prompt respeta la allowlist del proyecto. `enforceTool` ya denegaba al
+ * ejecutar, pero el modelo veía y pedía tools que se iban a rechazar. El bucle
+ * corre en el navegador, así que la lista llega por `/api/permissions` (la
+ * misma que leen el panel y el servidor).
+ */
+test('el schema del prompt no anuncia tools fuera de allowedTools del proyecto', async () => {
+  const { orchestrator } = createMockOrchestrator();
+  const schemas: string[] = [];
+  const client: AgentLLMClient = {
+    callJson: async (ctx) => {
+      schemas.push(ctx.toolSchema);
+      return { thought: 'fin', finish: true, answer: 'listo' };
+    },
+    callTools: async (ctx) => {
+      schemas.push(ctx.toolSchema);
+      return { thought: 'fin', calls: [] };
+    },
+  };
+  const original = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = (async (url: any) => {
+    const u = String(url);
+    urls.push(u);
+    if (u.startsWith('/api/permissions')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          permissions: { allowedTools: ['fs.read', 'fs.list', 'fs.write', 'task'] },
+        }),
+      } as any;
+    }
+    return { ok: false, status: 404, json: async () => ({}) } as any;
+  }) as any;
+  try {
+    const loop = new AgentLoop(orchestrator, 'gemini-2.0-flash', client);
+    await loop.start({ id: 'test-allowlist', goal: 'Test goal', cwd: '.', maxSteps: 3 });
+    loop.stop();
+  } finally {
+    globalThis.fetch = original;
+  }
+
+  assert.ok(urls.some((u) => u.startsWith('/api/permissions')), 'el bucle pide la allowlist del proyecto');
+  assert.ok(schemas.length > 0, 'el loop pidió al menos un turno');
+  const ids = JSON.parse(schemas[0]).map((t: { id: string }) => t.id);
+  for (const permitida of ['fs.read', 'fs.write']) {
+    assert.ok(ids.includes(permitida), `la allowlist debe anunciar ${permitida}`);
+  }
+  for (const fuera of ['shell.run', 'git.status', 'browser', 'fs.edit']) {
+    assert.equal(ids.includes(fuera), false, `no debe anunciar ${fuera}, fuera de la allowlist`);
+  }
 });
 
 // ── update_plan: plan en la vía nativa ────────────────────────────────
