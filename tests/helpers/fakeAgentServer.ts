@@ -55,6 +55,9 @@ export type FakeScenario =
   | 'slow'
   | 'truncated'
   | 'truncated-always'
+  | 't4-verify'
+  | 't4-no-verify'
+  | 't4-red-always'
   | 'llm-error';
 
 export interface FakeRequest {
@@ -63,9 +66,18 @@ export interface FakeRequest {
   body: any;
 }
 
+/** Resultado que devolverá el próximo `shell.run` (cola por instancia). */
+export interface ShellResult {
+  exitCode: number;
+  stdout?: string;
+  stderr?: string;
+}
+
 export interface FakeAgentServer {
   baseUrl: string;
   requests: FakeRequest[];
+  /** Encola resultados de `shell.run` explícitos (tests del gate de verificación). */
+  queueShell: (results: ShellResult[]) => void;
   /** Siembra una sesión ya persistida (p. ej. cancelada) antes de `--resume`. */
   seedSession: (state: SessionStateV2) => void;
   close: () => Promise<void>;
@@ -158,6 +170,9 @@ const SCENARIOS: FakeScenario[] = [
   'slow',
   'truncated',
   'truncated-always',
+  't4-verify',
+  't4-no-verify',
+  't4-red-always',
   'llm-error',
 ];
 
@@ -170,7 +185,7 @@ function fakeProposalDiff(prefix: string, lines: number): string {
 
 function scenarioFrom(body: any): FakeScenario {
   const text = String(body?.contents ?? body?.prompt ?? '');
-  const match = text.match(/SCENARIO:([a-z-]+)/);
+  const match = text.match(/SCENARIO:([a-z0-9-]+)/);
   const value = match?.[1] as FakeScenario | undefined;
   return value && SCENARIOS.includes(value) ? value : 'final';
 }
@@ -493,6 +508,56 @@ function turnFor(scenario: FakeScenario, turn: number): ModelTurn {
       return turn === 1 ? { text: '', functionCalls: [] } : { text: FINAL_TEXT, functionCalls: [] };
     case 'truncated-always':
       return { text: '', functionCalls: [] };
+    case 't4-verify':
+      // T4: edita código y test, corre el test (rojo) e intenta cerrar; el gate
+      // lo devuelve, corrige y vuelve a correr (verde) antes de cerrar.
+      return turn === 1
+        ? {
+            text: 'Añado la rama que falta.',
+            functionCalls: [{ name: 'fs_edit', args: { path: 'discount.mjs', oldString: 'a', newString: 'b' } }],
+          }
+        : turn === 2
+          ? {
+              text: 'Cubro la rama en el test.',
+              functionCalls: [{ name: 'fs_edit', args: { path: 'discount.test.mjs', oldString: 'a', newString: 'b' } }],
+            }
+          : turn === 3
+            ? {
+                text: 'Corro el test.',
+                functionCalls: [{ name: 'shell_run', args: { command: 'node --test discount.test.mjs' } }],
+              }
+            : turn === 4
+              ? { text: 'Listo: test añadido.', functionCalls: [] }
+              : turn === 5
+                ? {
+                    text: 'Corrijo el descuento.',
+                    functionCalls: [{ name: 'fs_edit', args: { path: 'discount.mjs', oldString: 'b', newString: 'c' } }],
+                  }
+                : turn === 6
+                  ? {
+                      text: 'Vuelvo a correr el test.',
+                      functionCalls: [{ name: 'shell_run', args: { command: 'node --test discount.test.mjs' } }],
+                    }
+                  : { text: 'Listo: descuento corregido y test en verde.', functionCalls: [] };
+    case 't4-no-verify':
+      return turn === 1
+        ? {
+            text: 'Edito el código.',
+            functionCalls: [{ name: 'fs_edit', args: { path: 'discount.mjs', oldString: 'a', newString: 'b' } }],
+          }
+        : { text: 'Listo: cambio hecho.', functionCalls: [] };
+    case 't4-red-always':
+      return turn === 1
+        ? {
+            text: 'Edito el código.',
+            functionCalls: [{ name: 'fs_edit', args: { path: 'discount.mjs', oldString: 'a', newString: 'b' } }],
+          }
+        : turn === 2
+          ? {
+              text: 'Corro el test.',
+              functionCalls: [{ name: 'shell_run', args: { command: 'node --test discount.test.mjs' } }],
+            }
+          : { text: 'Listo: ya está.', functionCalls: [] };
     case 'final':
     default:
       return { text: FINAL_TEXT, functionCalls: [] };
@@ -552,6 +617,7 @@ export async function startFakeAgentServer(): Promise<FakeAgentServer> {
   // Checkpoints de las sesiones que el CLI crea/sincroniza. No ejecuta el
   // bucle: el CLI lo hace y manda el estado con PUT /state.
   const sessions = new Map<string, SessionStateV2>();
+  const shellQueue: ShellResult[] = [];
   let sessionSeq = 0;
   let proposalSeq = 0;
   const cloneState = (state: SessionStateV2): SessionStateV2 =>
@@ -711,6 +777,20 @@ export async function startFakeAgentServer(): Promise<FakeAgentServer> {
         await new Promise((resolve) => setTimeout(resolve, 2_000));
         if (res.destroyed) return;
       }
+      if (body?.toolId === 'shell.run') {
+        // Cola explícita de resultados; por defecto, verde sin salida.
+        const next = shellQueue.shift() ?? { exitCode: 0, stdout: 'ok' };
+        sendJson(res, 200, {
+          ok: true,
+          data: {
+            exitCode: next.exitCode,
+            stdout: next.stdout ?? '',
+            stderr: next.stderr ?? '',
+            command: body?.input?.command,
+          },
+        });
+        return;
+      }
       if (body?.toolId === 'spawn_agents') {
         // Misma forma que la corrida real (G1-T10-06): el sobre envuelve el
         // resultado de la tool y el hijo A falla en todas las tandas.
@@ -843,6 +923,9 @@ export async function startFakeAgentServer(): Promise<FakeAgentServer> {
   return {
     baseUrl: `http://127.0.0.1:${address.port}`,
     requests,
+    queueShell: (results) => {
+      shellQueue.push(...results);
+    },
     seedSession: (state) => {
       sessions.set(state.id, cloneState(state));
     },

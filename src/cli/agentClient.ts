@@ -52,6 +52,7 @@ import {
   isTruncatedTurn,
   isTruncationError,
 } from '../agent/outputBudget';
+import { MAX_VERIFY_REFUSALS, VerifyGate } from '../agent/verifyGate';
 
 /**
  * Nombre heredado del contrato. A partir de F1-01 es el evento v2 completo
@@ -1127,6 +1128,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   let testPolicyReminders = 0;
   // Escalada común: la 2.ª repetición avisa, la 3.ª falla y la 4.ª corta.
   const loopGuard = new LoopGuard();
+  // Gate de verificación: tras editar código exige una ejecución de tests,
+  // build o typecheck posterior y no deja cerrar mientras esté en rojo.
+  const verifyGate = new VerifyGate();
   // Tandas seguidas de `spawn_agents` con algún hijo fallido. El bucle del
   // servidor ya corta a la segunda (`spawnFailureStreak` en
   // `AgentSession.stepNative`); el CLI corre el suyo y no lo tenía, así que
@@ -1300,6 +1304,43 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         emit({ type: 'error', text });
         history.push(`SISTEMA: ${text}`);
         await addStep({ type: 'thought', title: 'Test obligatorio', content: text, status: 'failed' });
+        continue;
+      }
+      // Gate de verificación: sin una ejecución en verde posterior a la última
+      // edición de código no hay respuesta final. Se devuelve al modelo con la
+      // salida real del comando; a la tercera intentona la corrida queda failed.
+      if (verifyGate.needsVerification()) {
+        const evidence = verifyGate.evidence();
+        const refusals = verifyGate.refusal();
+        const rojo = Boolean(evidence && !evidence.ok);
+        if (refusals > MAX_VERIFY_REFUSALS) {
+          const motivo = rojo && evidence
+            ? `Gate de verificación: \`${evidence.command}\` salió con exit ${evidence.exitCode ?? 'no disponible'} después de la última edición. No se cierra la tarea sin verde.`
+            : `Gate de verificación: no se verificó después de la última edición de código: ejecuta \`${verifyGate.suggestedCommand()}\` y no cierres hasta que salga en verde.`;
+          emit({ type: 'error', text: motivo });
+          history.push(`SISTEMA: ${motivo}`);
+          await addStep({
+            type: 'thought',
+            title: 'Gate de verificación',
+            content: motivo,
+            status: 'failed',
+          });
+          if (state) {
+            state.answer = motivo;
+            state.status = 'failed';
+            state.error = motivo;
+            state.updatedAt = Date.now();
+            await sync();
+          }
+          emit({ type: 'answer', text: motivo });
+          return done(motivo, steps);
+        }
+        const text = rojo && evidence
+          ? `Gate de verificación: \`${evidence.command}\` sigue en rojo (exit ${evidence.exitCode ?? 'desconocido'}) después de tu última edición. No cierres: corrige el fallo y vuelve a ejecutar la verificación.${evidence.output ? `\n${evidence.output}` : ''}`
+          : `Gate de verificación: editaste código y no hay una verificación posterior. Ejecuta \`${verifyGate.suggestedCommand()}\` con shell.run antes de cerrar; si sale en rojo, corrige y repite.`;
+        emit({ type: 'error', text });
+        history.push(`SISTEMA: ${text}`);
+        await addStep({ type: 'thought', title: 'Gate de verificación', content: text, status: 'failed' });
         continue;
       }
       const answer = thought || '(el modelo no devolvió respuesta)';
@@ -1762,6 +1803,15 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
           testEditStep = steps;
           testPolicyReminders = 0;
         }
+        if (mapped.tool === 'fs.edit' || mapped.tool === 'fs.write') {
+          verifyGate.noteEdit(input.path, steps);
+          // El empujón va en cuanto se edita, no sólo al intentar cerrar.
+          if (verifyGate.needsVerification()) {
+            const nudge = `Editaste código (${String(input.path ?? '')}): ejecuta \`${verifyGate.suggestedCommand()}\` con shell.run antes de dar el cambio por bueno.`;
+            emit({ type: 'status', text: nudge });
+            history.push(`SISTEMA: ${nudge}`);
+          }
+        }
         if (
           mapped.tool === 'shell.run' &&
           typeof input.command === 'string' &&
@@ -1784,6 +1834,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         output: result.data,
         status: result.ok ? 'completed' : 'failed',
       });
+      if (mapped.tool === 'shell.run' && typeof input.command === 'string') {
+        verifyGate.noteRun(input.command, result, steps);
+      }
     }
 
     // El modelo puede re-lanzar `spawn_agents` cuando falla algún hijo
