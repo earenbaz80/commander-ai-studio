@@ -60,17 +60,15 @@
   footer { margin-top: 16px; border-top: 1px solid #2f4bb0; padding-top: 10px; color: var(--dim); }
   .aviso { margin: 0 0 12px; padding: 7px 10px; border-left: 3px solid var(--yellow); background: var(--panel-2); color: var(--dim); }
   .aviso a { color: var(--cyan); }
-  .aviso[hidden] { display: none; }
   footer b { color: var(--yellow); }
   a { color: var(--cyan); }
 </style>
 </head>
 <body>
-<!-- El visor de GitHub muestra los .html como código y no los ejecuta: este
-     aviso indica dónde verlo. En el sitio de Pages apuntaría a la página que ya
-     se está viendo, así que ahí se oculta. -->
-<p class="aviso" id="aviso-pages">Versión gráfica publicada: <a href="https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html">earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html</a></p>
-<script>if (location.hostname.endsWith("github.io")) document.getElementById("aviso-pages").hidden = true;</script>
+<!-- El visor de GitHub muestra los .html como código y no los ejecuta. El
+     enlace es permanente y no depende del host: sirve igual en el visor, en
+     local y en el sitio publicado. -->
+<p class="aviso">Versión gráfica de este roadmap: <a href="https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html">earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html</a> — acá se ve renderizado; el visor de GitHub muestra sólo el código.</p>
 <header class="top">
   <h1>COMMANDER AI STUDIO — hacia el multiagente autónomo de codificación</h1>
   <div class="sub">Estado al <span id="updated"></span> · cada paso vale por evidencia verificable, no por compilar</div>
@@ -84,6 +82,7 @@
 <footer>
   <div><b>Reglas de marcado.</b> Un paso llega a 100 % sólo con evidencia en el árbol o una corrida real (test, recibo, instalación comprobada). <span class="mark done">[x]</span> cerrado · <span class="mark partial">[~]</span> en curso · <span class="mark todo">[ ]</span> sin empezar.</div>
   <div style="margin-top:6px"><b>Cómo se actualiza.</b> Los datos viven en el bloque <code>&lt;script id="plan"&gt;</code> de este archivo (peso y % por paso). Al cerrar un paso se sube su <code>progress</code> y se anota la evidencia; los porcentajes de fase y el global se recalculan ponderados al abrir la página.</div>
+  <div style="margin-top:6px"><b>Publicado en.</b> <a href="https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html">earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html</a> — versión gráfica de este documento.</div>
   <div style="margin-top:6px"><b>Fuentes.</b> docs/parity/baseline-2026-11.md · docs/parity/dogfooding-g1-d5.md · tests/agentLoop.test.ts · tests/cli/verifyGate.test.ts · tests/cli/defaultPermissions.test.ts · npm run build:cli.</div>
 </footer>
 
