@@ -10,10 +10,13 @@
  *   2. comprueba que el tarball incluya `cli-dist/commander.mjs` y que `bin`
  *      apunte ahí;
  *   3. ejecuta el bundle con `--version` y `--help` y exige la versión del
- *      paquete y los comandos principales.
+ *      paquete y los comandos principales;
+ *   4. instala el tarball en un prefijo temporal y corre `commander agent`
+ *      contra el proveedor falso del repo (`scripts/check-cli-agent-run.ts`).
+ *      Sin eso, `--version`/`--help` sólo prueban que el bundle arranca.
  *
- * No extrae el tarball: `npm pack --json` ya lista sus archivos, y ejecutar el
- * bundle del árbol prueba lo mismo que ejecutar la copia desempaquetada.
+ * No extrae el tarball: `npm pack --json` ya lista sus archivos y la
+ * instalación real (paso 4) deja el paquete donde npm lo pondría.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -81,6 +84,27 @@ try {
   const ayuda = node([bundle, '--help']);
   for (const comando of ['agent', 'repl', 'doctor']) {
     comprobar(ayuda.includes(comando), `el bundle no anuncia el comando ${comando}`);
+  }
+
+  // 4) Instalación real y corrida del agente contra el proveedor falso.
+  //    `--ignore-scripts`: acá se mide el empaquetado y el bucle, no compilar
+  //    nativos (node-pty trae prebuild y no lo necesita esta corrida).
+  const prefix = path.join(tmp, 'prefix');
+  try {
+    npm(['install', '--prefix', prefix, path.join(tmp, pack.filename), '--ignore-scripts', '--no-audit', '--no-fund']);
+    const instalado = path.join(prefix, 'node_modules', 'commander-ai-studio', bundle);
+    comprobar(fs.existsSync(instalado), `la instalación no dejó ${bundle}`);
+    if (fs.existsSync(instalado)) {
+      const corrida = execFileSync(
+        process.execPath,
+        ['--import', 'tsx', 'scripts/check-cli-agent-run.ts', instalado],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], timeout: 180_000 }
+      ).trim();
+      if (corrida) console.log(corrida);
+    }
+  } catch (e) {
+    const detalle = String(e?.stderr || e?.stdout || e?.message || e).trim().slice(0, 400);
+    fallos.push(`la corrida de \`commander agent\` sobre el paquete instalado falló: ${detalle}`);
   }
 
   if (fallos.length > 0) {

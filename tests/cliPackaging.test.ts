@@ -49,3 +49,14 @@ test('`dependencies` sólo lleva lo que hace falta en runtime', () => {
   assert.equal(pkg.scripts?.postinstall, undefined,
     'un postinstall viaja al consumidor y rompe `npm i -g`');
 });
+
+test('el guardián instala el tarball y corre `commander agent` contra el servidor falso', () => {
+  const guard = fs.readFileSync('scripts/check-cli-package.mjs', 'utf8');
+  const harness = fs.readFileSync('scripts/check-cli-agent-run.ts', 'utf8');
+  assert.match(guard, /'install', '--prefix'/, 'instala el tarball en un prefijo temporal');
+  assert.match(guard, /check-cli-agent-run\.ts/, 'delega la corrida real en el arnés');
+  assert.match(harness, /startFakeAgentServer/, 'usa el servidor falso del repo');
+  assert.match(harness, /'agent'/, 'invoca el subcomando agent');
+  assert.match(harness, /type === 'done'/, 'exige el cierre del CLI');
+  assert.match(harness, /run-tool/, 'exige que el CLI haya ejecutado una tool');
+});
