@@ -4,6 +4,12 @@ import { toolDialectForModel, toOpenAITools, toAnthropicTools } from './provider
 import { clientCredentialsFor, resolveEndpoint } from '../lib/aiProviders';
 import { GEMINI_DEFAULT_MODEL } from '../config/geminiModels';
 import { RESULT_TURN_CHARS, clipMiddle, formatStepDigest } from './contextBudget';
+import {
+  AGENT_MAX_OUTPUT_TOKENS,
+  AGENT_RETRY_MAX_OUTPUT_TOKENS,
+  TRUNCATED_TURN_MESSAGE,
+  isTruncatedTurn,
+} from './outputBudget';
 
 /**
  * System prompt estructurado por secciones. Es la única fuente de la verdad
@@ -132,20 +138,34 @@ ${ctx.toolSchema}`;
 
   try {
     const route = opts.apiBase || resolveEndpoint(model);
-    const res = await fetch(route, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        contents: `${system}\n\n${user}`,
-        prompt: `${system}\n\n${user}`,
-        temperature: 0.2,
-        maxTokens: 2048,
-      }),
-    });
+    const payload = {
+      model,
+      contents: `${system}\n\n${user}`,
+      prompt: `${system}\n\n${user}`,
+      temperature: 0.2,
+      maxTokens: AGENT_MAX_OUTPUT_TOKENS,
+    };
+    const post = () =>
+      fetch(route, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
+    let res = await post();
     if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
-    const data = await res.json();
+    let data = await res.json();
+    // Un turno cortado por presupuesto no es respuesta final: un reintento con
+    // más salida antes de darlo por fallido (G1-EMPTY-TURN).
+    if (isTruncatedTurn(data)) {
+      payload.maxTokens = AGENT_RETRY_MAX_OUTPUT_TOKENS;
+      res = await post();
+      if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
+      data = await res.json();
+      if (isTruncatedTurn(data)) {
+        return { thought: TRUNCATED_TURN_MESSAGE, finish: true, answer: TRUNCATED_TURN_MESSAGE };
+      }
+    }
     const text = data.text || data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     const cleaned = text.replace(/```json|```/g, '').trim();
     try {
@@ -160,7 +180,7 @@ ${ctx.toolSchema}`;
           contents: `Tu respuesta anterior no fue JSON válido. Reemite EXACTAMENTE este JSON corregido, sin markdown ni texto extra:\n${cleaned.slice(0, 4000)}`,
           prompt: `Reemite solo JSON válido: ${cleaned.slice(0, 4000)}`,
           temperature: 0,
-          maxTokens: 2048,
+          maxTokens: AGENT_MAX_OUTPUT_TOKENS,
         }),
       });
       if (!retry.ok) throw new Error(`LLM HTTP ${retry.status}`);
@@ -231,7 +251,7 @@ export async function callAgentLLMTools(
     systemInstruction,
     model,
     temperature: 0.2,
-    maxTokens: 2048,
+    maxTokens: AGENT_MAX_OUTPUT_TOKENS,
     ...clientCredentialsFor(model, readClientKey),
   };
 
@@ -243,13 +263,28 @@ export async function callAgentLLMTools(
     payload.tools = toOpenAITools();
   }
 
-  const res = await fetch(route, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  const post = () =>
+    fetch(route, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+  let res = await post();
   if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
-  const data = await res.json();
+  let data = await res.json();
+  // Mismo criterio que en el camino JSON: el corte por presupuesto se reintenta
+  // con más salida y, si persiste, se devuelve como fallo explícito, nunca como
+  // un turno vacío que el bucle tomaría por respuesta final.
+  if (isTruncatedTurn(data)) {
+    payload.maxTokens = AGENT_RETRY_MAX_OUTPUT_TOKENS;
+    res = await post();
+    if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
+    data = await res.json();
+    if (isTruncatedTurn(data)) {
+      return { thought: TRUNCATED_TURN_MESSAGE, calls: [] };
+    }
+  }
 
   if (dialect === 'gemini') {
     const calls = (data.functionCalls || []).map((fc: any) => ({ name: fc.name, args: fc.args || {} }));

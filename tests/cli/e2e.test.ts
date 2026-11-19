@@ -28,6 +28,7 @@ import {
   type CliEventV2,
 } from '../../src/agent/sessionTypes.js';
 import { GEMINI_DEFAULT_MODEL } from '../../src/config/geminiModels.js';
+import { AGENT_MAX_OUTPUT_TOKENS, AGENT_RETRY_MAX_OUTPUT_TOKENS } from '../../src/agent/outputBudget.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
@@ -555,6 +556,41 @@ describe('CLI E2E con proveedor falso (F1-14)', () => {
     assert.equal(done?.type, 'done', message);
     assert.equal(done?.answer, 'Listo: el faro funciona.', message);
     assert.equal(done?.steps, 1, message);
+  });
+
+  test('turno truncado: reintenta con más presupuesto en vez de cerrar vacío', async (t) => {
+    const fake = await startFakeAgentServer();
+    t.after(() => fake.close());
+    const result = await runScenario('truncated', { serverUrl: fake.baseUrl, stream: false });
+    const receipt = writeReceipt('truncated', 'truncated', result, fake);
+    const events = parseEvents(result.stdout);
+    const message = diag(result, receipt);
+
+    assert.equal(result.code, 0, message);
+    const llamadas = fake.requests.filter((entry) => entry.path === '/api/gemini/generate');
+    assert.equal(llamadas.length, 2, `${message}\nun reintento, ni uno más`);
+    assert.equal(llamadas[0]?.body?.maxTokens, AGENT_MAX_OUTPUT_TOKENS, message);
+    assert.equal(llamadas[1]?.body?.maxTokens, AGENT_RETRY_MAX_OUTPUT_TOKENS, message);
+    const answer = events.find((event) => event.type === 'answer');
+    assert.equal(answer?.text, 'Listo: el faro funciona.', message);
+    assert.doesNotMatch(result.stdout, /no devolvió respuesta/, message);
+  });
+
+  test('turno truncado dos veces: falla con motivo, no se marca completado', async (t) => {
+    const fake = await startFakeAgentServer();
+    t.after(() => fake.close());
+    const result = await runScenario('truncated-always', { serverUrl: fake.baseUrl, stream: false });
+    const receipt = writeReceipt('truncated-always', 'truncated-always', result, fake);
+    const events = parseEvents(result.stdout);
+    const message = diag(result, receipt);
+
+    assert.notEqual(result.code, 0, message);
+    assert.equal(events.some((event) => event.type === 'answer'), false, message);
+    const errores = events.filter((event) => event.type === 'error').map((event) => String(event.text || ''));
+    assert.match(errores.join('\n'), /presupuesto de salida/, message);
+    assert.doesNotMatch(result.stdout, /no devolvió respuesta/, message);
+    const lanzadas = fake.requests.filter((entry) => entry.path === '/api/gemini/generate');
+    assert.equal(lanzadas.length, 2, `${message}\ndos intentos y se rinde`);
   });
 
   test('tool de lectura: la ejecuta y continúa hasta la respuesta', async (t) => {

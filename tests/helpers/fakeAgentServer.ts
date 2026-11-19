@@ -53,6 +53,8 @@ export type FakeScenario =
   | 'unknown-tool'
   | 'stream'
   | 'slow'
+  | 'truncated'
+  | 'truncated-always'
   | 'llm-error';
 
 export interface FakeRequest {
@@ -154,6 +156,8 @@ const SCENARIOS: FakeScenario[] = [
   'unknown-tool',
   'stream',
   'slow',
+  'truncated',
+  'truncated-always',
   'llm-error',
 ];
 
@@ -484,6 +488,11 @@ function turnFor(scenario: FakeScenario, turn: number): ModelTurn {
       return { text: 'Hola desde el SSE.', functionCalls: [] };
     case 'llm-error':
       return { status: 500, text: '', functionCalls: [] };
+    case 'truncated':
+      // Primer turno cortado por presupuesto; el reintento sí responde.
+      return turn === 1 ? { text: '', functionCalls: [] } : { text: FINAL_TEXT, functionCalls: [] };
+    case 'truncated-always':
+      return { text: '', functionCalls: [] };
     case 'final':
     default:
       return { text: FINAL_TEXT, functionCalls: [] };
@@ -572,9 +581,22 @@ export async function startFakeAgentServer(): Promise<FakeAgentServer> {
         await new Promise((resolve) => setTimeout(resolve, 2_000));
         if (res.destroyed) return;
       }
-      const script = turnFor(scenario, nextTurn(turns, scenario));
+      const turn = nextTurn(turns, scenario);
+      const script = turnFor(scenario, turn);
       if (script.status) {
         sendJson(res, script.status, { error: 'fallo simulado del proveedor' });
+        return;
+      }
+      // Turno cortado como lo devuelve una ruta real (G1-EMPTY-TURN): error con
+      // el motivo, sin texto ni tool calls.
+      if (scenario === 'truncated-always' || (scenario === 'truncated' && turn === 1)) {
+        sendJson(res, 200, {
+          success: false,
+          ok: false,
+          finishReason: 'length',
+          error: 'respuesta truncada por max_tokens (finish_reason: length)',
+          maxTokens: body?.maxTokens,
+        });
         return;
       }
       sendJson(res, 200, { text: script.text, functionCalls: script.functionCalls });

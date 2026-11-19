@@ -45,6 +45,13 @@ import {
 } from '../agent/sessionTypes';
 import { approvalDiffFor } from './approvalDiff.js';
 import { LoopGuard, WORKSPACE_WRITE_TOOLS } from '../agent/identicalCalls';
+import {
+  AGENT_MAX_OUTPUT_TOKENS,
+  AGENT_RETRY_MAX_OUTPUT_TOKENS,
+  TRUNCATED_TURN_MESSAGE,
+  isTruncatedTurn,
+  isTruncationError,
+} from '../agent/outputBudget';
 
 /**
  * Nombre heredado del contrato. A partir de F1-01 es el evento v2 completo
@@ -388,7 +395,8 @@ const CLI_REVIEW_PROPOSE_POLICY =
 function buildPayload(
   opts: RunAgentOptions,
   history: string[],
-  dialect: ReturnType<typeof toolDialectForModel>
+  dialect: ReturnType<typeof toolDialectForModel>,
+  maxTokens: number = AGENT_MAX_OUTPUT_TOKENS
 ): Record<string, unknown> {
   const model = opts.model || GEMINI_DEFAULT_MODEL;
   const objective = opts.goal || opts.task;
@@ -422,7 +430,7 @@ function buildPayload(
     systemInstruction,
     model,
     temperature: 0.2,
-    maxTokens: 2048,
+    maxTokens,
   };
   // El CLI no pinta el plan y su bucle manda los nombres tal cual al backend:
   // no le ofrecemos `update_plan`, que aquí no existe como tool. En plan y
@@ -531,23 +539,42 @@ async function callModel(
   // Streaming en vivo (solo dialectos con endpoint SSE).
   const route = streamRoute(model);
   if (opts.stream && route && onChunk) {
-    return streamModel(opts, history, route, onChunk);
+    try {
+      return await streamModel(opts, history, route, onChunk);
+    } catch (e) {
+      // Un stream cortado por presupuesto no cierra la corrida: cae al turno
+      // sin streaming, que reintenta con más salida.
+      if (!isTruncationError(e) || opts.signal?.aborted) throw e;
+    }
   }
 
-  const res = await fetch(`${normalizeServerUrl(opts.serverUrl)}${generateRoute(model)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(buildPayload(opts, history, dialect)),
-    signal: opts.signal,
-  });
-  if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
-
-  const data = (await res.json()) as {
-    text?: string;
-    functionCalls?: Array<{ name: string; args?: Record<string, unknown> }>;
-    toolCalls?: { name: string; args?: Record<string, unknown> }[];
-    choices?: { message?: { content?: string } }[];
+  const send = (maxTokens: number) =>
+    fetch(`${normalizeServerUrl(opts.serverUrl)}${generateRoute(model)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildPayload(opts, history, dialect, maxTokens)),
+      signal: opts.signal,
+    });
+  const readTurn = async (response: Response) => {
+    if (!response.ok) throw new Error(`LLM HTTP ${response.status}`);
+    return (await response.json()) as {
+      text?: string;
+      functionCalls?: Array<{ name: string; args?: Record<string, unknown> }>;
+      toolCalls?: { name: string; args?: Record<string, unknown> }[];
+      choices?: { message?: { content?: string } }[];
+      finishReason?: unknown;
+      error?: unknown;
+    };
   };
+
+  let data = await readTurn(await send(AGENT_MAX_OUTPUT_TOKENS));
+  // `finish_reason: length` sin contenido ni tool calls no es una respuesta
+  // final (G1-EMPTY-TURN): un reintento con más presupuesto de salida y, si
+  // vuelve cortado, la corrida falla en vez de cerrarse vacía.
+  if (isTruncatedTurn(data)) {
+    data = await readTurn(await send(AGENT_RETRY_MAX_OUTPUT_TOKENS));
+    if (isTruncatedTurn(data)) throw new Error(TRUNCATED_TURN_MESSAGE);
+  }
 
   const calls =
     dialect === 'gemini'
