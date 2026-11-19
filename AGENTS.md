@@ -27,6 +27,8 @@ limpie sin perder el historial de revisión**:
 - Soporte de GitHub borra PRs **sólo con datos sensibles**, y al hacerlo elimina conversación, reviews y diffs: justo lo que se quiere conservar.
 - Reescribir la rama del PR no reescribe el ref, y en estos PRs la rama ya estaba borrada, así que no hay nada que empujar.
 
-Lo único disponible sin perder nada es **archivar** esos PRs: salen de la vista pública (quien no tiene triage o más recibe 404) y el historial queda para el mantenedor, pero los refs y sus commits siguen existiendo ([docs](https://docs.github.com/en/communities/moderating-comments-and-conversations/archive-pull-requests)). No se archivaron: es una decisión del dueño del repo.
+Lo único disponible sin perder nada es **archivar** esos PRs: salen de la vista pública (404 para quien no tiene triage o más) y el historial queda para el mantenedor, pero los refs y sus commits siguen existiendo ([docs](https://docs.github.com/en/communities/moderating-comments-and-conversations/archive-pull-requests)).
+
+Archivar **sólo funciona con PRs cerrados sin mergear**: la mutación `archivePullRequest` responde `Cannot archive a merged pull request` en los demás. Estado al 2026-11-19: #24 y #25 archivados (404 público verificado) y los otros nueve —#1, 23, 27, 29, 30, 33, 34, 35, 36— mergeados, sin forma de archivarlos. Para desarchivar: `unarchivePullRequest` o el filtro `is:archived` en la UI.
 
 **No volver a reescribir el historial por este motivo.** Los commits nuevos están cubiertos por `npm run check:commit-signature` y el hook `.husky/commit-msg`.
