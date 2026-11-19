@@ -1,0 +1,47 @@
+name: Pages
+
+# GitHub muestra los `.html` como código en el visor de blobs: el roadmap se ve
+# bien en local pero desde el repo sólo se lee el fuente. Este workflow publica
+# `docs/` tal cual, sin build: el roadmap es HTML autocontenido y el resto son
+# documentos.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+# Pages necesita escribir el deployment y un id-token para validarlo; el resto
+# del token queda en lectura.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publicar docs/
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Si Pages no está habilitado, el deployment da 404 aunque el workflow
+      # exista: `enablement` lo crea con origen "GitHub Actions".
+      - uses: actions/configure-pages@v6
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs
+
+      - id: deployment
+        uses: actions/deploy-pages@v5
