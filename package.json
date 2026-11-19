@@ -26,6 +26,7 @@
     "build:cli": "node scripts/build-cli.mjs",
     "prepack": "npm run build:cli",
     "check:cli-package": "node scripts/check-cli-package.mjs",
+    "check:electron-package": "node scripts/check-electron-package.mjs",
     "build:server:cjs": "npx esbuild server.ts --bundle --platform=node --format=cjs --target=node22 --external:vite --external:playwright --external:node-pty --outfile=electron/server.cjs",
     "build:server:mjs": "npx esbuild server.ts --bundle --platform=node --format=esm --target=node22 --external:vite --external:playwright --external:node-pty --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" --outfile=electron/server.mjs",
     "build:electron": "electron-builder --win",

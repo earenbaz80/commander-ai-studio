@@ -172,8 +172,17 @@ jobs:
       - name: Build updater bundle
         run: npm run build:updater
 
-      - name: Empaquetar (electron-builder --dir)
-        run: npx electron-builder --win --x64 --dir
+      # El mismo comando que documenta el README para armar el paquete
+      # local: si `build:electron` y el pipeline de una release divergen,
+      # se ve acá.
+      - name: Empaquetar (build:electron --dir)
+        run: npm run build:electron -- --dir --x64
+
+      # Empaquetar en verde no prueba que las piezas estén dentro: se mira
+      # el resultado. node-pty viaja en `extraResources` (el asar no lleva
+      # node_modules) y server.cjs tiene que quedar al lado.
+      - name: Contenido del paquete (node-pty y server.cjs)
+        run: npm run check:electron-package
 
   e2e:
     name: E2E Tests (Playwright)

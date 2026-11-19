@@ -293,3 +293,22 @@ test('CI: una guardia construye y empaqueta el CLI', () => {
   assert.match(guion, /cli-dist\/commander\.mjs/, 'comprueba el bundle en el tarball');
   assert.match(guion, /--version/, 'ejecuta el bundle empaquetado');
 });
+test('CI: el paquete de Electron se arma y se revisa su contenido', () => {
+  const pasos = pasosDe(jobDe(ci, 'package'));
+  const esRun = (paso: string, comando: string) =>
+    paso.split('\n').some((l: string) => l.trim() === `run: ${comando}`);
+
+  // El job empaquetaba con electron-builder a mano: si el script o el flag
+  // cambian, el CI dejaría de medir lo que corre un humano.
+  const empaqueta = pasos.findIndex((p) => esRun(p, 'npm run build:electron -- --dir --x64'));
+  const revisa = pasos.findIndex((p) => esRun(p, 'npm run check:electron-package'));
+  assert.ok(empaqueta >= 0, 'falta el paso que corre `npm run build:electron -- --dir`');
+  assert.ok(revisa >= 0, 'falta el paso que revisa el contenido del paquete');
+  assert.ok(revisa > empaqueta, 'el contenido se revisa después de empaquetar');
+
+  // Sin estas rutas el script queda verde mirando cualquier cosa.
+  const guion = leer('scripts/check-electron-package.mjs');
+  assert.match(guion, /node-pty/, 'exige node-pty en extraResources');
+  assert.match(guion, /server\.cjs/, 'exige server.cjs en resources');
+  assert.match(guion, /app\.asar/, 'exige el asar');
+});
