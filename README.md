@@ -2,6 +2,10 @@
 
 Entorno retro Norton para ingeniería de prompts + **agente autónomo**, modelos Gemini/HF y exportador nativo (Electron/Tauri).
 
+**Roadmap visual (página, no código):** [earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html](https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html)
+
+GitHub muestra los `.html` como código en el visor de archivos: el roadmap renderizado se abre en ese enlace.
+
 ## Documentación
 
 - [Referencia de API](docs/API.md): endpoints de IA, agente, plugins y seguridad.
