@@ -16,11 +16,18 @@
 
 ## Referencias de PR con la firma vieja (no reintentar)
 
-El 2026-11-19 se reescribió el historial para que la firma sea una sola. `main`, la
-tag `v2.5.1` y las 12 tags `archive/*` (borradas del remoto) quedaron limpias. Lo
-único que sigue apuntando a los commits viejos son los `refs/pull/N/head` de 11 PRs
-cerrados (#1, 23, 24, 25, 27, 29, 30, 33, 34, 35, 36), y **no existe una vía que los
-limpie sin perder el historial de revisión**:
+El 2026-11-19 se reescribió el historial para que la firma sea una sola. `main` y la
+tag `v2.5.1` quedaron limpias, y las 12 tags `archive/*` se borraron también del
+remoto. Ese mismo día se borraron y purgaron los refs locales que guardaban la
+historia vieja —`refs/backup/pre-identity-rewrite`,
+`refs/backup/tags/backup/pre-codebuff`, las 12 `refs/backup/tags/archive/*` y
+`f2-closed-2026-11-10`— con `git reflog expire --expire=now --all && git gc
+--prune=now`: **no queda ninguna red de seguridad local** y esos commits con la
+firma vieja son irrecuperables. Sólo sobrevive `refs/backup/tags/v2.5.1`, que
+duplica el objeto de tag del remoto, no historia vieja. Lo único que sigue
+apuntando a los commits viejos son los `refs/pull/N/head` de 11 PRs cerrados (#1,
+23, 24, 25, 27, 29, 30, 33, 34, 35, 36), y **no existe una vía que los limpie sin
+perder el historial de revisión**:
 
 - Los `refs/pull/*` son de sólo lectura: `git push --mirror` falla en ellos por diseño ([docs](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)).
 - No hay endpoint ni opción de UI para borrar un PR: la API sólo permite cerrarlo, y borrar la rama deja el PR y su ref en pie.
