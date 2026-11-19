@@ -8,6 +8,12 @@
     "email": "earenbaz80@users.noreply.github.com"
   },
   "main": "electron/main.cjs",
+  "bin": {
+    "commander": "cli-dist/commander.mjs"
+  },
+  "files": [
+    "cli-dist"
+  ],
   "private": true,
   "scripts": {
     "predev": "npm run avatars:sync",
@@ -18,6 +24,8 @@
     "prebuild": "npm run avatars:sync",
     "build": "tsc --noEmit && vite build",
     "build:server": "npm run build:server:cjs && npm run build:server:mjs",
+    "build:cli": "node scripts/build-cli.mjs",
+    "prepack": "npm run build:cli",
     "build:server:cjs": "npx esbuild server.ts --bundle --platform=node --format=cjs --target=node22 --external:vite --external:playwright --external:node-pty --outfile=electron/server.cjs",
     "build:server:mjs": "npx esbuild server.ts --bundle --platform=node --format=esm --target=node22 --external:vite --external:playwright --external:node-pty --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" --outfile=electron/server.mjs",
     "build:electron": "electron-builder --win",

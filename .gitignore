@@ -11,6 +11,7 @@ bun.lock
 
 # Build
 dist/
+cli-dist/
 release/
 *.tsbuildinfo
 
