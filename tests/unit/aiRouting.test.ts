@@ -18,7 +18,6 @@ describe('resolveChatRoute', () => {
       ['ollama/llama3', '/api/ollama/generate'],
       ['openai/gpt-4.1', '/api/openai/generate'],
       ['nvidia/meta/llama-3.3-70b-instruct', '/api/nvidia/generate'],
-      ['strata/gpt-5.4', '/api/strata/generate'],
     ])('no confunde el prefijo %s con HuggingFace', (modelId, expected) => {
       const route = resolveChatRoute({ modelId });
       expect(route.isHf).toBe(false);

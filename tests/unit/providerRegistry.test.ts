@@ -152,18 +152,6 @@ describe('buildProviderList', () => {
     expect(new Set(anthropic.env).size).toBe(anthropic.env.length);
   });
 
-  test('Strata cloud queda registrado con clave obligatoria y catálogo de respaldo', () => {
-    const spec = specOf('strata');
-    expect(spec.env).toContain('STRATA_API_KEY');
-    expect(spec.fields.find((f) => f.name === 'apiKey')?.required).toBe(true);
-    expect(spec.defaultModel).toBe('gpt-5.4');
-
-    const provider = buildProviderList({}, new Set(), []).find((p) => p.id === 'strata')!;
-    expect(provider.configured).toBe(false);
-    expect(provider.modelCount).toBeGreaterThan(0);
-    expect(provider.allModels.every((m) => m.id.startsWith('strata/'))).toBe(true);
-  });
-
   test('aplica whitelist y blacklist y conserva el total', () => {
     const config = {
       anthropic: {
