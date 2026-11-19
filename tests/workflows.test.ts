@@ -21,6 +21,7 @@ import path from 'node:path';
 
 const WATCH = '.github/workflows/audit-watch.yml';
 const CI = '.github/workflows/tests.yml';
+const PAGES = '.github/workflows/pages.yml';
 
 /**
  * Lee texto del repo con los saltos de línea normalizados.
@@ -311,4 +312,43 @@ test('CI: el paquete de Electron se arma y se revisa su contenido', () => {
   assert.match(guion, /node-pty/, 'exige node-pty en extraResources');
   assert.match(guion, /server\.cjs/, 'exige server.cjs en resources');
   assert.match(guion, /app\.asar/, 'exige el asar');
+});
+test('Pages: publica docs/ con los permisos mínimos', () => {
+  const yml = leer(PAGES);
+  const job = jobDe(yml, 'deploy');
+  const pasos = pasosDe(job);
+
+  // Sin el trigger, un cambio en el roadmap no llega nunca al sitio; y sin
+  // `docs/**` en `paths` se redespliega por commits que no lo tocan.
+  assert.match(yml, /^on:/m, 'declara el trigger');
+  assert.match(yml, /workflow_dispatch:/, 'se puede publicar a mano');
+  assert.match(yml, /^\s{2}push:/m, 'se dispara con push');
+  assert.match(yml, /branches: \[main\]/, 'sólo desde main');
+  assert.match(yml, /paths:\n(?:\s+- [^\n]+\n)*\s+- 'docs\/\*\*'/, 'los cambios en docs/** lo disparan');
+
+  // Exacto, no «contiene»: un `contents: write` de más es un permiso que nadie
+  // pidió, y el token de este job sólo necesita escribir el deployment.
+  const permisos = (yml.match(/\npermissions:\n((?: {2}[^\n]+\n)+)/)?.[1] ?? '')
+    .trim()
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  assert.deepEqual(permisos, ['contents: read', 'pages: write', 'id-token: write']);
+
+  // Lo que se publica es la carpeta, sin build: el roadmap es HTML autocontenido
+  // y si mañana se sube otro directorio el sitio queda vacío.
+  const indice = (marcador: string) => {
+    const i = pasos.findIndex((p) => p.includes(marcador));
+    assert.ok(i >= 0, `falta el paso con ${marcador}`);
+    return i;
+  };
+  const configura = indice('actions/configure-pages');
+  const sube = indice('actions/upload-pages-artifact');
+  const publica = indice('actions/deploy-pages');
+
+  assert.ok(configura < sube && sube < publica, 'configura, sube y publica en ese orden');
+  assert.match(pasos[sube], /path: docs/, 'sube docs/');
+  // La primera corrida tiene que poder habilitar Pages: sin esto devuelve 404.
+  assert.match(pasos[configura], /enablement: true/, 'habilita Pages si no lo está');
+  assert.match(job, /url: \$\{\{ steps\.deployment\.outputs\.page_url \}\}/, 'el job expone la URL publicada');
 });
