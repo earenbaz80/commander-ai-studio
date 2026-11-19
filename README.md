@@ -319,7 +319,9 @@ La instalación sí usa la API de GitHub para listar el árbol del repo: sin tok
 
 ## Dependencias y auditoría
 
-El CI exige **cero vulnerabilidades en producción**: `npm audit --omit=dev --audit-level=low` corre en cada push y PR. Es el conjunto que se empaqueta con Electron y se sirve desde `server.ts`, así que es el que importa para una release.
+El CI exige **cero vulnerabilidades en producción**: `npm audit --omit=dev --audit-level=low` corre en cada push y PR.
+
+`dependencies` es sólo lo que tiene que existir en `node_modules` al ejecutar: hoy `node-pty` (módulo nativo de la terminal, que además viaja como `extraResources` al paquete de Electron) y nada más. El resto de la app —UI, servidor, SDKs— se empaqueta con Vite y esbuild, así que vive en `devDependencies`: no se resuelve en runtime y no engorda un `npm i -g` del CLI. Que el bundle siga siendo autosuficiente lo vigila `npm run check:cli-package`; los advisories de ese conjunto los cubre el vigilante semanal del audit completo.
 
 - **Reintento sólo de red.** El paso corre `scripts/audit-prod.ts`, que lee el JSON de npm: un fallo de transporte (`EAI_AGAIN`, `ETIMEDOUT`, `ECONNREFUSED`, 5xx del registry) se reintenta **una** vez a los 3 s y, si tampoco llega, falla diciendo que no es un veredicto sobre las dependencias. Un JSON con `vulnerabilities` **nunca** se reintenta: se listan los paquetes y sale 1. Un error de npm que no es de red (config, lock ilegible) también falla al primer intento, para no retrasar el diagnóstico.
 

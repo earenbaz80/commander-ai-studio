@@ -14,7 +14,6 @@
   "files": [
     "cli-dist"
   ],
-  "private": true,
   "scripts": {
     "predev": "npm run avatars:sync",
     "dev": "cross-env NODE_ENV=development PORT=3283 npx tsx server.ts",
@@ -26,6 +25,7 @@
     "build:server": "npm run build:server:cjs && npm run build:server:mjs",
     "build:cli": "node scripts/build-cli.mjs",
     "prepack": "npm run build:cli",
+    "check:cli-package": "node scripts/check-cli-package.mjs",
     "build:server:cjs": "npx esbuild server.ts --bundle --platform=node --format=cjs --target=node22 --external:vite --external:playwright --external:node-pty --outfile=electron/server.cjs",
     "build:server:mjs": "npx esbuild server.ts --bundle --platform=node --format=esm --target=node22 --external:vite --external:playwright --external:node-pty --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" --outfile=electron/server.mjs",
     "build:electron": "electron-builder --win",
@@ -54,7 +54,6 @@
     "lint:fix": "eslint src --fix",
     "typecheck": "tsc --noEmit",
     "check:index": "tsx scripts/check-index.ts",
-    "check:cli-package": "node scripts/check-cli-package.mjs",
     "bench:local": "tsx scripts/bench-local-runtime.ts",
     "audit:loop-guard": "tsx scripts/audit-loop-guard.ts",
     "check:issue-status": "tsx scripts/sync-issue-status.ts --check",
@@ -66,7 +65,6 @@
     "check:contrast": "npm run build && playwright test tests/e2e/contrast.spec.ts --project=chromium",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
     "prepare": "husky",
-    "postinstall": "electron-builder install-app-deps",
     "capacitor:add": "cap add android ios",
     "capacitor:sync": "cap sync",
     "capacitor:open:android": "cap open android",
@@ -83,6 +81,12 @@
     "g1:cal2": "tsx scripts/g1-cal2.ts"
   },
   "dependencies": {
+    "node-pty": "^1.1.0"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.7"
+  },
+  "devDependencies": {
     "@codemirror/autocomplete": "^6.20.4",
     "@codemirror/commands": "^6.11.1",
     "@codemirror/lang-css": "^6.3.1",
@@ -103,26 +107,9 @@
     "@google/genai": "^2.25.0",
     "@google/generative-ai": "^0.24.1",
     "@lezer/highlight": "^1.2.5",
-    "@tauri-apps/api": "^2.12.4",
-    "canvas-confetti": "^1.9.4",
-    "dotenv": "^17.2.3",
-    "electron-updater": "^6.8.11",
-    "express": "^5.3.0",
-    "firebase": "^13.3.0",
-    "jszip": "^3.10.2",
-    "lucide-react": "^1.72.0",
-    "node-pty": "^1.1.0",
-    "ws": "^8.23.0",
-    "xterm": "^5.3.0",
-    "xterm-addon-fit": "^0.8.0",
-    "zod": "^4.6.7"
-  },
-  "overrides": {
-    "@grpc/grpc-js": "^1.14.7"
-  },
-  "devDependencies": {
     "@playwright/test": "^1.65.0",
     "@tailwindcss/vite": "^4.3.5",
+    "@tauri-apps/api": "^2.12.4",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
@@ -135,24 +122,35 @@
     "@typescript-eslint/eslint-plugin": "^8.72.2",
     "@typescript-eslint/parser": "^8.71.2",
     "@vitejs/plugin-react": "^6.3.0",
+    "canvas-confetti": "^1.9.4",
     "commander": "^12.1.0",
     "concurrently": "^9.2.5",
     "cross-env": "^10.1.0",
+    "dotenv": "^17.2.3",
     "electron": "^45.3.1",
     "electron-builder": "^26.5.0",
+    "electron-updater": "^6.8.11",
     "esbuild": "^0.28.2",
     "eslint": "^9.18.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.5.7",
+    "express": "^5.3.0",
+    "firebase": "^13.3.0",
     "husky": "^9.1.7",
     "jsdom": "^31.0.1",
+    "jszip": "^3.10.2",
+    "lucide-react": "^1.72.0",
     "playwright": "^1.64.1",
     "prettier": "^3.10.1",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
     "typescript": "^5.7.2",
     "typescript-language-server": "^6.1.0",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.0",
+    "ws": "^8.23.0",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0",
+    "zod": "^4.6.7"
   },
   "engines": {
     "node": ">=22.22.2",

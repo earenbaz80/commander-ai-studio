@@ -62,7 +62,8 @@ jobs:
           node-version: 22
           cache: npm
 
-      # Sin scripts para no ejecutar el postinstall de Electron.
+      # Sin scripts: la corrida no necesita hooks de git ni compilar nativos
+      # (node-pty se reconstruye explícitamente abajo).
       - run: npm ci --ignore-scripts
 
       # El servidor importa node-pty, y el paquete no trae prebuild Linux:

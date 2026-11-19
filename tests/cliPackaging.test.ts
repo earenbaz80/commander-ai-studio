@@ -42,3 +42,10 @@ test('los módulos que no se pueden empaquetar quedan externos', () => {
       `${mod} debe estar declarado como dependencia`);
   }
 });
+
+test('`dependencies` sólo lleva lo que hace falta en runtime', () => {
+  assert.deepEqual(Object.keys(pkg.dependencies ?? {}), ['node-pty']);
+  assert.equal(pkg.private, undefined, 'el paquete se publica: sin private');
+  assert.equal(pkg.scripts?.postinstall, undefined,
+    'un postinstall viaja al consumidor y rompe `npm i -g`');
+});
