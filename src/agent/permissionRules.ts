@@ -133,8 +133,8 @@ export function effectiveRules(userRules: PermissionRule[] = []): PermissionRule
  * ¿Hace falta preguntar al humano?
  *
  * `deny` no llega aquí: el motor de tools lo corta antes de ejecutar y no se
- * puede saltar con `allow-session` ni con `--yes`. `ask` siempre pregunta;
- * `allow` ejecuta sin modal aunque la tool sea peligrosa.
+ * puede saltar con `allow-session` ni con ninguna bandera del CLI. `ask` siempre
+ * pregunta; `allow` ejecuta sin modal aunque la tool sea peligrosa.
  */
 export function needsHumanApproval(
   rule: RuleDecision | null,

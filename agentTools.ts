@@ -702,7 +702,8 @@ async function executeAgentToolCore(
   const toolErr = enforceTool(perms, toolId, { readOnly: isReadOnlyCall(toolId, input) });
   if (toolErr) return { ok: false, error: toolErr, status: 403 };
   // Reglas por patrón del proyecto (F1-07): `deny` gana siempre y se evalúa
-  // antes de ejecutar, así que ni `allow-session` ni `--yes` pueden saltarlo.
+  // antes de ejecutar, así que ni `allow-session` ni una aprobación anterior
+  // pueden saltarlo; el CLI no tiene ninguna bandera que lo desactive.
   if (decide(toolId, input, perms.rules) === 'deny') {
     return { ok: false, error: `Denegado por regla de permisos del proyecto: ${toolId}`, status: 403 };
   }

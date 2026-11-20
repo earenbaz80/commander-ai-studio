@@ -217,8 +217,9 @@ describe('Agent Config helper', () => {
 
     expect(agent.maxSteps).toBeGreaterThan(0);
     expect(agent.maxTurns).toBeGreaterThan(0);
-    // `approvalMode` se eliminó por no tener efecto: el bucle siempre pide
-    // aprobación humana. Si alguien la repone sin cablearla, esto lo delata.
+    // `approvalMode` se eliminó por no tener efecto: el bucle no la consultaba.
+    // Quién decide es la tool, las reglas del proyecto (`allow`/`ask`/`deny`),
+    // `allow-session` o el prompt humano; esta clave no saltaba ninguno.
     expect('approvalMode' in agent).toBe(false);
   });
 

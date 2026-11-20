@@ -233,7 +233,7 @@
 **Alcance**
 - Persistir las reglas también en `.commander/permissions.json` (`rules[]`), manteniendo la UI como editor y una migración única desde `localStorage`.
 - Evaluar `decide()` en el servidor antes de aprobar o ejecutar; `deny` gana siempre, `allow` evita el prompt, `ask` fuerza aprobación.
-- La regla `deny` no se puede saltar con `allow-session` ni con `--yes`.
+- La regla `deny` no se puede saltar con `allow-session` ni con una aprobación previa.
 - Exponer `GET/PUT /api/agent/permission-rules?root=` para que la UI y el CLI lean la misma fuente.
 
 **Criterios de aceptación**
