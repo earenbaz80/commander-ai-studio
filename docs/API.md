@@ -2,7 +2,7 @@
 
 Base URL: `/api` (Express server embebido en Electron, puerto 3280)
 
-El servidor escucha **sólo en loopback**. `server.host` en `commander.json` y `commander serve --host` aceptan los alias `127.0.0.1`, `::1` y `localhost`; cualquier otra interfaz (por ejemplo `0.0.0.0` o una IP de la LAN) aborta el arranque con un error explícito, porque la API ejecuta tools sobre el workspace y no tiene autenticación propia.
+El servidor escucha en **loopback** (`127.0.0.1`) por defecto. `server.host` en `commander.json` y `commander serve --host` cambian el bind de verdad: aceptan `0.0.0.0`, `::`, una IP de la LAN o un nombre, y normalizan los alias `localhost` y `[::1]`. La API ejecuta tools sobre el workspace y no tiene autenticación propia, así que cuando el bind sale de loopback el arranque imprime un aviso de exposición.
 
 ---
 

@@ -60,7 +60,7 @@ program
   .command('serve')
   .description('Start the Commander AI Studio server')
   .option('-p, --port <number>', 'Port to listen on', '3280')
-  .option('-h, --host <string>', 'Loopback host to bind to (127.0.0.1, ::1, localhost)')
+  .option('-h, --host <string>', 'Host to bind to (default loopback; another interface exposes the API)')
   .option('--dev', 'Run in development mode (Vite dev server)')
   .action(async (opts) => {
     const config = loadConfig();
@@ -83,8 +83,9 @@ program
       vite.on('exit', (code) => process.exit(code ?? 0));
     } else {
       process.env.PORT = String(port);
-      const { startServer } = await import('../server.js');
-      await startServer();
+      // `server.ts` arranca su bootstrap al importarse; llamar además a
+      // `startServer()` abría un segundo listen y fallaba con EADDRINUSE.
+      await import('../server.js');
     }
   });
 

@@ -1,33 +1,55 @@
 /**
  * Host de escucha del servidor.
  *
- * La app no autentica a quien llama y expone la ejecución de tools sobre el
- * workspace, así que el servidor sólo escucha en loopback. `serve --host` y
- * `server.host` eligen entre los alias de loopback; pedir otra interfaz es un
- * error de arranque y no un bind silencioso a 127.0.0.1, para que nadie crea que
- * abrió el servidor a la red cuando en realidad no pasó nada.
+ * Por defecto escucha en loopback. `serve --host` y `server.host` permiten pedir
+ * otra interfaz (`0.0.0.0`, una IP de la LAN, un nombre), pero la API ejecuta
+ * tools sobre el workspace y no tiene autenticación propia: exponerla es una
+ * decisión explícita del operador y el arranque lo avisa por consola.
  */
 export const DEFAULT_BIND_HOST = '127.0.0.1';
 
-const LOOPBACK_ALIASES = new Set(['127.0.0.1', '::1', '[::1]', 'localhost']);
-
 export class BindHostError extends Error {
   constructor(requested: string) {
-    super(
-      `bind no permitido: ${requested}. El servidor sólo escucha en loopback ` +
-        '(127.0.0.1, ::1, localhost); abrirlo a la red dejaría las tools del ' +
-        'agente sin autenticación.'
-    );
+    super(`host de escucha inválido: ${requested}`);
     this.name = 'BindHostError';
   }
 }
 
-/** Host efectivo, normalizado a la forma que acepta `server.listen`. */
+/**
+ * Host efectivo, normalizado a la forma que acepta `server.listen`.
+ *
+ * `localhost` se resuelve a 127.0.0.1 para que el bind no dependa de la
+ * resolución de nombres del sistema; el resto se pasa tal cual, en minúsculas.
+ */
 export function resolveBindHost(requested?: unknown): string {
   const raw = typeof requested === 'string' ? requested.trim() : '';
   if (!raw) return DEFAULT_BIND_HOST;
+  // Un host no es una URL ni lleva espacios: eso es un error de configuración.
+  if (/[\s/]/.test(raw) || raw.includes('://')) throw new BindHostError(raw);
   const value = raw.toLowerCase();
-  if (!LOOPBACK_ALIASES.has(value)) throw new BindHostError(raw);
   if (value === 'localhost') return DEFAULT_BIND_HOST;
-  return value === '[::1]' ? '::1' : value;
+  if (value === '[::1]') return '::1';
+  if (value === '[::]') return '::';
+  return value;
+}
+
+/** ¿El bind queda dentro de la máquina? */
+export function isLoopbackHost(host: string): boolean {
+  const value = String(host || '').trim().toLowerCase();
+  return (
+    value === 'localhost' ||
+    value === '::1' ||
+    value === '[::1]' ||
+    /^127\.\d{1,3}(\.\d{1,3}){2}$/.test(value)
+  );
+}
+
+/** Aviso de exposición, o `null` cuando el bind es loopback. */
+export function bindExposureWarning(host: string): string | null {
+  if (isLoopbackHost(host)) return null;
+  return (
+    `[commander] Aviso: el servidor escucha en ${host} y la API no tiene ` +
+    'autenticación propia; quien llegue a ese puerto puede ejecutar las tools ' +
+    'del agente sobre el workspace.'
+  );
 }

@@ -14,7 +14,7 @@ import * as worktrees from './worktrees';
 import { readProjectGitRemote } from './projectRemote';
 import { runAutonomousCampaign, planCampaign } from './autonomousRun';
 import { setServerBaseUrl } from './serverRuntime';
-import { resolveBindHost } from './src/lib/bindHost';
+import { bindExposureWarning, resolveBindHost } from './src/lib/bindHost';
 import { addRoot, listRoots, removeRoot, removableRoots, resolveProjectPath } from './projects';
 import { enforceTool, getPermissions, setPermissions } from './permissions';
 import { mergeRuleSets, normalizeRules } from './src/agent/permissionRules';
@@ -6280,9 +6280,12 @@ async function bootstrap() {
     /* se reintenta al leer los ajustes de Strata */
   }
   const PORT = Number(process.env.PORT || loadConfig().server?.port || 3280);
-  // Sólo loopback: `resolveBindHost` aborta el arranque si `HOST` o
-  // `server.host` piden una interfaz de red.
+  // `HOST` (serve --host) manda sobre `server.host`; el bind es real y sólo
+  // se normalizan los alias.
   const HOST = resolveBindHost(process.env.HOST || loadConfig().server?.host);
+  // Fuera de loopback, quien arranca tiene que saber que la API queda abierta.
+  const bindWarning = bindExposureWarning(HOST);
+  if (bindWarning) console.warn(bindWarning);
   // Servidor HTTP explícito (no `app.listen`) para compartirlo con Vite: el
   // WebSocket de HMR viaja por el mismo puerto de la app. Antes Vite abría el
   // suyo en el 24678 y chocaba con cualquier otro vite corriendo en la máquina.
