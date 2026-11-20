@@ -126,6 +126,9 @@ export function BackendView({ lang = 'es' }: BackendViewProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ConfirmDelete | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Cambia con cada subida o borrado: un listado que estaba en vuelo no puede
+  // pisar lo que ya se modificó en pantalla.
+  const filesRevision = useRef(0);
 
   const dropSession = useCallback((message = '') => {
     clearToken();
@@ -153,6 +156,7 @@ export function BackendView({ lang = 'es' }: BackendViewProps) {
     async (token: string) => {
       setLoadingData(true);
       setError('');
+      const filesRevisionAtStart = filesRevision.current;
       try {
         const [recordsResult, filesResult] = await Promise.allSettled([
           listRecords(token),
@@ -171,7 +175,12 @@ export function BackendView({ lang = 'es' }: BackendViewProps) {
         }
 
         if (filesResult.status === 'fulfilled') {
-          setFiles(filesResult.value);
+          const loaded = filesResult.value;
+          setFiles((current) =>
+            filesRevision.current === filesRevisionAtStart
+              ? loaded
+              : [...current, ...loaded.filter((file) => !current.some((seen) => seen.id === file.id))]
+          );
         } else {
           handleUnauthorized(
             filesResult.reason,
@@ -362,6 +371,7 @@ export function BackendView({ lang = 'es' }: BackendViewProps) {
     setError('');
     try {
       const saved = await uploadFile(session.token, selectedFile);
+      filesRevision.current += 1;
       setFiles((current) => [saved, ...current]);
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -400,6 +410,7 @@ export function BackendView({ lang = 'es' }: BackendViewProps) {
     setError('');
     try {
       await deleteFile(session.token, id);
+      filesRevision.current += 1;
       setFiles((current) => current.filter((file) => file.id !== id));
       setConfirmDelete(null);
       setNotice(t('Archivo borrado', 'File deleted', 'Datei gelöscht'));

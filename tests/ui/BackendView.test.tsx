@@ -149,11 +149,6 @@ describe('BackendView', () => {
     render(<BackendView />);
     await screen.findByRole('tab', { name: 'Archivos' });
     fireEvent.click(screen.getByRole('tab', { name: 'Archivos' }));
-    // `loadData` reemplaza `files` cuando resuelve el `Promise.allSettled`
-    // inicial. Si la subida gana esa carrera, el GET vacío borra el archivo
-    // recién agregado y `nota.txt` no aparece. Se espera a que la carga
-    // inicial termine antes de subir.
-    await screen.findByText('No hay archivos todavía.');
 
     const input = screen.getByTestId('backend-file-input') as HTMLInputElement;
     const selected = new File(['hola'], 'nota.txt', { type: 'text/plain' });
@@ -172,5 +167,49 @@ describe('BackendView', () => {
     expect(headers['X-Commander-File-Name']).toBe('nota.txt');
     expect(headers['Content-Type']).toBe('text/plain');
     expect(call?.[1]?.body).toBe(selected);
+  });
+
+  test('conserva el archivo subido si el listado inicial llega después', async () => {
+    sessionStorage.setItem('commander_backend_token', 'token-1');
+    const uploaded = { ...file, id: 'file-2', name: 'nota.txt', mime: 'text/plain', size: 4 };
+    const listed = { ...file, id: 'file-3', name: 'informe.pdf' };
+    let resolveFiles!: (value: Response) => void;
+    const filesResponse = new Promise<Response>((resolve) => {
+      resolveFiles = resolve;
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/auth/me')) {
+        return Promise.resolve(jsonResponse({ success: true, user: session.user, tenant: session.tenant }));
+      }
+      if (url.endsWith('/records') && isGet(init)) {
+        return Promise.resolve(jsonResponse({ success: true, records: [] }));
+      }
+      if (url.endsWith('/files') && isGet(init)) {
+        return filesResponse;
+      }
+      if (url.endsWith('/files') && init?.method === 'POST') {
+        return Promise.resolve(jsonResponse({ success: true, file: uploaded }, true, 201));
+      }
+      return Promise.resolve(jsonResponse({ success: false, error: 'inesperado' }, false, 500));
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<BackendView />);
+    await screen.findByRole('tab', { name: 'Archivos' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Archivos' }));
+
+    // La carga inicial sigue en vuelo (el GET de /files no resolvió) cuando se
+    // sube el archivo: el listado tiene que llegar después sin borrarlo.
+    const input = screen.getByTestId('backend-file-input') as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [new File(['hola'], 'nota.txt', { type: 'text/plain' })] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Subir' }));
+    expect(await screen.findByText('nota.txt')).toBeInTheDocument();
+
+    resolveFiles(jsonResponse({ success: true, files: [listed] }));
+    expect(await screen.findByText('informe.pdf')).toBeInTheDocument();
+    expect(screen.getByText('nota.txt')).toBeInTheDocument();
   });
 });
