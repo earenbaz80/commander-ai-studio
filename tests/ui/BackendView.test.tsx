@@ -149,6 +149,11 @@ describe('BackendView', () => {
     render(<BackendView />);
     await screen.findByRole('tab', { name: 'Archivos' });
     fireEvent.click(screen.getByRole('tab', { name: 'Archivos' }));
+    // `loadData` reemplaza `files` cuando resuelve el `Promise.allSettled`
+    // inicial. Si la subida gana esa carrera, el GET vacío borra el archivo
+    // recién agregado y `nota.txt` no aparece. Se espera a que la carga
+    // inicial termine antes de subir.
+    await screen.findByText('No hay archivos todavía.');
 
     const input = screen.getByTestId('backend-file-input') as HTMLInputElement;
     const selected = new File(['hola'], 'nota.txt', { type: 'text/plain' });

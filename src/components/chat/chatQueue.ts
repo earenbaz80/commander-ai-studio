@@ -31,3 +31,12 @@ export function writeChatQueue(
   if (messages.length > 0) queues.set(sessionKey, messages);
   else queues.delete(sessionKey);
 }
+
+/**
+ * Vacía todas las colas. Sólo para tests: como el `Map` vive en el módulo, sin
+ * esto la cola de un caso se filtra al siguiente y el orden de ejecución pasa
+ * a decidir el resultado.
+ */
+export function resetChatQueues(): void {
+  queues.clear();
+}

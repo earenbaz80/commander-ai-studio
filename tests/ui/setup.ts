@@ -5,7 +5,8 @@
  */
 import '@testing-library/jest-dom/vitest';
 import { afterEach, vi } from 'vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
+import { resetChatQueues } from '../../src/components/chat/chatQueue';
 
 // Firestore real abre un canal gRPC en jsdom que acaba lanzando «process is not
 // defined» en mitad de otro test y tumba la corrida. La suite de UI no habla
@@ -36,6 +37,13 @@ vi.mock('firebase/firestore', () => {
     serverTimestamp: vi.fn(() => new Date(0)),
   };
 });
+
+// El default de testing-library es 1 s para `findBy*`/`waitFor`. En un runner
+// frío, con la suite entera en paralelo, un render que tarda un poco más hacía
+// fallar casos que en local pasaban siempre (BackendView, ArtifactsView,
+// LocalLlmModal). Varios tests ya pedían 2–3 s a mano; acá se fija ese margen
+// para todos, sin cambiar lo que cada caso espera.
+configure({ asyncUtilTimeout: 3000 });
 
 // jsdom no implementa ResizeObserver (lo usa el anclaje de Nono y paneles redimensionables)
 if (!('ResizeObserver' in globalThis)) {
@@ -103,5 +111,8 @@ if (typeof (globalThis as any).SpeechSynthesisUtterance === 'undefined') {
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  // La cola del chat vive en un `Map` del módulo: no la limpia `localStorage`,
+  // y un caso dejaba sus mensajes al siguiente (fallaba al barajar el orden).
+  resetChatQueues();
   vi.clearAllMocks();
 });

@@ -155,9 +155,16 @@ describe('ArtifactsView', () => {
     await saveArtifact(makeArtifact());
     render(<ArtifactsView projectPath="C:/tmp/x" />);
 
-    await screen.findByTestId('artifact-add-comment');
-    fireEvent.click(screen.getByTestId('artifact-add-comment'));
-    fireEvent.change(screen.getByTestId('artifact-comment-input'), {
+    // El botón existe antes de que el fotograma actual esté listo y está
+    // `disabled` hasta entonces: un clic en ese hueco se pierde y el compositor
+    // nunca aparece. Se espera habilitado, no sólo presente.
+    const addComment = await screen.findByTestId('artifact-add-comment');
+    await waitFor(() => expect(addComment).toBeEnabled());
+    fireEvent.click(addComment);
+    // El compositor aparece cuando el clic fija `pendingAnchor`; esperarlo en
+    // vez de pedirlo síncrono evita la carrera con el render del ancla.
+    const commentInput = await screen.findByTestId('artifact-comment-input');
+    fireEvent.change(commentInput, {
       target: { value: 'El botón de pago no responde' },
     });
     fireEvent.click(screen.getByTestId('artifact-comment-submit'));

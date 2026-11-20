@@ -90,7 +90,7 @@ describe('LocalLlmModal', () => {
         })
       );
     });
-    expect(screen.getByText(/local-model-a · local-model-b/)).toBeInTheDocument();
+    expect(await screen.findByText(/local-model-a · local-model-b/)).toBeInTheDocument();
   });
 
   test('LM Studio usa su propio endpoint y guarda LMSTUDIO_HOST', async () => {
