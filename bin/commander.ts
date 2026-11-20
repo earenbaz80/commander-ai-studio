@@ -13,6 +13,7 @@ import { ApprovalQueue } from '../src/cli/approvals.js';
 import { GEMINI_DEFAULT_MODEL } from '../src/config/geminiModels.js';
 import { resolveBindHost } from '../src/lib/bindHost.js';
 import { buildSpawnArgs } from '../src/cli/buildCommand.js';
+import { DEV_SCRIPT_PORT, devPortNotice, portFlagRequested } from '../src/cli/serveCommand.js';
 
 function parseSessionMode(value: unknown): SessionMode | undefined {
   return value === 'build' || value === 'plan' || value === 'readonly' ? value : undefined;
@@ -60,25 +61,32 @@ program
 program
   .command('serve')
   .description('Start the Commander AI Studio server')
-  .option('-p, --port <number>', 'Port to listen on', '3280')
+  .option('-p, --port <number>', `Port to listen on (--dev lo ignora: el script usa ${DEV_SCRIPT_PORT})`, '3280')
   .option('-h, --host <string>', 'Host to bind to (default loopback; another interface exposes the API)')
-  .option('--dev', 'Run in development mode (Vite dev server)')
+  .option('--dev', 'Run in development mode (npm run dev; el puerto lo fija el script)')
   .action(async (opts) => {
     const config = loadConfig();
     const serverConfig = config.server;
     
     const port = Number(opts.port) || serverConfig.port;
-    // El servidor sólo escucha en loopback; `resolveBindHost` rechaza el resto
-    // antes de imprimir nada, para no anunciar un bind que no va a existir.
+    // `HOST` (serve --host) manda sobre `server.host`; el bind es real y sólo
+    // se normalizan los alias.
     const host = resolveBindHost(opts.host ?? serverConfig.host);
-    
-    console.log(`[commander] Starting server on http://${host}:${port}`);
-    
-    // `serve --dev` delega en `npm run dev`, que arranca server.ts: el hijo
-    // hereda `HOST`, así que el flag también aplica en modo desarrollo.
+
+    // `serve --dev` delega en `npm run dev`: el hijo hereda `HOST`, pero no
+    // `--port`, porque el script fija `PORT` en DEV_SCRIPT_PORT.
+    const dev = Boolean(opts.dev);
+    const announcedPort = dev ? DEV_SCRIPT_PORT : port;
+    console.log(
+      `[commander] Starting ${dev ? 'dev ' : ''}server on http://${host}:${announcedPort}` +
+        (dev ? ' (npm run dev)' : '')
+    );
+
     process.env.HOST = host;
-    
-    if (opts.dev) {
+
+    if (dev) {
+      const portNotice = devPortNotice(opts.port, portFlagRequested(process.argv.slice(2)));
+      if (portNotice) console.warn(portNotice);
       const { spawn } = await import('child_process');
       const vite = spawn('npm', ['run', 'dev'], { stdio: 'inherit', shell: true });
       vite.on('exit', (code) => process.exit(code ?? 0));

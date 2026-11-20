@@ -590,6 +590,18 @@ describe('CLI E2E con proveedor falso (F1-14)', () => {
     }
   });
 
+  // `serve --dev` no puede honrar `--port` (el script de npm fija el suyo):
+  // la ayuda tiene que decirlo para que nadie lo lea como un puerto escuchado.
+  test('serve --help aclara que --dev ignora --port', async () => {
+    const result = await runCliArgs(['serve', '--help']);
+    const message = `exit=${result.code} stderr=${result.stderr}`;
+
+    assert.equal(result.code, 0, message);
+    assert.match(result.stdout, /--dev lo ignora/);
+    assert.match(result.stdout, /3283/);
+    assert.match(result.stdout, /npm run dev/);
+  });
+
   test('corrida feliz: respuesta final sin tools', async (t) => {
     const fake = await startFakeAgentServer();
     t.after(() => fake.close());
