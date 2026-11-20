@@ -136,7 +136,7 @@
       "name": "F3 · Continuidad de superficies",
       "goal": "Misma tarea en terminal, escritorio, web y móvil, con sandbox y repos conectados.",
       "steps": [
-        { "id": "F3-1", "title": "Web/nube: sesiones accesibles fuera de la máquina", "weight": 2, "progress": 20, "evidence": "API de sesiones + SSE existen; el server sólo escucha en local, sin hosting" },
+        { "id": "F3-1", "title": "Web/nube: sesiones accesibles fuera de la máquina", "weight": 2, "progress": 30, "evidence": "API de sesiones + SSE existen; `serve --host` y `server.host` hacen bind real (con aviso de exposición) · 058cfb4 · tests/unit/bindHost.test.ts; falta hosting, auth y TLS para exponerla" },
         { "id": "F3-2", "title": "Sandbox de ejecución aislado por sesión (remoto)", "weight": 2, "progress": 10, "evidence": "worktrees aislados y vm para code.run; no hay contenedor ni ejecución remota" },
         { "id": "F3-3", "title": "Conectar repositorio de GitHub (OAuth + clonar/abrir)", "weight": 2, "progress": 25, "evidence": "OAuth GitHub y github.pr/github.comment reales; no hay clonar ni abrir repo desde la app" },
         { "id": "F3-4", "title": "App móvil para seguir o retomar sesiones", "weight": 2, "progress": 5, "evidence": "sólo metas PWA y scripts capacitor:add; no hay proyecto Android/iOS" }
