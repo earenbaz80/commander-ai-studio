@@ -60,7 +60,6 @@ program
   .description('Start the Commander AI Studio server')
   .option('-p, --port <number>', 'Port to listen on', '3280')
   .option('-h, --host <string>', 'Host to bind to', '127.0.0.1')
-  .option('--no-open', 'Do not open browser')
   .option('--dev', 'Run in development mode (Vite dev server)')
   .action(async (opts) => {
     const config = loadConfig();
@@ -302,7 +301,7 @@ mcpCmd
 
 program
   .command('agent')
-  .description('Run the agent headless against the embedded server')
+  .description('Run the agent once against the embedded server')
   .argument('<task>', 'Task description')
   .option('-m, --model <string>', 'Model to use')
   .option('-p, --provider <string>', 'Provider hint (informativo)')
@@ -682,7 +681,7 @@ program
 
 program
   .command('completion')
-  .description('Generate shell completion')
+  .description('Shell completion (requires Commander.js v13; unavailable)')
   .argument('<shell>', 'Shell (bash|zsh|fish|powershell)')
   .action((shell) => {
     if (!['bash', 'zsh', 'fish', 'powershell'].includes(shell)) {

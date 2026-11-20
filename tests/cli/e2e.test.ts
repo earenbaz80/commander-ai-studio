@@ -539,6 +539,24 @@ after(() => {
 });
 
 describe('CLI E2E con proveedor falso (F1-14)', () => {
+  // `--no-approval` prometía desactivar el prompt de aprobación y nunca se leía:
+  // se eliminó. Esta prueba vigila que no vuelva como no-op silenciosa; el
+  // parseo tiene que rechazarla antes de tocar el servidor.
+  test('una bandera de aprobación inexistente falla como opción desconocida', async () => {
+    const result = await runCli(['tarea cualquiera', '--no-approval']);
+    const receipt = writeReceipt('flag-no-approval', 'unknown-option', result, {
+      baseUrl: '(sin servidor: el parseo falla antes)',
+      requests: [],
+    });
+    const message = diag(result, receipt);
+
+    assert.notEqual(result.code, 0, message);
+    assert.equal(result.timedOut, false, message);
+    assert.match(result.stderr, /unknown option/i, message);
+    assert.match(result.stderr, /--no-approval/, message);
+    assert.equal(result.stdout.includes('done'), false, message);
+  });
+
   test('corrida feliz: respuesta final sin tools', async (t) => {
     const fake = await startFakeAgentServer();
     t.after(() => fake.close());
