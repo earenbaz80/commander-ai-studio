@@ -12,6 +12,7 @@ import { createInputGate, type InputGateSource } from '../src/cli/stdinGate.js';
 import { ApprovalQueue } from '../src/cli/approvals.js';
 import { GEMINI_DEFAULT_MODEL } from '../src/config/geminiModels.js';
 import { resolveBindHost } from '../src/lib/bindHost.js';
+import { buildSpawnArgs } from '../src/cli/buildCommand.js';
 
 function parseSessionMode(value: unknown): SessionMode | undefined {
   return value === 'build' || value === 'plan' || value === 'readonly' ? value : undefined;
@@ -91,13 +92,11 @@ program
 
 program
   .command('build')
-  .description('Build for production')
-  .option('--electron', 'Build Electron app')
+  .description('Build for production (--electron empaqueta la app de escritorio)')
+  .option('--electron', 'Empaquetar la app de escritorio: build:all (tipos, Vite, servidor, updater y electron-builder)')
   .action(async (opts) => {
     const { spawn } = await import('child_process');
-    const args = ['run', 'build'];
-    if (opts.electron) args.push('--', '--electron');
-    const build = spawn('npm', args, { stdio: 'inherit', shell: true });
+    const build = spawn('npm', buildSpawnArgs(opts), { stdio: 'inherit', shell: true });
     build.on('exit', (code) => process.exit(code ?? 0));
   });
 
