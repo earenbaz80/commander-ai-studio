@@ -96,9 +96,23 @@ jobs:
       # un paso que falla aborta los siguientes.
       - name: Tests (node:test)
         run: npm run test:node
+        env:
+          # Los conteos sólo se veían abriendo el log del paso, y sin sesión ese
+          # log no se puede leer: el reporter JUnit los deja en un archivo que
+          # `ci:summary` vuelca en el resumen del job.
+          TEST_NODE_JUNIT: .ci/node-test.xml
+
+      # `always()`: con la suite en rojo el resumen es justo lo que hace falta.
+      - name: Resumen (node:test)
+        if: always()
+        run: npm run ci:summary -- node-test
 
       - name: Tests (Vitest)
-        run: npm run test
+        run: npm run test -- --reporter=default --reporter=json --outputFile=.ci/vitest.json
+
+      - name: Resumen (Vitest)
+        if: always()
+        run: npm run ci:summary -- vitest
 
   # Sólo el proyecto `node` de Vitest (tests/unit + tests/mcp): lógica pura, sin
   # jsdom ni polyfills de UI. No lleva `needs` a propósito —corre en paralelo a
@@ -252,6 +266,11 @@ jobs:
       - name: Verify merged Playwright report
         if: always()
         run: npm run check:playwright-report
+
+      # Los conteos del merge tampoco se ven sin sesión: van al resumen del job.
+      - name: Resumen (E2E)
+        if: always()
+        run: npm run ci:summary -- e2e
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v7

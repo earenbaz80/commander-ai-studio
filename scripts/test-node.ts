@@ -8,7 +8,9 @@
  * terminar la suite, para el server (si hubo) y borra su base temporal.
  *
  * Uso: `npm run test:node` (los argumentos extra se pasan al runner, p. ej.
- * `npm run test:node -- tests/persistence.test.ts`).
+ * `npm run test:node -- tests/persistence.test.ts`). Con `TEST_NODE_JUNIT=<ruta>`
+ * escribe además un reporte JUnit, que es de donde CI saca los conteos para el
+ * resumen del job (`npm run ci:summary -- node-test`).
  */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -33,11 +35,24 @@ const cleanupIsolatedHome = () => {
 const files =
   patterns.length > 0 ? patterns : ['tests/*.test.ts', 'tests/cli/*.test.ts'];
 
+// El resumen de CI lee este archivo: sin reporter extra el spec sigue yendo a
+// stdout, así que el log del paso se lee igual que antes.
+const junitPath = process.env.TEST_NODE_JUNIT;
+if (junitPath) fs.mkdirSync(path.dirname(junitPath), { recursive: true });
+const reporterArgs = junitPath
+  ? [
+      '--test-reporter=spec',
+      '--test-reporter-destination=stdout',
+      '--test-reporter=junit',
+      `--test-reporter-destination=${junitPath}`,
+    ]
+  : [];
+
 const broker = await createServerBroker((srv) => {
   console.log(`[test:node] server compartido en ${srv.baseUrl} (base: ${srv.dbPath})`);
 });
 
-const runner = spawn(process.execPath, ['--import', 'tsx', '--test', ...files], {
+const runner = spawn(process.execPath, ['--import', 'tsx', '--test', ...reporterArgs, ...files], {
   stdio: 'inherit',
   env: { ...process.env, [SHARED_CONTROL_ENV]: broker.address },
 });

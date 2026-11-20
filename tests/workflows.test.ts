@@ -178,8 +178,19 @@ test('CI: el gate de producción va antes del lint y node:test antes de Vitest',
   const pasos = pasosDe(jobDe(ci, 'lint-and-test'));
   // Comparación exacta del `run:`: `npm run test:node` contiene `npm run test`
   // como subcadena, y con `includes` los dos pasos caían en el mismo índice.
+  // Un paso puede agregar argumentos al script (`-- --reporter=json …`): el
+  // comando base lo sigue identificando. `npm run test:node` no cae en
+  // `npm run test` porque la comparación es por línea completa, no por prefijo
+  // suelto.
   const posicion = (comando: string) => {
-    const i = pasos.findIndex((p) => p.split('\n').some((l) => l.trim() === `run: ${comando}`));
+    const i = pasos.findIndex((p) =>
+      p
+        .split('\n')
+        .some((l) => {
+          const linea = l.trim();
+          return linea === `run: ${comando}` || linea.startsWith(`run: ${comando} --`);
+        })
+    );
     assert.ok(i >= 0, `falta el paso «${comando}»`);
     return i;
   };
@@ -372,4 +383,36 @@ test('CI: la firma de los commits se revisa con historia completa', () => {
     , 'el hook corre el mismo script'
   );
   assert.match(leer('scripts/check-commit-signature.ts'), /co-authored-by/i, 'el script mira co-autoría');
+});
+
+test('CI: cada suite deja sus conteos en el resumen del job', () => {
+  const pasos = pasosDe(jobDe(ci, 'lint-and-test'));
+  const delJob = (job: string[]) => (modo: string) => {
+    const encontrados = job.filter((p) => p.split('\n').some((l) => l.trim() === `run: npm run ci:summary -- ${modo}`));
+    assert.equal(encontrados.length, 1, `esperaba un solo paso «ci:summary -- ${modo}»`);
+    // Sin `always()` el resumen desaparece justo cuando la suite falla, que es
+    // cuando sus conteos importan.
+    assert.ok(encontrados[0].includes('if: always()'), `«${modo}» resume también en rojo`);
+    return encontrados[0];
+  };
+
+  // El resumen no inventa nada: lee el reporte que deja cada suite. Si el paso
+  // deja de escribirlo, la tabla queda vacía y nadie se entera.
+  const nodeTest = pasos.find((p) => p.split('\n').some((l) => l.trim() === 'run: npm run test:node'));
+  assert.ok(nodeTest?.includes('TEST_NODE_JUNIT'), 'node:test deja el reporte JUnit');
+  const vitest = pasos.find((p) => p.split('\n').some((l) => l.trim().startsWith('run: npm run test --')));
+  assert.ok(
+    vitest?.includes('--reporter=json') && vitest.includes('--outputFile'),
+    'Vitest deja el reporte JSON'
+  );
+
+  delJob(pasos)('node-test');
+  delJob(pasos)('vitest');
+  delJob(pasosDe(jobDe(ci, 'e2e')))('e2e');
+
+  assert.match(
+    leer('scripts/ci-summary.ts'),
+    /GITHUB_STEP_SUMMARY/,
+    'el script escribe en el archivo que Actions muestra como resumen'
+  );
 });

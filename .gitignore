@@ -50,6 +50,10 @@ playwright-report/
 blob-report/
 test-results/
 
+# Reportes máquina-legibles que `ci:summary` convierte en el resumen del job
+# (JUnit de node:test, JSON de Vitest). También se escriben en local.
+.ci/
+
 # Capturas locales de revisión visual (se regeneran, no son fuente)
 screenshots/
 # Capturas sueltas en la raíz (mismo criterio: se regeneran, no son fuente).
