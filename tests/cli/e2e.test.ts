@@ -87,11 +87,12 @@ interface ReceiptServer {
   requests: FakeRequest[];
 }
 
-function runCliCommand(command: 'agent' | 'attach', args: string[]): Promise<CliResult> {
+/** Lanza el CLI con argumentos crudos; sirve para los casos de parseo. */
+function runCliArgs(args: string[]): Promise<CliResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ['--import', 'tsx', CLI_PATH, command, ...args],
+      ['--import', 'tsx', CLI_PATH, ...args],
       {
         cwd: REPO_ROOT,
         env: {
@@ -142,6 +143,10 @@ function runCliCommand(command: 'agent' | 'attach', args: string[]): Promise<Cli
       resolve({ code, signal, stdout, stderr, timedOut });
     });
   });
+}
+
+function runCliCommand(command: 'agent' | 'attach', args: string[]): Promise<CliResult> {
+  return runCliArgs([command, ...args]);
 }
 
 /** Invoca `commander agent`; es el arnés histórico de F1-14. */
@@ -555,6 +560,34 @@ describe('CLI E2E con proveedor falso (F1-14)', () => {
     assert.match(result.stderr, /unknown option/i, message);
     assert.match(result.stderr, /--no-approval/, message);
     assert.equal(result.stdout.includes('done'), false, message);
+  });
+
+  // Las banderas que no tenían comportamiento detrás se retiraron: parsear el
+  // CLI tiene que rechazarlas, no aceptarlas como decoración. Se comprueba el
+  // token exacto para que el caso no pase por un error ajeno.
+  test('las banderas retiradas fallan como opción desconocida', async () => {
+    const cases: { args: string[]; flag: string }[] = [
+      { args: ['agent', 'tarea cualquiera', '--provider', 'google'], flag: '--provider' },
+      { args: ['build', '--pwa'], flag: '--pwa' },
+      { args: ['config', 'get', 'agent.maxSteps', '-g'], flag: '-g' },
+      { args: ['config', 'list', '--project'], flag: '--project' },
+      { args: ['config', 'list', '-g'], flag: '-g' },
+    ];
+
+    for (const [index, { args, flag }] of cases.entries()) {
+      const result = await runCliArgs(args);
+      const receipt = writeReceipt(`flag-retirada-${index}`, 'unknown-option', result, {
+        baseUrl: '(sin servidor: el parseo falla antes)',
+        requests: [],
+      });
+      const message = diag(result, receipt);
+      const caseMessage = `${args.join(' ')} → ${message}`;
+
+      assert.notEqual(result.code, 0, caseMessage);
+      assert.equal(result.timedOut, false, caseMessage);
+      assert.match(result.stderr, /unknown option/i, caseMessage);
+      assert.ok(result.stderr.includes(flag), caseMessage);
+    }
   });
 
   test('corrida feliz: respuesta final sin tools', async (t) => {

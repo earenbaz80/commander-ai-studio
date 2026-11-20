@@ -76,7 +76,7 @@ program
     // `serve --dev` delega en `npm run dev`, que arranca server.ts: el hijo
     // hereda `HOST`, así que el flag también aplica en modo desarrollo.
     process.env.HOST = host;
-
+    
     if (opts.dev) {
       const { spawn } = await import('child_process');
       const vite = spawn('npm', ['run', 'dev'], { stdio: 'inherit', shell: true });
@@ -92,7 +92,6 @@ program
   .command('build')
   .description('Build for production')
   .option('--electron', 'Build Electron app')
-  .option('--pwa', 'Build PWA only')
   .action(async (opts) => {
     const { spawn } = await import('child_process');
     const args = ['run', 'build'];
@@ -109,8 +108,7 @@ configCmd
   .command('get')
   .description('Get a config value (dot notation)')
   .argument('<key>', 'Config key (e.g. providers.google.apiKey)')
-  .option('-g, --global', 'Use global config')
-  .action((key, _opts) => {
+  .action((key) => {
     const config = loadConfig();
     const value = key.split('.').reduce((obj: any, k: string) => obj?.[k], config);
     if (value === undefined) {
@@ -149,9 +147,7 @@ configCmd
 configCmd
   .command('list')
   .description('List all config (merged)')
-  .option('-g, --global', 'Show only global')
-  .option('-p, --project', 'Show only project')
-  .action((_opts) => {
+  .action(() => {
     const config = loadConfig();
     console.log(JSON.stringify(config, null, 2));
   });
@@ -310,7 +306,6 @@ program
   .description('Run the agent once against the embedded server')
   .argument('<task>', 'Task description')
   .option('-m, --model <string>', 'Model to use')
-  .option('-p, --provider <string>', 'Provider hint (informativo)')
   .option('-s, --server <url>', 'Commander server URL', process.env.COMMANDER_SERVER || 'http://127.0.0.1:3280')
   .option('--max-steps <number>', 'Max steps', '25')
   .option('--no-stream', 'Desactivar streaming de tokens (por defecto: activado)')
