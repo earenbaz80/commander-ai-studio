@@ -723,3 +723,78 @@ test('sin allowlist el hijo sigue viendo el catálogo completo', async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test('dos hijos en paralelo con dialecto JSON entregan su respuesta de cierre', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const padre = createSession({ goal: 'padre con hijos json', cwd: dir });
+  const modelo = 'lmstudio/deepseek/deepseek-r1';
+  const respuestas: Record<string, string> = {
+    'hijo-a': 'Archivos: hijo-a.txt\nDenegado: ninguna\nlisto (A)',
+    'hijo-b': 'Archivos: hijo-b.txt\nDenegado: ninguna\nlisto (B)',
+  };
+  const turnos: Record<string, number> = { 'hijo-a': 0, 'hijo-b': 0 };
+  const cierres: Record<string, number> = { 'hijo-a': 0, 'hijo-b': 0 };
+
+  globalThis.fetch = (async (_url: any, init?: any) => {
+    const body = JSON.parse(String(init?.body ?? '{}'));
+    const prompt = String(body.contents ?? body.prompt ?? '');
+    const nombre = prompt.includes('hijo-a') ? 'hijo-a' : 'hijo-b';
+    if (prompt.includes('ÚLTIMO TURNO')) {
+      cierres[nombre] += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ text: JSON.stringify({ finish: true, answer: respuestas[nombre] }) }),
+      } as any;
+    }
+    turnos[nombre] += 1;
+    // Las dos formas de «no cerrar» que el bucle daba por terminadas y dejaban
+    // al padre con «El subagente terminó sin respuesta final» (G1-D5-09):
+    // `finish` sin texto (A) y un turno sin toolCalls ni finish (B).
+    const cuerpo =
+      nombre === 'hijo-a'
+        ? { thought: 'trabajo hecho', finish: true }
+        : { thought: 'pensando' };
+    return { ok: true, status: 200, json: async () => ({ text: JSON.stringify(cuerpo) }) } as any;
+  }) as any;
+
+  try {
+    const res: any = await executeAgentTool('spawn_agents', {
+      root: dir,
+      parentSessionId: padre.id,
+      agents: [
+        { goal: 'hijo-a', model: modelo },
+        { goal: 'hijo-b', model: modelo },
+      ],
+    });
+
+    assert.equal(res.ok, true, JSON.stringify(res).slice(0, 400));
+    const hijos = res.data?.results ?? [];
+    assert.equal(hijos.length, 2, 'el padre recibe un resultado por hijo');
+    for (const hijo of hijos) {
+      assert.equal(hijo.ok, true, `el hijo ${hijo.index} cierra con respuesta: ${hijo.error}`);
+      assert.match(String(hijo.answer), /Archivos:/);
+      assert.match(String(hijo.answer), /listo/);
+    }
+
+    // Un turno normal por hijo y exactamente un turno de cierre: ninguno cerró
+    // en `done` sin respuesta.
+    assert.equal(turnos['hijo-a'], 1);
+    assert.equal(turnos['hijo-b'], 1);
+    assert.equal(cierres['hijo-a'], 1, 'un `finish` sin texto no cierra: se pide el turno final');
+    assert.equal(cierres['hijo-b'], 1, 'un turno sin salida tampoco cierra: se pide el turno final');
+
+    const filas = listSubAgents(padre.id);
+    assert.equal(filas.length, 2);
+    for (const fila of filas) {
+      assert.equal(fila.status, 'completed');
+      assert.match(String(fila.answer), /listo/);
+      assert.equal(fila.stepTitles?.at(-1), 'Finalizado', 'la fila termina en el cierre real');
+    }
+  } finally {
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});

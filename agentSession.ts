@@ -1663,6 +1663,19 @@ export class AgentSession {
         this.addStep({ type: 'thought', title: 'Finalizado', content: llmRes.answer, status: 'completed' });
         this.emit({ type: 'finish', answer: llmRes.answer });
         this.turns.push({ role: 'assistant', text: llmRes.answer, ts: Date.now() });
+        this.status = 'done';
+        this.running = false;
+        this.emit({ type: 'status', status: 'done' });
+        return;
+      }
+      // Un `finish` sin texto no es una respuesta final. En el camino del hijo
+      // cerraba en `done` sin `Finalizado` y `executeTask` lo devolvía al padre
+      // como «El subagente terminó sin respuesta final» (G1-D5-09, hijo A): el
+      // contrato de cierre se cumple pidiendo el turno obligatorio, no
+      // inventando ni descartando la respuesta.
+      if (this.cfg.closingContract) {
+        await this.finalizeChild(recentSteps);
+        return;
       }
       this.status = 'done';
       this.running = false;
@@ -1709,6 +1722,12 @@ export class AgentSession {
       }
       if (this.failOnLoopCut(results)) return;
     } else {
+      // Sin toolCalls y sin finish el modelo no cerró: el hijo gasta su turno
+      // de cierre en vez de terminar en `done` sin respuesta que entregar.
+      if (this.cfg.closingContract) {
+        await this.finalizeChild(recentSteps);
+        return;
+      }
       this.addStep({ type: 'thought', title: 'Sin acción', content: 'LLM no propuso toolCalls ni finish. Forzando detención segura.', status: 'completed' });
       this.status = 'done';
       this.running = false;
