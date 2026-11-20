@@ -150,10 +150,10 @@ El procedimiento supone una terminal visible con un TTY real. **Ese TTY no exist
 
 Por qué no se puede rodear desde el CLI:
 
-- `requestApproval` sólo se construye si `canPromptApprovals()` —stdin **y** stdout TTY— (`bin/commander.ts:455-464`, `src/cli/tui.ts:529-534`). Sin TTY no hay espera de 300 s: la aprobación se deniega en el acto con motivo `sin terminal interactiva` (`src/cli/agentClient.ts:1543-1544`) y el padre muere en el mismo paso del `spawn_agents`.
-- No hay bandera: `--no-approval` está declarado (`bin/commander.ts:316`) pero `opts.approval` no se lee en ninguna parte; es un no-op y su propia ayuda dice «no aplica en headless».
-- No hay config: `agent.approvalMode` (`auto|manual|never`, `src/config/schema.ts:192`) sólo lo validan el esquema y un test; el bucle no lo consulta.
-- No hay variable de entorno: `COMMANDER_TEST_MODE=1` + `COMMANDER_TEST_APPROVAL_DECISIONS` sólo actúan en `--json` y **también** exigen TTY (`bin/commander.ts:369-390`); es el arnés E2E, no una política.
+- `requestApproval` sólo se construye si `canPromptApprovals()` —stdin **y** stdout TTY— (`bin/commander.ts:454-463`, `src/cli/tui.ts:529-534`). Sin TTY no hay espera de 300 s: la aprobación se deniega en el acto con motivo `sin terminal interactiva` (`src/cli/agentClient.ts:1543-1544`) y el padre muere en el mismo paso del `spawn_agents`.
+- No hay bandera: `--no-approval` **se eliminó** de `commander agent` (se declaraba y nunca se leía: un no-op que prometía desactivar el prompt). `commander agent --help` no ofrece hoy ninguna forma de saltar la aprobación.
+- No hay config: `agent.approvalMode` (`auto|manual|never`) **se eliminó** del esquema (`src/config/schema.ts`); el bucle nunca lo consultó. Un `commander.json` viejo que aún la traiga sigue parseando, porque el objeto descarta claves desconocidas, pero la clave ya no tiene efecto.
+- No hay variable de entorno: `COMMANDER_TEST_MODE=1` + `COMMANDER_TEST_APPROVAL_DECISIONS` sólo actúan en `--json` y **también** exigen TTY (`bin/commander.ts:368-389`); es el arnés E2E, no una política.
 - No hay allowlist que lo cubra: `ruleTarget` no contempla `spawn_agents` (`src/agent/permissionRules.ts:36-47`), así que `decide()` devuelve `null` y ni una regla `tool: "*"` evita el prompt.
 - No sirve la ruta HTTP: `POST /api/agent/sessions/:id/approvals/:approvalId` (`server.ts:690`) resuelve sólo las aprobaciones del servidor; las de una corrida del CLI se anuncian como `clientApprovals` y están documentadas como no resolubles desde el servidor (`agentSession.ts:643-649`; un id desconocido da 404 en `resolveApproval`).
 

@@ -189,7 +189,6 @@ export const ShortcutsConfigSchema = z.record(z.string(), z.string()).default({
 export const AgentConfigSchema = z.object({
   maxSteps: z.number().int().positive().default(25),
   maxTurns: z.number().int().positive().default(10),
-  approvalMode: z.enum(['auto', 'manual', 'never']).default('manual'),
   planMode: z.boolean().default(false),
   autoCompact: z.boolean().default(true),
   contextWindow: z.number().int().positive().default(128000),

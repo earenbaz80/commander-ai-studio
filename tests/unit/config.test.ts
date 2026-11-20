@@ -217,6 +217,16 @@ describe('Agent Config helper', () => {
 
     expect(agent.maxSteps).toBeGreaterThan(0);
     expect(agent.maxTurns).toBeGreaterThan(0);
-    expect(['auto', 'manual', 'never']).toContain(agent.approvalMode);
+    // `approvalMode` se eliminó por no tener efecto: el bucle siempre pide
+    // aprobación humana. Si alguien la repone sin cablearla, esto lo delata.
+    expect('approvalMode' in agent).toBe(false);
+  });
+
+  it('un config viejo con approvalMode sigue parseando, sin la clave', () => {
+    // Quien ya tenía el archivo escrito no debe romper: el objeto no es
+    // estricto, así que la clave muerta se descarta en silencio.
+    const parsed = CommanderConfigSchema.parse({ agent: { approvalMode: 'never' } });
+    expect('approvalMode' in parsed.agent).toBe(false);
+    expect(parsed.agent.maxSteps).toBeGreaterThan(0);
   });
 });

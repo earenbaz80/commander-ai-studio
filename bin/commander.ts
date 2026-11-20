@@ -313,7 +313,6 @@ program
   .option('--resume <id>', 'Continuar una sesión persistida en el servidor')
   .option('--fork <id>', 'Bifurcar una sesión persistida en una sesión nueva')
   .option('--label <label>', 'Etiqueta de la corrida para preparar una repetición invalid')
-  .option('--no-approval', 'Disable approval prompts (no aplica en headless)')
   .action(async (task, opts) => {
     const serverUrl = String(opts.server);
     const health = await checkHealth(serverUrl);

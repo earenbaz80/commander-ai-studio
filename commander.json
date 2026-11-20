@@ -94,7 +94,6 @@
   "agent": {
     "maxSteps": 50,
     "maxTurns": 10,
-    "approvalMode": "manual",
     "planMode": false,
     "autoCompact": true,
     "contextWindow": 128000
