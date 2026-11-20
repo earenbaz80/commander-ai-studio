@@ -35,6 +35,7 @@ export { spawnBatchHadFailure, spawnChildrenFromResults } from './src/agent/spaw
 import { PLAN_TOOL, normalizePlan } from './src/agent/plan';
 import { TOOL_REGISTRY } from './src/agent/registry';
 import { LoopGuard, type LoopCut } from './src/agent/identicalCalls';
+import { refusalForClosing, VerifyGate } from './src/agent/verifyGate';
 import {
   emptyProposalStats,
   normalizeProposals,
@@ -632,6 +633,8 @@ export class AgentSession {
   private emptyTurnRetries = 0;
   /** Tandas seguidas de `spawn_agents` en las que fallaron todos los hijos. */
   private spawnFailureStreak = 0;
+  /** Gate de verificación: sin verde posterior a la última edición no se cierra. */
+  private verifyGate = new VerifyGate();
   /** Escrituras repetidas y lecturas sin progreso; ver `src/agent/identicalCalls`. */
   private readonly loopGuard = new LoopGuard();
   /** Aprobaciones pendientes por id (F1-04); puede haber varias en paralelo. */
@@ -961,6 +964,8 @@ export class AgentSession {
     this.stopReason = null;
     this.lastError = '';
     this.loopCut = null;
+    // Cada corrida verifica lo suyo: la evidencia de una no cubre la siguiente.
+    this.verifyGate = new VerifyGate();
     if (this.turns.length === 0) {
       this.turns.push({ role: 'user', text: this.cfg.goal, ts: Date.now() });
     }
@@ -997,6 +1002,31 @@ export class AgentSession {
       }
       this.mcpSchema = parts.join('\n').slice(0, 2000);
     } catch { /* sin MCP */ }
+  }
+
+  /**
+   * Gate de verificación del bucle del servidor.
+   *
+   * Hasta ahora esta regla sólo vivía en el bucle del CLI: una sesión abierta
+   * desde la app podía responder «listo» sin haber corrido nada después de
+   * editar. Devuelve `true` cuando el cierre queda bloqueado —el modelo recibe
+   * el motivo y el bucle sigue— o cuando, agotados los rechazos, la sesión falla.
+   */
+  private blockClosingForVerification(): boolean {
+    // Los subagentes tienen su propio contrato de cierre y ya no editan el
+    // árbol principal: el gate es del trabajo del usuario, no del hijo.
+    if (this.cfg.closingContract) return false;
+    const decision = refusalForClosing(this.verifyGate);
+    if (decision.allow) return false;
+    const text = String(decision.text ?? '');
+    this.addStep({ type: 'thought', title: 'Gate de verificación', content: text, status: 'failed' });
+    if (decision.fatal) {
+      this.fail(text);
+      return true;
+    }
+    this.turns.push({ role: 'user', text: `SISTEMA: ${text}`, ts: Date.now() });
+    if (this.turns.length > 10) this.turns = this.turns.slice(-10);
+    return true;
   }
 
   private fail(msg: string) {
@@ -1568,6 +1598,16 @@ export class AgentSession {
       }
       this.turns.push({ role: 'assistant', text: native.thought || '(sin salida)', ts: Date.now() });
       if (this.turns.length > 10) this.turns = this.turns.slice(-10);
+      // El razonamiento de un turno sin llamadas no es el cierre del hijo: el
+      // contrato pide «Archivos:/Denegado:» y ese fragmento llegaba al padre
+      // como respuesta final. El hijo gasta su turno de cierre, igual que en
+      // el dialecto JSON.
+      if (this.cfg.closingContract) {
+        await this.finalizeChild(recentSteps);
+        return;
+      }
+      // Sin verificación posterior a la última edición no hay respuesta final.
+      if (this.blockClosingForVerification()) return;
       const finalAnswer = native.thought || 'Objetivo completado.';
       this.answer = finalAnswer;
       this.addStep({ type: 'thought', title: 'Finalizado', content: finalAnswer, status: 'completed' });
@@ -1600,6 +1640,16 @@ export class AgentSession {
     if (this.turns.length > 10) this.turns = this.turns.slice(-10);
 
     for (const r of results) {
+      const entrada = executable.find((e) => e.name === r.tool)?.args as any;
+      // Gate de verificación: una edición invalida la evidencia anterior y una
+      // ejecución posterior la renueva. El número de paso es el del momento,
+      // igual que en el bucle del CLI.
+      if (r.ok && (r.tool === 'fs.edit' || r.tool === 'fs.write')) {
+        this.verifyGate.noteEdit(entrada?.path, this.steps.length);
+      }
+      if (r.tool === 'shell.run' && typeof entrada?.command === 'string') {
+        this.verifyGate.noteRun(entrada.command, r, this.steps.length);
+      }
       this.addStep({
         type: 'tool_result', toolId: r.tool, title: r.tool,
         content: r.ok ? JSON.stringify(r.data ?? {}).slice(0, 2000) : (r.error || 'error'),
@@ -1659,6 +1709,9 @@ export class AgentSession {
     }
     if (llmRes.finish) {
       if (llmRes.answer) {
+        // Mismo gate que en el camino nativo: el cierre del JSON tampoco pasa
+        // sin una verificación posterior a la última edición de código.
+        if (this.blockClosingForVerification()) return;
         this.answer = llmRes.answer;
         this.addStep({ type: 'thought', title: 'Finalizado', content: llmRes.answer, status: 'completed' });
         this.emit({ type: 'finish', answer: llmRes.answer });
@@ -1708,6 +1761,15 @@ export class AgentSession {
       this.turns.push({ role: 'tool', text: `Resultados:\n${JSON.stringify(results).slice(0, 3000)}`, ts: Date.now() });
       if (this.turns.length > 10) this.turns = this.turns.slice(-10);
       for (const r of results) {
+        const entrada = executable.find((e) => e.tool === r.tool)?.input as any;
+        // El gate también mira el camino JSON: editar y cerrar sin verificar no
+        // depende del dialecto del modelo.
+        if (r.ok && (r.tool === 'fs.edit' || r.tool === 'fs.write')) {
+          this.verifyGate.noteEdit(entrada?.path, this.steps.length);
+        }
+        if (r.tool === 'shell.run' && typeof entrada?.command === 'string') {
+          this.verifyGate.noteRun(entrada.command, r, this.steps.length);
+        }
         this.addStep({
           type: 'tool_result', toolId: r.tool, title: r.tool,
           content: r.ok ? JSON.stringify(r.data ?? {}).slice(0, 2000) : (r.error || 'error'),

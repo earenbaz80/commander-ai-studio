@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { AgentLoop, RepeatGuard, callSignature, type AgentLLMClient } from '../src/agent/loop.js';
 import { AgentOrchestrator } from '../src/agent/orchestrator.js';
 import type { AgentTask, AgentStep, AgentState } from '../src/agent/types.js';
@@ -38,7 +41,7 @@ function createFakeLLM() {
   return { client, invoked };
 }
 
-function createMockOrchestrator() {
+function createMockOrchestrator(cwd = '.') {
   const steps: AgentStep[] = [];
   let state: AgentState = {
     task: null,
@@ -49,7 +52,7 @@ function createMockOrchestrator() {
   };
 
   const orchestrator = new AgentOrchestrator({
-    cwd: '.',
+    cwd,
     onStep: (step) => { steps.push(step); },
     onPlanChange: () => {},
     onStateChange: (s) => { state = s; },
@@ -559,5 +562,118 @@ test('persistThread:false no abre hilo en el servidor', async () => {
     assert.ok(urls.some((u) => u.includes('/api/threads')), 'una corrida normal sí registra su hilo');
   } finally {
     globalThis.fetch = original;
+  }
+});
+
+// ── Gate de verificación (F1-3) ──
+
+/**
+ * Directorio temporal como raíz del agente: los permisos del repo son del
+ * usuario (`readonly` puede estar activo) y el gate no debe depender de eso.
+ */
+function tempProject(prefix: string): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+}
+
+/**
+ * LLM fake para el gate: escribe código y luego intenta cerrar con un texto.
+ * `extras` permite meter una verificación entre la edición y el cierre.
+ */
+function createGateLLM(extras: Array<{ name: string; args: Record<string, unknown> }> = []) {
+  let turn = 0;
+  const client: AgentLLMClient = {
+    callJson: async () => {
+      throw new Error('el gate del escritorio se prueba por la vía nativa');
+    },
+    callTools: async () => {
+      turn += 1;
+      if (turn === 1) {
+        return {
+          thought: 'escribo el archivo',
+          calls: [{
+            name: 'fs_write',
+            args: { path: 'gate-loop.mjs', content: 'export const valor = 1;\n' },
+          }],
+        };
+      }
+      const extra = extras[turn - 2];
+      if (extra) return { thought: 'verifico', calls: [extra] };
+      return { thought: 'listo, quedó hecho', calls: [] };
+    },
+  };
+  return { client, turns: () => turn };
+}
+
+/**
+ * Sustituye la ejecución de tools en el orquestador. En Node no hay servidor
+ * detrás de `/api/agent/run-tool` (las tools mutantes van por HTTP al server), y
+ * lo que se prueba aquí es el cableado del gate, no las tools: eso ya lo cubre
+ * el test de endpoints con el server real.
+ */
+function stubTools(orchestrator: AgentOrchestrator, llamadas: string[]): void {
+  (orchestrator as any).runTool = async (toolId: string, input: any) => {
+    llamadas.push(toolId);
+    if (toolId === 'fs.write' || toolId === 'fs.edit') {
+      return { ok: true, data: { path: input?.path, bytes: 1 } };
+    }
+    if (toolId === 'shell.run') {
+      return { ok: true, data: { exitCode: 0, stdout: 'ok', stderr: '' } };
+    }
+    return { ok: false, error: `tool inesperada: ${toolId}` };
+  };
+}
+
+test('el gate de verificación bloquea el cierre sin verificar (escritorio)', async () => {
+  const dir = tempProject('commander-gate-loop-');
+  const { orchestrator, steps, getState } = createMockOrchestrator(dir);
+  const llamadas: string[] = [];
+  stubTools(orchestrator, llamadas);
+  const { client } = createGateLLM();
+  const loop = new AgentLoop(orchestrator, 'gemini-2.0-flash', client);
+  try {
+    await loop.start({ id: 'gate-1', goal: 'editar el archivo', cwd: dir, maxSteps: 20, persistThread: false });
+    const bloqueado = await waitFor(() => steps.some((s) => s.title === 'Gate de verificación'), 15_000);
+    assert.ok(bloqueado, 'sin verificación el cierre se rechaza');
+
+    const cerrado = await waitFor(() => getState().running === false, 20_000);
+    assert.ok(cerrado, 'tras agotar los rechazos la corrida termina');
+
+    const rechazos = steps.filter((s) => s.title === 'Gate de verificación');
+    assert.equal(rechazos.length, 3, JSON.stringify(rechazos.map((s) => s.content)));
+    assert.match(String(rechazos[0].content), /no hay una verificación posterior/);
+    assert.match(String(rechazos[2].content), /no se verificó después de la última edición/);
+    assert.ok(!steps.some((s) => s.title === 'Finalizado'), 'no debe marcar Finalizado');
+    // El loop lee contexto del proyecto antes del primer turno; lo que importa
+    // es que después de la edición no corrió ninguna verificación.
+    assert.deepEqual(llamadas.filter((t) => t !== 'fs.read'), ['fs.write'], 'sin verificación no se ejecuta nada más');
+  } finally {
+    loop.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('el gate de verificación deja cerrar con un verde posterior (escritorio)', async () => {
+  const dir = tempProject('commander-gate-loop-');
+  const { orchestrator, steps } = createMockOrchestrator(dir);
+  const llamadas: string[] = [];
+  stubTools(orchestrator, llamadas);
+  const { client } = createGateLLM([
+    { name: 'shell_run', args: { command: 'node --test gate-loop-ok.test.mjs' } },
+  ]);
+  const loop = new AgentLoop(orchestrator, 'gemini-2.0-flash', client);
+  try {
+    await loop.start({ id: 'gate-2', goal: 'editar y verificar', cwd: dir, maxSteps: 20, persistThread: false });
+    const listo = await waitFor(() => steps.some((s) => s.title === 'Finalizado'), 30_000);
+    assert.ok(listo, 'con verde posterior la corrida cierra');
+    assert.equal(
+      steps.filter((s) => s.title === 'Gate de verificación').length,
+      0,
+      'con verde posterior no hay rechazo'
+    );
+    assert.deepEqual(llamadas.filter((t) => t !== 'fs.read'), ['fs.write', 'shell.run'], 'la verificación se ejecutó');
+    assert.ok(steps.some((s) => s.title === 'Finalizado'), 'la corrida cierra con su respuesta');
+  } finally {
+    loop.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

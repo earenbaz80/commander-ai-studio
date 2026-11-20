@@ -157,3 +157,47 @@ export class VerifyGate {
     return this.refusals;
   }
 }
+
+/** Decisión de cierre: o se permite, o se devuelve el motivo al modelo. */
+export interface ClosingDecision {
+  allow: boolean;
+  /** Texto para el modelo (o el motivo del fallo). */
+  text?: string;
+  /** Tras `MAX_VERIFY_REFUSALS` rechazos, la corrida no se cierra: falla. */
+  fatal?: boolean;
+}
+
+/**
+ * Aplica el gate a un intento de cierre.
+ *
+ * Vive acá y no en cada bucle porque la regla es la misma en el CLI, el
+ * servidor y el bucle de escritorio: sin una ejecución de verificación en
+ * verde **posterior a la última edición de código** no hay respuesta final. El
+ * primer rechazo devuelve el motivo al modelo con la salida real del comando;
+ * tras `MAX_VERIFY_REFUSALS`, la corrida falla en vez de repetir para siempre.
+ */
+export function refusalForClosing(gate: VerifyGate): ClosingDecision {
+  if (!gate.needsVerification()) return { allow: true };
+  const evidence = gate.evidence();
+  const enRojo = Boolean(evidence && !evidence.ok);
+  const rechazos = gate.refusal();
+
+  if (rechazos > MAX_VERIFY_REFUSALS) {
+    return {
+      allow: false,
+      fatal: true,
+      text:
+        enRojo && evidence
+          ? `Gate de verificación: \`${evidence.command}\` salió con exit ${evidence.exitCode ?? 'no disponible'} después de la última edición. No se cierra la tarea sin verde.`
+          : `Gate de verificación: no se verificó después de la última edición de código: ejecuta \`${gate.suggestedCommand()}\` y no cierres hasta que salga en verde.`,
+    };
+  }
+
+  return {
+    allow: false,
+    text:
+      enRojo && evidence
+        ? `Gate de verificación: \`${evidence.command}\` sigue en rojo (exit ${evidence.exitCode ?? 'desconocido'}) después de tu última edición. No cierres: corrige el fallo y vuelve a ejecutar la verificación.${evidence.output ? `\n${evidence.output}` : ''}`
+        : `Gate de verificación: editaste código y no hay una verificación posterior. Ejecuta \`${gate.suggestedCommand()}\` con shell.run antes de cerrar; si sale en rojo, corrige y repite.`,
+  };
+}

@@ -4,6 +4,7 @@ import type { AgentTask } from './types';
 import { callAgentLLM, callAgentLLMTools } from './llm';
 import { mapFunctionCall } from './fnTools';
 import { PLAN_TOOL, normalizePlan } from './plan';
+import { refusalForClosing, VerifyGate } from './verifyGate';
 import { modelSupportsTools, getContextWindow } from './providers';
 import * as serverPersistence from './persistence';
 import { TOOL_REGISTRY } from './registry';
@@ -111,6 +112,11 @@ export class AgentLoop {
   private noProgressSteps = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private repeats = new RepeatGuard();
+  /**
+   * Gate de verificación del bucle de escritorio. Antes sólo existía en el
+   * bucle del CLI: acá se podía cerrar «listo» sin correr nada tras editar.
+   */
+  private verifyGate = new VerifyGate();
 
   constructor(orchestrator: AgentOrchestrator, model?: string, llmClient: AgentLLMClient = defaultAgentLLMClient) {
     this.orchestrator = orchestrator;
@@ -194,6 +200,7 @@ export class AgentLoop {
     // El contador vive en el loop, que se reutiliza entre corridas del mismo
     // modelo: sin reiniciarlo, una corrida nueva hereda los fallos de la anterior.
     this.noProgressSteps = 0;
+    this.verifyGate = new VerifyGate();
     // Sin hilo propio cuando la corrida ya pertenece a una conversación (la
     // auditoría del chat): crear uno por corrida llenaba el historial de sesiones
     // tituladas con el prompt entero, una por pulsación.
@@ -232,6 +239,7 @@ export class AgentLoop {
     this.turns = [];
     this.repeats.reset();
     this.noProgressSteps = 0;
+    this.verifyGate = new VerifyGate();
     const { rules, mcpParts } = await this.prepare();
     if (!this.orchestrator.resume()) {
       this.running = false;
@@ -394,6 +402,42 @@ export class AgentLoop {
     }
   }
 
+  /** Alimenta el gate con lo que hizo esta tanda: ediciones y verificaciones. */
+  private noteVerification(
+    calls: Array<{ tool: string; input: unknown }>,
+    results: Array<{ tool: string; ok: boolean; data?: unknown; error?: unknown }>
+  ): void {
+    const paso = this.orchestrator.getState().steps.length;
+    for (const r of results) {
+      const entrada = calls.find((call) => call.tool === r.tool)?.input as any;
+      if (r.ok && (r.tool === 'fs.edit' || r.tool === 'fs.write')) {
+        this.verifyGate.noteEdit(entrada?.path, paso);
+      }
+      if (r.tool === 'shell.run' && typeof entrada?.command === 'string') {
+        this.verifyGate.noteRun(entrada.command, r, paso);
+      }
+    }
+  }
+
+  /**
+   * Mismo gate que el CLI y el servidor: sin verificación posterior a la última
+   * edición de código no hay `Finalizado`. Devuelve `true` si bloqueó el cierre
+   * (el modelo recibe el motivo y el bucle sigue, o la corrida se detiene tras
+   * agotar los rechazos).
+   */
+  private blockClosingForVerification(): boolean {
+    const decision = refusalForClosing(this.verifyGate);
+    if (decision.allow) return false;
+    const text = String(decision.text ?? '');
+    this.addThoughtCapped('Gate de verificación', text);
+    if (decision.fatal) {
+      this.stop();
+      return true;
+    }
+    this.pushTurn('user', `SISTEMA: ${text}`);
+    return true;
+  }
+
   private async stepOnce() {
     if (!this.running || !this.task) return;
     if (this.orchestrator.getState().steps.length >= this.task.maxSteps) {
@@ -495,8 +539,9 @@ export class AgentLoop {
         this.pushTurn('model', native.thought || '(plan actualizado)');
         return;
       }
-      // Sin calls = respuesta final
+      // Sin calls = respuesta final, salvo que falte verificar la última edición.
       this.pushTurn('model', native.thought || '(sin salida)');
+      if (this.blockClosingForVerification()) return;
       this.addThoughtCapped('Finalizado', native.thought || 'Objetivo completado.');
       this.stop();
       return;
@@ -518,6 +563,7 @@ export class AgentLoop {
     const repeated = this.repeats.track(executable);
     const results = await this.runParallel(this.dropExhausted(executable));
     this.recordReads(executable, results);
+    this.noteVerification(executable, results);
     const fails = results.filter((r) => !r.ok);
     if (results.length > 0) this.pushResults(results);
     this.trackProgress(results);
@@ -562,6 +608,7 @@ export class AgentLoop {
 
     if (llmRes.finish) {
       if (llmRes.answer) {
+        if (this.blockClosingForVerification()) return;
         this.addThoughtCapped('Finalizado', llmRes.answer);
         this.pushTurn('model', llmRes.answer);
       }
@@ -593,6 +640,7 @@ export class AgentLoop {
       const repeated = this.repeats.track(executable);
       const results = await this.runParallel(this.dropExhausted(executable));
       this.recordReads(executable, results);
+      this.noteVerification(executable, results);
       if (results.length > 0) this.pushResults(results);
       this.trackProgress(results);
       this.warnRepeats(repeated.filter((item) => item.times < BLOCK_AFTER_REPEATS));

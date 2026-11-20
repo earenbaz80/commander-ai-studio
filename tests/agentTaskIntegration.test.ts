@@ -62,8 +62,8 @@ test('task ejecuta un subagente real, lo registra mientras corre y lo limpia al 
     // El panel de la UI lee de este registro, no del de sesiones.
     const visible = listSubAgents(padre.id).find((r) => r.goal === objetivo);
     if (visible) { visibleGoal = visible.goal; visibleStatus = visible.status; }
-    // Dialecto nativo (Gemini): sin toolCalls la sesión considera el objetivo
-    // cumplido y devuelve ese texto como respuesta final.
+    // Dialecto nativo (Gemini): sin toolCalls el turno sólo trae razonamiento,
+    // así que el hijo gasta además su turno de cierre; el stub contesta igual.
     return { ok: true, status: 200, json: async () => ({ text: 'revisado', functionCalls: [] }) } as any;
   }) as any;
 
@@ -76,7 +76,7 @@ test('task ejecuta un subagente real, lo registra mientras corre y lo limpia al 
 
     assert.equal(res.ok, true, `el subagente debe completar: ${JSON.stringify(res).slice(0, 400)}`);
     assert.equal(res.answer, 'revisado', 'la respuesta del subagente llega tal cual');
-    assert.equal(llamadas, 1, 'un solo turno del LLM: el stub contestó con el objetivo cumplido');
+    assert.equal(llamadas, 2, 'un turno de trabajo y el turno de cierre del hijo');
 
     assert.ok(hijoId, 'la sesión hija aparece en el registro mientras corre');
     assert.equal(hijoStatus, 'running', 'y se anuncia como corriendo, no como idle');
@@ -139,8 +139,8 @@ test('un nombre con guion bajo del proveedor se ejecuta como la tool real', asyn
     });
 
     assert.equal(res.ok, true, JSON.stringify(res).slice(0, 400));
-    assert.equal(res.answer, 'listo', 'el segundo turno cierra la tarea');
-    assert.equal(llamadas, 2, 'un turno para la tool y otro para cerrar');
+    assert.equal(res.answer, 'listo', 'el turno de cierre da la respuesta');
+    assert.equal(llamadas, 3, 'la tool, el turno de razonamiento y el cierre');
     assert.equal(fs.readFileSync(path.join(dir, 'salida.txt'), 'utf8'), 'hola', 'la tool se ejecutó de verdad');
   } finally {
     stopApprovals();
@@ -176,7 +176,7 @@ test('un turno vacío se reintenta y, si el segundo trae respuesta, el hijo comp
 
     assert.equal(res.ok, true, JSON.stringify(res).slice(0, 400));
     assert.equal(res.answer, 'listo', 'la respuesta es la del turno real, no el relleno');
-    assert.equal(llamadas, 2, 'el turno vacío se reintenta una vez');
+    assert.equal(llamadas, 3, 'turno vacío, reintento con respuesta y turno de cierre');
 
     const [fila] = listSubAgents(padre.id);
     assert.equal(fila.status, 'completed');
@@ -566,7 +566,7 @@ test('un turno que sólo actualiza el plan no se toma por respuesta final', asyn
 
     assert.equal(res.ok, true, JSON.stringify(res).slice(0, 400));
     assert.equal(res.answer, 'hecho');
-    assert.equal(llamadas, 3, 'planificar no cierra la sesión: siguen el trabajo y el cierre');
+    assert.equal(llamadas, 4, 'planificar no cierra: siguen el trabajo, su razonamiento y el cierre');
     assert.equal(fs.readFileSync(path.join(dir, 'plan.txt'), 'utf8'), 'ok', 'el trabajo se hizo después del plan');
   } finally {
     stopApprovals();
@@ -705,7 +705,8 @@ test('sin allowlist el hijo sigue viendo el catálogo completo', async () => {
 
   globalThis.fetch = (async (_url: any, init: any) => {
     const pedido = JSON.parse(String(init?.body ?? '{}'));
-    prompt = String(pedido.contents ?? pedido.prompt ?? '');
+    // El primer pedido es el que lleva el catálogo: el turno de cierre va sin tools.
+    if (!prompt) prompt = String(pedido.contents ?? pedido.prompt ?? '');
     return { ok: true, status: 200, json: async () => ({ text: 'Archivos: ninguno\nDenegado: ninguna', functionCalls: [] }) } as any;
   }) as any;
 
@@ -791,6 +792,62 @@ test('dos hijos en paralelo con dialecto JSON entregan su respuesta de cierre', 
       assert.match(String(fila.answer), /listo/);
       assert.equal(fila.stepTitles?.at(-1), 'Finalizado', 'la fila termina en el cierre real');
     }
+  } finally {
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('un hijo nativo que sólo razona pide el turno de cierre', async () => {
+  // El camino nativo cerraba con `native.thought` cuando el turno no traía
+  // llamadas, así que un fragmento de razonamiento llegaba al padre como
+  // respuesta final del hijo. El contrato se cumple pidiendo el cierre.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const padre = createSession({ goal: 'padre con hijo nativo', cwd: dir });
+  const razonamiento = 'Ya está: el archivo quedó como pedía el padre.';
+  const cierre = 'Archivos: ninguno\nDenegado: ninguna';
+  let turnos = 0;
+  let cierres = 0;
+
+  globalThis.fetch = (async (_url: any, init?: any) => {
+    const body = JSON.parse(String(init?.body ?? '{}'));
+    // El turno de cierre se reconoce por el marcador que añade `finalTurn`,
+    // que en la vía nativa viaja en el prompt de sistema.
+    const prompt = [body.systemInstruction, body.contents, body.prompt]
+      .filter((part) => typeof part === 'string')
+      .join('\n');
+    const ultimo = prompt.includes('ÚLTIMO TURNO');
+    if (ultimo) cierres += 1;
+    else turnos += 1;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ text: ultimo ? cierre : razonamiento }),
+    } as any;
+  }) as any;
+
+  try {
+    const res: any = await executeAgentTool('spawn_agents', {
+      root: dir,
+      parentSessionId: padre.id,
+      agents: [{ goal: 'hijo nativo', model: 'gemini-3.5-flash' }],
+    });
+
+    assert.equal(res.ok, true, JSON.stringify(res).slice(0, 400));
+    const hijo = res.data?.results?.[0];
+    assert.equal(hijo?.ok, true, `el hijo cierra: ${hijo?.error}`);
+    assert.equal(hijo?.answer, cierre, 'la respuesta es el cierre, no el razonamiento');
+    assert.notEqual(hijo?.answer, razonamiento);
+    assert.equal(turnos, 1);
+    assert.equal(cierres, 1, 'un turno de razonamiento no cierra: se pide el turno final');
+
+    const filas = listSubAgents(padre.id);
+    assert.equal(filas.length, 1);
+    assert.equal(filas[0].status, 'completed');
+    assert.equal(filas[0].answer, cierre);
+    assert.equal(filas[0].stepTitles?.at(-1), 'Finalizado');
   } finally {
     removeSession(padre.id);
     clearSubAgents(padre.id);
