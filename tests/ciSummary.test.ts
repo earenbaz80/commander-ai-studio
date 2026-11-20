@@ -100,6 +100,13 @@ test('ci-summary: un JUnit sin los comentarios de totales avisa y no inventa 0 p
   assert.ok(!resumen.markdown.includes('| Pasan |'), 'sin desglose no hay tabla de conteos');
 });
 
+test('ci-summary: el lector de Vitest acepta un título alternativo', () => {
+  const resumen = resumenVitest(VITEST, '.ci/vitest.json', 'Tests (Vitest, lógica)');
+  assert.match(resumen.markdown, /^### Tests \(Vitest, lógica\)$/m);
+  // El título por defecto no se cuela: el job de lógica se distingue del completo.
+  assert.ok(!resumen.markdown.includes('### Tests (Vitest)\n'));
+});
+
 test('ci-summary: el JSON de Vitest cuenta archivos, casos y ventana de duración', () => {
   const resumen = resumenVitest(VITEST);
   assert.equal(resumen.error, undefined);

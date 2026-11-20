@@ -247,12 +247,20 @@ test('CI: build depende del gate y e2e del build', () => {
 test('CI: el job de lógica corre sólo el proyecto node y en paralelo', () => {
   const job = jobDe(ci, 'logic');
   const pasos = pasosDe(job);
+  // Los argumentos del reporter no cambian qué corre: el script sigue siendo
+  // `test:logic`, con su `--project node` dentro.
   const esRun = (paso: string, comando: string) =>
-    paso.split('\n').some((l) => l.trim() === `run: ${comando}`);
+    paso.split('\n').some((l) => {
+      const linea = l.trim();
+      return linea === `run: ${comando}` || linea.startsWith(`run: ${comando} --`);
+    });
 
+  const logica = pasos.find((p) => esRun(p, 'npm run test:logic'));
+  assert.ok(logica, 'el job de lógica corre `npm run test:logic`');
+  // Sin el reporte JSON el resumen del job no tendría qué contar.
   assert.ok(
-    pasos.some((p) => esRun(p, 'npm run test:logic')),
-    'el job de lógica corre `npm run test:logic`'
+    logica.includes('--reporter=json') && logica.includes('--outputFile'),
+    'el job de lógica deja el reporte JSON para el resumen'
   );
   // El flag es lo único que lo separa de la suite completa: sin él vuelve a
   // levantar jsdom y deja de ser el feedback rápido que justifica el job.
@@ -388,7 +396,15 @@ test('CI: la firma de los commits se revisa con historia completa', () => {
 test('CI: cada suite deja sus conteos en el resumen del job', () => {
   const pasos = pasosDe(jobDe(ci, 'lint-and-test'));
   const delJob = (job: string[]) => (modo: string) => {
-    const encontrados = job.filter((p) => p.split('\n').some((l) => l.trim() === `run: npm run ci:summary -- ${modo}`));
+    const encontrados = job.filter((p) =>
+      p.split('\n').some((l) => {
+        const linea = l.trim();
+        return (
+          linea === `run: npm run ci:summary -- ${modo}` ||
+          linea.startsWith(`run: npm run ci:summary -- ${modo} --`)
+        );
+      })
+    );
     assert.equal(encontrados.length, 1, `esperaba un solo paso «ci:summary -- ${modo}»`);
     // Sin `always()` el resumen desaparece justo cuando la suite falla, que es
     // cuando sus conteos importan.
@@ -408,6 +424,13 @@ test('CI: cada suite deja sus conteos en el resumen del job', () => {
 
   delJob(pasos)('node-test');
   delJob(pasos)('vitest');
+  const logica = delJob(pasosDe(jobDe(ci, 'logic')))('vitest');
+  // Ese job sólo corre el proyecto node: con el rótulo por defecto se
+  // confundiría con la suite completa que corre en `lint-and-test`.
+  assert.ok(
+    logica.includes('--title "Tests (Vitest, lógica)"'),
+    'el resumen de lógica se rotula distinto del completo'
+  );
   delJob(pasosDe(jobDe(ci, 'e2e')))('e2e');
 
   assert.match(

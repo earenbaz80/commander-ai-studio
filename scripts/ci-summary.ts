@@ -9,6 +9,7 @@
  *   npm run ci:summary -- node-test   # TEST_NODE_JUNIT, lo escribe test-node.ts
  *   npm run ci:summary -- vitest      # --reporter=json --outputFile
  *   npm run ci:summary -- e2e         # results.json de merge-reports
+ *   npm run ci:summary -- vitest --title "Tests (Vitest, lógica)"   # rótulo propio
  *
  * Cuando un reporte existe pero no se puede interpretar, la sección lo dice y
  * el script sale 1: un resumen en verde con números inventados es peor que un
@@ -160,9 +161,17 @@ export function resumenNodeTest(xml: string | undefined, ruta = RUTA_NODE): Resu
   };
 }
 
-/** Reporte JSON de Vitest (`--reporter=json --outputFile`). */
-export function resumenVitest(texto: string | undefined, ruta = RUTA_VITEST): Resumen {
-  const titulo = 'Tests (Vitest)';
+/**
+ * Reporte JSON de Vitest (`--reporter=json --outputFile`).
+ *
+ * El job de lógica corre sólo el proyecto `node`: ahí el título por defecto se
+ * confundiría con la suite completa del otro job, así que acepta uno propio.
+ */
+export function resumenVitest(
+  texto: string | undefined,
+  ruta = RUTA_VITEST,
+  titulo = 'Tests (Vitest)'
+): Resumen {
   if (!texto) return { markdown: seccion(titulo, faltante(ruta)) };
 
   let datos: VitestReport;
@@ -283,10 +292,16 @@ function publicar(markdown: string): void {
   }
 }
 
+function opcion(argv: string[], nombre: string): string | undefined {
+  const i = argv.indexOf(nombre);
+  return i >= 0 ? argv[i + 1] : undefined;
+}
+
 function principal(): void {
-  const modo = process.argv[2];
+  const argv = process.argv.slice(2);
+  const modo = argv[0];
   if (modo !== 'node-test' && modo !== 'vitest' && modo !== 'e2e') {
-    console.error('[ci:summary] uso: npm run ci:summary -- node-test|vitest|e2e');
+    console.error('[ci:summary] uso: npm run ci:summary -- node-test|vitest|e2e [--title «rótulo»]');
     process.exit(1);
   }
 
@@ -294,7 +309,7 @@ function principal(): void {
     modo === 'node-test'
       ? resumenNodeTest(leer(RUTA_NODE))
       : modo === 'vitest'
-        ? resumenVitest(leer(RUTA_VITEST))
+        ? resumenVitest(leer(RUTA_VITEST), RUTA_VITEST, opcion(argv, '--title'))
         : resumenE2E(leer(RUTA_E2E));
 
   if (resumen.error) {

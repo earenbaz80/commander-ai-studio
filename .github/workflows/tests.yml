@@ -134,7 +134,13 @@ jobs:
       - run: npm ci --ignore-scripts
 
       - name: Tests de lógica (Vitest, proyecto node)
-        run: npm run test:logic
+        run: npm run test:logic -- --reporter=default --reporter=json --outputFile=.ci/vitest.json
+
+      # Los conteos de este job tampoco se ven sin sesión: van al resumen.
+      # `--title`: acá sólo corre el proyecto node, así que el rótulo lo aclara.
+      - name: Resumen (Vitest, lógica)
+        if: always()
+        run: npm run ci:summary -- vitest --title "Tests (Vitest, lógica)"
 
   build:
     name: Build
