@@ -1,0 +1,37 @@
+#!/bin/sh
+# Guardia local antes de empujar: CI repite lo mismo, pero acá el fallo aparece
+# en tu máquina y no después de la cola del runner. Corta en el primer paso
+# rojo, que es el que hay que arreglar.
+#
+# Bypass: `git push --no-verify`. No evita el verde: CI corre estos mismos
+# pasos sin bypass, así que sólo traslada el rojo al run. Ver AGENTS.md.
+if ! command -v npm >/dev/null 2>&1; then
+  echo "[pre-push] npm no está en PATH: no puedo verificar tipos, tests ni e2e." >&2
+  echo "[pre-push] Si querés empujar igual, usá el bypass explícito: git push --no-verify" >&2
+  exit 1
+fi
+
+paso() { printf '\n[pre-push] %s\n' "$1"; }
+fallo() {
+  printf '\n[pre-push] FALLÓ: %s\n' "$1" >&2
+  printf '[pre-push] push abortado. Arreglá el paso y reintentá; el bypass es `git push --no-verify` (AGENTS.md).\n' >&2
+  exit 1
+}
+
+paso '1/3 tipos estrictos · npm run typecheck'
+npm run --silent typecheck || fallo 'tipos estrictos (tsc --noEmit)'
+
+paso '2/3 tests de node · npm run test:node'
+npm run --silent test:node || fallo 'tests de node (node:test)'
+
+paso '3/3 e2e (subconjunto) · tests/e2e/agentVerificationArtifact.spec.ts --project=chromium'
+# El e2e corre contra `vite preview`, que sirve `dist/`: sin bundle fresco el
+# caso prueba código viejo (o no arranca). Se reconstruye sólo si hace falta.
+if [ ! -f dist/index.html ] || [ -n "$(find src -newer dist/index.html -print -quit 2>/dev/null)" ]; then
+  echo '[pre-push] dist/ falta o quedó viejo respecto de src/: construyo el bundle para el e2e'
+  npm run --silent build || fallo 'build previo del e2e (vite build)'
+fi
+npx playwright test tests/e2e/agentVerificationArtifact.spec.ts --project=chromium ||
+  fallo 'e2e (agentVerificationArtifact, chromium)'
+
+printf '\n[pre-push] ok · tipos, tests y e2e en verde\n'
