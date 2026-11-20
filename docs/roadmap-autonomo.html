@@ -88,7 +88,7 @@
 
 <script type="application/json" id="plan">
 {
-  "updated": "2026-11-19",
+  "updated": "2026-11-20",
   "phases": [
     {
       "id": "F0",
@@ -114,7 +114,7 @@
       "steps": [
         { "id": "F1-1", "title": "T10: dos subagentes en paralelo que cierran bien (allowlist + worktree)", "weight": 3, "progress": 35, "evidence": "0/9 corridas; G1-T10-08 4/6 · arreglado: cierre por maxSteps, guarda de racha, catálogo filtrado, turno vacío, cierre JSON y respuesta final de los hijos; falta re-medir T10" },
         { "id": "F1-2", "title": "Baseline de 24 corridas en verde sostenido", "weight": 3, "progress": 30, "evidence": "F0: 8/24 (T1 3/3, T7 3/3, T3 y T5 1/2, resto 0)" },
-        { "id": "F1-3", "title": "Gate de verificación también en escritorio y servidor", "weight": 2, "progress": 0, "evidence": "hoy cableado sólo en el bucle del CLI (src/cli/agentClient.ts)" },
+        { "id": "F1-3", "title": "Gate de verificación también en escritorio y servidor", "weight": 2, "progress": 100, "evidence": "`refusalForClosing` en src/agent/verifyGate.ts · servidor (agentSession.ts) y escritorio (src/agent/loop.ts) alimentan el gate con ediciones y shell.run, ambos dialectos · tests/agentVerifyGate.api.test.ts, agentLoop.test.ts y agentTaskIntegration.test.ts · 6276e6e" },
         { "id": "F1-4", "title": "Dogfooding G1 cerrado (5 días, 24 corridas comparadas)", "weight": 2, "progress": 60, "evidence": "D5 4/4 passed; G1 NO CERRADA por p95 de aprobación y T10 · recibo G1-DOGFOOD-2026-11-12" },
         { "id": "F1-5", "title": "Reparación autónoma rojo→verde sin intervención humana", "weight": 2, "progress": 40, "evidence": "el gate devuelve la salida real y bloquea el cierre; falta medir cuántas corridas llegan solas al verde" },
         { "id": "F1-6", "title": "Arnés determinista de escenarios T1–T10 en CI", "weight": 1, "progress": 100, "evidence": "evals/harness.ts · evals/scenarios.ts · tests/evalsScenarios.test.ts" }
