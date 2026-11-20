@@ -44,7 +44,7 @@ Cambios de producto ya presentes en el commit medido: contrato de cierre del hij
 | Workspace | `tests/tmp-g1/d5-t10-01` |
 | Encargo | El texto exacto de `runT10` (§4), sin paráfrasis |
 | Evaluador | Los seis `checks` de `runT10` en [`evals/scenarios.ts`](../../evals/scenarios.ts); los 11 controles de D5 se reportan aparte (§9) |
-| Aprobación | Operador humano en TTY real para `spawn_agents` |
+| Aprobación | Operador humano en TTY real para `spawn_agents`, en una consola propia: el panel de terminal de la app no materializa TTY (§6.1) |
 | Presupuesto | 15 min de reloj; al vencer, `Ctrl+C` y se registra `cancelled`/`timeout` |
 | Fecha / hora / PID / `sessionId` | Se completan al ejecutar |
 
@@ -143,6 +143,27 @@ Reglas de operación:
 - `shell.run` del hijo A no se aprueba: la allowlist debe denegarlo. Si el CLI pide aprobación para `shell.run`, se deniega y se registra.
 - Se prefiere **una sola tanda** de `spawn_agents` con dos hijos. Si el padre pide una segunda tanda, no se aprueba a ciegas: se registra la desviación y se decide con la evidencia. No se cambia el encargo para evitarla.
 - Al vencer los 15 min: `Ctrl+C`, se registra `cancelled` o `timeout`. Un fallo de criterio es `failed`, no `invalid`.
+
+### 6.1 Dónde se da la aprobación: el panel de terminal no sirve
+
+El procedimiento supone una terminal visible con un TTY real. **Ese TTY no existe en el panel de terminal de la app.** El 2026-11-20, al preparar `G1-T10-09`, `terminal_open` respondió `requested: true` / `sessionId: "right"` y `terminal_list` devolvió `{"terminals": []}` en todas las tentativas: no se materializa ninguna shell, no hay prompt que ver y no hay dónde pulsar `a`. La corrida de ese intento se lanzó en un PTY ya abierto, el menú de `spawn_agents` (`apr_2c162382`) se pintó sin nadie delante y caducó a los 300 s; la sesión `sess_086828c5b` quedó `invalid` (ver `.commander/g1/G1-T10-09-deviations.md` y `-approvals.md`).
+
+Por qué no se puede rodear desde el CLI:
+
+- `requestApproval` sólo se construye si `canPromptApprovals()` —stdin **y** stdout TTY— (`bin/commander.ts:455-464`, `src/cli/tui.ts:529-534`). Sin TTY no hay espera de 300 s: la aprobación se deniega en el acto con motivo `sin terminal interactiva` (`src/cli/agentClient.ts:1543-1544`) y el padre muere en el mismo paso del `spawn_agents`.
+- No hay bandera: `--no-approval` está declarado (`bin/commander.ts:316`) pero `opts.approval` no se lee en ninguna parte; es un no-op y su propia ayuda dice «no aplica en headless».
+- No hay config: `agent.approvalMode` (`auto|manual|never`, `src/config/schema.ts:192`) sólo lo validan el esquema y un test; el bucle no lo consulta.
+- No hay variable de entorno: `COMMANDER_TEST_MODE=1` + `COMMANDER_TEST_APPROVAL_DECISIONS` sólo actúan en `--json` y **también** exigen TTY (`bin/commander.ts:369-390`); es el arnés E2E, no una política.
+- No hay allowlist que lo cubra: `ruleTarget` no contempla `spawn_agents` (`src/agent/permissionRules.ts:36-47`), así que `decide()` devuelve `null` y ni una regla `tool: "*"` evita el prompt.
+- No sirve la ruta HTTP: `POST /api/agent/sessions/:id/approvals/:approvalId` (`server.ts:690`) resuelve sólo las aprobaciones del servidor; las de una corrida del CLI se anuncian como `clientApprovals` y están documentadas como no resolubles desde el servidor (`agentSession.ts:643-649`; un id desconocido da 404 en `resolveApproval`).
+
+Alternativas reales, en orden de preferencia:
+
+1. **Consola propia del operador.** Git Bash, Windows Terminal o la terminal del editor, pegando el comando de §6: ahí sí hay TTY y el menú responde a `a`. Es la única vía que conserva el arnés del plan.
+2. **Escritorio, con la sesión corriendo en el servidor.** El modal de aprobación del escritorio resuelve aprobaciones del servidor, no las del CLI. Sirve para medir, pero es otro arnés: se registra como desviación de §6 y no se mezcla con la muestra del CLI en el mismo `runId`.
+3. No hay una tercera: ninguna bandera, variable ni allowlist sustituye la tecla.
+
+Regla: si el panel no entrega un TTY, se reporta el bloqueo y no se lanza nada. No se simula el prompt, no se escribe al PTY con `process_write` ni con un script de teclas, y una corrida que quedó sin TTY se declara bloqueada (`invalid` por causa ajena) y se repite con etiqueta nueva; no se aprueba «por chat» ni por HTTP fingiendo una decisión humana.
 
 ## 7. Evidencia que hay que guardar
 
@@ -301,7 +322,7 @@ Después de la corrida:
 - [ ] Workspace `tests/tmp-g1/d5-t10-01` re-sembrado; `git status` vacío y un solo worktree.
 - [ ] `typecheck`, `build` y las pruebas de T10/cierre en verde, incluida la de «Denegado: ninguna» = `false`.
 - [ ] Prompt exacto guardado y hasheado.
-- [ ] Aprobación humana de `spawn_agents` con `a`; ninguna tecla automatizada.
+- [ ] Aprobación humana de `spawn_agents` con `a` en una consola propia del operador (el panel de terminal de la app no materializa TTY, §6.1); ninguna tecla automatizada.
 - [ ] `sessionId` y aprobaciones anotados.
 - [ ] `-json`, `-subagents.json`, `-t10.json` y comprobaciones de git guardados.
 - [ ] Seis checks evaluados; 6/6 o fallo explícito.
