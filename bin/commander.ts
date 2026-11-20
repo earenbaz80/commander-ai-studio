@@ -11,6 +11,7 @@ import { APPROVAL_KEY_QUARANTINE_MS, canPromptApprovals, AgentRenderer, promptAp
 import { createInputGate, type InputGateSource } from '../src/cli/stdinGate.js';
 import { ApprovalQueue } from '../src/cli/approvals.js';
 import { GEMINI_DEFAULT_MODEL } from '../src/config/geminiModels.js';
+import { resolveBindHost } from '../src/lib/bindHost.js';
 
 function parseSessionMode(value: unknown): SessionMode | undefined {
   return value === 'build' || value === 'plan' || value === 'readonly' ? value : undefined;
@@ -59,24 +60,29 @@ program
   .command('serve')
   .description('Start the Commander AI Studio server')
   .option('-p, --port <number>', 'Port to listen on', '3280')
-  .option('-h, --host <string>', 'Host to bind to', '127.0.0.1')
+  .option('-h, --host <string>', 'Loopback host to bind to (127.0.0.1, ::1, localhost)')
   .option('--dev', 'Run in development mode (Vite dev server)')
   .action(async (opts) => {
     const config = loadConfig();
     const serverConfig = config.server;
     
     const port = Number(opts.port) || serverConfig.port;
-    const host = opts.host || serverConfig.host;
+    // El servidor sólo escucha en loopback; `resolveBindHost` rechaza el resto
+    // antes de imprimir nada, para no anunciar un bind que no va a existir.
+    const host = resolveBindHost(opts.host ?? serverConfig.host);
     
     console.log(`[commander] Starting server on http://${host}:${port}`);
     
+    // `serve --dev` delega en `npm run dev`, que arranca server.ts: el hijo
+    // hereda `HOST`, así que el flag también aplica en modo desarrollo.
+    process.env.HOST = host;
+
     if (opts.dev) {
       const { spawn } = await import('child_process');
       const vite = spawn('npm', ['run', 'dev'], { stdio: 'inherit', shell: true });
       vite.on('exit', (code) => process.exit(code ?? 0));
     } else {
       process.env.PORT = String(port);
-      process.env.HOST = host;
       const { startServer } = await import('../server.js');
       await startServer();
     }

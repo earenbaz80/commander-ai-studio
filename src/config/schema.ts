@@ -206,6 +206,7 @@ export const CliConfigSchema = z.object({
 
 export const ServerConfigSchema = z.object({
   port: z.number().int().min(1024).max(65535).default(3280),
+  // Alias de loopback para `server.listen`; el servidor no se abre a la red.
   host: z.string().default('127.0.0.1'),
   corsOrigins: z.array(z.string().url()).default([]),
   enableAuth: z.boolean().default(false),

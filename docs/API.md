@@ -2,6 +2,8 @@
 
 Base URL: `/api` (Express server embebido en Electron, puerto 3280)
 
+El servidor escucha **sólo en loopback**. `server.host` en `commander.json` y `commander serve --host` aceptan los alias `127.0.0.1`, `::1` y `localhost`; cualquier otra interfaz (por ejemplo `0.0.0.0` o una IP de la LAN) aborta el arranque con un error explícito, porque la API ejecuta tools sobre el workspace y no tiene autenticación propia.
+
 ---
 
 ## 📡 Endpoints de IA

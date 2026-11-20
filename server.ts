@@ -14,6 +14,7 @@ import * as worktrees from './worktrees';
 import { readProjectGitRemote } from './projectRemote';
 import { runAutonomousCampaign, planCampaign } from './autonomousRun';
 import { setServerBaseUrl } from './serverRuntime';
+import { resolveBindHost } from './src/lib/bindHost';
 import { addRoot, listRoots, removeRoot, removableRoots, resolveProjectPath } from './projects';
 import { enforceTool, getPermissions, setPermissions } from './permissions';
 import { mergeRuleSets, normalizeRules } from './src/agent/permissionRules';
@@ -6279,7 +6280,9 @@ async function bootstrap() {
     /* se reintenta al leer los ajustes de Strata */
   }
   const PORT = Number(process.env.PORT || loadConfig().server?.port || 3280);
-  const HOST = '127.0.0.1';
+  // Sólo loopback: `resolveBindHost` aborta el arranque si `HOST` o
+  // `server.host` piden una interfaz de red.
+  const HOST = resolveBindHost(process.env.HOST || loadConfig().server?.host);
   // Servidor HTTP explícito (no `app.listen`) para compartirlo con Vite: el
   // WebSocket de HMR viaja por el mismo puerto de la app. Antes Vite abría el
   // suyo en el 24678 y chocaba con cualquier otro vite corriendo en la máquina.
