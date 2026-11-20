@@ -2,7 +2,7 @@
 >
 > Issue de paridad de G1, sin número en GitHub: no forma parte del backlog F1 y **no** cambia el criterio de T10 ni los enunciados de dogfooding. Es el defecto que deja T10 en **0/3** después de que el aislamiento de los subagentes ya esté medido y bien.
 
-**Estado:** Abierto — contrato de cierre aplicado y con test; transcripción del hijo expuesta en `/subagents` y corregida tras `G1-D5-10`; routing del proveedor y cierre explícito del hijo en el último turno aplicados tras `G1-T10-01`; seis re-mediciones extra, dos intentos de T10, la re-medición `G1-T10-06` (2/6 con seis tandas y el padre sin cerrar) y `G1-T10-08`, donde la guarda de racha ya cerró el padre a la segunda tanda (4/6), sin cerrarlo. La decisión sobre «listo» queda registrada abajo: el criterio sigue intacto y el contrato no se cambia para pedir esa palabra.
+**Estado:** Abierto — contrato de cierre aplicado y con test; transcripción del hijo expuesta en `/subagents` y corregida tras `G1-D5-10`; routing del proveedor y cierre explícito del hijo en el último turno aplicados tras `G1-T10-01`; seis re-mediciones extra, dos intentos de T10, la re-medición `G1-T10-06` (2/6 con seis tandas y el padre sin cerrar) y `G1-T10-08`, donde la guarda de racha ya cerró el padre a la segunda tanda (4/6), sin cerrarlo. La decisión sobre «listo» queda registrada abajo: el criterio sigue intacto y el contrato no se cambia para pedir esa palabra. Desde el 2026-11-20 el cierre del hijo en dialecto JSON también pide el turno final: un `finish` sin `answer` y un turno sin `toolCalls` ya no terminan en `done` sin `Finalizado` (ver «Cierre del hijo en dialecto JSON»).
 
 **Plan de re-medición:** [`T10-REMEASURE-PLAN-2026-11-17.md`](../T10-REMEASURE-PLAN-2026-11-17.md). `G1-T10-01` del 2026-11-17 quedó **inválido** por un fallo de routing/`LLM HTTP 500` y `G1-T10-02` quedó **cancelado** con tres tandas de `spawn_agents` (ver abajo); `G1-T10-06`, con el cierre por `maxSteps` ya aplicado, tampoco cerró T10 (2/6 y seis tandas), así que sigue sin haber una medición válida de una sola tanda. No se ejecutó CAL4H y el umbral de **15 151 ms** no se tocó.
 
@@ -235,6 +235,16 @@ Corrida **extra fuera de las 24** con `HEAD` `7e21944` (guarda de racha extraíd
 2. **`done` sin paso `Finalizado`:** al agotar `maxSteps` o el presupuesto de tools, `executeTask` resolvía `ok:true` con «Subagente completado sin respuesta explícita». Arreglado: sin `Finalizado` con texto, el hijo queda `failed` con «El subagente terminó sin respuesta final».
 
 Los dos los fija `tests/agentTaskIntegration.test.ts`; ninguno toca el criterio de T10, que sigue midiendo «listo» y la denegación informada.
+
+## Cierre del hijo en dialecto JSON (2026-11-20)
+
+El contrato de cierre y el turno sin tools ya estaban aplicados, pero el dialecto JSON tenía dos salidas que se saltaban ese turno y dejaban al hijo sin respuesta: en `stepJson`, un `finish` **sin** `answer` cerraba la sesión en `done` sin paso `Finalizado`, y un turno **sin** `toolCalls` ni `finish` caía en la detención segura con el mismo efecto. En los dos casos `executeTask` devolvía al padre «El subagente terminó sin respuesta final», el error que el padre recibió del hijo A de `G1-D5-09` y que cita el comentario del test. Esa corrida midió el síntoma, no la rama: su hijo A murió después de las tools denegadas, así que la atribución a `stepJson` la fija el caso dirigido, no la corrida.
+
+- **Ahora piden el turno final:** esas dos ramas llaman a `finalizeChild(recentSteps)`, que hace la llamada con `finalTurn: true` y cierra con `Finalizado` o falla con error si el turno vuelve vacío. Un `finish` con `answer` sigue cerrando como antes, con un `return` explícito para no caer en el cierre del hijo.
+- **También en la vía nativa:** un turno del hijo con contrato que sólo traía razonamiento cerraba con `native.thought` como respuesta final; ahora también gasta su turno de cierre.
+- **Tests:** `tests/agentTaskIntegration.test.ts` cubre las dos formas de no cerrar en JSON («dos hijos en paralelo con dialecto JSON entregan su respuesta de cierre», uno por cada caso) y el razonamiento nativo («un hijo nativo que sólo razona pide el turno de cierre»), contando un turno de trabajo y uno de cierre por hijo.
+- **Verificación:** con el `agentSession.ts` anterior el caso dirigido falla 5/5 con «El subagente terminó sin respuesta final»; con el arreglo pasa 10/10. El escenario T10 determinista del arnés (`tests/evalsScenarios.test.ts`) usa un guion que cierra bien, así que pasa 10/10 y **no** ejerce este camino: no es una medición de T10.
+- **Sin efecto sobre el criterio:** `runT10` sigue exigiendo «listo» y la denegación informada, y las cifras medidas no cambian (0/9 corridas y `G1-T10-08` 4/6); esto sólo evita que un hijo se pierda por no cerrar.
 
 ## Evidencia
 
