@@ -142,19 +142,24 @@ describe('recibo G1-T10-11 contra evals/baseline-results.jsonl', () => {
     expect(denegacion[2]).toBe('2/3');
   });
 
-  it('el acumulado de T10 y el 0/18 coinciden con el registro', () => {
-    const subset = records.filter((record) => record.subset === true).length;
-    const sinSubset = records.filter((record) => record.subset !== true).length;
-    const passed = records.filter((record) => record.passed).length;
+  it('el acumulado de T10 y el 0/18 coinciden con el registro al cierre del recibo', () => {
+    // El recibo es una foto: las corridas posteriores (G1-T10-12) agregan líneas
+    // al JSONL, pero no cambian lo que este recibo registró. Se compara contra
+    // las líneas que existían al cerrarse su última corrida.
+    const corte = Math.max(...receiptRuns.map((record) => Date.parse(record.ts)));
+    const alCierre = records.filter((record) => Date.parse(record.ts) <= corte);
+    const subset = alCierre.filter((record) => record.subset === true).length;
+    const sinSubset = alCierre.filter((record) => record.subset !== true).length;
+    const passed = alCierre.filter((record) => record.passed).length;
 
-    expect(records).toHaveLength(18);
+    expect(alCierre).toHaveLength(18);
     expect(subset).toBe(12);
     expect(sinSubset).toBe(6);
     expect(passed).toBe(0);
 
-    expect(receipt).toContain(`**0/${records.length}**`);
+    expect(receipt).toContain(`**0/${alCierre.length}**`);
     expect(receipt).toContain(
-      `${records.length} líneas \`T10\` en \`evals/baseline-results.jsonl\` (${sinSubset} sin`
+      `${alCierre.length} líneas \`T10\` en \`evals/baseline-results.jsonl\` (${sinSubset} sin`
     );
     expect(receipt).toContain(`\`subset\` y ${subset} con \`subset\`)`);
     expect(receipt).toContain(`**${passed} \`passed\`**`);
