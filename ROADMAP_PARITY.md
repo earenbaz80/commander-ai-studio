@@ -1,6 +1,6 @@
 # Plan de paridad — Commander AI Studio vs. OpenCode, Antigravity y Freebuff
 
-> **Roadmap de ejecución (visual):** [roadmap autónomo publicado](https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html) — **62 %** hacia el multiagente autónomo (2026-11-20), 12 de 27 pasos cerrados.
+> **Roadmap de ejecución (visual):** [roadmap autónomo publicado](https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html) — **62 %** hacia el multiagente autónomo (2026-11-21), 12 de 27 pasos cerrados.
 > Cada paso se marca allí al cerrarse, con su evidencia y su peso; el porcentaje global es la media ponderada por paso y fase. El fuente es [docs/roadmap-autonomo.html](docs/roadmap-autonomo.html).
 
 > **Estado:** propuesta revisada contra el árbol 2.5.1 y la documentación oficial, 2026-11-07.
@@ -78,7 +78,7 @@ La estrategia propuesta no es copiar el catálogo completo. Es cerrar primero la
 | --- | --- | --- | --- | --- |
 | Multi-proveedor / routing | **V** (muchos proveedores, fallback, modelos locales) | **V** | **P** (Gemini + Claude/GPT) | **P** (catálogo curado/financiado) |
 | Modos plan / build / readonly | **V** | **V** | **V** | **V** |
-| Subagentes | **V** (hasta 6 en paralelo; 4 plantillas) | **V** (custom, foreground/background) | **V** (async/swarms) | **V** (especializados) |
+| Subagentes | **V** (hasta 6 en paralelo; 6 plantillas) | **V** (custom, foreground/background) | **V** (async/swarms) | **V** (especializados) |
 | Worktrees aislados | **V** (worktree por subagente y tool `git.worktree`) | **P** | **V** | **V** (workspaces paralelos) |
 | Sesiones: resume / fork / rewind | **V** en escritorio; **P** en CLI | **V** (snapshots) | **V** | **V** |
 | Compactación de contexto | **V** (`contextBudget.ts`) | **V** | **V** | **V** |
