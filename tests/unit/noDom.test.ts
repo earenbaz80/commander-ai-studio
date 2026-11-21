@@ -424,18 +424,21 @@ function alcanzadosDesdeTests(): Map<string, string[]> {
 }
 
 /**
- * Presupuesto de tiempo del grafo.
+ * Presupuesto de CPU del grafo, no de pared ni del escaneo de módulos.
  *
- * Todo esto es texto de ~150 KB: la medición local es de ~90 ms con 24 ficheros y
- * 13 módulos, así que 1 s deja un margen de ~10x para no fallar por carga del
- * runner y sigue sobrando para cazar lo que ya pasó una vez: recorrer el repo
- * entero se iba a 1,4 s (`src-tauri/target` tiene miles de artefactos) y volver
- * a un `statSync` por candidato, a ~450 ms.
+ * El escaneo recorre todos los módulos alcanzados y crece con el proyecto
+ * (120–156 ms bajo la suite completa). La pared del grafo también se infla por
+ * la carga paralela (386–481 ms medidos), así que sumarla al presupuesto vuelve
+ * a fallar por motivos ajenos al guard. process.cpuUsage() mide sólo el trabajo
+ * del proceso: 47–109 ms aislado y 110–204 ms con la suite completa en paralelo
+ * (190 ficheros, 2026-11-21). 1 s deja ~5x sobre la peor medición y sigue por
+ * debajo de los 1,4 s del paseo del repo que hay que cazar; ese paseo además
+ * dispara el número de listados, que se comprueba aparte.
  *
  * Si la máquina es más lenta, sube la constante con la medición que lo
- * justifique. No bajes el margen ni cambies la medición por una en caliente.
+ * justifique. No bajes el margen ni midas en caliente.
  */
-const PRESUPUESTO_MS = 1000;
+const PRESUPUESTO_CPU_MS = 1000;
 
 describe('separación de proyectos de Vitest', () => {
   test('el proyecto `node` corre sin jsdom', () => {
@@ -494,19 +497,25 @@ describe('separación de proyectos de Vitest', () => {
     ).toEqual([]);
   });
 
-  test('el grafo se resuelve sin pasear el repo y dentro del presupuesto', () => {
+  test('el grafo se resuelve sin pasear el repo y dentro del presupuesto de CPU', () => {
     // En frío: con todo memorizado no se mediría nada.
     listados.clear();
     contenidos.clear();
     const lecturasAntes = lecturasHechas;
 
-    const inicio = performance.now();
+    const cpuAntes = process.cpuUsage();
+    const inicioGrafo = performance.now();
     const caminos = alcanzadosDesdeTests();
+    const msGrafo = performance.now() - inicioGrafo;
+    const cpuGrafo = process.cpuUsage(cpuAntes);
+    const msCpuGrafo = (cpuGrafo.user + cpuGrafo.system) / 1000;
+
     const modulos = [...caminos].filter(
       ([ruta]) => !ruta.endsWith('.test.ts') && ruta !== ESTE_FICHERO,
     );
+    const inicioEscaneo = performance.now();
     for (const [ruta] of modulos) usosSinGuardar(leer(ruta));
-    const ms = performance.now() - inicio;
+    const msEscaneo = performance.now() - inicioEscaneo;
 
     // Una lectura por fichero alcanzado: sin caché, el grafo y el escaneo leían
     // dos veces lo mismo.
@@ -525,9 +534,9 @@ describe('separación de proyectos de Vitest', () => {
     ).toBeGreaterThan(0);
 
     expect(
-      ms,
-      `el grafo tardó ${ms.toFixed(0)} ms con ${caminos.size} ficheros (presupuesto ${PRESUPUESTO_MS} ms)`,
-    ).toBeLessThan(PRESUPUESTO_MS);
+      msCpuGrafo,
+      `el grafo consumió ${msCpuGrafo.toFixed(0)} ms de CPU con ${caminos.size} ficheros (pared ${msGrafo.toFixed(0)} ms; escaneo ${msEscaneo.toFixed(0)} ms; presupuesto ${PRESUPUESTO_CPU_MS} ms)`,
+    ).toBeLessThan(PRESUPUESTO_CPU_MS);
   });
 });
 
