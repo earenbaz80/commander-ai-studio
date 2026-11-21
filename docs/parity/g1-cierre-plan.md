@@ -1,7 +1,7 @@
 # G1 — Plan de cierre
 
 > **Fecha:** 2026-11-16 · **Revisado:** 2026-11-21
-> **Estado:** listo para ejecutar. El **dogfooding de 5 días ya se ejecutó** (2026-11-12). Lo que falta es el bloque `CAL4H`, **declarar T10** con la evidencia de `G1-T10-12` y el recibo de cierre. El bloque `CAL4H` y el recibo no se ejecutaron todavía.
+> **Estado:** listo para ejecutar. El **dogfooding de 5 días ya se ejecutó** (2026-11-12). Lo que falta es el bloque `CAL4H`, **declarar T10** con la evidencia de `G1-T10-13` (1/3, fuera de la puerta) y el recibo de cierre. El bloque `CAL4H` y el recibo no se ejecutaron todavía.
 > **Base:** [recibo del dogfooding](receipts/G1-DOGFOOD-2026-11-12.md) · [hoja de decisión del p95](g1-approval-gate-decision.md) · [protocolo de re-medición](g1-approval-remeasure.md) · [runbook CAL4H](g1-approval-cal4-human-runbook.md) · [plan del dogfooding](dogfooding-g1.md) §3, §5 y §7.
 > **Qué es:** el orden concreto para cerrar G1, con los comandos, los checkboxes y las tablas donde se registra cada dato.
 > **Qué no es:** no re-mide nada por sí solo, no cambia la referencia de 15 151 ms, no relaja el criterio de T10 y **no cierra G1**: eso lo decide el recibo de cierre con evidencia.
@@ -15,10 +15,10 @@
 | Tasa de éxito ≥ F0 (8/24) | **17/28 (60,7 %)** | Nada |
 | 0 escrituras sin aprobación · 0 duplicadas en `--resume` · 0 secretos · artifacts por la vía del runbook · defectos con issue | Verde en las 28 válidas | Nada |
 | **p95 de aprobación ≤ 15 151 ms** | **Rojo**: 76 982 ms (n=40, operador automatizado), 65 056 ms (CAL2, n=6), 26 501 ms (CAL4, n=41, no válido como muestra humana) | Bloque `CAL4H` humano con **≤ 2 de 40** por encima |
-| T10 subagente | **0/3** en las 24 (`G1-D4-04`, `G1-D4-05` y `G1-D4-05R`) y **0/9** contando las seis extras (`G1-D5-05`…`G1-D5-10`). Los descartados (1 intento `blocked` de `G1-D4-04` y 2 intentos de `G1-D5-05` sin veredicto válido) no suman. Fuera de las 24, la re-medición del 2026-11-21 sobre `199f393` ([recibo `G1-T10-12`](receipts/G1-T10-12-2026-11-21.md)) dio **2/3**: siete checks, 0 timeouts, con T10-2 fallando por cierre hueco | Declarar el issue [`G1-SUBAGENT-CLOSE`](issues/G1-SUBAGENT-CLOSE.md) con esa evidencia; **no es regla de puerta** y no cambia el 0/3 de las 24 |
+| T10 subagente | **0/3** en las 24 (`G1-D4-04`, `G1-D4-05` y `G1-D4-05R`) y **0/9** contando las seis extras (`G1-D5-05`…`G1-D5-10`). Los descartados (1 intento `blocked` de `G1-D4-04` y 2 intentos de `G1-D5-05` sin veredicto válido) no suman. Fuera de las 24, la tanda del 2026-11-21 sobre `360f8c2` ([recibo `G1-T10-13`](receipts/G1-T10-13-2026-11-21.md)) dio **1/3**: T10-2 pasó con denegación real y T10-1/T10-3 fallaron por cierre hueco y turno vacío; son 24 líneas T10 y 3 `passed` | Declarar el issue [`G1-SUBAGENT-CLOSE`](issues/G1-SUBAGENT-CLOSE.md) con esa evidencia; **no es regla de puerta** y no cambia el 0/3 de las 24 |
 | Decisión de la puerta | **NO CERRADO**; rige la salida **B** de la [hoja de decisión](g1-approval-gate-decision.md), sin firma | Recibo de cierre `G1-CIERRE-<fecha>` |
 
-**Consecuencia:** F1 y F2 no se marcan cerradas mientras G1 siga abierta. La tasa global ya no es el problema; el cierre depende de una sola casilla y de declarar T10.
+**Consecuencia:** F1 y F2 no se marcan cerradas mientras G1 siga abierta. La tasa global ya no es el problema; el cierre depende de una sola casilla (p95/CAL4H). T10 se declara aparte y **no es regla de puerta**.
 
 ## 2. Orden de pasos
 
@@ -28,7 +28,7 @@
 | 1 | Preflight de `CAL4H` | 10 min | Agente + operador | Precondiciones del §5 todas en `[x]` |
 | 2 | Bloque `CAL4H` (20 corridas, n ≥ 40 decisiones) | 45–60 min | **Operador humano** | 20 corridas cerradas o corte justificado |
 | 3 | Resumen y lectura de la puerta | 5 min | Agente | `p95` con su `n` y **≤ 2 de 40** por encima |
-| 4 | Declarar T10 con la evidencia existente | 15 min | Agente | Issue `G1-SUBAGENT-CLOSE` decidido con el recibo `G1-T10-12` (2/3, siete checks) |
+| 4 | Declarar T10 con la evidencia existente | 15 min | Agente | Issue `G1-SUBAGENT-CLOSE` decidido con el recibo `G1-T10-13` (1/3, 24 líneas y 3 `passed`) |
 | 5 | Recibos y actualización de roadmaps | 30 min | Agente | `CAL4H` + `G1-CIERRE` emitidos y puertas alineadas |
 
 Si el paso 3 falla, **se detiene el cierre**: G1 sigue NO CERRADO y el paso siguiente es producto (issue [`G1-APPROVAL-SHELL-TAIL`](issues/G1-APPROVAL-SHELL-TAIL.md)), no otra medición ni un cambio de referencia.
