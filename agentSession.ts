@@ -377,6 +377,11 @@ export interface SessionConfig {
   /** Timeout de aprobaciones; 5 min por defecto (F1-04). */
   approvalTimeoutMs?: number;
   /**
+   * Timeout por defecto de los subagentes que lance esta sesión.
+   * `executeTask` lo usa cuando el hijo no pide uno propio; T10 fija 240 s.
+   */
+  subagentTimeoutMs?: number;
+  /**
    * Instrucciones que el padre dio al subagente (`task`/`spawn_agents`).
    * Viajan en el prompt del hijo: antes se aceptaban y se descartaban.
    */
@@ -1988,7 +1993,7 @@ export async function executeTask(
   });
   if (!resolved.ok) return { ok: false, error: resolved.error, status: 400 };
   const { allowedTools, mode, maxSteps } = resolved.policy;
-  const timeoutMs = resolveSubagentTimeout(input.timeoutMs);
+  const timeoutMs = resolveSubagentTimeout(input.timeoutMs ?? parent.getConfig().subagentTimeoutMs);
 
   // `worktree` aísla al hijo en una copia git: escribe en su rama y el árbol
   // principal no se toca. Se limpia al terminar salvo `keepWorktree`, también

@@ -45,7 +45,12 @@ const DEFAULT_RUN_BUDGET_MS = 300_000;
  * Margen sobre el presupuesto para que el timeout «de verdad» lo informe la
  * corrida; este tope sólo corta un worker colgado.
  */
-const WORKER_GRACE_MS = 120_000;
+/**
+ * Margen sobre el presupuesto del worker. T10 espera 420 s a su escenario, así
+ * que el padre no puede matar al worker justo en ese límite: necesita tiempo
+ * para escribir la corrida y cerrar el servidor.
+ */
+const WORKER_GRACE_MS = 180_000;
 /** Si el worker ignora SIGTERM, se fuerza la salida pasado este margen. */
 const KILL_GRACE_MS = 5_000;
 

@@ -566,6 +566,11 @@ app.post('/api/agent/sessions', (req, res) => {
     const approvalTimeoutMs = Number.isFinite(Number(b.approvalTimeoutMs))
       ? Math.min(Math.max(Number(b.approvalTimeoutMs), 50), 300_000)
       : undefined;
+    // Timeout por defecto de los hijos de esta sesión (T10 pide 240 s); el
+    // valor se acota en `executeTask` antes de armar el reloj del subagente.
+    const subagentTimeoutMs = Number.isFinite(Number(b.subagentTimeoutMs))
+      ? Number(b.subagentTimeoutMs)
+      : undefined;
     const session = createSession({
       goal,
       cwd,
@@ -574,6 +579,7 @@ app.post('/api/agent/sessions', (req, res) => {
       mode,
       allowedTools,
       approvalTimeoutMs,
+      subagentTimeoutMs,
       keys: hasKeys ? keys : undefined,
       persist: run || b.persist === true,
     });

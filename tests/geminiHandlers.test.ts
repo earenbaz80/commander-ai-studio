@@ -578,7 +578,16 @@ const SCAN_SKIP = ['node_modules', 'dist', '.git', 'release', 'release-packager'
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  let entries: Array<{ name: string; isDirectory: () => boolean }>;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    // `tests/tmp-evals` es transitorio: `evalsScenarios` crea y borra ahí sus
+    // workspaces en paralelo. Un directorio que ya no existe no puede
+    // contener ids escritos a mano; fallar aquí convierte una carrera en rojo.
+    return out;
+  }
+  for (const entry of entries) {
     if (SCAN_SKIP.includes(entry.name)) continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory()) out.push(...sourceFiles(full));

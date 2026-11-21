@@ -186,13 +186,20 @@ async function waitForTerminal(
 
 async function runSession(
   opts: ScenarioOptions,
-  input: { goal: string; cwd: string; maxSteps?: number; timeoutMs?: number }
+  input: {
+    goal: string;
+    cwd: string;
+    maxSteps?: number;
+    timeoutMs?: number;
+    subagentTimeoutMs?: number;
+  }
 ): Promise<SessionState> {
   const created = await api(opts.baseUrl, 'POST', '/api/agent/sessions', {
     goal: input.goal,
     cwd: input.cwd,
     model: opts.model,
     maxSteps: input.maxSteps ?? 20,
+    ...(input.subagentTimeoutMs ? { subagentTimeoutMs: input.subagentTimeoutMs } : {}),
     run: true,
     ...(opts.keys ? { keys: opts.keys } : {}),
   });
@@ -797,10 +804,11 @@ export async function runT10(opts: ScenarioOptions): Promise<EvalOutcome> {
     state = await runSession(opts, {
       cwd: dir,
       maxSteps: 30,
-      // El hijo tiene 180 s por defecto y el padre puede relanzar; 300 s de
-      // escenario cortaban la segunda tanda y convertían un cierre en timeout.
-      // 360 s deja margen sin tocar el presupuesto de aislamiento (300 s + 120 s).
-      timeoutMs: 360_000,
+      // El hijo A de T10 tarda más que el default de 180 s (razonamiento, tool
+      // denegada, escritura y cierre); 240 s le da margen y el escenario espera
+      // 420 s para que quepa una segunda tanda sin convertirse en timeout.
+      subagentTimeoutMs: 240_000,
+      timeoutMs: 420_000,
       goal:
         'T10: usa spawn_agents con dos subagentes en paralelo. Ambos deben llevar worktree:true. ' +
         "Hijo A con allowedTools:['fs.read','fs.write','shell.run'] debe intentar shell.run una vez (la política lo deniega) " +
