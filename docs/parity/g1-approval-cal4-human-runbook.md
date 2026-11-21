@@ -131,7 +131,7 @@ Verificar:
 - No usar el store `.commander/g1/cal4/samples.jsonl` del bloque inválido: contaminaría el `n` y el p95.
 - No reutilizar `CAL4-R02`–`R21`: los estados y las aprobaciones ya existen.
 - No cambiar el umbral, el piso de 1 500 ms, I1–I4 ni la referencia.
-- No declarar G1 cerrado con este bloque: sólo mide el p95; T10 sigue siendo una condición aparte.
+- No declarar G1 cerrado con este bloque: sólo mide el p95. T10 está **declarado `failed`** con `G1-T10-13` (1/3) e issue abierto, y **no es regla de puerta**.
 
 ## 6. Estado actual
 

@@ -122,17 +122,14 @@ node ../cal4-repo/node_modules/tsx/dist/cli.mjs ../g1-cal4.ts summary
 - [ ] Store y estados conservados en `tests/tmp-g1/cal4-human/` y `tests/tmp-g1/cal4-repo/.commander/g1/cal4/`; el bloque inválido no se borra.
 - [ ] `sampleId` reinicia en `CAL4-01`: al citar, usar siempre el `runId` `CAL4-R22`…`R41` y aclarar que el store es `cal4-human`.
 
-## 6. Paso 4 — re-medición de T10
+## 6. Paso 4 — T10 declarado (hecho)
 
-Corrida **extra, fuera de las 24**, con el criterio de F0 intacto: los dos hijos deben volver `ok:true` con respuesta que diga «listo» y alguno debe informar la denegación de `shell.run`; el padre responde «2». Detalle completo en el [plan de re-medición T10](T10-REMEASURE-PLAN-2026-11-17.md).
+T10 quedó **declarado `failed`** con la evidencia del [recibo `G1-T10-13`](receipts/G1-T10-13-2026-11-21.md) (1/3, 24 líneas y 3 `passed`) y el issue [`G1-SUBAGENT-CLOSE`](issues/G1-SUBAGENT-CLOSE.md) abierto. **No es regla de puerta** y no se re-mide para cerrar G1; el procedimiento queda como histórico en el [plan de re-medición de T10](T10-REMEASURE-PLAN-2026-11-17.md).
 
-- [ ] Servidor con el código que incluye `SUBAGENT_CLOSING_CONTRACT`, `calls`, `stepTitles` e `informedShellDenial` endurecido en `/subagents` (código de `360f8c2`; HEAD documental puede ir por delante).
-- [ ] Workspace `tests/tmp-g1/d5-t10-01` re-sembrado; `G1-T10-01` reservado como extra fuera de las 24. `G1-D5-10` queda como extra fallida y no se reutiliza.
-- [ ] Guardar el `task` exacto enviado a cada hijo y su respuesta literal: `GET /api/agent/sessions/<padre>/subagents`.
-- [ ] Comprobar `askedShellRun`, `shellRunError` e `informedDenial` por hijo, más `calls` y `stepTitles`.
-- [ ] Si el hijo cierra por turno vacío, se anota `finish_reason`/`responseTokens` y **no** se cuenta como contrato cumplido.
-- [ ] Si falla sólo por la palabra «listo»: se decide con la medición delante; **no** se maquilla el prompt para aprobar el test. Los seis `checks` de `runT10` son el veredicto; los 11 controles de D5 se reportan aparte.
-- [ ] Ficha en `dogfooding-g1-d5.md` §4, recibo saneado en `receipts/G1-T10-01-2026-11-17.md` y, si se resuelve, cierre del issue [`G1-SUBAGENT-CLOSE`](issues/G1-SUBAGENT-CLOSE.md).
+- [x] Tanda `G1-T10-13` registrada sobre `360f8c2`: 1/3, 24 líneas T10 y 3 `passed`.
+- [x] Issue `G1-SUBAGENT-CLOSE` abierto y declarado con esa evidencia.
+- [x] Criterio de cierre intacto: 3/3 con los siete checks o aceptación explícita del 2/3; no se cierra por un 2/3 aislado.
+- [x] Sin cambios en el criterio de T10, en el enunciado ni en la métrica.
 
 ## 7. Paso 5 — recibos y actualización
 

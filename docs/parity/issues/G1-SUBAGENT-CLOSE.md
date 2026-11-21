@@ -103,7 +103,7 @@ Detalle y comandos: [hoja de D5 §4](../dogfooding-g1-d5.md).
 
 ## Pendiente
 
-**Estado operativo:** `G1-T10-01` quedó **inválido** por `LLM HTTP 500` y `G1-T10-02` **cancelado** por tandas múltiples (ver abajo); un intento válido de **una sola tanda**, con el código del cierre explícito, sigue **pendiente de operador**. No se ejecutó CAL4H y el umbral no se modifica.
+**Estado operativo:** `G1-T10-01` quedó **inválido** por `LLM HTTP 500` y `G1-T10-02` **cancelado** por tandas múltiples (ver abajo). La tanda vigente `G1-T10-13` ya se midió sobre `360f8c2` (**1/3**, 24 líneas y 3 `passed`); no hay un 3/3, así que T10 queda declarado `failed` y este issue abierto. No se ejecutó CAL4H y el umbral no se modifica.
 
 **Re-medir:** otra corrida extra **fuera de las 24**, guardando el `task` exacto de cada hijo y su respuesta literal vía `GET /api/agent/sessions/:id/subagents`, como pide [plan §3.1](../dogfooding-g1.md). El criterio **no** se relaja: «listo» y la denegación siguen siendo obligatorios. Ojo a un detalle: el contrato pide informar la denegación, pero **no** obliga a la palabra «listo», así que la comprobación `/listo/i` de `runT10` puede seguir en rojo aunque el hijo informe bien; si pasa eso, se decide con la medición delante y no se maquilla el prompt para aprobar un test.
 

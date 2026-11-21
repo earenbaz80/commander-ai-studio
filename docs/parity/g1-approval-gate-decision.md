@@ -101,7 +101,7 @@ Una sola tabla, con observaciones y no con intenciones:
 | Situación | Casilla | Qué la cambia |
 | --- | --- | --- |
 | Hoy (2026-11-14) | **NO CUMPLE** (sigue el 65 056 ms de CAL2; CAL4, n=41, p95 26 501 ms descriptivo, no es muestra humana válida) | — |
-| B + arreglo de producto + bloque `CAL4` con `latencyMs`, n ≥ 40, **≤ 2 de 40 por encima** de 15 151 ms | **CUMPLE** | El recibo de `CAL4`, con la referencia intacta. G1 puede cerrarse si T10 se resuelve o se acepta con issue |
+| B + arreglo de producto + bloque `CAL4` con `latencyMs`, n ≥ 40, **≤ 2 de 40 por encima** de 15 151 ms | **CUMPLE** | El recibo de `CAL4`, con la referencia intacta; T10 queda como defecto declarado con issue abierto, fuera de la puerta |
 | B + bloque `CAL4` que vuelve a fallar | **NO CUMPLE** | Nada; se abre el paso siguiente de producto |
 | A firmada (E2 + A2 + referencia nueva, acto separado) | **NO CUMPLE (referencia provisional sin validar)** | La firma **no** pone nada verde (§7.4) |
 | A + validación prospectiva con p95 ≤ 0,8 × referencia nueva | **CUMPLE en la regla nueva** | El recibo de validación; la regla vieja sigue en rojo como historia |
