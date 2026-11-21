@@ -299,6 +299,73 @@ try {
     fallos.push(`la guarda de \`commander build\` falló: ${detalle}`);
   }
 
+  // 7) `serve --dev` tiene la misma guarda que `build`: no ejecuta el script
+  //    `dev` del cwd. Si lo hiciera, dejaría DELEGATED_DEV.txt.
+  try {
+    const cliInstalado = path.join(prefix, 'node_modules', 'commander-ai-studio', bundle);
+    const marcadorDev = (nombre) =>
+      `node -e "require('fs').writeFileSync('${nombre}', 'x')"`;
+
+    const conDev = path.join(tmp, 'proyecto-con-dev');
+    fs.mkdirSync(conDev, { recursive: true });
+    fs.writeFileSync(
+      path.join(conDev, 'package.json'),
+      JSON.stringify({
+        name: 'proyecto-con-dev',
+        version: '1.0.0',
+        scripts: { dev: marcadorDev('DELEGATED_DEV.txt') },
+      })
+    );
+
+    const sinDev = path.join(tmp, 'proyecto-sin-dev');
+    fs.mkdirSync(sinDev, { recursive: true });
+    fs.writeFileSync(
+      path.join(sinDev, 'package.json'),
+      JSON.stringify({ name: 'proyecto-sin-dev', version: '1.0.0' })
+    );
+
+    const vacioDev = path.join(tmp, 'sin-paquete-dev');
+    fs.mkdirSync(vacioDev, { recursive: true });
+
+    for (const caso of [
+      { nombre: 'proyecto con dev', cwd: conDev, delegado: 'DELEGATED_DEV.txt' },
+      { nombre: 'proyecto sin dev', cwd: sinDev, delegado: null },
+      { nombre: 'directorio vacío', cwd: vacioDev, delegado: null },
+    ]) {
+      let salida = '';
+      let status = 0;
+      try {
+        salida = execFileSync(process.execPath, [cliInstalado, 'serve', '--dev'], {
+          cwd: caso.cwd,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: 60_000,
+        });
+      } catch (e) {
+        status = Number(e?.status ?? 1);
+        salida = `${e?.stdout || ''}${e?.stderr || ''}`.trim();
+      }
+      comprobar(
+        status !== 0,
+        `\`commander serve --dev\` salió 0 en ${caso.nombre}: ${salida.slice(0, 200)}`
+      );
+      comprobar(
+        /checkout/i.test(salida),
+        `el error de \`commander serve --dev\` en ${caso.nombre} no explica que necesita un checkout: ${salida.slice(0, 200)}`
+      );
+      if (caso.delegado) {
+        comprobar(
+          !fs.existsSync(path.join(caso.cwd, caso.delegado)),
+          `\`commander serve --dev\` ejecutó el npm run dev de ${caso.nombre}`
+        );
+      }
+    }
+    console.log('[check:cli-package] serve --dev: 3 cwd sin checkout · corta con motivo y no delega');
+  } catch (e) {
+    const detalle = String(e?.stderr || e?.stdout || e?.message || e).trim().slice(0, 400);
+    fallos.push(`la guarda de \`commander serve --dev\` falló: ${detalle}`);
+  }
+
   if (fallos.length > 0) {
     console.error('[check:cli-package] falló:');
     for (const fallo of fallos) console.error(`  · ${fallo}`);

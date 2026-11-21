@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { isStudioCheckout } from './buildCommand.js';
 
 /**
  * `serve --dev` delega en `npm run dev`, cuyo script fija `PORT`. El flag
@@ -61,4 +62,26 @@ export function devPortNotice(requestedPort: unknown, explicit: boolean): string
 /** ¿El operador pasó `--port`/`-p` explícitamente? */
 export function portFlagRequested(argv: readonly string[]): boolean {
   return argv.some((arg) => arg === '--port' || arg === '-p' || arg.startsWith('--port='));
+}
+
+export type DevServePlan =
+  | { ok: true; cwd: string; script: 'dev'; port: number }
+  | { ok: false; reason: string };
+
+/** Motivo único de la guarda, para que el CLI y el guardián digan lo mismo. */
+export const DEV_REQUIRES_CHECKOUT =
+  '`commander serve --dev` arranca el Studio desde un checkout del repo; este paquete instalado no trae fuentes ni vite. Para servir la UI empaquetada usá `commander serve`.';
+
+/**
+ * `--dev` levanta Vite y el servidor desde las fuentes. Sólo se permite en un
+ * checkout del Studio, con el mismo criterio que `build`: antes se lanzaba
+ * `npm run dev` en el cwd y arrancaba el proyecto del usuario.
+ */
+export function planDevServe(options: {
+  packageRoot: string;
+  exists?: (file: string) => boolean;
+  readJson?: (file: string) => unknown;
+}): DevServePlan {
+  if (!isStudioCheckout(options)) return { ok: false, reason: DEV_REQUIRES_CHECKOUT };
+  return { ok: true, cwd: options.packageRoot, script: 'dev', port: DEV_SCRIPT_PORT };
 }

@@ -37,6 +37,38 @@ export const BUILD_REQUIRES_CHECKOUT =
   '`commander build` compila Commander AI Studio desde un checkout del repo; este paquete instalado no trae fuentes. Para tu proyecto usá `npm run build`.';
 
 /**
+ * ¿La raíz del paquete es un checkout del Studio? Exige `package.json` con el
+ * nombre publicado, `src/` y `vite.config.ts`. `serve --dev` usa el mismo
+ * criterio que `build`: ninguno confía en el cwd del operador.
+ */
+export function isStudioCheckout(options: {
+  packageRoot: string;
+  exists?: (file: string) => boolean;
+  readJson?: (file: string) => unknown;
+}): boolean {
+  const exists = options.exists ?? fs.existsSync;
+  const readJson =
+    options.readJson ??
+    ((file: string) => JSON.parse(fs.readFileSync(file, 'utf8')) as unknown);
+
+  const pkgFile = path.join(options.packageRoot, 'package.json');
+  if (!exists(pkgFile)) return false;
+
+  let name: unknown;
+  try {
+    name = (readJson(pkgFile) as { name?: unknown })?.name;
+  } catch {
+    return false;
+  }
+
+  return (
+    name === STUDIO_PACKAGE_NAME &&
+    exists(path.join(options.packageRoot, 'src')) &&
+    exists(path.join(options.packageRoot, 'vite.config.ts'))
+  );
+}
+
+/**
  * Decide dónde compilar. Sólo acepta la raíz del paquete como checkout:
  * `package.json` con el nombre del Studio, `src/` y `vite.config.ts`. Nunca
  * usa el cwd del operador, que puede ser cualquier proyecto.
@@ -47,26 +79,7 @@ export function planStudioBuild(options: {
   exists?: (file: string) => boolean;
   readJson?: (file: string) => unknown;
 }): BuildPlan {
-  const exists = options.exists ?? fs.existsSync;
-  const readJson =
-    options.readJson ??
-    ((file: string) => JSON.parse(fs.readFileSync(file, 'utf8')) as unknown);
-
-  const pkgFile = path.join(options.packageRoot, 'package.json');
-  if (!exists(pkgFile)) return { ok: false, reason: BUILD_REQUIRES_CHECKOUT };
-
-  let name: unknown;
-  try {
-    name = (readJson(pkgFile) as { name?: unknown })?.name;
-  } catch {
-    return { ok: false, reason: BUILD_REQUIRES_CHECKOUT };
-  }
-
-  const hasSources =
-    name === STUDIO_PACKAGE_NAME &&
-    exists(path.join(options.packageRoot, 'src')) &&
-    exists(path.join(options.packageRoot, 'vite.config.ts'));
-  if (!hasSources) return { ok: false, reason: BUILD_REQUIRES_CHECKOUT };
+  if (!isStudioCheckout(options)) return { ok: false, reason: BUILD_REQUIRES_CHECKOUT };
 
   return {
     ok: true,

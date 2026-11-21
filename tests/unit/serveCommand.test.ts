@@ -2,8 +2,10 @@ import path from 'node:path';
 import { readFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
 import {
+  DEV_REQUIRES_CHECKOUT,
   DEV_SCRIPT_PORT,
   devPortNotice,
+  planDevServe,
   portFlagRequested,
   resolveDistDir,
   resolveServerEntry,
@@ -80,5 +82,51 @@ describe('serve: entrada del servidor', () => {
 
   it('sin index.html devuelve null y el servidor usa su fallback', () => {
     expect(resolveDistDir({ cliDir: '/x/cli-dist', exists: () => false })).toBeNull();
+  });
+});
+
+/**
+ * `--dev` sólo corre desde el checkout del Studio. Fuera de él se corta con el
+ * mismo criterio que `build`, en vez de lanzar el `npm run dev` del cwd.
+ */
+describe('serve --dev: guarda de checkout', () => {
+  it('acepta la raíz del Studio y corre allí', () => {
+    const plan = planDevServe({
+      packageRoot: '/repo',
+      exists: () => true,
+      readJson: () => ({ name: 'commander-ai-studio' }),
+    });
+    expect(plan).toEqual({ ok: true, cwd: '/repo', script: 'dev', port: DEV_SCRIPT_PORT });
+  });
+
+  it('corta fuera de un checkout con el motivo compartido', () => {
+    const plan = planDevServe({
+      packageRoot: '/pkg',
+      exists: () => true,
+      readJson: () => ({ name: 'otro-proyecto' }),
+    });
+    expect(plan.ok).toBe(false);
+    if (!plan.ok) expect(plan.reason).toBe(DEV_REQUIRES_CHECKOUT);
+    expect(DEV_REQUIRES_CHECKOUT).toMatch(/checkout/);
+  });
+
+  it('no acepta un nombre correcto sin fuentes', () => {
+    const plan = planDevServe({
+      packageRoot: '/pkg',
+      exists: (file) => !file.endsWith('src') && !file.endsWith('vite.config.ts'),
+      readJson: () => ({ name: 'commander-ai-studio' }),
+    });
+    expect(plan.ok).toBe(false);
+  });
+
+  it('un package.json ilegible también corta', () => {
+    const plan = planDevServe({
+      packageRoot: '/pkg',
+      exists: () => true,
+      readJson: () => {
+        throw new Error('json inválido');
+      },
+    });
+    expect(plan.ok).toBe(false);
   });
 });

@@ -16,6 +16,7 @@ import { buildSpawnArgs, planStudioBuild } from '../src/cli/buildCommand.js';
 import {
   DEV_SCRIPT_PORT,
   devPortNotice,
+  planDevServe,
   portFlagRequested,
   resolveDistDir,
   resolveServerEntry,
@@ -79,24 +80,35 @@ program
     // se normalizan los alias.
     const host = resolveBindHost(opts.host ?? serverConfig.host);
 
-    // `serve --dev` delega en `npm run dev`: el hijo hereda `HOST`, pero no
-    // `--port`, porque el script fija `PORT` en DEV_SCRIPT_PORT.
+    // `serve --dev` levanta el Studio desde las fuentes: sólo vale en un
+    // checkout. El hijo hereda `HOST`, pero no `--port`, porque el script fija
+    // `PORT` en DEV_SCRIPT_PORT.
     const dev = Boolean(opts.dev);
-    const announcedPort = dev ? DEV_SCRIPT_PORT : port;
-    console.log(
-      `[commander] Starting ${dev ? 'dev ' : ''}server on http://${host}:${announcedPort}` +
-        (dev ? ' (npm run dev)' : '')
-    );
-
     process.env.HOST = host;
 
     if (dev) {
+      // Sin la guarda, `npm run dev` corría en el cwd y arrancaba el proyecto
+      // del usuario (o fallaba con el `Missing script` de npm).
+      const plan = planDevServe({ packageRoot: path.resolve(__dirname, '..') });
+      if (!plan.ok) {
+        console.error(plan.reason);
+        process.exitCode = 1;
+        return;
+      }
+      console.log(
+        `[commander] Starting dev server on http://${host}:${plan.port} (npm run ${plan.script} en ${plan.cwd})`
+      );
       const portNotice = devPortNotice(opts.port, portFlagRequested(process.argv.slice(2)));
       if (portNotice) console.warn(portNotice);
       const { spawn } = await import('child_process');
-      const vite = spawn('npm', ['run', 'dev'], { stdio: 'inherit', shell: true });
+      const vite = spawn('npm', ['run', plan.script], {
+        cwd: plan.cwd,
+        stdio: 'inherit',
+        shell: true,
+      });
       vite.on('exit', (code) => process.exit(code ?? 0));
     } else {
+      console.log(`[commander] Starting server on http://${host}:${port}`);
       process.env.PORT = String(port);
       // `serve` sin `--dev` sirve el build: sin NODE_ENV explícito, producción.
       // En desarrollo el servidor monta Vite por middleware, y el paquete
