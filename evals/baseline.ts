@@ -27,8 +27,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { type EvalOutcome, type EvalStopReason } from './harness.js';
-import { ISOLATED_SCENARIOS, isolatedFailureOutcome, runScenarioIsolated, type IsolatedScenario } from './scenarioRunner.js';
-import { isolatedTaskFailureOutcome, runTaskIsolated, type IsolatedTask } from './taskRunner.js';
+import {
+  ISOLATED_SCENARIOS,
+  errorOutcome,
+  isolatedFailureOutcome,
+  runIsolatedId,
+  type IsolatedId,
+} from './isolatedRun.js';
 import { TASKS } from './baselineTasks.js';
 import { ensureEvalServer } from './server.js';
 import { abandonedRunWarning, armRun, disarmRun, readAbandonedRun } from './runMarker.js';
@@ -154,58 +159,29 @@ for (const id of selected) {
     let toolCalls = 0;
     let answer = '';
     let result: EvalOutcome;
-    const isScenario = (ISOLATED_SCENARIOS as readonly string[]).includes(id);
+    // Cada corrida va en su propio proceso: una muerte del runner (2026-11-21,
+    // código 1 sin traza) pierde como máximo esta corrida y queda registrada.
+    const resultPath = path.join(
+      os.tmpdir(),
+      `commander-${id.toLowerCase()}-${process.pid}-${run}-${Date.now()}.json`
+    );
     try {
-      if (isScenario) {
-        // Cada corrida de escenario va en su propio proceso. Dos tandas del
-        // 2026-11-21 murieron a mitad de corrida con código 1, sin traza de JS
-        // ni línea en el JSONL, y se llevaron la tanda entera. Aislada, una
-        // muerte así pierde como máximo esta corrida y queda registrada.
-        const resultPath = path.join(
-          os.tmpdir(),
-          `commander-${id.toLowerCase()}-${process.pid}-${run}-${Date.now()}.json`
-        );
-        const isolated = await runScenarioIsolated({
-          scenario: id as IsolatedScenario,
-          model,
-          baseUrl: server.baseUrl,
-          ...(timeoutMs ? { timeoutMs } : {}),
-          resultPath,
-        });
-        toolCalls = isolated.toolCalls;
-        answer = isolated.answer;
-        result = isolated.result ?? isolatedFailureOutcome(id as IsolatedScenario, isolated, started);
-        fs.rmSync(resultPath, { force: true });
-      } else {
-        const resultPath = path.join(
-          os.tmpdir(),
-          `commander-${id.toLowerCase()}-${process.pid}-${run}-${Date.now()}.json`
-        );
-        const isolated = await runTaskIsolated({
-          task: id as IsolatedTask,
-          model,
-          baseUrl: server.baseUrl,
-          ...(timeoutMs ? { timeoutMs } : {}),
-          resultPath,
-        });
-        toolCalls = isolated.toolCalls;
-        answer = isolated.answer;
-        result = isolated.result ?? isolatedTaskFailureOutcome(id as IsolatedTask, isolated, started);
-        fs.rmSync(resultPath, { force: true });
-      }
+      const isolated = await runIsolatedId({
+        id: id as IsolatedId,
+        model,
+        baseUrl: server.baseUrl,
+        ...(timeoutMs ? { timeoutMs } : {}),
+        resultPath,
+      });
+      toolCalls = isolated.toolCalls;
+      answer = isolated.answer;
+      result = isolated.result ?? isolatedFailureOutcome(id as IsolatedId, isolated, started);
     } catch (e: any) {
       // `runTask`/los escenarios no deberían lanzar, pero una caída del
       // servidor no puede quedar como corrida inexistente: se registra.
-      result = {
-        id,
-        passed: false,
-        steps: 0,
-        durationMs: Date.now() - started,
-        checks: [],
-        stopReason: 'error',
-        timedOut: false,
-        error: e?.message || String(e),
-      };
+      result = errorOutcome(id, e?.message || String(e), started);
+    } finally {
+      fs.rmSync(resultPath, { force: true });
     }
 
     const record: BaselineRecord = {

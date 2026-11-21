@@ -2,7 +2,7 @@
  * Tareas T1–T5 y T8 de la línea base, con sus fixtures y comprobaciones.
  *
  * Viven acá y no en `baseline.ts` para que el worker de una corrida
- * (`evals/taskWorker.ts`) pueda ejecutarlas en su propio proceso: así la
+ * (`evals/runWorker.ts`) pueda ejecutarlas en su propio proceso: así la
  * muerte del runner no se lleva la tanda entera. No confundir con
  * `evals/tasks.ts`, el catálogo de tareas sobre el propio repo que usa
  * `evals/run.ts`.
