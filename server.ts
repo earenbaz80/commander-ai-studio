@@ -22,7 +22,7 @@ import { mergeRuleSets, normalizeRules } from './src/agent/permissionRules';
 import { createSession, forkSession, getOrLoadSession, listSessions as listAgentSessions, removeSession, stopSession } from './agentSession';
 import { isValidSessionId } from './src/agent/sessionStore';
 import { decodeSessionState, type ApprovalDecision } from './src/agent/sessionTypes';
-import { normalizeOpenAIToolCalls } from './src/agent/providers';
+import { normalizeOpenAIToolCalls, THINKING_OFF_PARAMS } from './src/agent/providers';
 import { truncatedChatCompletions, truncatedOllama } from './src/agent/providerResponses';
 import { attachSessionStream, parseStreamCursor } from './src/agent/sessionStream';
 import { cancelSubAgents, clearSubAgents, listSubAgents, subscribeSubAgents } from './subAgents';
@@ -6200,6 +6200,12 @@ async function generateOpenAiCompatible(req: any, res: any, provider: 'openai' |
     if (Array.isArray(body.tools) && body.tools.length > 0) {
       payload.tools = body.tools;
       payload.tool_choice = body.toolChoice || 'auto';
+    }
+    // NIM cuenta el razonamiento contra `max_tokens` aunque lo separe en
+    // `reasoning_content`. En el turno de cierre (formato puro) se apaga la
+    // plantilla de razonamiento para no gastar el presupuesto antes de escribir.
+    if (!isOpenAI && body.disableThinking === true) {
+      payload.chat_template_kwargs = THINKING_OFF_PARAMS.chat_template_kwargs;
     }
 
     const response = await fetch(`${base}/chat/completions`, {

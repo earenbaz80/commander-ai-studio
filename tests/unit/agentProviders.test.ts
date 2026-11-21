@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { agentMaxTokens, isReasoningModel, sessionGenerateRoute, toolDialectForModel, truncatedTurnError } from '../../src/agent/providers';
+import { agentMaxTokens, canDisableThinking, isReasoningModel, sessionGenerateRoute, THINKING_OFF_PARAMS, toolDialectForModel, truncatedTurnError } from '../../src/agent/providers';
 
 /**
  * G1-EMPTY-TURN: los modelos que razonan gastan el presupuesto de salida en
@@ -48,6 +48,21 @@ describe('presupuesto de salida', () => {
     expect(isReasoningModel('gpt-4o')).toBe(false);
     expect(isReasoningModel('gpt-4o-mini')).toBe(false);
     expect(isReasoningModel('o1')).toBe(true);
+  });
+});
+
+describe('razonamiento del turno de cierre', () => {
+  it('apaga la plantilla sólo en los modelos Nemotron de NIM', () => {
+    expect(canDisableThinking('nvidia/nvidia/nemotron-3.5-lightning-30b-a3b')).toBe(true);
+    expect(canDisableThinking('nemotron-3-super')).toBe(true);
+    // Mismo endpoint, otra plantilla: `enable_thinking` puede rechazarse.
+    expect(canDisableThinking('nvidia/meta/llama-3.3-70b-instruct')).toBe(false);
+    expect(canDisableThinking('gemini-2.5-pro')).toBe(false);
+    expect(canDisableThinking(undefined)).toBe(false);
+  });
+
+  it('manda la plantilla NIM con el razonamiento apagado', () => {
+    expect(THINKING_OFF_PARAMS).toEqual({ chat_template_kwargs: { enable_thinking: false } });
   });
 });
 

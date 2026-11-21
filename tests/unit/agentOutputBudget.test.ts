@@ -5,6 +5,7 @@ import {
   TRUNCATED_TURN_MESSAGE,
   isTruncatedTurn,
   isTruncationError,
+  truncatedTurnFailure,
 } from '../../src/agent/outputBudget';
 
 /**
@@ -52,5 +53,12 @@ describe('presupuesto de salida del agente', () => {
     expect(TRUNCATED_TURN_MESSAGE).toMatch(/presupuesto de salida/);
     expect(isTruncationError(new Error(TRUNCATED_TURN_MESSAGE))).toBe(true);
     expect(isTruncationError(new Error('LLM HTTP 429'))).toBe(false);
+  });
+
+  it('el fallo tras el reintento deja el presupuesto aplicado en el motivo', () => {
+    const motivo = truncatedTurnFailure(AGENT_RETRY_MAX_OUTPUT_TOKENS);
+    expect(motivo).toMatch(/truncada por max_tokens/);
+    expect(motivo).toContain(`max_tokens=${AGENT_RETRY_MAX_OUTPUT_TOKENS}`);
+    expect(isTruncationError(new Error(motivo))).toBe(true);
   });
 });

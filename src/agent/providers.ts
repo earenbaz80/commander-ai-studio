@@ -75,6 +75,28 @@ export function agentMaxTokens(model?: string): number {
 }
 
 /**
+ * ¿El modelo acepta apagar el razonamiento por plantilla?
+ *
+ * NIM cuenta el `reasoning_content` contra `max_tokens`; la palanca
+ * `chat_template_kwargs.enable_thinking` es de la familia Nemotron. Mandarla a
+ * otros modelos del mismo endpoint puede rechazarse por plantilla desconocida.
+ */
+export function canDisableThinking(model?: string): boolean {
+  return /nemotron/i.test(String(model ?? ''));
+}
+
+/**
+ * Parámetros que viajan a NIM para apagar el razonamiento de la plantilla.
+ *
+ * `enable_thinking: false` deja todo `max_tokens` para la respuesta visible;
+ * sin esto el `reasoning_content` puede consumir el presupuesto y el turno
+ * termina en `finish_reason: "length"` sin texto.
+ */
+export const THINKING_OFF_PARAMS = {
+  chat_template_kwargs: { enable_thinking: false },
+} as const;
+
+/**
  * Ruta interna que usa la sesión del servidor para pedir el siguiente turno.
  *
  * `resolveEndpoint` es la única fuente de verdad de rutas de proveedor: los

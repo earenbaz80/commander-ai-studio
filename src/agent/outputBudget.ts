@@ -54,3 +54,13 @@ export function isTruncationError(error: unknown): boolean {
   if (error instanceof Error) return TRUNCATION_TEXT.test(error.message);
   return typeof error === 'string' && TRUNCATION_TEXT.test(error);
 }
+
+/**
+ * Motivo del turno que sigue cortado después del único reintento.
+ *
+ * Lleva el presupuesto aplicado para que el recibo distinga «se cortó con
+ * 8 192» de «se cortó incluso con 16 384».
+ */
+export function truncatedTurnFailure(maxTokens: number): string {
+  return `respuesta truncada por max_tokens (finish_reason: length); max_tokens=${maxTokens}`;
+}

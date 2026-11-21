@@ -487,14 +487,16 @@ test('si falla un solo hijo dos tandas seguidas, el padre cierra e informa del p
   }
 });
 
-test('un turno truncado por max_tokens llega como error del servidor y el hijo no lo toma por cierre', async () => {
+test('un turno truncado se reintenta una sola vez con 16 384 y, si persiste, el hijo falla con el motivo', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
   const objetivo = `hijo-truncado-${Date.now()}`;
   const padre = createSession({ goal: 'padre de la prueba de truncado', cwd: dir });
   let llamadas = 0;
+  const cuerpos: any[] = [];
 
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_url: any, init: any) => {
     llamadas += 1;
+    cuerpos.push(JSON.parse(String(init?.body ?? '{}')));
     // Lo que ahora responde el servidor cuando el proveedor corta el turno:
     // `finish_reason: length` con contenido vacío ya no viaja como `success:true`.
     return {
@@ -514,13 +516,71 @@ test('un turno truncado por max_tokens llega como error del servidor y el hijo n
     assert.equal(res.ok, false, 'el truncado no puede darse por bueno');
     assert.match(String(res.error), /truncada por max_tokens/i);
     assert.equal(res.answer, undefined);
-    assert.equal(llamadas, 1, 'no reintenta en modo JSON: volvería a cortarse');
+    assert.equal(llamadas, 2, 'un solo reintento: el corte persistente no encadena peticiones');
+    assert.equal(cuerpos[1].maxTokens, 16384, 'el reintento pide el presupuesto ampliado');
+    assert.match(String(res.error), /max_tokens=16384/, 'el motivo dice con qué presupuesto se rindió');
 
     const [fila] = listSubAgents(padre.id);
     assert.equal(fila.status, 'failed');
     assert.match(String(fila.error), /truncada por max_tokens/i);
     assert.deepEqual(fila.stepTitles, ['Inicio', 'Respuesta truncada'], 'la fila dice que el turno se cortó');
     assert.deepEqual(fila.calls, []);
+  } finally {
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('el cierre de un hijo nemotron no razona y un corte se rescata con un único reintento', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const objetivo = `hijo-cierre-truncado-${Date.now()}`;
+  const padre = createSession({ goal: 'padre de la prueba de cierre truncado', cwd: dir });
+  let llamadas = 0;
+  const cuerpos: any[] = [];
+
+  globalThis.fetch = (async (_url: any, init: any) => {
+    llamadas += 1;
+    cuerpos.push(JSON.parse(String(init?.body ?? '{}')));
+    if (llamadas === 1) {
+      // Turno normal sin tools: con contrato de cierre pasa al turno de cierre.
+      return { ok: true, status: 200, json: async () => ({ text: 'planifico', functionCalls: [] }) } as any;
+    }
+    if (llamadas === 2) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: false, ok: false, error: 'respuesta truncada por max_tokens (finish_reason: length); max_tokens=8192' }),
+      } as any;
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ text: 'Archivos: hijo-c.txt\nDenegado: ninguna', functionCalls: [] }),
+    } as any;
+  }) as any;
+
+  try {
+    const res: any = await executeAgentTool('task', {
+      root: dir,
+      parentSessionId: padre.id,
+      goal: objetivo,
+      model: 'nvidia/nvidia/nemotron-3.5-lightning-30b-a3b',
+    });
+
+    assert.equal(res.ok, true, JSON.stringify(res).slice(0, 400));
+    assert.match(String(res.answer), /Archivos:/, 'el cierre sale del reintento, no de un relleno');
+    assert.equal(llamadas, 3, 'turno normal, cierre truncado y un único reintento');
+    assert.equal(cuerpos[1].maxTokens, 8192, 'el cierre arranca con el presupuesto normal');
+    assert.equal(cuerpos[1].disableThinking, true, 'el cierre no razona');
+    assert.equal(cuerpos[2].maxTokens, 16384, 'el reintento sube a 16 384');
+    assert.equal(cuerpos[2].disableThinking, true, 'el reintento del cierre tampoco razona');
+    assert.notEqual(cuerpos[0].disableThinking, true, 'el turno normal conserva el razonamiento');
+
+    const [fila] = listSubAgents(padre.id);
+    assert.equal(fila.status, 'completed');
+    assert.equal(fila.answer, 'Archivos: hijo-c.txt\nDenegado: ninguna');
   } finally {
     removeSession(padre.id);
     clearSubAgents(padre.id);

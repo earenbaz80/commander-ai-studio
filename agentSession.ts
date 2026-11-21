@@ -24,7 +24,8 @@ import { decide, needsHumanApproval } from './src/agent/permissionRules';
 import { enforceTool, getPermissions, type Permissions } from './permissions';
 import { createWorktree, removeWorktree, type WorktreeResult } from './worktrees';
 import { resolveSubagentPolicy } from './src/agent/subagentTemplates';
-import { agentMaxTokens, sessionGenerateRoute, toolDialectForModel, toOpenAITools } from './src/agent/providers';
+import { agentMaxTokens, canDisableThinking, sessionGenerateRoute, toolDialectForModel, toOpenAITools } from './src/agent/providers';
+import { AGENT_RETRY_MAX_OUTPUT_TOKENS, isTruncatedTurn, truncatedTurnFailure } from './src/agent/outputBudget';
 import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from './src/agent/fnTools';
 import { spawnBatchHadFailure, spawnChildrenFromResults, spawnFailureClosingMessage } from './src/agent/spawnStreak';
 
@@ -456,6 +457,9 @@ async function callLlmNative(
     // Con 2 048 los modelos que razonan se cortan en `finish_reason: length` y
     // devuelven contenido vacío (`G1-EMPTY-TURN`).
     maxTokens: agentMaxTokens(model),
+    // El turno de cierre pide un formato fijo: razonar ahí compite con el
+    // presupuesto de la respuesta. Sólo se manda a los modelos que lo aceptan.
+    ...(finalTurn && canDisableThinking(model) ? { disableThinking: true } : {}),
     openrouterApiKey: cfg.keys?.OPENROUTER_API_KEY || undefined,
     ollamaHost: cfg.keys?.OLLAMA_HOST || undefined,
     baseURL: cfg.keys?.CUSTOM_BASE_URL || undefined,
@@ -477,14 +481,30 @@ async function callLlmNative(
     else payload.tools = toOpenAITools(declarations);
   }
 
-  const res = await fetch(`${getServerBaseUrl()}${route}`, {
-    method: 'POST',
-    signal,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  const request = () =>
+    fetch(`${getServerBaseUrl()}${route}`, {
+      method: 'POST',
+      signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  let res = await request();
   if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
-  const data = await res.json();
+  let data = await res.json();
+  // Un turno cortado por presupuesto llega como error de la ruta (`success:false`)
+  // o como `finish_reason: length` sin texto ni tool calls. Esta ruta no lo
+  // reintentaba: el hijo moría en el primer corte aunque hubiera margen.
+  if (isTruncatedTurn(data)) {
+    payload.maxTokens = AGENT_RETRY_MAX_OUTPUT_TOKENS;
+    res = await request();
+    if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
+    data = await res.json();
+    // Un solo reintento: si el corte persiste, falla con el motivo en vez de
+    // encadenar peticiones que también se van a cortar.
+    if (isTruncatedTurn(data)) {
+      throw new Error(truncatedTurnFailure(AGENT_RETRY_MAX_OUTPUT_TOKENS));
+    }
+  }
   // Un turno truncado por presupuesto llega como error del servidor: leerlo
   // como texto vacío lo disfrazaba de turno sin salida.
   if (data?.success === false || data?.ok === false) {
