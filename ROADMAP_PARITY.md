@@ -451,4 +451,4 @@ Documentación oficial consultada el **2026-11-07**. Los productos cambian rápi
 
 ---
 
-**Siguiente acción recomendada:** cerrar la casilla del p95 con un bloque `CAL4H` conducido por una persona y re-medir T10; sin esas dos piezas, G1 sigue **NO CERRADO** y ninguna fase que dependa de la puerta se marca cerrada.
+**Siguiente acción recomendada:** cerrar la casilla del p95 con un bloque `CAL4H` conducido por una persona; T10 sigue 0/3 en las 24, con su issue declarado y fuera de la puerta. Sin CAL4H, G1 sigue **NO CERRADO** y ninguna fase que dependa de la puerta se marca cerrada.
