@@ -30,9 +30,8 @@ import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { runTask, type EvalContext, type EvalStopReason, type EvalTask } from './harness.js';
-import { runT6, runT7, runT9, runT10, type ScenarioOptions } from './scenarios.js';
+import { ISOLATED_SCENARIOS, isolatedFailureOutcome, runScenarioIsolated, type IsolatedScenario } from './scenarioRunner.js';
 import { ensureEvalServer } from './server.js';
-import { runIsolated } from './isolatedRun.js';
 import { abandonedRunWarning, armRun, disarmRun, readAbandonedRun } from './runMarker.js';
 import { gitInfo } from './history.js';
 import { resolveBaselineModel } from './baselineModel.js';
@@ -53,8 +52,6 @@ const RESULTS_PATH = path.join(process.cwd(), 'evals', 'baseline-results.jsonl')
 /** Volumen por tarea; las críticas llevan 3. */
 const RUNS: Record<string, number> = { T1: 3, T7: 3, T8: 3, T9: 3 };
 
-/** Tareas que no pasan por `runTask`: sesión de servidor o publicador local. */
-const SCENARIO_IDS = ['T6', 'T7', 'T9', 'T10'] as const;
 
 /** Corre `node --test` en el workspace y falla si no queda verde. */
 function nodeTest(ctx: EvalContext): void {
@@ -371,7 +368,7 @@ const timeoutMs = Number(process.env.EVAL_TIMEOUT_MS) || undefined;
 const model = resolveBaselineModel();
 const baseUrl = process.env.BASELINE_BASE_URL || process.env.EVAL_BASE_URL || undefined;
 
-const ALL_IDS = [...TASKS.map((task) => task.id), ...SCENARIO_IDS];
+const ALL_IDS = [...TASKS.map((task) => task.id), ...ISOLATED_SCENARIOS];
 const selected = only ? ALL_IDS.filter((id) => id === only) : ALL_IDS;
 if (selected.length === 0) {
   console.error(`No hay tarea medible "${only}". Medibles: ${ALL_IDS.join(', ')}`);
@@ -399,15 +396,6 @@ const existingRecords: BaselineRecord[] =
           }
         })
     : [];
-
-const customKeys =
-  process.env.BASELINE_CUSTOM_BASE_URL && process.env.BASELINE_CUSTOM_API_KEY
-    ? {
-        CUSTOM_BASE_URL: process.env.BASELINE_CUSTOM_BASE_URL,
-        CUSTOM_API_KEY: process.env.BASELINE_CUSTOM_API_KEY,
-        ...(process.env.BASELINE_CUSTOM_MODEL ? { CUSTOM_MODEL: process.env.BASELINE_CUSTOM_MODEL } : {}),
-      }
-    : undefined;
 
 console.log(
   `▶ línea base · modelo ${model} · commit ${commit}${dirty ? '* · árbol sucio' : ''} · ` +
@@ -449,7 +437,7 @@ for (const id of selected) {
     let toolCalls = 0;
     let answer = '';
     let result: Awaited<ReturnType<typeof runTask>>;
-    const isScenario = (SCENARIO_IDS as readonly string[]).includes(id);
+    const isScenario = (ISOLATED_SCENARIOS as readonly string[]).includes(id);
     const onStep = (step: any) => {
       // `AgentSession` persiste el resultado, no el evento `tool_call`: en los
       // escenarios se cuenta el resultado para no registrar 0 tools falsos.
@@ -457,55 +445,26 @@ for (const id of selected) {
       if (step.title === 'Finalizado') answer = step.content ?? '';
     };
     try {
-      if (id === 'T10') {
-        // Cada corrida de T10 va en su propio proceso. Dos tandas del
+      if (isScenario) {
+        // Cada corrida de escenario va en su propio proceso. Dos tandas del
         // 2026-11-21 murieron a mitad de corrida con código 1, sin traza de JS
         // ni línea en el JSONL, y se llevaron la tanda entera. Aislada, una
         // muerte así pierde como máximo esta corrida y queda registrada.
         const resultPath = path.join(
           os.tmpdir(),
-          `commander-t10-${process.pid}-${run}-${Date.now()}.json`
+          `commander-${id.toLowerCase()}-${process.pid}-${run}-${Date.now()}.json`
         );
-        const isolated = await runIsolated<Awaited<ReturnType<typeof runT10>>>({
-          command: process.execPath,
-          args: [
-            '--import',
-            'tsx',
-            path.join(process.cwd(), 'evals', 't10Worker.ts'),
-            '--model',
-            model,
-            '--baseUrl',
-            server.baseUrl,
-            '--out',
-            resultPath,
-          ],
+        const isolated = await runScenarioIsolated({
+          scenario: id as IsolatedScenario,
+          model,
+          baseUrl: server.baseUrl,
+          ...(timeoutMs ? { timeoutMs } : {}),
           resultPath,
-          timeoutMs: (timeoutMs ?? 300_000) + 120_000,
         });
         toolCalls = isolated.toolCalls;
         answer = isolated.answer;
-        result = isolated.result ?? {
-          id,
-          passed: false,
-          steps: 0,
-          durationMs: Date.now() - started,
-          checks: [],
-          stopReason: 'error',
-          timedOut: false,
-          error: isolated.error ?? 'la corrida de T10 no dejó resultado',
-        };
+        result = isolated.result ?? isolatedFailureOutcome(id as IsolatedScenario, isolated, started);
         fs.rmSync(resultPath, { force: true });
-      } else if (id === 'T6' || id === 'T9') {
-        const scenarioOpts: ScenarioOptions = {
-          baseUrl: server.baseUrl,
-          model,
-          ...(timeoutMs ? { timeoutMs } : {}),
-          ...(customKeys ? { keys: customKeys } : {}),
-          onStep,
-        };
-        result = id === 'T6' ? await runT6(scenarioOpts) : await runT9(scenarioOpts);
-      } else if (id === 'T7') {
-        result = await runT7({ baseUrl: server.baseUrl });
       } else {
         const task = TASKS.find((candidate) => candidate.id === id);
         if (!task) throw new Error(`tarea no encontrada: ${id}`);
