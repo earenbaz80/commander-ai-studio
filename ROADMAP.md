@@ -51,7 +51,7 @@ El 56 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tamp
 - El [recibo `G1-DOGFOOD-2026-11-12`](docs/parity/receipts/G1-DOGFOOD-2026-11-12.md) decide **NO CERRADO**: de las ocho reglas de la puerta, siete están en verde.
 - La única regla en rojo es el **p95 de aprobación ≤ 15 151 ms**: 76 982 ms (n=40, operador automatizado por PTY), 65 056 ms en la re-medición humana CAL2 (n=6) y 26 501 ms en CAL4 (n=41), que **no vale como muestra humana** porque el PTY lo condujo el agente.
 - La [hoja de decisión](docs/parity/g1-approval-gate-decision.md) deja rigiendo la **salida B** (sin firma): la referencia no se toca y la casilla sólo pasa a verde con un bloque `CAL4H` con `latencyMs`, n ≥ 40 y **como mucho 2 de 40** por encima de 15 151 ms. Ese bloque está preparado y **no ejecutado**: falta un operador humano.
-- T10 sigue **0/3** en las 24 corridas, con issue propio; es un defecto declarado, no una regla de puerta. F1 y F2 no se marcan cerradas mientras G1 siga abierta.
+- T10 sigue **0/3** en las 24 corridas, con issue propio; es un defecto declarado, no una regla de puerta. F1 y F2 no se marcan cerradas mientras G1 siga abierta. La re-medición del 2026-11-20 con el arnés ([recibo `G1-T10-09`](docs/parity/receipts/G1-T10-09-2026-11-20.md)) dio **0/6** sobre `0d8567d`: el padre cerró 5/6 y lanzó los dos hijos 5/6, pero los hijos cerraron 0/6 (el presupuesto de salida de 4096 tokens trunca al hijo A, más dos timeouts y una fuga de worktree).
 
 El arnés está listo:
 

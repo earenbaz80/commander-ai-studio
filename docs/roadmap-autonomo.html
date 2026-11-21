@@ -112,7 +112,7 @@
       "name": "F1 · Fiabilidad medida",
       "goal": "Que la autonomía se pueda demostrar: subagentes que cierran bien, baseline y gate en todas las superficies.",
       "steps": [
-        { "id": "F1-1", "title": "T10: dos subagentes en paralelo que cierran bien (allowlist + worktree)", "weight": 3, "progress": 35, "evidence": "0/9 corridas; G1-T10-08 4/6 · arreglado: cierre por maxSteps, guarda de racha, catálogo filtrado, turno vacío, cierre JSON y respuesta final de los hijos; falta re-medir T10" },
+        { "id": "F1-1", "title": "T10: dos subagentes en paralelo que cierran bien (allowlist + worktree)", "weight": 3, "progress": 35, "evidence": "0/15 corridas; G1-T10-09 0/6 sobre 0d8567d: el padre cerró 5/6 y lanzó los dos hijos 5/6, pero los hijos cerraron 0/6 (max_tokens=4096 trunca al hijo A en 3, timeouts en 2 y fuga de hijo-b.txt en 1) · recibo G1-T10-09-2026-11-20; falta subir el presupuesto de salida y aislar el worktree" },
         { "id": "F1-2", "title": "Baseline de 24 corridas en verde sostenido", "weight": 3, "progress": 30, "evidence": "F0: 8/24 (T1 3/3, T7 3/3, T3 y T5 1/2, resto 0)" },
         { "id": "F1-3", "title": "Gate de verificación también en escritorio y servidor", "weight": 2, "progress": 100, "evidence": "`refusalForClosing` en src/agent/verifyGate.ts · servidor (agentSession.ts) y escritorio (src/agent/loop.ts) alimentan el gate con ediciones y shell.run, ambos dialectos · tests/agentVerifyGate.api.test.ts, agentLoop.test.ts y agentTaskIntegration.test.ts · 6276e6e" },
         { "id": "F1-4", "title": "Dogfooding G1 cerrado (5 días, 24 corridas comparadas)", "weight": 2, "progress": 60, "evidence": "D5 4/4 passed; G1 NO CERRADA por p95 de aprobación y T10 · recibo G1-DOGFOOD-2026-11-12" },
