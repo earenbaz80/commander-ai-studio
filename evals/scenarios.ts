@@ -308,28 +308,18 @@ async function deleteSession(baseUrl: string, id: string): Promise<void> {
 
 // ---------------------------------------------------------------- T6 browser
 
-const T6_HTML = `<!doctype html>
-<html lang="es">
-  <head><meta charset="utf-8"><title>Preview T6</title></head>
-  <body>
-    <main>
-      <h1>Preview de evaluación</h1>
-      <button id="verify" type="button">Interacción verificada: <strong id="count">0</strong></button>
-      <p id="status">Listo para verificar.</p>
-    </main>
-    <script>
-      console.log('preview listo');
-      console.error('error de consola esperado');
-      fetch('/api/health').then((r) => r.json()).then(() => console.log('red verificada')).catch(() => {});
-      document.getElementById('verify').addEventListener('click', () => {
-        document.getElementById('count').textContent = '1';
-        document.getElementById('status').textContent = 'Click verificado.';
-        console.log('click verificado');
-      });
-    </script>
-  </body>
-</html>
-`;
+/**
+ * El HTML de T6 vive como asset, no como cadena del módulo: es texto que se
+ * sirve en un preview, no código que corra en `node`.
+ */
+let t6HtmlCache: string | undefined;
+function t6Html(): string {
+  t6HtmlCache ??= fs.readFileSync(
+    new URL('./fixtures/t6-preview.html', import.meta.url),
+    'utf8'
+  );
+  return t6HtmlCache;
+}
 
 async function startPreviewFixture(): Promise<{ url: string; close: () => Promise<void> }> {
   const server = http.createServer((req, res) => {
@@ -339,7 +329,7 @@ async function startPreviewFixture(): Promise<{ url: string; close: () => Promis
       return;
     }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(T6_HTML);
+    res.end(t6Html());
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
@@ -367,7 +357,7 @@ export async function runT6(opts: ScenarioOptions): Promise<EvalOutcome> {
   let stopReason: EvalStopReason = 'completed';
   let timedOut = false;
   try {
-    fs.writeFileSync(path.join(dir, 'index.html'), T6_HTML);
+    fs.writeFileSync(path.join(dir, 'index.html'), t6Html());
     // El id del navegador se captura mientras llegan los pasos: si el timeout
     // ocurre después de `open`, el estado final ya no llegará, pero la sesión
     // de Playwright sigue viva y hay que poder cerrarla.
