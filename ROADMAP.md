@@ -69,7 +69,7 @@ Detalle y evidencia: [baseline §6](docs/parity/baseline-2026-11.md#6-línea-bas
 | Fase | Estado | Puerta | Prioridad | Esfuerzo | Criterios | Siguiente hito |
 | --- | --- | --- | --- | --- | ---: | --- |
 | **F0** Verdad y línea base | Hecho · G0 cerrada | G0 | P0 | 4–5 d | 6/6 | Mantener la referencia para G1 |
-| **F1** Núcleo de agente y CLI | Hecho en código · G1 abierto | G1 | P0 | 10–12 d | 8/8 | Bloque CAL4H humano y T10 |
+| **F1** Núcleo de agente y CLI | Hecho en código · G1 abierto | G1 | P0 | 10–12 d | 8/8 | Bloque CAL4H humano; T10 sigue 0/3 en las 24 (2/3 fuera de ellas, `G1-T10-12`) |
 | **F2** Artifacts de verificación | Parcial · criterios cubiertos, G1 abierto | — | P1 | 6–8 d | 7/7 | Cerrar G1 y verificación visual en Electron |
 | **F3** Continuidad remota y PWA | Pendiente · espera G2 | G2 | P1 | 10–14 d | 0/8 | Modelo de amenazas |
 | **F4** Editor y ecosistema | Pendiente | — | P1 | 12–15 d | 0/11 | VSIX útil y lifecycle de hooks |
