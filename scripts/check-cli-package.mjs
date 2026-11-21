@@ -14,17 +14,23 @@
  *   4. instala el tarball en un prefijo temporal y corre `commander agent`
  *      contra el proveedor falso del repo (`scripts/check-cli-agent-run.ts`).
  *      Sin eso, `--version`/`--help` sólo prueban que el bundle arranca.
+ *   5. con el paquete instalado, levanta `commander serve` y exige
+ *      `/api/health` 200 y que `/` sirva el HTML de la UI desde `dist/`.
+ *   6. comprueba que `commander build` no compile el proyecto del cwd: fuera
+ *      de un checkout tiene que cortar con un motivo.
  *
  * No extrae el tarball: `npm pack --json` ya lista sus archivos y la
  * instalación real (paso 4) deja el paquete donde npm lo pondría.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { createServer } from 'node:net';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const bundle = 'cli-dist/commander.mjs';
+const bundleServer = 'cli-dist/server.mjs';
 const fallos = [];
 
 function comprobar(condition, message) {
@@ -62,6 +68,18 @@ function node(args) {
   return execFileSync(process.execPath, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
+/** Puerto loopback libre elegido por el SO, para no chocar con :3280/:3283. */
+function puertoLibre() {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
+}
+
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-cli-pack-'));
 try {
   comprobar(pkg.bin?.commander === bundle, `package.json: bin.commander debe ser ${bundle}`);
@@ -69,6 +87,15 @@ try {
     Array.isArray(pkg.files) && pkg.files.includes('cli-dist'),
     'package.json: files debe incluir "cli-dist"'
   );
+  comprobar(
+    Array.isArray(pkg.files) && pkg.files.includes('dist'),
+    'package.json: files debe incluir "dist" (la UI que sirve `serve`)'
+  );
+
+  // La UI tiene que existir antes de empaquetar: sin `dist/index.html` el
+  // tarball instala pero `serve` contesta 404.
+  npm(['run', 'build']);
+  comprobar(fs.existsSync('dist/index.html'), 'falta dist/index.html: `npm run build` no lo generó');
 
   const salida = npm(['pack', '--json', '--pack-destination', tmp]);
   // npm antepone avisos al JSON; el manifiesto empieza en el primer `[`.
@@ -76,6 +103,14 @@ try {
 
   const rutas = (pack.files ?? []).map((f) => f.path);
   comprobar(rutas.includes(bundle), `el tarball no lleva ${bundle} (lleva: ${rutas.join(', ') || 'nada'})`);
+  comprobar(
+    rutas.includes(bundleServer),
+    `el tarball no lleva ${bundleServer} (lleva: ${rutas.join(', ') || 'nada'})`
+  );
+  comprobar(
+    rutas.includes('dist/index.html'),
+    `el tarball no lleva dist/index.html (lleva: ${rutas.slice(0, 12).join(', ') || 'nada'})`
+  );
   comprobar(fs.existsSync(path.join(tmp, pack.filename)), `no se escribió el tarball ${pack.filename}`);
 
   const version = node([bundle, '--version']).trim();
@@ -105,6 +140,130 @@ try {
   } catch (e) {
     const detalle = String(e?.stderr || e?.stdout || e?.message || e).trim().slice(0, 400);
     fallos.push(`la corrida de \`commander agent\` sobre el paquete instalado falló: ${detalle}`);
+  }
+
+  // 5) Servidor del paquete instalado. Se ejecuta el CLI instalado, no
+  //    `server.mjs` directamente: lo que se guarda es que `serve` resuelva el
+  //    bundle desde el paquete y arranque fuera del repo.
+  try {
+    const cliInstalado = path.join(prefix, 'node_modules', 'commander-ai-studio', bundle);
+    const cwdServe = path.join(tmp, 'serve-cwd');
+    fs.mkdirSync(cwdServe, { recursive: true });
+    const port = await puertoLibre();
+    // Sin NODE_ENV explícito: se mide el `serve` por defecto del paquete, que
+    // resuelve `cli-dist/server.mjs` y arranca en producción sin cargar Vite.
+    const env = { ...process.env, HOST: '127.0.0.1', NO_COLOR: '1' };
+    delete env.NODE_ENV;
+    const child = spawn(process.execPath, [cliInstalado, 'serve', '--port', String(port)], {
+      cwd: cwdServe,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    let salida = '';
+    let cerrado = false;
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk) => {
+      salida = `${salida}${chunk}`.slice(-4000);
+    });
+    child.stdout.resume();
+    child.once('exit', () => {
+      cerrado = true;
+    });
+    const base = `http://127.0.0.1:${port}`;
+    try {
+      const limite = Date.now() + 60_000;
+      let health = null;
+      while (Date.now() < limite && !health) {
+        if (cerrado) throw new Error(`el servidor salió antes de responder: ${salida.trim().slice(-400)}`);
+        try {
+          const res = await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(2_000) });
+          if (res.ok) health = await res.json();
+        } catch {
+          /* todavía no escucha */
+        }
+        if (!health) await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      if (!health) throw new Error(`/api/health no respondió en 60 s: ${salida.trim().slice(-400)}`);
+      comprobar(health.status === 'ok', `/api/health devolvió status ${JSON.stringify(health.status)}`);
+      const raiz = await fetch(`${base}/`, { signal: AbortSignal.timeout(5_000) });
+      const html = await raiz.text();
+      comprobar(raiz.status === 200, `GET / devolvió ${raiz.status} y se esperaba 200 con la UI`);
+      comprobar(
+        /text\/html/i.test(raiz.headers.get('content-type') || ''),
+        `GET / no devolvió HTML (content-type: ${raiz.headers.get('content-type')})`
+      );
+      comprobar(html.includes('Commander AI Studio'), 'GET / no devolvió el HTML del Studio');
+      console.log(`[check:cli-package] serve instalado · health 200 · GET / 200 · ${html.length} B`);
+    } finally {
+      if (!cerrado) {
+        child.kill('SIGTERM');
+        await new Promise((resolve) => {
+          const timer = setTimeout(() => {
+            try {
+              child.kill('SIGKILL');
+            } catch {
+              /* ya cerró */
+            }
+            resolve();
+          }, 5_000);
+          child.once('exit', () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+      }
+    }
+  } catch (e) {
+    const detalle = String(e?.stderr || e?.stdout || e?.message || e).trim().slice(0, 400);
+    fallos.push(`\`commander serve\` sobre el paquete instalado falló: ${detalle}`);
+  }
+
+  // 6) `commander build` fuera de un checkout. El `npm run build` falso deja un
+  //    marcador: si aparece, el CLI compiló el proyecto del cwd.
+  try {
+    const cliInstalado = path.join(prefix, 'node_modules', 'commander-ai-studio', bundle);
+    const otroProyecto = path.join(tmp, 'otro-proyecto');
+    fs.mkdirSync(otroProyecto, { recursive: true });
+    fs.writeFileSync(
+      path.join(otroProyecto, 'package.json'),
+      JSON.stringify({
+        name: 'otro-proyecto',
+        version: '1.0.0',
+        scripts: {
+          build: 'node -e "require(\'fs\').writeFileSync(\'DELEGATED.txt\', \'x\')"',
+        },
+      })
+    );
+    let salidaBuild = '';
+    let statusBuild = 0;
+    try {
+      salidaBuild = execFileSync(process.execPath, [cliInstalado, 'build'], {
+        cwd: otroProyecto,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 60_000,
+      });
+    } catch (e) {
+      statusBuild = Number(e?.status ?? 1);
+      salidaBuild = `${e?.stdout || ''}${e?.stderr || ''}`.trim();
+    }
+    comprobar(
+      statusBuild !== 0,
+      `\`commander build\` salió 0 fuera de un checkout: ${salidaBuild.slice(0, 200)}`
+    );
+    comprobar(
+      !fs.existsSync(path.join(otroProyecto, 'DELEGATED.txt')),
+      '`commander build` ejecutó el `npm run build` del proyecto del cwd'
+    );
+    comprobar(
+      /checkout/i.test(salidaBuild),
+      `el error de \`commander build\` no explica que necesita un checkout: ${salidaBuild.slice(0, 200)}`
+    );
+    console.log('[check:cli-package] build fuera de un checkout · corta con motivo');
+  } catch (e) {
+    const detalle = String(e?.stderr || e?.stdout || e?.message || e).trim().slice(0, 400);
+    fallos.push(`la guarda de \`commander build\` falló: ${detalle}`);
   }
 
   if (fallos.length > 0) {

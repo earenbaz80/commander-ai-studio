@@ -1,6 +1,13 @@
+import path from 'node:path';
 import { readFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
-import { DEV_SCRIPT_PORT, devPortNotice, portFlagRequested } from '../../src/cli/serveCommand';
+import {
+  DEV_SCRIPT_PORT,
+  devPortNotice,
+  portFlagRequested,
+  resolveServerEntry,
+  serverEntryCandidates,
+} from '../../src/cli/serveCommand';
 
 /**
  * `serve --dev` no puede honrar `--port` porque `npm run dev` fija el puerto en
@@ -29,5 +36,27 @@ describe('serve --dev', () => {
     expect(portFlagRequested(['serve', '-p', '3299'])).toBe(true);
     expect(portFlagRequested(['serve', '--port=3299'])).toBe(true);
     expect(portFlagRequested(['serve', '--dev', '--host', 'localhost'])).toBe(false);
+  });
+});
+
+/**
+ * `serve` importa el servidor por ruta: en el paquete instalado, el bundle de
+ * `cli-dist`; en el repo, `server.ts` que carga tsx. Si el orden se invierte o
+ * se cae a un candidato inexistente, el paquete vuelve a depender del repo.
+ */
+describe('serve: entrada del servidor', () => {
+  it('prefiere el bundle que viaja en el paquete', () => {
+    const candidatos = serverEntryCandidates('/pkg/cli-dist');
+    expect(candidatos[0]).toBe(path.join('/pkg/cli-dist', 'server.mjs'));
+    expect(resolveServerEntry('/pkg/cli-dist', (file) => file === candidatos[0])).toBe(candidatos[0]);
+  });
+
+  it('cae al server.ts del repo cuando no hay bundle', () => {
+    const elegido = resolveServerEntry('/repo/bin', (file) => file.endsWith('server.ts'));
+    expect(elegido).toBe(path.resolve('/repo', 'server.ts'));
+  });
+
+  it('devuelve null si no existe ningún candidato', () => {
+    expect(resolveServerEntry('/x/bin', () => false)).toBeNull();
   });
 });

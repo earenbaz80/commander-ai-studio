@@ -1,10 +1,12 @@
 import { readFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
 import {
+  BUILD_REQUIRES_CHECKOUT,
   ELECTRON_BUILD_SCRIPT,
   PRODUCTION_BUILD_SCRIPT,
   buildScriptFor,
   buildSpawnArgs,
+  planStudioBuild,
 } from '../../src/cli/buildCommand';
 
 /**
@@ -46,5 +48,52 @@ describe('commander build', () => {
     }
     // `electron-builder` es el último paso: si falta, no hay instalador.
     expect(electron.trimEnd().endsWith('npm run build:electron')).toBe(true);
+  });
+});
+
+/**
+ * `commander build` corría `npm run build` en el cwd. En un paquete instalado
+ * eso compilaba el proyecto del usuario (o fallaba con `Missing script`), y en
+ * un checkout desde un subdirectorio fallaba por el directorio equivocado.
+ */
+describe('commander build: dónde compila', () => {
+  const root = '/repo';
+  const studioPkg = () => ({ name: 'commander-ai-studio' });
+
+  it('compila en la raíz del paquete, no en el cwd', () => {
+    const plan = planStudioBuild({
+      packageRoot: root,
+      exists: () => true,
+      readJson: studioPkg,
+    });
+    expect(plan).toEqual({ ok: true, cwd: root, script: PRODUCTION_BUILD_SCRIPT });
+  });
+
+  it('con --electron usa build:all en la misma raíz', () => {
+    const plan = planStudioBuild({
+      electron: true,
+      packageRoot: root,
+      exists: () => true,
+      readJson: studioPkg,
+    });
+    expect(plan).toEqual({ ok: true, cwd: root, script: ELECTRON_BUILD_SCRIPT });
+  });
+
+  it('rechaza el paquete instalado, que no trae src/ ni vite.config.ts', () => {
+    const plan = planStudioBuild({
+      packageRoot: '/pkg',
+      exists: (file) => file.endsWith('package.json'),
+      readJson: studioPkg,
+    });
+    expect(plan).toEqual({ ok: false, reason: BUILD_REQUIRES_CHECKOUT });
+  });
+
+  it('rechaza cualquier proyecto ajeno, aunque tenga package.json', () => {
+    const plan = planStudioBuild({
+      packageRoot: '/proyecto',
+      exists: () => true,
+      readJson: () => ({ name: 'otro-proyecto' }),
+    });
+    expect(plan.ok).toBe(false);
   });
 });

@@ -12,7 +12,8 @@
     "commander": "cli-dist/commander.mjs"
   },
   "files": [
-    "cli-dist"
+    "cli-dist",
+    "dist"
   ],
   "scripts": {
     "predev": "npm run avatars:sync",
@@ -25,6 +26,7 @@
     "build:server": "npm run build:server:cjs && npm run build:server:mjs",
     "build:cli": "node scripts/build-cli.mjs",
     "prepack": "npm run build:cli",
+    "prepublishOnly": "npm run build",
     "check:cli-package": "node scripts/check-cli-package.mjs",
     "check:electron-package": "node scripts/check-electron-package.mjs",
     "build:server:cjs": "npx esbuild server.ts --bundle --platform=node --format=cjs --target=node22 --external:vite --external:playwright --external:node-pty --outfile=electron/server.cjs",

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { program } from 'commander';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import path from 'path';
 import fs from 'fs';
 import { loadConfig, writeConfig, getConfigPath, getProviderConfig } from '../src/config/index.js';
@@ -12,8 +12,8 @@ import { createInputGate, type InputGateSource } from '../src/cli/stdinGate.js';
 import { ApprovalQueue } from '../src/cli/approvals.js';
 import { GEMINI_DEFAULT_MODEL } from '../src/config/geminiModels.js';
 import { resolveBindHost } from '../src/lib/bindHost.js';
-import { buildSpawnArgs } from '../src/cli/buildCommand.js';
-import { DEV_SCRIPT_PORT, devPortNotice, portFlagRequested } from '../src/cli/serveCommand.js';
+import { buildSpawnArgs, planStudioBuild } from '../src/cli/buildCommand.js';
+import { DEV_SCRIPT_PORT, devPortNotice, portFlagRequested, resolveServerEntry } from '../src/cli/serveCommand.js';
 
 function parseSessionMode(value: unknown): SessionMode | undefined {
   return value === 'build' || value === 'plan' || value === 'readonly' ? value : undefined;
@@ -92,9 +92,27 @@ program
       vite.on('exit', (code) => process.exit(code ?? 0));
     } else {
       process.env.PORT = String(port);
+      // `serve` sin `--dev` sirve el build: sin NODE_ENV explícito, producción.
+      // En desarrollo el servidor monta Vite por middleware, y el paquete
+      // instalado no lleva vite; `--dev` sigue siendo la vía para eso.
+      if (process.env.NODE_ENV === undefined) process.env.NODE_ENV = 'production';
+      // El paquete instalado trae `cli-dist/server.mjs`; el repo, `server.ts`.
+      // Se importa la ruta resuelta (URL file:// para Windows) en vez de un
+      // especificador fijo, que esbuild inlineaba y ataba el paquete al repo.
+      const entry = resolveServerEntry(__dirname);
+      if (!entry) {
+        console.error(
+          '[commander] no encontré el servidor: falta cli-dist/server.mjs en el paquete o server.ts en el repo'
+        );
+        process.exitCode = 1;
+        return;
+      }
+      // La UI viaja en `dist/` del paquete; en el repo es la raíz. Sin esto el
+      // servidor empaquetado busca `dist` desde el cwd y la app da 404.
+      process.env.COMMANDER_DIST = path.resolve(__dirname, '..', 'dist');
       // `server.ts` arranca su bootstrap al importarse; llamar además a
       // `startServer()` abría un segundo listen y fallaba con EADDRINUSE.
-      await import('../server.js');
+      await import(pathToFileURL(entry).href);
     }
   });
 
@@ -103,8 +121,24 @@ program
   .description('Build for production (--electron empaqueta la app de escritorio)')
   .option('--electron', 'Empaquetar la app de escritorio: build:all (tipos, Vite, servidor, updater y electron-builder)')
   .action(async (opts) => {
+    // El build corre en la raíz del paquete, no en el cwd: `npm run build` en
+    // un proyecto ajeno compilaba otra cosa y el error no lo explicaba.
+    const plan = planStudioBuild({
+      electron: Boolean(opts.electron),
+      packageRoot: path.resolve(__dirname, '..'),
+    });
+    if (!plan.ok) {
+      console.error(plan.reason);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`[commander] building ${plan.script} en ${plan.cwd}`);
     const { spawn } = await import('child_process');
-    const build = spawn('npm', buildSpawnArgs(opts), { stdio: 'inherit', shell: true });
+    const build = spawn('npm', buildSpawnArgs(opts), {
+      cwd: plan.cwd,
+      stdio: 'inherit',
+      shell: true,
+    });
     build.on('exit', (code) => process.exit(code ?? 0));
   });
 
