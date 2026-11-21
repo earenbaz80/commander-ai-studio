@@ -715,15 +715,18 @@ function worktreeCount(dir: string): number {
 /**
  * ¿La respuesta del hijo denuncia la denegación de `shell.run`?
  *
- * Exige nombrar la tool o la allowlist además de decir que hubo denegación: el
- * contrato de cierre escribe «Denegado: ninguna» cuando no se denegó nada, y un
- * regex suelto de «deneg» daba por informada esa frase (G1-D5-10).
+ * Sólo cuenta la línea `Denegado:` del contrato de cierre y exige `shell.run`
+ * dentro de esa línea. La prosa que anuncia una denegación o que nombra la
+ * allowlist no basta: en T10-2 el hijo escribió «la política la denegará» y
+ * cerró con «Denegado: ninguna», y el criterio anterior lo dio por bueno.
  */
 export function informedShellDenial(answer: unknown): boolean {
-  const text = String(answer ?? '');
-  const denies = /deneg|denied|no (se )?permit|bloque|rechaz|prohib/i.test(text);
-  const names = /shell\.?\s*run|allowlist|allowed\s*tools|lista blanca/i.test(text);
-  return denies && names;
+  return String(answer ?? '')
+    .split(/\r?\n/)
+    .some((line) => {
+      const denied = /^\s*denegad[oa]\s*:\s*(.*)$/i.exec(line);
+      return denied ? /shell\.?\s*run/i.test(denied[1]) : false;
+    });
 }
 
 /**

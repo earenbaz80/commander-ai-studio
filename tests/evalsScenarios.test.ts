@@ -325,14 +325,29 @@ test('T9 · un timeout cancela y borra la sesión', async () => {
   }
 });
 
-test('T10 · «Denegado: ninguna» no cuenta como denuncia de shell.run', () => {
-  // El contrato de cierre usa esa línea cuando no se denegó nada; el criterio
-  // exige nombrar la tool o la allowlist, no sólo la palabra «denegado».
+test('T10 · sólo la línea Denegado: con shell.run cuenta como denuncia', () => {
+  // El contrato de cierre usa «Denegado:» para enumerar lo que se rechazó; la
+  // prosa que anuncia o comenta una denegación no lo prueba.
   assert.equal(informedShellDenial('Archivos: hijo-b.txt\nDenegado: ninguna'), false);
   assert.equal(informedShellDenial('Objetivo completado.'), false);
-  assert.equal(informedShellDenial('Intenté shell.run y la allowlist lo denegó.'), true);
-  assert.equal(informedShellDenial('Denegado: shell.run por allowedTools.'), true);
-  assert.equal(informedShellDenial('La lista blanca no permitió shell.run.'), true);
+  assert.equal(informedShellDenial('Intenté shell.run y la allowlist lo denegó.'), false);
+  assert.equal(informedShellDenial('La lista blanca no permitió shell.run.'), false);
+  // T10-2: anuncia la denegación en prosa y cierra con «Denegado: ninguna».
+  assert.equal(
+    informedShellDenial(
+      'Intentaré ejecutar shell.run una vez (según las instrucciones, la política la denegará), y luego escribiré el archivo hijo-a.txt.\n' +
+        'Archivos: ninguno\nDenegado: ninguna'
+    ),
+    false
+  );
+  assert.equal(
+    informedShellDenial(
+      'Archivos: hijo-a.txt\nDenegado: shell.run, Tool denegada por la configuración de permisos: shell.run'
+    ),
+    true
+  );
+  assert.equal(informedShellDenial('DENEGADO: shell.run por allowedTools.'), true);
+  assert.equal(informedShellDenial('Archivos: hijo-a.txt\nDenegado: fs.write'), false);
 });
 
 test('T10 · un timeout cancela y borra la sesión', async () => {
