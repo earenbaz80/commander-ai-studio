@@ -15,7 +15,8 @@
  *      contra el proveedor falso del repo (`scripts/check-cli-agent-run.ts`).
  *      Sin eso, `--version`/`--help` sólo prueban que el bundle arranca.
  *   5. con el paquete instalado, levanta `commander serve` y exige
- *      `/api/health` 200 y que `/` sirva el HTML de la UI desde `dist/`.
+ *      `/api/health` 200, `/` 200 con el HTML de la UI y un asset real
+ *      servido desde `cli-dist/dist`.
  *   6. comprueba que `commander build` no compile el proyecto del cwd: fuera
  *      de un checkout tiene que cortar con un motivo.
  *
@@ -87,19 +88,17 @@ try {
     Array.isArray(pkg.files) && pkg.files.includes('cli-dist'),
     'package.json: files debe incluir "cli-dist"'
   );
-  comprobar(
-    Array.isArray(pkg.files) && pkg.files.includes('dist'),
-    'package.json: files debe incluir "dist" (la UI que sirve `serve`)'
-  );
-
-  // La UI tiene que existir antes de empaquetar: sin `dist/index.html` el
-  // tarball instala pero `serve` contesta 404.
+  // La UI se construye antes de empaquetar y `build:cli` la copia dentro de
+  // `cli-dist`; sin eso el tarball instala pero `serve` contesta 404.
   npm(['run', 'build']);
   comprobar(fs.existsSync('dist/index.html'), 'falta dist/index.html: `npm run build` no lo generó');
 
   const salida = npm(['pack', '--json', '--pack-destination', tmp]);
-  // npm antepone avisos al JSON; el manifiesto empieza en el primer `[`.
-  const [pack] = JSON.parse(salida.slice(salida.indexOf('[')));
+  // `prepack` (build:cli) escribe progreso en stdout antes del JSON. El
+  // manifiesto es el último bloque que arranca con `[` en su propia línea.
+  const inicio = salida.lastIndexOf('\n[');
+  const json = inicio >= 0 ? salida.slice(inicio + 1) : salida.slice(salida.indexOf('['));
+  const [pack] = JSON.parse(json);
 
   const rutas = (pack.files ?? []).map((f) => f.path);
   comprobar(rutas.includes(bundle), `el tarball no lleva ${bundle} (lleva: ${rutas.join(', ') || 'nada'})`);
@@ -108,8 +107,12 @@ try {
     `el tarball no lleva ${bundleServer} (lleva: ${rutas.join(', ') || 'nada'})`
   );
   comprobar(
-    rutas.includes('dist/index.html'),
-    `el tarball no lleva dist/index.html (lleva: ${rutas.slice(0, 12).join(', ') || 'nada'})`
+    rutas.includes('cli-dist/dist/index.html'),
+    `el tarball no lleva cli-dist/dist/index.html (lleva: ${rutas.slice(0, 12).join(', ') || 'nada'})`
+  );
+  comprobar(
+    rutas.includes('cli-dist/public/manifest.json'),
+    'el tarball no lleva cli-dist/public/manifest.json'
   );
   comprobar(fs.existsSync(path.join(tmp, pack.filename)), `no se escribió el tarball ${pack.filename}`);
 
@@ -194,7 +197,15 @@ try {
         `GET / no devolvió HTML (content-type: ${raiz.headers.get('content-type')})`
       );
       comprobar(html.includes('Commander AI Studio'), 'GET / no devolvió el HTML del Studio');
-      console.log(`[check:cli-package] serve instalado · health 200 · GET / 200 · ${html.length} B`);
+
+      // Un asset real del build: si `dist/` no viajó, el HTML puede ser 200 y
+      // el JS dar 404 (la app queda en blanco).
+      const asset = /src="\.\/(assets\/[^"]+)"/.exec(html)?.[1] || 'manifest.json';
+      const assetRes = await fetch(`${base}/${asset}`, { signal: AbortSignal.timeout(5_000) });
+      comprobar(assetRes.status === 200, `GET /${asset} devolvió ${assetRes.status}`);
+      console.log(
+        `[check:cli-package] serve instalado · health 200 · GET / 200 (${html.length} B) · /${asset} ${assetRes.status}`
+      );
     } finally {
       if (!cerrado) {
         child.kill('SIGTERM');
@@ -219,48 +230,70 @@ try {
     fallos.push(`\`commander serve\` sobre el paquete instalado falló: ${detalle}`);
   }
 
-  // 6) `commander build` fuera de un checkout. El `npm run build` falso deja un
-  //    marcador: si aparece, el CLI compiló el proyecto del cwd.
+  // 6) `commander build` fuera de un checkout. Se prueban los tres cwd que
+  //    importan: proyecto ajeno con `build`, proyecto sin `build` y directorio
+  //    vacío. El script falso deja un marcador: si aparece, el CLI compiló el
+  //    proyecto del cwd en vez de cortar.
   try {
     const cliInstalado = path.join(prefix, 'node_modules', 'commander-ai-studio', bundle);
-    const otroProyecto = path.join(tmp, 'otro-proyecto');
-    fs.mkdirSync(otroProyecto, { recursive: true });
+    const marcador = (nombre) =>
+      `node -e "require('fs').writeFileSync('${nombre}', 'x')"`;
+
+    const conBuild = path.join(tmp, 'otro-proyecto');
+    fs.mkdirSync(conBuild, { recursive: true });
     fs.writeFileSync(
-      path.join(otroProyecto, 'package.json'),
+      path.join(conBuild, 'package.json'),
       JSON.stringify({
         name: 'otro-proyecto',
         version: '1.0.0',
-        scripts: {
-          build: 'node -e "require(\'fs\').writeFileSync(\'DELEGATED.txt\', \'x\')"',
-        },
+        scripts: { build: marcador('DELEGATED.txt') },
       })
     );
-    let salidaBuild = '';
-    let statusBuild = 0;
-    try {
-      salidaBuild = execFileSync(process.execPath, [cliInstalado, 'build'], {
-        cwd: otroProyecto,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 60_000,
-      });
-    } catch (e) {
-      statusBuild = Number(e?.status ?? 1);
-      salidaBuild = `${e?.stdout || ''}${e?.stderr || ''}`.trim();
+
+    const sinBuild = path.join(tmp, 'proyecto-sin-build');
+    fs.mkdirSync(sinBuild, { recursive: true });
+    fs.writeFileSync(
+      path.join(sinBuild, 'package.json'),
+      JSON.stringify({ name: 'sin-build', version: '1.0.0' })
+    );
+
+    const vacio = path.join(tmp, 'sin-paquete');
+    fs.mkdirSync(vacio, { recursive: true });
+
+    for (const caso of [
+      { nombre: 'proyecto con build', cwd: conBuild, delegado: 'DELEGATED.txt' },
+      { nombre: 'proyecto sin build', cwd: sinBuild, delegado: null },
+      { nombre: 'directorio vacío', cwd: vacio, delegado: null },
+    ]) {
+      let salida = '';
+      let status = 0;
+      try {
+        salida = execFileSync(process.execPath, [cliInstalado, 'build'], {
+          cwd: caso.cwd,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: 60_000,
+        });
+      } catch (e) {
+        status = Number(e?.status ?? 1);
+        salida = `${e?.stdout || ''}${e?.stderr || ''}`.trim();
+      }
+      comprobar(
+        status !== 0,
+        `\`commander build\` salió 0 en ${caso.nombre}: ${salida.slice(0, 200)}`
+      );
+      comprobar(
+        /checkout/i.test(salida),
+        `el error de \`commander build\` en ${caso.nombre} no explica que necesita un checkout: ${salida.slice(0, 200)}`
+      );
+      if (caso.delegado) {
+        comprobar(
+          !fs.existsSync(path.join(caso.cwd, caso.delegado)),
+          `\`commander build\` ejecutó el npm run build de ${caso.nombre}`
+        );
+      }
     }
-    comprobar(
-      statusBuild !== 0,
-      `\`commander build\` salió 0 fuera de un checkout: ${salidaBuild.slice(0, 200)}`
-    );
-    comprobar(
-      !fs.existsSync(path.join(otroProyecto, 'DELEGATED.txt')),
-      '`commander build` ejecutó el `npm run build` del proyecto del cwd'
-    );
-    comprobar(
-      /checkout/i.test(salidaBuild),
-      `el error de \`commander build\` no explica que necesita un checkout: ${salidaBuild.slice(0, 200)}`
-    );
-    console.log('[check:cli-package] build fuera de un checkout · corta con motivo');
+    console.log('[check:cli-package] build: 3 cwd sin checkout · corta con motivo y no delega');
   } catch (e) {
     const detalle = String(e?.stderr || e?.stdout || e?.message || e).trim().slice(0, 400);
     fallos.push(`la guarda de \`commander build\` falló: ${detalle}`);

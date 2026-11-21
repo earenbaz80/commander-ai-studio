@@ -5,6 +5,7 @@ import {
   DEV_SCRIPT_PORT,
   devPortNotice,
   portFlagRequested,
+  resolveDistDir,
   resolveServerEntry,
   serverEntryCandidates,
 } from '../../src/cli/serveCommand';
@@ -58,5 +59,26 @@ describe('serve: entrada del servidor', () => {
 
   it('devuelve null si no existe ningún candidato', () => {
     expect(resolveServerEntry('/x/bin', () => false)).toBeNull();
+  });
+
+  it('sirve la UI empaquetada desde cli-dist/dist', () => {
+    const dir = resolveDistDir({
+      cliDir: '/pkg/cli-dist',
+      exists: (file) => file.endsWith('index.html'),
+    });
+    expect(dir).toBe(path.join('/pkg/cli-dist', 'dist'));
+  });
+
+  it('en el repo cae al dist de la raíz', () => {
+    const rootDist = path.resolve('/repo', 'dist');
+    const dir = resolveDistDir({
+      cliDir: '/repo/bin',
+      exists: (file) => file === path.join(rootDist, 'index.html'),
+    });
+    expect(dir).toBe(rootDist);
+  });
+
+  it('sin index.html devuelve null y el servidor usa su fallback', () => {
+    expect(resolveDistDir({ cliDir: '/x/cli-dist', exists: () => false })).toBeNull();
   });
 });

@@ -29,6 +29,24 @@ export function resolveServerEntry(
 }
 
 /**
+ * Directorio de la UI que sirve `serve`.
+ *
+ * En el paquete instalado los assets viajan junto a los bundles
+ * (`cli-dist/dist`). En el repo, `bin/` no tiene `dist/` y se usa el que genera
+ * Vite en la raíz. Si no hay `index.html` en ninguno, se devuelve `null` y el
+ * servidor conserva su propio fallback.
+ */
+export function resolveDistDir(options: {
+  cliDir: string;
+  exists?: (file: string) => boolean;
+}): string | null {
+  const exists = options.exists ?? fs.existsSync;
+  const root = path.resolve(options.cliDir, '..');
+  const candidates = [path.join(options.cliDir, 'dist'), path.join(root, 'dist')];
+  return candidates.find((dir) => exists(path.join(dir, 'index.html'))) ?? null;
+}
+
+/**
  * Aviso cuando se pidió un `--port` explícito que el modo dev va a ignorar.
  * Sin flag explícito no hay nada que avisar: el default del CLI no es una
  * decisión del operador.

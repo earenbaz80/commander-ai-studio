@@ -12,8 +12,7 @@
     "commander": "cli-dist/commander.mjs"
   },
   "files": [
-    "cli-dist",
-    "dist"
+    "cli-dist"
   ],
   "scripts": {
     "predev": "npm run avatars:sync",

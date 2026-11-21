@@ -13,7 +13,13 @@ import { ApprovalQueue } from '../src/cli/approvals.js';
 import { GEMINI_DEFAULT_MODEL } from '../src/config/geminiModels.js';
 import { resolveBindHost } from '../src/lib/bindHost.js';
 import { buildSpawnArgs, planStudioBuild } from '../src/cli/buildCommand.js';
-import { DEV_SCRIPT_PORT, devPortNotice, portFlagRequested, resolveServerEntry } from '../src/cli/serveCommand.js';
+import {
+  DEV_SCRIPT_PORT,
+  devPortNotice,
+  portFlagRequested,
+  resolveDistDir,
+  resolveServerEntry,
+} from '../src/cli/serveCommand.js';
 
 function parseSessionMode(value: unknown): SessionMode | undefined {
   return value === 'build' || value === 'plan' || value === 'readonly' ? value : undefined;
@@ -107,9 +113,10 @@ program
         process.exitCode = 1;
         return;
       }
-      // La UI viaja en `dist/` del paquete; en el repo es la raíz. Sin esto el
-      // servidor empaquetado busca `dist` desde el cwd y la app da 404.
-      process.env.COMMANDER_DIST = path.resolve(__dirname, '..', 'dist');
+      // La UI viaja en `cli-dist/dist` del paquete; en el repo es `dist/` de la
+      // raíz. Sin esto el servidor empaquetado la busca desde el cwd y da 404.
+      const distDir = resolveDistDir({ cliDir: __dirname });
+      if (distDir) process.env.COMMANDER_DIST = distDir;
       // `server.ts` arranca su bootstrap al importarse; llamar además a
       // `startServer()` abría un segundo listen y fallaba con EADDRINUSE.
       await import(pathToFileURL(entry).href);
