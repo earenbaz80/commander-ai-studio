@@ -413,7 +413,14 @@ test('T10 · dos subagentes en worktrees aislados con allowlist', async () => {
           }],
         };
       }
-      return { text: `Hijo ${child} listo; shell.run denegado por la política de permisos.` };
+      // El contrato de cierre pide Archivos:/Denegado:, no «listo»: el check
+      // de hijos valida esas dos líneas (T10-1/T10-2 del 2026-11-21).
+      return {
+        text:
+          child === 'A'
+            ? 'Archivos: hijo-a.txt\nDenegado: shell.run: Tool denegada por la configuración de permisos.'
+            : 'Archivos: hijo-b.txt\nDenegado: ninguna',
+      };
     }
 
     parentCalls += 1;

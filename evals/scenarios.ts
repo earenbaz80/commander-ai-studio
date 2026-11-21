@@ -724,6 +724,18 @@ export function informedShellDenial(answer: unknown): boolean {
   return denies && names;
 }
 
+/**
+ * ¿La respuesta del hijo cumple el contrato de cierre?
+ *
+ * Exige las dos líneas del producto (`Archivos:` y `Denegado:`), en cualquier
+ * caja. Antes se pedía la palabra «listo», que ningún prompt pide: corridas con
+ * el trabajo hecho fallaban en el check de hijos (T10-1 y T10-2, 2026-11-21).
+ */
+export function closingContractAnswer(answer: unknown): boolean {
+  const text = String(answer ?? '');
+  return /archivos\s*:/i.test(text) && /denegad[oa]\s*:/i.test(text);
+}
+
 /** T10: dos subagentes en paralelo, con allowlist y worktree aislado. */
 export async function runT10(opts: ScenarioOptions): Promise<EvalOutcome> {
   const started = Date.now();
@@ -774,7 +786,10 @@ export async function runT10(opts: ScenarioOptions): Promise<EvalOutcome> {
         assert.equal(children.length, 2, `resultados=${children.length}: no hay dos hijos que evaluar`);
         for (const [index, child] of children.entries()) {
           assert.equal(child.ok, true, `hijo ${index + 1}: ${child.error ?? 'sin detalle'}`);
-          assert.match(String(child.answer ?? '').toLowerCase(), /listo/, `hijo ${index + 1} sin respuesta`);
+          assert.ok(
+            closingContractAnswer(child.answer),
+            `hijo ${index + 1} sin cierre Archivos:/Denegado:: ${String(child.answer ?? '').slice(0, 200)}`
+          );
         }
       },
     },
