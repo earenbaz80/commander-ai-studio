@@ -24,6 +24,7 @@
  * resto, 24 en total.
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
@@ -31,6 +32,8 @@ import { pathToFileURL } from 'node:url';
 import { runTask, type EvalContext, type EvalStopReason, type EvalTask } from './harness.js';
 import { runT6, runT7, runT9, runT10, type ScenarioOptions } from './scenarios.js';
 import { ensureEvalServer } from './server.js';
+import { runIsolated } from './isolatedRun.js';
+import { abandonedRunWarning, armRun, disarmRun, readAbandonedRun } from './runMarker.js';
 import { gitInfo } from './history.js';
 import { resolveBaselineModel } from './baselineModel.js';
 import {
@@ -411,6 +414,11 @@ console.log(
     `timeout ${timeoutMs ? `${Math.round(timeoutMs / 1000)}s` : 'por defecto'} · servidor ${server.baseUrl}`
 );
 
+// Una corrida sin cerrar de la ejecución anterior se nombra acá: el JSONL no
+// tiene su línea y sin esto el hueco parecía una corrida que nunca existió.
+const abandonedWarning = abandonedRunWarning(readAbandonedRun());
+if (abandonedWarning) console.warn(abandonedWarning);
+
 for (const id of selected) {
   const total = forcedRuns > 0 ? forcedRuns : RUNS[id] ?? 2;
   const completed = new Set(
@@ -431,6 +439,13 @@ for (const id of selected) {
       continue;
     }
     const started = Date.now();
+    armRun({
+      runId: `${id}-${run}`,
+      taskId: id,
+      run,
+      pid: process.pid,
+      startedAt: new Date(started).toISOString(),
+    });
     let toolCalls = 0;
     let answer = '';
     let result: Awaited<ReturnType<typeof runTask>>;
@@ -442,7 +457,45 @@ for (const id of selected) {
       if (step.title === 'Finalizado') answer = step.content ?? '';
     };
     try {
-      if (id === 'T6' || id === 'T9' || id === 'T10') {
+      if (id === 'T10') {
+        // Cada corrida de T10 va en su propio proceso. Dos tandas del
+        // 2026-11-21 murieron a mitad de corrida con código 1, sin traza de JS
+        // ni línea en el JSONL, y se llevaron la tanda entera. Aislada, una
+        // muerte así pierde como máximo esta corrida y queda registrada.
+        const resultPath = path.join(
+          os.tmpdir(),
+          `commander-t10-${process.pid}-${run}-${Date.now()}.json`
+        );
+        const isolated = await runIsolated<Awaited<ReturnType<typeof runT10>>>({
+          command: process.execPath,
+          args: [
+            '--import',
+            'tsx',
+            path.join(process.cwd(), 'evals', 't10Worker.ts'),
+            '--model',
+            model,
+            '--baseUrl',
+            server.baseUrl,
+            '--out',
+            resultPath,
+          ],
+          resultPath,
+          timeoutMs: (timeoutMs ?? 300_000) + 120_000,
+        });
+        toolCalls = isolated.toolCalls;
+        answer = isolated.answer;
+        result = isolated.result ?? {
+          id,
+          passed: false,
+          steps: 0,
+          durationMs: Date.now() - started,
+          checks: [],
+          stopReason: 'error',
+          timedOut: false,
+          error: isolated.error ?? 'la corrida de T10 no dejó resultado',
+        };
+        fs.rmSync(resultPath, { force: true });
+      } else if (id === 'T6' || id === 'T9') {
         const scenarioOpts: ScenarioOptions = {
           baseUrl: server.baseUrl,
           model,
@@ -450,10 +503,7 @@ for (const id of selected) {
           ...(customKeys ? { keys: customKeys } : {}),
           onStep,
         };
-        result =
-          id === 'T6' ? await runT6(scenarioOpts)
-          : id === 'T9' ? await runT9(scenarioOpts)
-          : await runT10(scenarioOpts);
+        result = id === 'T6' ? await runT6(scenarioOpts) : await runT9(scenarioOpts);
       } else if (id === 'T7') {
         result = await runT7({ baseUrl: server.baseUrl });
       } else {
@@ -516,6 +566,7 @@ for (const id of selected) {
     records.push(record);
     fs.mkdirSync(path.dirname(RESULTS_PATH), { recursive: true });
     fs.appendFileSync(RESULTS_PATH, `${JSON.stringify(record)}\n`);
+    disarmRun();
 
     const mark = record.passed ? '✔' : '✖';
     const failed = record.checks.filter((c) => c.error).map((c) => c.name);
