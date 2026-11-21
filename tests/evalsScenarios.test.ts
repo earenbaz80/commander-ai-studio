@@ -394,10 +394,12 @@ test('T9 · reanudar una sesión conserva historial y no repite la tool', async 
 
 test('T10 · dos subagentes en worktrees aislados con allowlist', async () => {
   const childCalls = new Map<string, number>();
+  const childPrompts = new Map<string, string>();
   let parentCalls = 0;
   provider = await startScriptedProvider((prompt) => {
     const child = /OBJETIVO:\s*Hijo ([AB])/.exec(prompt)?.[1];
     if (child) {
+      childPrompts.set(child, prompt);
       const count = (childCalls.get(child) ?? 0) + 1;
       childCalls.set(child, count);
       if (count === 1) {
@@ -411,7 +413,7 @@ test('T10 · dos subagentes en worktrees aislados con allowlist', async () => {
           }],
         };
       }
-      return { text: `Hijo ${child} listo; shell.run denegado por allowlist.` };
+      return { text: `Hijo ${child} listo; shell.run denegado por la política de permisos.` };
     }
 
     parentCalls += 1;
@@ -423,7 +425,7 @@ test('T10 · dos subagentes en worktrees aislados con allowlist', async () => {
             agents: [
               {
                 goal: 'Hijo A: intenta shell.run y luego escribe hijo-a.txt. Informa si shell fue denegado.',
-                allowedTools: ['fs.read', 'fs.write'],
+                allowedTools: ['fs.read', 'fs.write', 'shell.run'],
                 worktree: true,
                 maxSteps: 8,
               },
@@ -453,5 +455,36 @@ test('T10 · dos subagentes en worktrees aislados con allowlist', async () => {
   assert.deepEqual(
     outcome.checks.filter((check) => check.error),
     []
+  );
+  // El hijo A debe ver la tool que se le pide intentar: con la allowlist vieja
+  // `shell.run` no se le ofrecía y el check dependía de una llamada imposible.
+  assert.match(
+    String(childPrompts.get('A') ?? ''),
+    /shell\.run/,
+    'el catálogo del hijo A no ofrece shell.run'
+  );
+});
+
+test('T10 · sin dos hijos, los checks de hijos y worktrees fallan en vez de pasar vacíos', async () => {
+  provider = await startScriptedProvider(() => ({ text: 'No lancé subagentes.' }));
+
+  const outcome = await runT10({
+    baseUrl: srv.baseUrl,
+    model: 'custom/eval',
+    keys: keysFor(provider),
+    timeoutMs: 30_000,
+  });
+
+  assert.equal(outcome.passed, false, 'sin dos hijos T10 no puede darse por bueno');
+  const check = (name: string) => outcome.checks.find((entry) => entry.name === name);
+  assert.match(String(check('los dos subagentes terminaron')?.error), /resultados=0/);
+  assert.match(
+    String(check('los worktrees no ensuciaron el árbol principal')?.error),
+    /resultados=0/,
+    'sin hijos no hay aislamiento que comprobar'
+  );
+  assert.ok(
+    check('la política denegó shell en el hijo')?.error,
+    'sin hijos no hay denuncia de shell que valga'
   );
 });

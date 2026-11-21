@@ -20,7 +20,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import type { AddressInfo } from 'node:net';
 import type { AgentStep } from '../src/agent/types.js';
-import { EVAL_WRITE_POLICY } from './g1Fixtures.js';
+import { EVAL_T10_POLICY, EVAL_WRITE_POLICY } from './g1Fixtures.js';
 import {
   EVAL_ROOT,
   detectModelFallback,
@@ -82,12 +82,12 @@ function tempDir(prefix: string): string {
  * pondría en `.commander/permissions.json`; T10 la commitea para que el
  * worktree del subagente también la reciba.
  */
-function allowWrites(dir: string): void {
+function allowWrites(dir: string, policy: unknown = EVAL_WRITE_POLICY): void {
   const policyDir = path.join(dir, '.commander');
   fs.mkdirSync(policyDir, { recursive: true });
   fs.writeFileSync(
     path.join(policyDir, 'permissions.json'),
-    JSON.stringify(EVAL_WRITE_POLICY, null, 2),
+    JSON.stringify(policy, null, 2),
     'utf8'
   );
 }
@@ -684,17 +684,17 @@ export async function runT10(opts: ScenarioOptions): Promise<EvalOutcome> {
   let timedOut = false;
   try {
     initGitRepo(dir);
-    allowWrites(dir);
+    allowWrites(dir, EVAL_T10_POLICY);
     execFileSync('git', ['add', '-f', path.join('.commander', 'permissions.json')], { cwd: dir, stdio: 'pipe' });
     execFileSync('git', ['commit', '-q', '-m', 'permisos de evaluación'], { cwd: dir, stdio: 'pipe' });
     state = await runSession(opts, {
       cwd: dir,
       maxSteps: 30,
       goal:
-        'T10: usa spawn_agents con dos subagentes en paralelo. Ambos deben llevar worktree:true y ' +
-        "allowedTools:['fs.read','fs.write']. Hijo A debe intentar shell.run una vez (debe ser denegado) " +
-        'y luego escribir `hijo-a.txt`; Hijo B debe escribir `hijo-b.txt`. No escribas en el árbol principal. ' +
-        'Al final responde cuántos hijos terminaron.',
+        'T10: usa spawn_agents con dos subagentes en paralelo. Ambos deben llevar worktree:true. ' +
+        "Hijo A con allowedTools:['fs.read','fs.write','shell.run'] debe intentar shell.run una vez (la política lo deniega) " +
+        "y luego escribir hijo-a.txt; Hijo B con allowedTools:['fs.read','fs.write'] debe escribir hijo-b.txt. " +
+        'No escribas en el árbol principal. Al final responde cuántos hijos terminaron.',
     });
   } catch (e: any) {
     error = e?.message || String(e);
@@ -720,6 +720,8 @@ export async function runT10(opts: ScenarioOptions): Promise<EvalOutcome> {
     {
       name: 'los dos subagentes terminaron',
       run: () => {
+        // Sin resultados el bucle de abajo no iteraba y el check pasaba vacío.
+        assert.equal(children.length, 2, `resultados=${children.length}: no hay dos hijos que evaluar`);
         for (const [index, child] of children.entries()) {
           assert.equal(child.ok, true, `hijo ${index + 1}: ${child.error ?? 'sin detalle'}`);
           assert.match(String(child.answer ?? '').toLowerCase(), /listo/, `hijo ${index + 1} sin respuesta`);
@@ -727,7 +729,7 @@ export async function runT10(opts: ScenarioOptions): Promise<EvalOutcome> {
       },
     },
     {
-      name: 'la allowlist denegó shell en el hijo',
+      name: 'la política denegó shell en el hijo',
       run: () => {
         assert.ok(
           children.some((child) => informedShellDenial(child.answer)),
@@ -739,6 +741,8 @@ export async function runT10(opts: ScenarioOptions): Promise<EvalOutcome> {
     {
       name: 'los worktrees no ensuciaron el árbol principal',
       run: () => {
+        // Sin hijos no hubo worktrees que ensuciar: el check pasaba sin probar nada.
+        assert.equal(children.length, 2, `resultados=${children.length}: sin dos hijos no hay aislamiento que comprobar`);
         assert.equal(fs.existsSync(path.join(dir, 'hijo-a.txt')), false, 'hijo-a.txt llegó al árbol principal');
         assert.equal(fs.existsSync(path.join(dir, 'hijo-b.txt')), false, 'hijo-b.txt llegó al árbol principal');
         assert.equal(worktreeCount(dir), 1, 'quedaron worktrees sin limpiar');

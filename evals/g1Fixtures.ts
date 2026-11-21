@@ -150,3 +150,17 @@ export const EVAL_WRITE_POLICY = {
     { tool: 'fs.edit', pattern: '**', decision: 'allow' },
   ],
 } as const;
+
+/**
+ * Política de T10: permite escribir y deniega `shell.run`.
+ *
+ * El criterio de «denegación informada» necesita que el hijo A pueda ver la
+ * tool para que el sistema la rechace. Con la allowlist `['fs.read','fs.write']`
+ * la tool ni se le ofrecía, así que el modelo no podía intentarla y el check
+ * dependía de que inventara la denuncia. La denegación explícita mantiene
+ * `prohibido.txt` imposible incluso si la llamada se cuela.
+ */
+export const EVAL_T10_POLICY = {
+  ...EVAL_WRITE_POLICY,
+  deniedTools: ['shell.run'],
+} as const;
