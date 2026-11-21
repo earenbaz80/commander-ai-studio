@@ -23,7 +23,7 @@
 
 | Elemento | Valor previsto | Nota |
 | --- | --- | --- |
-| Commit medido | `{{COMMIT_MEDIDO}}` | Verificar antes de la primera corrida; el plan fija `41358e4` |
+| Commit medido | `{{COMMIT_MEDIDO}}` | Verificar antes de la primera corrida; el plan fija `360f8c2` |
 | Worktree | `tests/tmp-g1/cal4-repo` | Debe estar limpio y detached en el commit medido |
 | Servidor | `{{SERVIDOR_URL}}` · PID `{{SERVIDOR_PID}}` · health `{{HEALTH}}` | Anotar URL, PID y health reales |
 | Modelo | `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` | Sin cambios durante el bloque |
