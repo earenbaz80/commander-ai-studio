@@ -104,7 +104,7 @@
         { "id": "F0-7", "title": "Multi-proveedor y multi-modelo intercambiables", "weight": 1, "progress": 100, "evidence": "src/agent/providers.ts · evals con Gemini/NVIDIA/Qwen locales" },
         { "id": "F0-8", "title": "Presupuesto y compactación de contexto (lecturas que sobreviven)", "weight": 1, "progress": 100, "evidence": "contextBudget.ts · outputBudget.ts · tests de compactación" },
         { "id": "F0-9", "title": "Subagentes: spawn_agents ≤6, 6 plantillas, worktree, allowlist y contrato de cierre", "weight": 2, "progress": 100, "evidence": "src/agent/tools/{task,spawnAgents}.ts · subagentTemplates.ts · tests/agent/subagents.test.ts" },
-        { "id": "F0-10", "title": "CLI instalable (bundle + bin + prepack + tarball verificado)", "weight": 2, "progress": 95, "evidence": "scripts/build-cli.mjs · tarball 2,48 MB con la UI · commander --version/doctor desde instalación global · guardián en CI (build:cli + npm pack + smoke) · sin private y con deps mínimas, npm i -g real instala 3 paquetes · falta publicar en npm" }
+        { "id": "F0-10", "title": "CLI instalable (bundle + bin + prepack + tarball verificado)", "weight": 2, "progress": 95, "evidence": "scripts/build-cli.mjs · tarball 2,36 MB con la UI · commander --version/doctor desde instalación global · guardián en CI (build:cli + npm pack + smoke) · sin private y con deps mínimas, npm i -g real instala 3 paquetes · falta publicar en npm" }
       ]
     },
     {
@@ -125,9 +125,9 @@
       "name": "F2 · Distribución del CLI",
       "goal": "Que cualquiera pueda instalarlo y usarlo sin clonar el repo.",
       "steps": [
-        { "id": "F2-1", "title": "Publicar en el registro de npm", "weight": 2, "progress": 85, "evidence": "sin private, deps mínimas y tarball de 2,48 MB (58 archivos) · falta cuenta npm y versión" },
+        { "id": "F2-1", "title": "Publicar en el registro de npm", "weight": 2, "progress": 85, "evidence": "sin private, deps mínimas y tarball de 2,36 MB (49 archivos) · falta cuenta npm y versión" },
         { "id": "F2-2", "title": "Paquete adelgazado (sólo dependencias del CLI)", "weight": 2, "progress": 100, "evidence": "dependencies = node-pty; npm i -g instala 3 paquetes (antes 273)" },
-        { "id": "F2-3", "title": "commander serve / build desde el paquete instalado", "weight": 1, "progress": 100, "evidence": "assets viajan en cli-dist/dist + cli-dist/public · tarball 2,48 MB / 58 archivos · serve instalado: health 200, `/` 200 y asset 200 · `build` y `serve --dev` cortan con motivo en 3 cwd sin checkout, sin escribir el marcador de delegación · check:cli-package (2026-11-21)" },
+        { "id": "F2-3", "title": "commander serve / build desde el paquete instalado", "weight": 1, "progress": 100, "evidence": "assets viajan en cli-dist/dist (public incluido por Vite) · tarball 2,36 MB / 49 archivos · serve instalado: health 200, `/` 200 y asset 200 · `build` y `serve --dev` cortan con motivo en 3 cwd sin checkout, sin escribir el marcador de delegación · check:cli-package (2026-11-21)" },
         { "id": "F2-4", "title": "Extensión de VS Code funcional (no scaffold)", "weight": 1, "progress": 25, "evidence": "vscode-extension/ lanza el CLI headless; no es un IDE integrado" }
       ]
     },

@@ -110,10 +110,6 @@ try {
     rutas.includes('cli-dist/dist/index.html'),
     `el tarball no lleva cli-dist/dist/index.html (lleva: ${rutas.slice(0, 12).join(', ') || 'nada'})`
   );
-  comprobar(
-    rutas.includes('cli-dist/public/manifest.json'),
-    'el tarball no lleva cli-dist/public/manifest.json'
-  );
   comprobar(fs.existsSync(path.join(tmp, pack.filename)), `no se escribió el tarball ${pack.filename}`);
 
   const version = node([bundle, '--version']).trim();
