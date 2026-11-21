@@ -28,7 +28,12 @@ La única mano que decide es la del operador. El agente puede leer este document
   git -C tests/tmp-g1/cal4-repo rev-parse --short HEAD
   ```
   Debe estar vacío y en **`360f8c2`**, el commit previsto del bloque (ver §7 y el plan). Si se cambiara, hay que recrear el worktree y anotar el nuevo commit antes de la primera muestra.
-- [ ] **Servidor vivo en `:3283`:** `npm run dev` → `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3283/api/health` → `200`. El script `dev` fija `PORT=3283` desde el 2026-11-16; antes, con `PORT=0` exportado, el servidor elegía un puerto efímero (se midió `57898`) y `cal4-one.sh` no lo encontraba (ver §7).
+- [ ] **Servidor arrancado desde el worktree medido:**
+  ```bash
+  cd "G:/Proyectos AI/commander-ai-studio-2.5.1/tests/tmp-g1/cal4-repo"
+  NODE_ENV=development PORT=3283 node node_modules/tsx/dist/cli.mjs server.ts > ../cal4-server.log 2>&1 &
+  ```
+  Esperá a que el servidor termine de arrancar: el `npm run check:cal4h-preflight` del punto siguiente valida health, listener, worktree y store. El script **no verifica el cwd del proceso**: el arranque desde `cal4-repo` es una precondición operativa que se registra con este comando y `../cal4-server.log`. No usar `npm run dev`: su `predev` puede ensuciar el worktree. El `PORT=0` heredado fue la causa del `57898`; aquí `PORT=3283` es explícito.
 - [ ] **Modelo y `maxSteps` congelados:** `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`, `--max-steps 24`.
 - [ ] **Store humano aislado y vacío.** El bloque inválido vive en `.commander/g1/cal4/samples.jsonl`; **no se toca**. La repetición usa `tests/tmp-g1/cal4-human/.commander/g1/cal4/samples.jsonl`:
   ```bash
@@ -142,7 +147,7 @@ Fijado antes de la primera muestra, para que el recibo declare exactamente lo qu
 | --- | --- | --- |
 | Commit del bloque | **`360f8c2`** (`test(evals): acota el acumulado del recibo G1-T10-11 a su cierre`) | `git rev-parse --short HEAD`; fijado el 2026-11-21 |
 | Worktree medido | `tests/tmp-g1/cal4-repo` en **`360f8c2`**, detached y limpio | `git -C tests/tmp-g1/cal4-repo rev-parse --short HEAD` y `git status --porcelain` vacío |
-| Servidor | `npm run dev` → `:3283`, `/api/health` `200` | El script fija `PORT=3283`; la causa del `57898` fue un `PORT=0` heredado del shell, que `server.ts` interpreta como puerto efímero (los tests lo usan así) |
+| Servidor | desde `tests/tmp-g1/cal4-repo`: `NODE_ENV=development PORT=3283 node node_modules/tsx/dist/cli.mjs server.ts > ../cal4-server.log 2>&1 &` → `:3283`, `/api/health` `200` | El comando fija `PORT=3283`; el preflight valida health y worktree, pero no el cwd del proceso. `npm run dev` no se usa para no ensuciar el worktree |
 | Modelo / `maxSteps` | `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` / `24` | Flags de `cal4-one.sh` |
 | Store humano | vacío (0 archivos) | `find tests/tmp-g1/cal4-human -type f` |
 | Rango | `CAL4-R22`…`R41` libre; el bloque inválido ocupa `R02`–`R21` | `grep -o 'CAL4-R[0-9][0-9]' .commander/g1/cal4/samples.jsonl` |
@@ -157,4 +162,4 @@ Verificar el `package-lock.json` de `360f8c2` antes de sembrar y reinstalar si d
 
 El recibo de `CAL4H` debe declarar **`360f8c2`**: el [plan congelado](CAL4H-PLAN-2026-11-17.md) fija ese commit. Si el servidor o el worktree se reinician antes del bloque, se repite este §7 y se anota el commit vigente.
 
-**Puerto del servidor.** `npm run dev` arranca en `:3283` por defecto desde el 2026-11-16 (`dev` fija `PORT=3283`). El `57898` que se midió no venía de la configuración: el shell tenía `PORT=0` exportado y `server.ts` lo interpreta como «el SO elige el puerto» (lo mismo que usa `tests/helpers/serverHarness.ts`). No se cambió `server.ts` para no romper ese arnés; por eso el valor va en el script. Un `PORT` distinto para otro uso requiere `PORT=<n> npx tsx server.ts`, no `npm run dev`.
+**Puerto del servidor.** Para CAL4H el servidor se arranca desde `tests/tmp-g1/cal4-repo` con `NODE_ENV=development PORT=3283 node node_modules/tsx/dist/cli.mjs server.ts`, no con `npm run dev`: su `predev` puede ensuciar el worktree medido. El `57898` que se midió no venía de la configuración: el shell tenía `PORT=0` exportado y `server.ts` lo interpreta como «el SO elige el puerto» (lo mismo que usa `tests/helpers/serverHarness.ts`). No se cambió `server.ts` para no romper ese arnés; por eso el valor va explícito en el comando. Un `PORT` distinto para otro uso requiere `PORT=<n> npx tsx server.ts`.
