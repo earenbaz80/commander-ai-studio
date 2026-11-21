@@ -40,6 +40,7 @@ La única mano que decide es la del operador. El agente puede leer este document
   echo "store humano vacío"
   ```
   Si ya tiene muestras, elegir otro directorio (`cal4-human-2`, …) y usarlo en todos los comandos.
+- [ ] **Preflight automático en verde:** desde la raíz, `npm run check:cal4h-preflight`. Debe salir **0** y mostrar health 200 con `status: "ok"`, un solo listener en `:3283`, worktree limpio en `360f8c2` y store humano vacío. El script es read-only: no arranca servidores, no ejecuta corridas ni escribe muestras. Si falla, no seguir.
 - [ ] **Rango de corridas libre:** esta repetición usa `CAL4-R22`…`CAL4-R41`, para no pisar los estados `R02`–`R21` del bloque inválido. No reutilizar `R02`–`R21`.
 - [ ] **Protocolo leído:** §4.1 (I1–I4), §5 (invalidación) y §7.1–§7.2 (puerta).
 
