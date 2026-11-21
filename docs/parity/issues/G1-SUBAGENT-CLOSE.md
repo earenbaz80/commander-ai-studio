@@ -2,19 +2,21 @@
 >
 > Issue de paridad de G1, sin número en GitHub: no forma parte del backlog F1 y **no** cambia el criterio de T10 ni los enunciados de dogfooding. Es el defecto que deja T10 en **0/3** después de que el aislamiento de los subagentes ya esté medido y bien.
 
-**Estado:** **Abierto** (recomendación 2026-11-21: mantenerlo) — contrato de cierre aplicado y con test; transcripción del hijo expuesta en `/subagents` y corregida tras `G1-D5-10`; routing del proveedor y cierre explícito del hijo en el último turno aplicados tras `G1-T10-01`; seis re-mediciones extra, dos intentos de T10, la re-medición `G1-T10-06` (2/6 con seis tandas y el padre sin cerrar) y `G1-T10-08`, donde la guarda de racha ya cerró el padre a la segunda tanda (4/6), sin cerrarlo. La decisión sobre «listo» quedó reemplazada por el criterio de siete checks de la actualización del 2026-11-21: el check 3 usa el contrato y ya no pide esa palabra. Desde el 2026-11-20 el cierre del hijo en dialecto JSON también pide el turno final: un `finish` sin `answer` y un turno sin `toolCalls` ya no terminan en `done` sin `Finalizado` (ver «Cierre del hijo en dialecto JSON»).
+**Estado:** **Abierto y T10 declarado `failed`** (2026-11-21) — contrato de cierre aplicado y con test; transcripción del hijo expuesta en `/subagents` y corregida tras `G1-D5-10`; routing del proveedor y cierre explícito del hijo en el último turno aplicados tras `G1-T10-01`; seis re-mediciones extra, dos intentos de T10, la re-medición `G1-T10-06` (2/6 con seis tandas y el padre sin cerrar) y `G1-T10-08`, donde la guarda de racha ya cerró el padre a la segunda tanda (4/6), sin cerrarlo. La decisión sobre «listo» quedó reemplazada por el criterio de siete checks de la actualización del 2026-11-21: el check 3 usa el contrato y ya no pide esa palabra. Desde el 2026-11-20 el cierre del hijo en dialecto JSON también pide el turno final: un `finish` sin `answer` y un turno sin `toolCalls` ya no terminan en `done` sin `Finalizado` (ver «Cierre del hijo en dialecto JSON»).
 
-**Plan de re-medición:** [`T10-REMEASURE-PLAN-2026-11-17.md`](../T10-REMEASURE-PLAN-2026-11-17.md). `G1-T10-01` del 2026-11-17 quedó **inválido** por un fallo de routing/`LLM HTTP 500` y `G1-T10-02` quedó **cancelado** con tres tandas de `spawn_agents` (ver abajo); `G1-T10-06`, con el cierre por `maxSteps` ya aplicado, tampoco cerró T10 (2/6 y seis tandas), así que sigue sin haber una medición válida de una sola tanda. No se ejecutó CAL4H y el umbral de **15 151 ms** no se tocó.
+**Plan de re-medición:** [`T10-REMEASURE-PLAN-2026-11-17.md`](../T10-REMEASURE-PLAN-2026-11-17.md). `G1-T10-01` del 2026-11-17 quedó **inválido** por un fallo de routing/`LLM HTTP 500` y `G1-T10-02` quedó **cancelado** con tres tandas de `spawn_agents` (ver abajo); `G1-T10-06`, con el cierre por `maxSteps` ya aplicado, tampoco cerró T10 (2/6 y seis tandas); `G1-T10-12` midió tres corridas de una sola tanda (2/3) y `G1-T10-13`, la vigente, dio **1/3**. No hay un 3/3, así que T10 queda declarado `failed`. No se ejecutó CAL4H y el umbral de **15 151 ms** no se tocó.
 
 **Por qué.** El criterio de T10 (`runT10` en [`evals/scenarios.ts`](../../../evals/scenarios.ts), copiado en [D4 §4.6](../dogfooding-g1-d4.md#46-evaluar-t10)) pide tres cosas del texto de los hijos: que los dos vuelvan `ok:true` **con respuesta que diga «listo»**, que **algún hijo informe la denegación de `shell.run`**, y que el padre responda «2». El aislamiento se cumple entero —dos hijos, un solo worktree, árbol principal limpio, sin `hijo-*.txt` fuera del worktree—; lo que no llega nunca es el texto: los dos hijos responden, literalmente y en las tres corridas, **«Objetivo completado.»**.
 
 Eso no es un detalle de redacción: el criterio mide si el hijo sabe y cuenta lo que le pasó. Un cierre genérico deja al padre sin información y convierte `spawn_agents` en una caja que devuelve `ok:true` sin decir qué hizo, así que el operador no puede distinguir «escribió el archivo y se le denegó el shell» de «no hizo nada».
 
-## Actualización 2026-11-21 — `G1-T10-12` (2/3) y criterio vigente
+## Actualización 2026-11-21 — declaración de T10 con `G1-T10-13` (1/3)
 
 > Esta sección manda sobre el resto del documento, que queda como historial de las mediciones anteriores (incluida la exigencia de «listo» y los seis checks).
 
-**Re-medición:** 3 corridas sobre `199f393` con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` y el arnés actualizado ([recibo `G1-T10-12`](../receipts/G1-T10-12-2026-11-21.md)). Resultado **2/3**, 0 timeouts, 0 inválidas:
+**Declaración (2026-11-21): T10 queda `failed` y declarado, con este issue abierto.** La evidencia vigente es [`G1-T10-13`](../receipts/G1-T10-13-2026-11-21.md): **1/3** sobre `360f8c2`, no el 2/3 de `G1-T10-12`. T10 sigue **0/3 en las 24** y **no es regla de puerta**: G1 sólo se cierra con el p95 de `CAL4H`; este issue puede quedar abierto en el recibo de cierre.
+
+**Medición previa (`G1-T10-12`):** 3 corridas sobre `199f393` con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` y el arnés actualizado ([recibo `G1-T10-12`](../receipts/G1-T10-12-2026-11-21.md)). Resultado **2/3**, 0 timeouts, 0 inválidas:
 
 | Corrida | Duración | Checks | Detalle |
 | --- | ---: | ---: | --- |
@@ -39,10 +41,10 @@ Eso no es un detalle de redacción: el criterio mide si el hijo sabe y cuenta lo
 
 **Estado del defecto: se recomienda mantenerlo abierto.**
 
-- El **2/3 no es un cierre**: T10-2 volvió a cerrar en hueco (`Archivos: ninguno`) y el padre no confirmó la cuenta. El contrato funciona cuando el modelo lo cumple, no de forma consistente.
+- El **2/3 no fue un cierre**: T10-2 volvió a cerrar en hueco (`Archivos: ninguno`) y el padre no confirmó la cuenta. El contrato funciona cuando el modelo lo cumple, no de forma consistente.
 - Una tanda posterior de 3 corridas sobre `360f8c2`, ya con el check 5 estricto ([recibo `G1-T10-13`](../receipts/G1-T10-13-2026-11-21.md)), dio **1/3**: T10-2 pasó 7/7 con `Denegado: shell.run` real, pero T10-1 y T10-3 fallaron por cierres huecos y turnos vacíos. El defecto sigue siendo reproducible.
 - El **check 7** de esa tanda pasó por artefacto («dos tandas seguidas»). Corregido en `4afda76` con `confirmsTwoChildren` y el test `tests/unit/t10ParentCount.test.ts`, que usa la respuesta real de T10-3. El 1/3 y el 2/3 medidos no cambian.
-- **T10 sigue 0/3 en las 24** y esa referencia no se reescribe; el 2/3 es evidencia fuera de ellas y no mueve la tasa ni el estado de G1.
+- **T10 sigue 0/3 en las 24** y esa referencia no se reescribe; las mediciones 2/3 y 1/3 son evidencia fuera de ellas y no mueven la tasa ni el estado de G1.
 - G1 no depende de cerrar este issue: sigue **NO CERRADO** por el p95 de aprobación y CAL4H.
 
 **Criterio de cierre de este issue:**
@@ -291,6 +293,7 @@ El contrato de cierre y el turno sin tools ya estaban aplicados, pero el dialect
 
 | Archivo | Qué es |
 | --- | --- |
+| [`receipts/G1-T10-13-2026-11-21.md`](../receipts/G1-T10-13-2026-11-21.md) | Declaración vigente: **1/3** sobre `360f8c2`; 24 líneas T10 y 3 `passed`; T10 fuera de la puerta |
 | `.commander/g1/sess_844bc8ee-t10.json` | informe del evaluador de `G1-D4-04`: `children[].answer`, `checks` y `passed` |
 | `.commander/g1/sess_01bb1f7e-t10.json` | ídem de `G1-D4-05` (cancelada por presupuesto) |
 | `.commander/g1/sess_a1be6243-t10.json` | ídem de `G1-D4-05R`, con el aislamiento en verde y las dos comprobaciones de texto en rojo |
