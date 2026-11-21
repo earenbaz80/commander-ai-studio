@@ -4,6 +4,7 @@ name: Build & Release
 # defecto del repo; si están en sólo lectura el tag termina en 403. Se declara.
 permissions:
   contents: write
+  actions: read
 
 on:
   push:
@@ -12,9 +13,47 @@ on:
   workflow_dispatch:
 
 jobs:
+  # El tag no puede publicar un commit que no pasó CI ni que no esté en main.
+  # Se comprueba antes de gastar los tres runners del build.
+  verify:
+    name: Gate de release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verificar que el commit está en main
+        shell: bash
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::El commit $GITHUB_SHA no está en main; una release sólo sale de main."
+            exit 1
+          fi
+          echo "Commit $GITHUB_SHA en main."
+
+      - name: Verificar CI verde del commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          runs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/tests.yml/runs?head_sha=${GITHUB_SHA}&event=push&branch=main&status=success&per_page=1" --jq '.workflow_runs | length')
+          if [ "$runs" -eq 0 ]; then
+            echo "::error::El commit $GITHUB_SHA no tiene una corrida exitosa de tests.yml en un push a main. Esperá a que CI termine y relanzá este workflow."
+            exit 1
+          fi
+          echo "CI verde para $GITHUB_SHA."
+
   build-release:
     name: Build & Release
+    needs: verify
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
@@ -70,10 +109,14 @@ jobs:
       # certificado el gate sólo bloqueaba releases legítimas. El script sigue
       # disponible para inspeccionar a mano.
 
+      - name: Checksums SHA-256
+        run: node scripts/release-checksums.mjs
+
       - name: Upload Release Artifacts
         uses: softprops/action-gh-release@v3
         if: startsWith(github.ref, 'refs/tags/')
         with:
+          draft: true
           files: |
             release/*.exe
             release/*.dmg
@@ -81,5 +124,6 @@ jobs:
             release/*.deb
             release/*.rpm
             release/*.yml
+            release/SHA256SUMS-*.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
