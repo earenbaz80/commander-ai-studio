@@ -28,6 +28,7 @@ import { agentMaxTokens, canDisableThinking, sessionGenerateRoute, toolDialectFo
 import { AGENT_RETRY_MAX_OUTPUT_TOKENS, isTruncatedTurn, truncatedTurnFailure } from './src/agent/outputBudget';
 import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from './src/agent/fnTools';
 import { spawnBatchHadFailure, spawnChildrenFromResults, spawnFailureClosingMessage } from './src/agent/spawnStreak';
+import { resolveSubagentTimeout } from './src/agent/subagentTimeout';
 
 // La guarda vive en `src/agent/spawnStreak` para que el CLI la importe sin
 // arrastrar este módulo (y con él `browserSession`/`mcp`); se re-exporta para
@@ -347,6 +348,8 @@ export interface TaskToolInput {
   worktree?: boolean;
   /** Conserva el worktree al terminar (por defecto se limpia). */
   keepWorktree?: boolean;
+  /** Timeout del hijo en ms (10 000–300 000; por defecto 180 000). */
+  timeoutMs?: number;
   /** Modo del subagente (build/plan/readonly). */
   mode?: 'build' | 'plan' | 'readonly';
   /** Límite de pasos. */
@@ -1066,12 +1069,19 @@ export class AgentSession {
    * Cierra la sesión si una tool se cortó por repetir una edición aplicada.
    * El motivo queda en `lastError`, así la UI y el estado guardado dicen por qué.
    */
-  private failOnLoopCut(results: ToolCallResult[]): boolean {
+  private async failOnLoopCut(results: ToolCallResult[], recentSteps: any[]): Promise<boolean> {
     const result = results.find((r) => r.loopCut);
     if (!result?.loopCut) return false;
     this.loopCut = result.loopCut;
     const motivo = result.error || `Bucle de ${result.tool}: llamadas idénticas repetidas.`;
     this.addStep({ type: 'thought', title: 'Bucle de tool detectado', content: motivo, status: 'failed' });
+    // Un hijo con contrato de cierre no puede terminar en `error`: el guard ya
+    // le quitó los pasos para trabajar, pero todavía puede informar qué hizo y
+    // qué se le denegó. Se gasta un turno sin tools en vez de fallar (T10).
+    if (this.cfg.closingContract) {
+      await this.finalizeChild(recentSteps);
+      return true;
+    }
     this.fail(motivo);
     return true;
   }
@@ -1597,14 +1607,24 @@ export class AgentSession {
       // no es un cierre. En el subagente caía en la respuesta de relleno y el
       // padre contaba al hijo como terminado bien (G1-D5-07).
       if (this.cfg.closingContract && planCalls.length === 0 && !String(native.thought ?? '').trim()) {
-        if (this.emptyTurnRetries < 1) {
+        if (this.emptyTurnRetries < 2) {
           this.emptyTurnRetries += 1;
           this.addStep({
             type: 'thought',
             title: 'Turno vacío',
-            content: 'El proveedor devolvió el turno sin pensamiento ni llamadas. Reintentando una vez.',
+            content: this.emptyTurnRetries === 1
+              ? 'El proveedor devolvió el turno sin pensamiento ni llamadas. Reintentando una vez.'
+              : 'El proveedor volvió a devolver el turno vacío. Segundo reintento, con aviso explícito.',
             status: 'failed',
           });
+          // El segundo intento no repite la misma petición: el aviso le dice al
+          // modelo qué hacer si ya terminó, en vez de esperar otra salida vacía.
+          this.turns.push({
+            role: 'user',
+            text: 'El turno anterior llegó vacío. Continúa el objetivo; si ya terminaste, emite el cierre obligatorio con «Archivos:» y «Denegado:».',
+            ts: Date.now(),
+          });
+          if (this.turns.length > 10) this.turns = this.turns.slice(-10);
           // Salir sin cerrar: el bucle pide otro turno.
           return;
         }
@@ -1688,7 +1708,7 @@ export class AgentSession {
     if (fails.length > 0) {
       this.addStep({ type: 'thought', title: 'Tools con fallo', content: fails.map((f) => `${f.tool}: ${f.error}`).join('\n').slice(0, 1000), status: 'completed' });
     }
-    if (this.failOnLoopCut(results)) return;
+    if (await this.failOnLoopCut(results, recentSteps)) return;
 
     // El modelo puede re-lanzar `spawn_agents` cuando falla algún hijo: en
     // G1-D5-08 fallaron todos y en G1-D5-10 falló uno solo; en los dos casos
@@ -1808,7 +1828,7 @@ export class AgentSession {
       if (fails.length > 0) {
         this.addStep({ type: 'thought', title: 'Tools con fallo', content: fails.map((f) => `${f.tool} error: ${f.error}`).join('\n').slice(0, 1000), status: 'completed' });
       }
-      if (this.failOnLoopCut(results)) return;
+      if (await this.failOnLoopCut(results, recentSteps)) return;
     } else {
       // Sin toolCalls y sin finish el modelo no cerró: el hijo gasta su turno
       // de cierre en vez de terminar en `done` sin respuesta que entregar.
@@ -1968,6 +1988,7 @@ export async function executeTask(
   });
   if (!resolved.ok) return { ok: false, error: resolved.error, status: 400 };
   const { allowedTools, mode, maxSteps } = resolved.policy;
+  const timeoutMs = resolveSubagentTimeout(input.timeoutMs);
 
   // `worktree` aísla al hijo en una copia git: escribe en su rama y el árbol
   // principal no se toca. Se limpia al terminar salvo `keepWorktree`, también
@@ -2039,7 +2060,7 @@ export async function executeTask(
         done({
           ok: false,
           cancelled: !porTimeout,
-          error: porTimeout ? 'Subagente excedió tiempo límite' : 'Cancelado',
+          error: porTimeout ? `Subagente excedió tiempo límite (${Math.round(timeoutMs / 1000)} s)` : 'Cancelado',
         });
       } else if (evt.type === 'status' && evt.status === 'done') {
         // `done` sin `finish` no es una respuesta: llega al agotar `maxSteps` o el
@@ -2058,8 +2079,8 @@ export async function executeTask(
     timer = setTimeout(() => {
       cleanup();
       session.stop('timeout');
-      done({ ok: false, error: 'Subagente excedió tiempo límite' });
-    }, 120_000);
+      done({ ok: false, error: `Subagente excedió tiempo límite (${Math.round(timeoutMs / 1000)} s)` });
+    }, timeoutMs);
   });
 
   // La UI consulta esto mientras corre (y después, para ver cómo acabó): el

@@ -214,7 +214,7 @@ test('si el turno sigue vacío tras el reintento, el hijo queda fallido en vez d
 
     assert.equal(res.ok, false, 'un hijo sin respuesta ni llamadas no puede darse por bueno');
     assert.match(String(res.error), /turnos vacíos/i);
-    assert.equal(llamadas, 2, 'reintenta una vez y no entra en bucle');
+    assert.equal(llamadas, 3, 'reintenta dos veces y no entra en bucle');
 
     const [fila] = listSubAgents(padre.id);
     assert.equal(fila.status, 'failed');
@@ -222,10 +222,107 @@ test('si el turno sigue vacío tras el reintento, el hijo queda fallido en vez d
     assert.match(String(fila.error), /turnos vacíos/i);
     assert.deepEqual(
       fila.stepTitles,
-      ['Inicio', 'Turno vacío', 'Finalizado sin respuesta'],
-      'la fila dice por qué cerró: un turno vacío y luego la rendición'
+      ['Inicio', 'Turno vacío', 'Turno vacío', 'Finalizado sin respuesta'],
+      'la fila dice por qué cerró: dos turnos vacíos y luego la rendición'
     );
     assert.deepEqual(fila.calls, [], 'no hubo ninguna tool que anotar');
+  } finally {
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('dos turnos vacíos seguidos se reintentan con aviso y el hijo completa con el tercero', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const objetivo = `hijo-dos-vacios-${Date.now()}`;
+  const padre = createSession({ goal: 'padre de la prueba de dos turnos vacíos', cwd: dir });
+  let llamadas = 0;
+  let avisos = 0;
+
+  globalThis.fetch = (async (_url: any, init?: any) => {
+    llamadas += 1;
+    const body = JSON.parse(String(init?.body || '{}'));
+    if (String(body.prompt ?? '').includes('El turno anterior llegó vacío')) avisos += 1;
+    if (llamadas <= 2) return { ok: true, status: 200, json: async () => ({ functionCalls: [] }) } as any;
+    return { ok: true, status: 200, json: async () => ({ text: 'listo', functionCalls: [] }) } as any;
+  }) as any;
+
+  try {
+    const res: any = await executeAgentTool('task', {
+      root: dir,
+      parentSessionId: padre.id,
+      goal: objetivo,
+    });
+
+    assert.equal(res.ok, true, JSON.stringify(res).slice(0, 400));
+    assert.equal(res.answer, 'listo');
+    assert.equal(llamadas, 4, 'dos vacíos, la respuesta y el turno de cierre');
+    assert.equal(avisos, 3, 'el aviso viaja desde el primer reintento y queda en el historial');
+
+    const [fila] = listSubAgents(padre.id);
+    assert.equal(fila.status, 'completed');
+    assert.deepEqual(fila.stepTitles, [
+      'Inicio',
+      'Turno vacío',
+      'Turno vacío',
+      'Razonamiento',
+      'Finalizado',
+    ]);
+  } finally {
+    removeSession(padre.id);
+    clearSubAgents(padre.id);
+    fs.rmSync(dir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('un corte por guard de lectura en el hijo gasta un turno de cierre en vez de fallar', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-task-'));
+  const objetivo = `hijo-corte-con-cierre-${Date.now()}`;
+  const padre = createSession({ goal: 'padre de la prueba de corte con cierre', cwd: dir });
+  fs.writeFileSync(path.join(dir, 'faro.txt'), 'hola\n');
+  const read = { name: 'fs_read', args: { path: 'faro.txt' } };
+  let llamadas = 0;
+  const conTools: boolean[] = [];
+
+  globalThis.fetch = (async (_url: any, init?: any) => {
+    llamadas += 1;
+    const body = JSON.parse(String(init?.body || '{}'));
+    conTools.push(Array.isArray(body.tools));
+    // Las primeras cuatro peticiones repiten la misma lectura: la cuarta la
+    // corta el guard y el hijo ya no puede trabajar más.
+    if (llamadas <= 4) return { ok: true, status: 200, json: async () => ({ functionCalls: [read] }) } as any;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ text: 'Archivos: ninguno\nDenegado: ninguna', functionCalls: [] }),
+    } as any;
+  }) as any;
+
+  try {
+    const res: any = await executeAgentTool('task', {
+      root: dir,
+      parentSessionId: padre.id,
+      goal: objetivo,
+    });
+
+    assert.equal(res.ok, true, `el hijo cortado debe cerrar con texto: ${JSON.stringify(res).slice(0, 400)}`);
+    assert.match(String(res.answer), /Archivos: ninguno/);
+    assert.equal(llamadas, 5, 'cuatro lecturas y el turno de cierre');
+    assert.equal(conTools.at(-1), false, 'el cierre se pide sin tools');
+
+    const [fila] = listSubAgents(padre.id);
+    assert.equal(fila.status, 'completed', 'un corte del guard no deja al hijo en failed');
+    assert.ok(fila.stepTitles?.includes('Bucle de tool detectado'), JSON.stringify(fila.stepTitles));
+    assert.equal(fila.stepTitles?.at(-1), 'Finalizado');
+    assert.deepEqual(
+      fila.calls?.map((call: any) => call.tool),
+      ['fs.read', 'fs.read', 'fs.read', 'fs.read'],
+      'el corte también se anota'
+    );
+    assert.equal(fila.calls?.at(-1)?.ok, false, 'la cuarta lectura es la cortada');
   } finally {
     removeSession(padre.id);
     clearSubAgents(padre.id);
@@ -397,7 +494,7 @@ test('si los hijos fallan dos tandas seguidas, el padre se detiene e informa, si
     assert.match(cierre.answer, /turnos vacíos/i, 'el motivo del fallo de los hijos viaja en la respuesta');
 
     assert.equal(spawnCalls, 2, 'no vuelve a lanzar el spawn después de la segunda tanda fallida');
-    assert.equal(turnosDeHijos, 8, 'cuatro hijos × (turno vacío + reintento), en dos tandas');
+    assert.equal(turnosDeHijos, 12, 'cuatro hijos × (turno vacío + dos reintentos), en dos tandas');
     assert.equal(padre.getStatus(), 'done');
     const ultimo = padre.getSteps().filter((s) => s.title === 'Finalizado').at(-1);
     assert.match(String(ultimo?.content ?? ''), /No completé la tarea/);

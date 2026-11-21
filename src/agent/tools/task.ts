@@ -25,6 +25,8 @@ export interface TaskToolInput {
   worktree?: boolean;
   /** Conserva el worktree al terminar (por defecto se limpia). */
   keepWorktree?: boolean;
+  /** Timeout del hijo en ms (10 000–300 000; por defecto 180 000). */
+  timeoutMs?: number;
   /** ID de la sesión padre (lo inyecta la app; opcional en la declaración). */
   parentSessionId?: string;
   /** Claves opcionales para el subagente. */

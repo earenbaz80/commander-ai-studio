@@ -186,7 +186,7 @@ async function waitForTerminal(
 
 async function runSession(
   opts: ScenarioOptions,
-  input: { goal: string; cwd: string; maxSteps?: number }
+  input: { goal: string; cwd: string; maxSteps?: number; timeoutMs?: number }
 ): Promise<SessionState> {
   const created = await api(opts.baseUrl, 'POST', '/api/agent/sessions', {
     goal: input.goal,
@@ -199,7 +199,9 @@ async function runSession(
   const id = String(created?.session?.id ?? created?.state?.id ?? '');
   if (!id) throw new Error('el servidor no devolvió el id de la sesión');
   return waitForTerminal(opts.baseUrl, id, {
-    timeoutMs: opts.timeoutMs ?? resolveTaskBudget({ live: true, timeoutMs: opts.timeoutMs }),
+    // El llamador manda: los tests acortan el presupuesto a propósito y el
+    // margen del escenario sólo aplica cuando no se pidió otro.
+    timeoutMs: opts.timeoutMs ?? input.timeoutMs ?? resolveTaskBudget({ live: true, timeoutMs: opts.timeoutMs }),
     onStep: opts.onStep,
   });
 }
@@ -795,6 +797,10 @@ export async function runT10(opts: ScenarioOptions): Promise<EvalOutcome> {
     state = await runSession(opts, {
       cwd: dir,
       maxSteps: 30,
+      // El hijo tiene 180 s por defecto y el padre puede relanzar; 300 s de
+      // escenario cortaban la segunda tanda y convertían un cierre en timeout.
+      // 360 s deja margen sin tocar el presupuesto de aislamiento (300 s + 120 s).
+      timeoutMs: 360_000,
       goal:
         'T10: usa spawn_agents con dos subagentes en paralelo. Ambos deben llevar worktree:true. ' +
         "Hijo A con allowedTools:['fs.read','fs.write','shell.run'] debe intentar shell.run una vez (la política lo deniega) " +

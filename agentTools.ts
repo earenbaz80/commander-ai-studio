@@ -2010,6 +2010,7 @@ async function executeAgentToolCore(
       template,
       worktree: flagOn(input.worktree),
       keepWorktree: flagOn(input.keepWorktree),
+      timeoutMs: input.timeoutMs,
     }, input.keys);
   }
 
@@ -2035,6 +2036,7 @@ async function executeAgentToolCore(
         template: a.template,
         worktree: flagOn(a.worktree),
         keepWorktree: flagOn(a.keepWorktree),
+        timeoutMs: a.timeoutMs,
       }, input?.keys))
     );
     const out = results.map((r, i) => ({
