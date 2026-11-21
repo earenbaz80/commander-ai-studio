@@ -26,7 +26,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { type EvalOutcome, type EvalStopReason } from './harness.js';
+import { type EvalOutcome, type EvalSpawnBatch, type EvalStopReason } from './harness.js';
 import {
   ISOLATED_SCENARIOS,
   errorOutcome,
@@ -72,6 +72,8 @@ interface BaselineRecord {
   parentTools?: string[];
   stepTitles?: string[];
   truncatedTurns?: number;
+  /** Todas las tandas de `spawn_agents` de T10, en orden. */
+  spawns?: EvalSpawnBatch[];
   /** Volcado del estado de la sesión, guardado antes de borrarla. */
   sessionStatePath?: string;
 }
@@ -209,6 +211,9 @@ for (const id of selected) {
             parentTools: result.diagnostics.parentTools,
             stepTitles: result.diagnostics.stepTitles,
             truncatedTurns: result.diagnostics.truncatedTurns,
+            ...(result.diagnostics.spawns?.length
+              ? { spawns: result.diagnostics.spawns }
+              : {}),
             ...(result.diagnostics.statePath
               ? { sessionStatePath: result.diagnostics.statePath }
               : {}),
