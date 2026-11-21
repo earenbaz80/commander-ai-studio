@@ -21,6 +21,7 @@ import path from 'node:path';
 
 const WATCH = '.github/workflows/audit-watch.yml';
 const CI = '.github/workflows/tests.yml';
+const RELEASE = '.github/workflows/release.yml';
 const PAGES = '.github/workflows/pages.yml';
 
 /**
@@ -75,6 +76,7 @@ function pasoCon(pasos: string[], ...marcadores: string[]): string {
 
 const watch = leer(WATCH);
 const ci = leer(CI);
+const release = leer(RELEASE);
 const guion = leer('scripts/audit-watch.ts');
 const guionProd = leer('scripts/audit-prod.ts');
 
@@ -227,6 +229,68 @@ test('CI: el gate audita producción, no la cadena de tooling', () => {
   // siempre y se acaba ignorando.
   assert.match(guionProd, /'--omit=dev'/, 'audit-prod.ts sigue auditando sólo producción');
   assert.match(guionProd, /'--audit-level=low'/, 'umbral explícito, no el de npm por defecto');
+});
+
+test('Release: el tag debe coincidir con package.json antes del draft', () => {
+  const pasos = pasosDe(jobDe(release, 'verify'));
+  const version = pasoCon(
+    pasos,
+    'GITHUB_REF_NAME',
+    "require('./package.json').version",
+    'v$version'
+  );
+
+  // Un tag con otra versión publicaría artefactos que no corresponden al
+  // paquete. Se corta antes de las otras guardas y de gastar los tres runners.
+  assert.match(
+    version,
+    /if: startsWith\(github\.ref, 'refs\/tags\/'\)/,
+    'la comprobación sólo aplica a tags'
+  );
+  assert.ok(
+    version.includes('if [[ ! "$tag" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]; then'),
+    'exige el formato vX.Y.Z'
+  );
+  assert.ok(
+    version.includes('if [ "$tag" != "v$version" ]; then'),
+    'compara el tag con la versión exacta de package.json'
+  );
+  assert.equal(
+    (version.match(/^\s+exit 1$/gm) ?? []).length,
+    2,
+    'los dos rechazos cortan el gate con exit 1'
+  );
+
+  // El formato se prueba sobre su propia expresión, no sobre una copia: si el
+  // regex del workflow cambia, estas expectativas lo siguen.
+  const fuente = version.match(/=~ (\^v\[0-9\]\+\\\.\[0-9\]\+\\\.\[0-9\]\+\$)/)?.[1];
+  assert.ok(fuente, 'el paso conserva una expresión de formato reconocible');
+  const formato = new RegExp(fuente);
+  for (const tag of ['v0.0.0', 'v2.5.1', 'v10.20.30']) {
+    assert.ok(formato.test(tag), `${tag} debe aceptarse`);
+  }
+  for (const tag of ['2.5.1', 'v2.5', 'v2.5.1-beta', 'v2.5.1.0']) {
+    assert.ok(!formato.test(tag), `${tag} debe rechazarse`);
+  }
+
+  const indice = (marcador: string) => {
+    const i = pasos.findIndex((p) => p.includes(marcador));
+    assert.ok(i >= 0, `falta el paso con «${marcador}»`);
+    return i;
+  };
+  const versionIndex = pasos.indexOf(version);
+  assert.ok(
+    versionIndex < indice('Verificar que el commit está en main') &&
+      versionIndex < indice('Verificar CI verde del commit'),
+    'la versión se comprueba antes que main y que CI'
+  );
+
+  // El draft es el último paso que podría publicar: sin `needs: verify` una
+  // regresión podría construir y subir artefactos aunque la versión no coincida.
+  const build = jobDe(release, 'build-release');
+  assert.match(build, /needs: verify/, 'el build espera al gate');
+  const publica = pasoCon(pasosDe(build), 'softprops/action-gh-release@');
+  assert.match(publica, /draft: true/, 'la release sigue saliendo como borrador');
 });
 
 test('CI: build depende del gate y e2e del build', () => {
