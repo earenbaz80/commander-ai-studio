@@ -19,6 +19,7 @@
  *      servido desde `cli-dist/dist`.
  *   6. comprueba que `commander build` no compile el proyecto del cwd: fuera
  *      de un checkout tiene que cortar con un motivo.
+ *   7. lo mismo para `serve --dev`: no ejecuta el script `dev` del cwd.
  *
  * No extrae el tarball: `npm pack --json` ya lista sus archivos y la
  * instalación real (paso 4) deja el paquete donde npm lo pondría.
@@ -226,136 +227,98 @@ try {
     fallos.push(`\`commander serve\` sobre el paquete instalado falló: ${detalle}`);
   }
 
-  // 6) `commander build` fuera de un checkout. Se prueban los tres cwd que
-  //    importan: proyecto ajeno con `build`, proyecto sin `build` y directorio
-  //    vacío. El script falso deja un marcador: si aparece, el CLI compiló el
-  //    proyecto del cwd en vez de cortar.
-  try {
-    const cliInstalado = path.join(prefix, 'node_modules', 'commander-ai-studio', bundle);
-    const marcador = (nombre) =>
-      `node -e "require('fs').writeFileSync('${nombre}', 'x')"`;
+  /** Script npm que deja un marcador si el CLI lo ejecuta en el cwd. */
+  function scriptMarcador(nombre) {
+    return `node -e "require('fs').writeFileSync('${nombre}', 'x')"`;
+  }
 
-    const conBuild = path.join(tmp, 'otro-proyecto');
-    fs.mkdirSync(conBuild, { recursive: true });
-    fs.writeFileSync(
-      path.join(conBuild, 'package.json'),
-      JSON.stringify({
-        name: 'otro-proyecto',
-        version: '1.0.0',
-        scripts: { build: marcador('DELEGATED.txt') },
-      })
-    );
+  /** Proyecto falso con `package.json`; sin `scripts`, un directorio vacío. */
+  function crearProyecto(nombre, scripts) {
+    const dir = path.join(tmp, nombre);
+    fs.mkdirSync(dir, { recursive: true });
+    if (scripts) {
+      fs.writeFileSync(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name: nombre, version: '1.0.0', scripts })
+      );
+    }
+    return dir;
+  }
 
-    const sinBuild = path.join(tmp, 'proyecto-sin-build');
-    fs.mkdirSync(sinBuild, { recursive: true });
-    fs.writeFileSync(
-      path.join(sinBuild, 'package.json'),
-      JSON.stringify({ name: 'sin-build', version: '1.0.0' })
-    );
+  /** Corre el CLI instalado en `cwd` y devuelve status + salida sin lanzar. */
+  function correrCli(cliInstalado, args, cwd) {
+    try {
+      const salida = execFileSync(process.execPath, [cliInstalado, ...args], {
+        cwd,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 60_000,
+      });
+      return { status: 0, salida };
+    } catch (e) {
+      return {
+        status: Number(e?.status ?? 1),
+        salida: `${e?.stdout || ''}${e?.stderr || ''}`.trim(),
+      };
+    }
+  }
 
-    const vacio = path.join(tmp, 'sin-paquete');
-    fs.mkdirSync(vacio, { recursive: true });
-
-    for (const caso of [
-      { nombre: 'proyecto con build', cwd: conBuild, delegado: 'DELEGATED.txt' },
-      { nombre: 'proyecto sin build', cwd: sinBuild, delegado: null },
-      { nombre: 'directorio vacío', cwd: vacio, delegado: null },
-    ]) {
-      let salida = '';
-      let status = 0;
-      try {
-        salida = execFileSync(process.execPath, [cliInstalado, 'build'], {
-          cwd: caso.cwd,
-          encoding: 'utf8',
-          stdio: ['ignore', 'pipe', 'pipe'],
-          timeout: 60_000,
-        });
-      } catch (e) {
-        status = Number(e?.status ?? 1);
-        salida = `${e?.stdout || ''}${e?.stderr || ''}`.trim();
-      }
+  /**
+   * Fuera de un checkout el comando tiene que salir ≠ 0, explicar que necesita
+   * un checkout y no dejar el marcador del script del cwd.
+   */
+  function probarGuarda(cliInstalado, args, casos) {
+    const comando = `commander ${args.join(' ')}`;
+    for (const caso of casos) {
+      const { status, salida } = correrCli(cliInstalado, args, caso.cwd);
       comprobar(
         status !== 0,
-        `\`commander build\` salió 0 en ${caso.nombre}: ${salida.slice(0, 200)}`
+        `\`${comando}\` salió 0 en ${caso.nombre}: ${salida.slice(0, 200)}`
       );
       comprobar(
         /checkout/i.test(salida),
-        `el error de \`commander build\` en ${caso.nombre} no explica que necesita un checkout: ${salida.slice(0, 200)}`
+        `el error de \`${comando}\` en ${caso.nombre} no explica que necesita un checkout: ${salida.slice(0, 200)}`
       );
       if (caso.delegado) {
         comprobar(
           !fs.existsSync(path.join(caso.cwd, caso.delegado)),
-          `\`commander build\` ejecutó el npm run build de ${caso.nombre}`
+          `\`${comando}\` ejecutó el script de ${caso.nombre}`
         );
       }
     }
+  }
+
+  // 6) `commander build` fuera de un checkout: corta con motivo y no delega.
+  try {
+    const cliInstalado = path.join(prefix, 'node_modules', 'commander-ai-studio', bundle);
+    probarGuarda(cliInstalado, ['build'], [
+      {
+        nombre: 'proyecto con build',
+        cwd: crearProyecto('otro-proyecto', { build: scriptMarcador('DELEGATED.txt') }),
+        delegado: 'DELEGATED.txt',
+      },
+      { nombre: 'proyecto sin build', cwd: crearProyecto('proyecto-sin-build'), delegado: null },
+      { nombre: 'directorio vacío', cwd: crearProyecto('sin-paquete'), delegado: null },
+    ]);
     console.log('[check:cli-package] build: 3 cwd sin checkout · corta con motivo y no delega');
   } catch (e) {
     const detalle = String(e?.stderr || e?.stdout || e?.message || e).trim().slice(0, 400);
     fallos.push(`la guarda de \`commander build\` falló: ${detalle}`);
   }
 
-  // 7) `serve --dev` tiene la misma guarda que `build`: no ejecuta el script
-  //    `dev` del cwd. Si lo hiciera, dejaría DELEGATED_DEV.txt.
+  // 7) `serve --dev` tiene la misma guarda que `build`: tampoco ejecuta el
+  //    script `dev` del cwd.
   try {
     const cliInstalado = path.join(prefix, 'node_modules', 'commander-ai-studio', bundle);
-    const marcadorDev = (nombre) =>
-      `node -e "require('fs').writeFileSync('${nombre}', 'x')"`;
-
-    const conDev = path.join(tmp, 'proyecto-con-dev');
-    fs.mkdirSync(conDev, { recursive: true });
-    fs.writeFileSync(
-      path.join(conDev, 'package.json'),
-      JSON.stringify({
-        name: 'proyecto-con-dev',
-        version: '1.0.0',
-        scripts: { dev: marcadorDev('DELEGATED_DEV.txt') },
-      })
-    );
-
-    const sinDev = path.join(tmp, 'proyecto-sin-dev');
-    fs.mkdirSync(sinDev, { recursive: true });
-    fs.writeFileSync(
-      path.join(sinDev, 'package.json'),
-      JSON.stringify({ name: 'proyecto-sin-dev', version: '1.0.0' })
-    );
-
-    const vacioDev = path.join(tmp, 'sin-paquete-dev');
-    fs.mkdirSync(vacioDev, { recursive: true });
-
-    for (const caso of [
-      { nombre: 'proyecto con dev', cwd: conDev, delegado: 'DELEGATED_DEV.txt' },
-      { nombre: 'proyecto sin dev', cwd: sinDev, delegado: null },
-      { nombre: 'directorio vacío', cwd: vacioDev, delegado: null },
-    ]) {
-      let salida = '';
-      let status = 0;
-      try {
-        salida = execFileSync(process.execPath, [cliInstalado, 'serve', '--dev'], {
-          cwd: caso.cwd,
-          encoding: 'utf8',
-          stdio: ['ignore', 'pipe', 'pipe'],
-          timeout: 60_000,
-        });
-      } catch (e) {
-        status = Number(e?.status ?? 1);
-        salida = `${e?.stdout || ''}${e?.stderr || ''}`.trim();
-      }
-      comprobar(
-        status !== 0,
-        `\`commander serve --dev\` salió 0 en ${caso.nombre}: ${salida.slice(0, 200)}`
-      );
-      comprobar(
-        /checkout/i.test(salida),
-        `el error de \`commander serve --dev\` en ${caso.nombre} no explica que necesita un checkout: ${salida.slice(0, 200)}`
-      );
-      if (caso.delegado) {
-        comprobar(
-          !fs.existsSync(path.join(caso.cwd, caso.delegado)),
-          `\`commander serve --dev\` ejecutó el npm run dev de ${caso.nombre}`
-        );
-      }
-    }
+    probarGuarda(cliInstalado, ['serve', '--dev'], [
+      {
+        nombre: 'proyecto con dev',
+        cwd: crearProyecto('proyecto-con-dev', { dev: scriptMarcador('DELEGATED_DEV.txt') }),
+        delegado: 'DELEGATED_DEV.txt',
+      },
+      { nombre: 'proyecto sin dev', cwd: crearProyecto('proyecto-sin-dev'), delegado: null },
+      { nombre: 'directorio vacío', cwd: crearProyecto('sin-paquete-dev'), delegado: null },
+    ]);
     console.log('[check:cli-package] serve --dev: 3 cwd sin checkout · corta con motivo y no delega');
   } catch (e) {
     const detalle = String(e?.stderr || e?.stdout || e?.message || e).trim().slice(0, 400);

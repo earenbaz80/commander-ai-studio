@@ -18,7 +18,7 @@ export const DEV_SCRIPT_PORT = 3283;
  */
 export function serverEntryCandidates(cliDir: string): string[] {
   const root = path.resolve(cliDir, '..');
-  return [path.join(cliDir, 'server.mjs'), path.join(root, 'server.ts'), path.join(root, 'server.js')];
+  return [path.join(cliDir, 'server.mjs'), path.join(root, 'server.ts')];
 }
 
 /** Primer candidato existente, o `null` si no hay ninguno. */
