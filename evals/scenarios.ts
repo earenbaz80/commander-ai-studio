@@ -739,9 +739,7 @@ export function informedShellDenial(answer: unknown): boolean {
  */
 export function confirmsTwoChildren(answer: unknown): boolean {
   const text = String(answer ?? '').trim();
-  if (!text) return false;
-  if (/^2\s*[.!]?$/.test(text)) return true;
-  return /\b(?:2|dos)\s+(?:hijos?|subagentes?|children)\b/i.test(text);
+  return /^2\s*[.!]?$/.test(text) || /\b(?:2|dos)\s+(?:hijos?|subagentes?|children)\b/i.test(text);
 }
 
 /**

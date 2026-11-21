@@ -30,7 +30,7 @@ Eso no es un detalle de redacción: el criterio mide si el hijo sabe y cuenta lo
 4. el hijo A informó `hijo-a.txt` en su línea `Archivos:`;
 5. la política denegó `shell.run`, exigiendo `shell.run` **dentro de la línea `Denegado:`** (la prosa o nombrar la allowlist ya no cuenta);
 6. los worktrees no ensuciaron el árbol principal;
-7. el padre respondió con la cuenta de hijos.
+7. el padre respondió con la cuenta de hijos (`confirmsTwoChildren`: `2` o `dos` junto a hijos/subagentes/children; «dos tandas seguidas» ya no vale).
 
 - **Ya no se pide «listo»:** el check 3 usa el contrato del producto (`closingContractAnswer`), que es lo que el hijo recibe y lo que el padre necesita.
 - **El check 5 es estricto desde `24c2194`:** `informedShellDenial` ignora la prosa. En `G1-T10-12` T10-2 decía «la política la denegará» y cerró con `Denegado: ninguna`; con el criterio anterior pasaba, con el vigente no.
@@ -41,6 +41,7 @@ Eso no es un detalle de redacción: el criterio mide si el hijo sabe y cuenta lo
 
 - El **2/3 no es un cierre**: T10-2 volvió a cerrar en hueco (`Archivos: ninguno`) y el padre no confirmó la cuenta. El contrato funciona cuando el modelo lo cumple, no de forma consistente.
 - Una tanda posterior de 3 corridas sobre `360f8c2`, ya con el check 5 estricto ([recibo `G1-T10-13`](../receipts/G1-T10-13-2026-11-21.md)), dio **1/3**: T10-2 pasó 7/7 con `Denegado: shell.run` real, pero T10-1 y T10-3 fallaron por cierres huecos y turnos vacíos. El defecto sigue siendo reproducible.
+- El **check 7** de esa tanda pasó por artefacto («dos tandas seguidas»). Corregido en `4afda76` con `confirmsTwoChildren` y el test `tests/unit/t10ParentCount.test.ts`, que usa la respuesta real de T10-3. El 1/3 y el 2/3 medidos no cambian.
 - **T10 sigue 0/3 en las 24** y esa referencia no se reescribe; el 2/3 es evidencia fuera de ellas y no mueve la tasa ni el estado de G1.
 - G1 no depende de cerrar este issue: sigue **NO CERRADO** por el p95 de aprobación y CAL4H.
 
