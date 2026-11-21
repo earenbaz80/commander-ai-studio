@@ -62,9 +62,16 @@ export function isReasoningModel(model?: string): boolean {
   return /(nemotron|deepseek[-_]?r1|qwq|qwen3|gpt-oss|\bo[1-4]\b|reason)/.test(m);
 }
 
-/** Presupuesto de salida por turno; el doble para los que razonan. */
+/**
+ * Presupuesto de salida por turno: los que razonan necesitan margen para pensar
+ * y cerrar el turno.
+ *
+ * Con 4 096 el hijo de T10 seguía agotando el presupuesto en `reasoning_content`
+ * y terminaba en `finish_reason: "length"` sin texto ni tool calls
+ * (`G1-T10-09`: 3 de 6 corridas truncadas en el hijo A).
+ */
 export function agentMaxTokens(model?: string): number {
-  return isReasoningModel(model) ? 4096 : 2048;
+  return isReasoningModel(model) ? 8192 : 2048;
 }
 
 /**

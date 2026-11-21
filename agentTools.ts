@@ -2008,8 +2008,8 @@ async function executeAgentToolCore(
       mode,
       maxSteps,
       template,
-      worktree: input.worktree === true,
-      keepWorktree: input.keepWorktree === true,
+      worktree: flagOn(input.worktree),
+      keepWorktree: flagOn(input.keepWorktree),
     }, input.keys);
   }
 
@@ -2033,8 +2033,8 @@ async function executeAgentToolCore(
         mode: a.mode,
         maxSteps: a.maxSteps,
         template: a.template,
-        worktree: a.worktree === true,
-        keepWorktree: a.keepWorktree === true,
+        worktree: flagOn(a.worktree),
+        keepWorktree: flagOn(a.keepWorktree),
       }, input?.keys))
     );
     const out = results.map((r, i) => ({
@@ -2115,6 +2115,17 @@ async function executeAgentToolCore(
   return { ok: false, error: `Tool desconocida: ${toolId}`, status: 400 };
 }
 
+/**
+ * Flags como `worktree` llegan del modelo como booleano o como texto.
+ *
+ * Antes sólo valía `=== true`: un `"true"` se descartaba en silencio y el hijo
+ * corría sin worktree en el árbol principal, que es cómo `hijo-b.txt` apareció
+ * fuera de su copia en `G1-T10-09`.
+ */
+function flagOn(value: unknown): boolean {
+  return value === true || value === 1 || value === 'true' || value === '1';
+}
+
 /** Root del proyecto al que pertenecen los plugins de esta llamada. */
 function pluginRootFor(input: any): string {
   if (!input?.root) return AGENT_ROOT;
@@ -2140,6 +2151,27 @@ function withPluginErrors<T extends ToolResult>(result: T, errors: PluginError[]
  * tool. Un plugin roto no puede tumbar la tool: sus errores se adjuntan a
  * `data.pluginErrors`.
  */
+/**
+ * Un trabajo con worktree no escribe fuera de su copia, ni con ruta absoluta.
+ *
+ * `executeAgentTool` recibe `confineToRoot` del servidor (lo pone la sesión hija
+ * cuando nace en un worktree), no del modelo, así que este límite no se puede
+ * pedir ni quitar desde una tool call.
+ */
+function confinementError(toolId: string, input: any): ToolResult | undefined {
+  if (input?.confineToRoot !== true) return undefined;
+  if (toolId !== 'fs.write' && toolId !== 'fs.edit') return undefined;
+  const root = String(input.root || '');
+  const p = String(input.path || '');
+  if (!root || !p) return undefined;
+  try {
+    resolveProjectPath(p, root, { onlyRoot: true });
+    return undefined;
+  } catch {
+    return { ok: false, error: 'Path fuera del worktree del subagente', status: 403 };
+  }
+}
+
 export async function executeAgentTool(
   toolId: string,
   input: any,
@@ -2147,6 +2179,8 @@ export async function executeAgentTool(
 ): Promise<ToolResult> {
   const pluginRoot = pluginRootFor(input);
   const before = await runBeforeToolHooks(pluginRoot, toolId, input || {});
+  const confined = confinementError(toolId, before.input);
+  if (confined) return withPluginErrors(confined, before.errors);
   const result = await executeAgentToolCore(toolId, before.input, opts);
   const after = await runAfterToolHooks(pluginRoot, toolId, before.input, result);
   return withPluginErrors(after.result as ToolResult, [...before.errors, ...after.errors]);

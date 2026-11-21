@@ -379,6 +379,11 @@ export interface SessionConfig {
   instructions?: string;
   /** Contrato de cierre fijo del subagente; lo pone `executeTask`, no el padre. */
   closingContract?: string;
+  /**
+   * Sesión nacida en un worktree: sus escrituras quedan encerradas en `cwd`.
+   * Lo pone `executeTask`; no es configurable desde el modelo.
+   */
+  confineWrites?: boolean;
 }
 
 /**
@@ -1372,6 +1377,7 @@ export class AgentSession {
       // esto el subagente nacía sin proveedor y `spawn_agents` siempre fallaba
       // con «parentSessionId requerido».
       const toolInput: Record<string, unknown> = { ...call.input, root: this.cfg.cwd };
+      if (this.cfg.confineWrites) toolInput.confineToRoot = true;
       if (call.tool === 'task' || call.tool === 'spawn_agents') {
         toolInput.parentSessionId = this.id;
         if (this.cfg.keys) toolInput.keys = this.cfg.keys;
@@ -1970,6 +1976,9 @@ export async function executeTask(
       maxSteps,
       instructions: input.instructions,
       closingContract: SUBAGENT_CLOSING_CONTRACT,
+      // El worktree sólo aísla de verdad si las tools no pueden apuntar fuera
+      // de él con una ruta absoluta (`G1-T10-09`, fuga de hijo-b.txt).
+      confineWrites: !!worktree,
     });
   } catch (error: any) {
     if (worktree && !input.keepWorktree) {

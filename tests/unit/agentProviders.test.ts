@@ -28,12 +28,12 @@ describe('ruta interna de la sesión', () => {
 });
 
 describe('presupuesto de salida', () => {
-  it('dobla el presupuesto para los modelos que razonan', () => {
-    expect(agentMaxTokens('nvidia/nvidia/nemotron-3.5-lightning-30b-a3b')).toBe(4096);
-    expect(agentMaxTokens('lmstudio/deepseek-r1-distill')).toBe(4096);
-    expect(agentMaxTokens('openrouter/qwen3-30b-a3b')).toBe(4096);
-    expect(agentMaxTokens('gpt-oss-120b')).toBe(4096);
-    expect(agentMaxTokens('o3-mini')).toBe(4096);
+  it('da margen de sobra a los modelos que razonan (G1-T10-09)', () => {
+    expect(agentMaxTokens('nvidia/nvidia/nemotron-3.5-lightning-30b-a3b')).toBe(8192);
+    expect(agentMaxTokens('lmstudio/deepseek-r1-distill')).toBe(8192);
+    expect(agentMaxTokens('openrouter/qwen3-30b-a3b')).toBe(8192);
+    expect(agentMaxTokens('gpt-oss-120b')).toBe(8192);
+    expect(agentMaxTokens('o3-mini')).toBe(8192);
   });
 
   it('deja el presupuesto normal para los modelos que no razonan', () => {

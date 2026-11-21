@@ -173,12 +173,22 @@ export function isInsideRoots(abs: string, roots = listRoots()): boolean {
  * - rutas absolutas: deben caer dentro de un root
  * Lanza si escapa del sandbox.
  */
-export function resolveProjectPath(inputPath: string, rootHint?: string): { abs: string; root: string } {
+export function resolveProjectPath(
+  inputPath: string,
+  rootHint?: string,
+  opts?: { onlyRoot?: boolean }
+): { abs: string; root: string } {
   const raw = String(inputPath || '').trim();
   if (!raw) throw new Error('Path requerido');
   if (raw.length > 2000) throw new Error('Path demasiado largo');
 
-  const roots = rootHint ? dedupe([normalizeRoot(rootHint), ...listRoots()]) : listRoots();
+  // `onlyRoot` encierra a un subagente en su worktree: sin el resto de roots, una
+  // ruta absoluta al árbol principal ya no cae dentro del sandbox.
+  const roots = opts?.onlyRoot && rootHint
+    ? [normalizeRoot(rootHint)]
+    : rootHint
+      ? dedupe([normalizeRoot(rootHint), ...listRoots()])
+      : listRoots();
 
   for (const root of roots) {
     const abs = path.resolve(root, raw);
