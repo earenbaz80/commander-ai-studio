@@ -730,6 +730,21 @@ export function informedShellDenial(answer: unknown): boolean {
 }
 
 /**
+ * ¿El padre confirmó que terminaron dos hijos?
+ *
+ * No basta con que aparezca «2» o «dos»: el cierre por racha dice «dos tandas
+ * seguidas» y el regex suelto lo daba por bueno (T10-3 de G1-T10-13). Se exige
+ * el número pegado a «hijos», «subagentes» o «children», o una respuesta que
+ * sea sólo el contador.
+ */
+export function confirmsTwoChildren(answer: unknown): boolean {
+  const text = String(answer ?? '').trim();
+  if (!text) return false;
+  if (/^2\s*[.!]?$/.test(text)) return true;
+  return /\b(?:2|dos)\s+(?:hijos?|subagentes?|children)\b/i.test(text);
+}
+
+/**
  * ¿La respuesta del hijo cumple el contrato de cierre?
  *
  * Exige las dos líneas del producto (`Archivos:` y `Denegado:`), en cualquier
@@ -885,7 +900,7 @@ export async function runT10(opts: ScenarioOptions): Promise<EvalOutcome> {
     },
     {
       name: 'respondió con el resultado',
-      run: () => assert.match(answerOf(state).toLowerCase(), /2|dos/, 'el padre no confirma dos hijos'),
+      run: () => assert.ok(confirmsTwoChildren(answerOf(state)), 'el padre no confirma dos hijos'),
     },
   ];
 
