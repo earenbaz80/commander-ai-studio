@@ -37,7 +37,7 @@ Cambios de producto ya presentes en el commit medido: contrato de cierre del hij
 | --- | --- |
 | `runId` | **`G1-T10-01`** (nuevo; no se reutiliza ninguno de D4/D5) |
 | Tipo | Extra, fuera de las 24 |
-| Commit de código | **`41358e4`**. `f5da53a` y el commit de este plan son docs-only por delante; `git diff --stat 41358e4..HEAD -- . ':(exclude)docs/parity'` debe quedar vacío |
+| Commit de código | **`360f8c2`**. `41358e4` ya no resuelve en este historial (`Not a valid object name`). Los commits posteriores sólo tocan documentación y registros: `git diff --stat 360f8c2..HEAD -- . ':(exclude)docs/parity' ':(exclude)evals/baseline-results.jsonl'` debe quedar vacío |
 | Modelo | `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` |
 | `maxSteps` | **24** (igual que las 24 y las seis extras; `runT10` usa 30 en el harness automatizado, pero no se cambia el criterio ni la comparabilidad) |
 | Servidor | `http://127.0.0.1:3285`, dedicado a esta corrida |
@@ -68,12 +68,12 @@ Todo debe estar en verde **antes** de la aprobación. Si algo falla, no se lanza
 
 ```bash
 cd "G:/Proyectos AI/commander-ai-studio-2.5.1"
-git merge-base --is-ancestor 41358e4 HEAD && echo "41358e4 es ancestro"
-git diff --stat 41358e4..HEAD -- . ':(exclude)docs/parity'   # vacío: sólo docs por delante
+git merge-base --is-ancestor 360f8c2 HEAD && echo "360f8c2 es ancestro"
+git diff --stat 360f8c2..HEAD -- . ':(exclude)docs/parity' ':(exclude)evals/baseline-results.jsonl'   # vacío: sólo docs y registros por delante
 git status --porcelain                      # vacío (commitear este plan antes)
 ```
 
-Este plan y la corrección del plan de cierre se commitean **antes** de la corrida; el commit es docs-only y no cambia el código de `41358e4`. Si no se commitean, `git status` no estará vacío y el preflight falla. No se edita código ni documentación durante la corrida. El worktree medido de CAL4H no se toca.
+Este plan y la corrección del plan de cierre se commitean **antes** de la corrida; el commit es docs-only y no cambia el código de `360f8c2`. Si no se commitean, `git status` no estará vacío y el preflight falla. No se edita código ni documentación durante la corrida. El worktree medido de CAL4H no se toca.
 
 ### 5.2 Servidor dedicado
 
@@ -317,7 +317,7 @@ Después de la corrida:
 ## 13. Checklist de ejecución
 
 - [ ] `runId` `G1-T10-01` reservado; no se reutiliza.
-- [ ] Código de `41358e4` confirmado, commits posteriores sólo de `docs/parity/` y árbol limpio.
+- [ ] Código de `360f8c2` confirmado, commits posteriores sólo de `docs/parity/` o registros de `evals/`, y árbol limpio.
 - [ ] Servidor dedicado en `:3285`, health 200, PID y log guardados.
 - [ ] Workspace `tests/tmp-g1/d5-t10-01` re-sembrado; `git status` vacío y un solo worktree.
 - [ ] `typecheck`, `build` y las pruebas de T10/cierre en verde, incluida la de «Denegado: ninguna» = `false`.

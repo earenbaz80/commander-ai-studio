@@ -1,7 +1,7 @@
 # G1 — CAL4H: repetición de CAL4 con operador humano
 
-> **Estado:** **entorno preparado en `41358e4`, sin operador asignado. NO EJECUTAR TODAVÍA.**
-> **Bloque vigente:** el [plan congelado CAL4H](CAL4H-PLAN-2026-11-17.md) **sustituye §7 de este runbook** para el bloque actual, porque el commit previsto cambió a `41358e4`. Este runbook se conserva como procedimiento general.
+> **Estado:** **entorno previsto en `360f8c2`, sin operador asignado. NO EJECUTAR TODAVÍA.** El pin anterior `41358e4` ya no resuelve en el historial.
+> **Bloque vigente:** el [plan congelado CAL4H](CAL4H-PLAN-2026-11-17.md) **sustituye §7 de este runbook** para el bloque actual, porque el commit previsto cambió a `360f8c2`. Este runbook se conserva como procedimiento general.
 > **Qué es:** el procedimiento para repetir el bloque CAL4 con una **persona real** leyendo el panel y pulsando `a`/`d` en el TTY. El agente **no envía ninguna tecla**, no conduce el PTY y no importa muestras por su cuenta.
 > **Qué no es:** no es una corrida autorizada, no reemplaza el recibo del bloque inválido y no cambia la referencia de 15 151 ms. G1 sigue **NO CERRADO**.
 > **Base:** [protocolo de re-medición](g1-approval-remeasure.md) §4.1 y §7.1–§7.2; [recibo CAL4 no válido](receipts/G1-APPROVAL-CAL4-2026-11-14.md); [plantilla del recibo CAL4H](receipts/G1-APPROVAL-CAL4H-2026-11-17.md).
@@ -27,7 +27,7 @@ La única mano que decide es la del operador. El agente puede leer este document
   git -C tests/tmp-g1/cal4-repo status --short
   git -C tests/tmp-g1/cal4-repo rev-parse --short HEAD
   ```
-  Debe estar vacío y en **`41358e4`**, el commit previsto del bloque (ver §7 y el plan). Si se cambiara, hay que recrear el worktree y anotar el nuevo commit antes de la primera muestra.
+  Debe estar vacío y en **`360f8c2`**, el commit previsto del bloque (ver §7 y el plan). Si se cambiara, hay que recrear el worktree y anotar el nuevo commit antes de la primera muestra.
 - [ ] **Servidor vivo en `:3283`:** `npm run dev` → `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3283/api/health` → `200`. El script `dev` fija `PORT=3283` desde el 2026-11-16; antes, con `PORT=0` exportado, el servidor elegía un puerto efímero (se midió `57898`) y `cal4-one.sh` no lo encontraba (ver §7).
 - [ ] **Modelo y `maxSteps` congelados:** `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`, `--max-steps 24`.
 - [ ] **Store humano aislado y vacío.** El bloque inválido vive en `.commander/g1/cal4/samples.jsonl`; **no se toca**. La repetición usa `tests/tmp-g1/cal4-human/.commander/g1/cal4/samples.jsonl`:
@@ -133,27 +133,27 @@ Verificar:
 
 ## 7. Entorno previsto (2026-11-17)
 
-> **Sustituido por el plan para el bloque actual.** El [plan congelado CAL4H](CAL4H-PLAN-2026-11-17.md) reemplaza esta sección: fija el commit `41358e4` y el procedimiento vigente. Lo de abajo es configuración prevista, no una medición.
+> **Sustituido por el plan para el bloque actual.** El [plan congelado CAL4H](CAL4H-PLAN-2026-11-17.md) reemplaza esta sección: fija el commit `360f8c2` y el procedimiento vigente. Lo de abajo es configuración prevista, no una medición.
 
 Fijado antes de la primera muestra, para que el recibo declare exactamente lo que se mide:
 
 | Elemento | Valor | Cómo se comprobó |
 | --- | --- | --- |
-| Commit del bloque | **`41358e4`** (`feat(g1): congela el preflight y alinea la siembra D4/D5`) | `git rev-parse --short HEAD`; verificado el 2026-11-17 |
-| Worktree medido | `tests/tmp-g1/cal4-repo` en **`41358e4`**, detached y limpio | `git -C tests/tmp-g1/cal4-repo rev-parse --short HEAD` y `git status --porcelain` vacío |
+| Commit del bloque | **`360f8c2`** (`test(evals): acota el acumulado del recibo G1-T10-11 a su cierre`) | `git rev-parse --short HEAD`; fijado el 2026-11-21 |
+| Worktree medido | `tests/tmp-g1/cal4-repo` en **`360f8c2`**, detached y limpio | `git -C tests/tmp-g1/cal4-repo rev-parse --short HEAD` y `git status --porcelain` vacío |
 | Servidor | `npm run dev` → `:3283`, `/api/health` `200` | El script fija `PORT=3283`; la causa del `57898` fue un `PORT=0` heredado del shell, que `server.ts` interpreta como puerto efímero (los tests lo usan así) |
 | Modelo / `maxSteps` | `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` / `24` | Flags de `cal4-one.sh` |
 | Store humano | vacío (0 archivos) | `find tests/tmp-g1/cal4-human -type f` |
 | Rango | `CAL4-R22`…`R41` libre; el bloque inválido ocupa `R02`–`R21` | `grep -o 'CAL4-R[0-9][0-9]' .commander/g1/cal4/samples.jsonl` |
 
-El worktree se movió de `bd61ad0` a `41358e4` el 2026-11-17:
+El pin anterior `41358e4` ya no resuelve en el historial; el worktree se fija en `360f8c2` el 2026-11-21:
 
 ```bash
-git -C tests/tmp-g1/cal4-repo checkout --detach 41358e4
+git -C tests/tmp-g1/cal4-repo checkout --detach 360f8c2
 ```
 
-`package-lock.json` es idéntico en ambos commits, así que no hace falta reinstalar. Si hay que recrear el worktree desde cero, usar `git worktree add --detach tests/tmp-g1/cal4-repo 41358e4` y ejecutar `npm ci --ignore-scripts --no-audit --no-fund` antes de sembrar.
+Verificar el `package-lock.json` de `360f8c2` antes de sembrar y reinstalar si difiere del worktree. Si hay que recrear el worktree desde cero, usar `git worktree add --detach tests/tmp-g1/cal4-repo 360f8c2` y ejecutar `npm ci --ignore-scripts --no-audit --no-fund` antes de sembrar.
 
-El recibo de `CAL4H` debe declarar **`41358e4`**, no `bd61ad0` ni `6838fa1`: el [plan congelado](CAL4H-PLAN-2026-11-17.md) fija ese commit. Si el servidor o el worktree se reinician antes del bloque, se repite este §7 y se anota el commit vigente.
+El recibo de `CAL4H` debe declarar **`360f8c2`**: el [plan congelado](CAL4H-PLAN-2026-11-17.md) fija ese commit. Si el servidor o el worktree se reinician antes del bloque, se repite este §7 y se anota el commit vigente.
 
 **Puerto del servidor.** `npm run dev` arranca en `:3283` por defecto desde el 2026-11-16 (`dev` fija `PORT=3283`). El `57898` que se midió no venía de la configuración: el shell tenía `PORT=0` exportado y `server.ts` lo interpreta como «el SO elige el puerto» (lo mismo que usa `tests/helpers/serverHarness.ts`). No se cambió `server.ts` para no romper ese arnés; por eso el valor va en el script. Un `PORT` distinto para otro uso requiere `PORT=<n> npx tsx server.ts`, no `npm run dev`.

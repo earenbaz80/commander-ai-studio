@@ -1,7 +1,7 @@
 # G1 — Plan de cierre
 
-> **Fecha:** 2026-11-16
-> **Estado:** listo para ejecutar. El **dogfooding de 5 días ya se ejecutó** (2026-11-12); lo que falta de este plan es el bloque `CAL4H`, la re-medición de T10 y el recibo de cierre. Nada de eso se ejecutó todavía.
+> **Fecha:** 2026-11-16 · **Revisado:** 2026-11-21
+> **Estado:** listo para ejecutar. El **dogfooding de 5 días ya se ejecutó** (2026-11-12). Lo que falta es el bloque `CAL4H`, **declarar T10** con la evidencia de `G1-T10-12` y el recibo de cierre. El bloque `CAL4H` y el recibo no se ejecutaron todavía.
 > **Base:** [recibo del dogfooding](receipts/G1-DOGFOOD-2026-11-12.md) · [hoja de decisión del p95](g1-approval-gate-decision.md) · [protocolo de re-medición](g1-approval-remeasure.md) · [runbook CAL4H](g1-approval-cal4-human-runbook.md) · [plan del dogfooding](dogfooding-g1.md) §3, §5 y §7.
 > **Qué es:** el orden concreto para cerrar G1, con los comandos, los checkboxes y las tablas donde se registra cada dato.
 > **Qué no es:** no re-mide nada por sí solo, no cambia la referencia de 15 151 ms, no relaja el criterio de T10 y **no cierra G1**: eso lo decide el recibo de cierre con evidencia.
@@ -15,7 +15,7 @@
 | Tasa de éxito ≥ F0 (8/24) | **17/28 (60,7 %)** | Nada |
 | 0 escrituras sin aprobación · 0 duplicadas en `--resume` · 0 secretos · artifacts por la vía del runbook · defectos con issue | Verde en las 28 válidas | Nada |
 | **p95 de aprobación ≤ 15 151 ms** | **Rojo**: 76 982 ms (n=40, operador automatizado), 65 056 ms (CAL2, n=6), 26 501 ms (CAL4, n=41, no válido como muestra humana) | Bloque `CAL4H` humano con **≤ 2 de 40** por encima |
-| T10 subagente | **0/3** en las 24 (`G1-D4-04`, `G1-D4-05` y `G1-D4-05R`) y **0/9** contando las seis extras (`G1-D5-05`…`G1-D5-10`). Los descartados (1 intento `blocked` de `G1-D4-04` y 2 intentos de `G1-D5-05` sin veredicto válido) no suman | Re-medición `G1-T10-01` con el criterio intacto ([plan](T10-REMEASURE-PLAN-2026-11-17.md)); **no es regla de puerta** |
+| T10 subagente | **0/3** en las 24 (`G1-D4-04`, `G1-D4-05` y `G1-D4-05R`) y **0/9** contando las seis extras (`G1-D5-05`…`G1-D5-10`). Los descartados (1 intento `blocked` de `G1-D4-04` y 2 intentos de `G1-D5-05` sin veredicto válido) no suman. Fuera de las 24, la re-medición del 2026-11-21 sobre `199f393` ([recibo `G1-T10-12`](receipts/G1-T10-12-2026-11-21.md)) dio **2/3**: siete checks, 0 timeouts, con T10-2 fallando por cierre hueco | Declarar el issue [`G1-SUBAGENT-CLOSE`](issues/G1-SUBAGENT-CLOSE.md) con esa evidencia; **no es regla de puerta** y no cambia el 0/3 de las 24 |
 | Decisión de la puerta | **NO CERRADO**; rige la salida **B** de la [hoja de decisión](g1-approval-gate-decision.md), sin firma | Recibo de cierre `G1-CIERRE-<fecha>` |
 
 **Consecuencia:** F1 y F2 no se marcan cerradas mientras G1 siga abierta. La tasa global ya no es el problema; el cierre depende de una sola casilla y de declarar T10.
@@ -28,15 +28,17 @@
 | 1 | Preflight de `CAL4H` | 10 min | Agente + operador | Precondiciones del §5 todas en `[x]` |
 | 2 | Bloque `CAL4H` (20 corridas, n ≥ 40 decisiones) | 45–60 min | **Operador humano** | 20 corridas cerradas o corte justificado |
 | 3 | Resumen y lectura de la puerta | 5 min | Agente | `p95` con su `n` y **≤ 2 de 40** por encima |
-| 4 | Re-medición de T10 | 30–60 min | Agente + operador en la aprobación | `G1-T10-01` con `calls` y `stepTitles` guardados ([plan](T10-REMEASURE-PLAN-2026-11-17.md)) |
+| 4 | Declarar T10 con la evidencia existente | 15 min | Agente | Issue `G1-SUBAGENT-CLOSE` decidido con el recibo `G1-T10-12` (2/3, siete checks) |
 | 5 | Recibos y actualización de roadmaps | 30 min | Agente | `CAL4H` + `G1-CIERRE` emitidos y puertas alineadas |
 
 Si el paso 3 falla, **se detiene el cierre**: G1 sigue NO CERRADO y el paso siguiente es producto (issue [`G1-APPROVAL-SHELL-TAIL`](issues/G1-APPROVAL-SHELL-TAIL.md)), no otra medición ni un cambio de referencia.
 
 ## 3. Paso 0 — congelar el árbol
 
-- [ ] Árbol limpio y commit anotado: el bloque se mide en **`41358e4`**. `git status --short` vacío; si `predev` regenera `public/avatars/manifest.json`, se restaura (es sólo fin de línea).
-- [ ] Worktree medido `tests/tmp-g1/cal4-repo` **detached en `41358e4`** y limpio. Se movió con `git -C tests/tmp-g1/cal4-repo checkout --detach 41358e4`; el lockfile es idéntico y no hace falta reinstalar. Si se recrea desde cero, usar `git worktree add --detach tests/tmp-g1/cal4-repo 41358e4` y `npm ci --ignore-scripts --no-audit --no-fund` antes de sembrar.
+> **Pin revisado (2026-11-21):** `41358e4` ya no resuelve en este clon (`git cat-file -t 41358e4` → `Not a valid object name`), así que no se podía hacer el checkout del bloque. El pin pasa a **`360f8c2`**, HEAD publicado al revisar; verificar con `git rev-parse --verify 360f8c2` y un worktree detached antes de medir. Los commits posteriores a `360f8c2` que sólo toquen este plan no cambian el código medido.
+
+- [ ] Árbol limpio y commit anotado: el bloque se mide en **`360f8c2`**. `git status --short` vacío; si `predev` regenera `public/avatars/manifest.json`, se restaura (es sólo fin de línea).
+- [ ] Worktree medido `tests/tmp-g1/cal4-repo` **detached en `360f8c2`** y limpio. Se movió con `git -C tests/tmp-g1/cal4-repo checkout --detach 360f8c2`; el lockfile es idéntico y no hace falta reinstalar. Si se recrea desde cero, usar `git worktree add --detach tests/tmp-g1/cal4-repo 360f8c2` y `npm ci --ignore-scripts --no-audit --no-fund` antes de sembrar.
 - [ ] Servidor vivo en `:3283` con **`npm run dev`**: `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3283/api/health` → `200`. El script fija `PORT=3283`; el `57898` medido el 2026-11-16 vino de un `PORT=0` heredado del shell, que `server.ts` trata como puerto efímero para los tests.
 - [ ] Modelo y `maxSteps` congelados: `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`, `--max-steps 24`.
 - [ ] Ninguna otra sesión del CLI usando el puerto.
@@ -44,9 +46,9 @@ Si el paso 3 falla, **se detiene el cierre**: G1 sigue NO CERRADO y el paso sigu
 ```bash
 cd "G:/Proyectos AI/commander-ai-studio-2.5.1"
 git status --short
-git rev-parse --short HEAD                          # 41358e4
+git rev-parse --short HEAD                          # 360f8c2
 git -C tests/tmp-g1/cal4-repo status --short
-git -C tests/tmp-g1/cal4-repo rev-parse --short HEAD # 41358e4
+git -C tests/tmp-g1/cal4-repo rev-parse --short HEAD # 360f8c2
 npm run dev                                          # :3283 por defecto, en otra terminal
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3283/api/health
 ```
@@ -76,7 +78,7 @@ Detalle completo en el [runbook CAL4H](g1-approval-cal4-human-runbook.md) y el [
 
 **Precondiciones**
 
-- [ ] Entorno preparado: árbol, worktree y servidor en **`41358e4`**, con `npm run dev` en `:3283` (ver §3).
+- [ ] Entorno preparado: árbol, worktree y servidor en **`360f8c2`**, con `npm run dev` en `:3283` (ver §3).
 - [ ] Operador presente, con **60–90 min** reservados y sin otra tarea abierta.
 - [ ] Terminal real, no el panel del agente: `tty` responde un dispositivo (por ejemplo `/dev/ttys003`).
 - [ ] Sin teclas en cola y sin otra sesión en `:3283`.
@@ -124,7 +126,7 @@ node ../cal4-repo/node_modules/tsx/dist/cli.mjs ../g1-cal4.ts summary
 
 Corrida **extra, fuera de las 24**, con el criterio de F0 intacto: los dos hijos deben volver `ok:true` con respuesta que diga «listo» y alguno debe informar la denegación de `shell.run`; el padre responde «2». Detalle completo en el [plan de re-medición T10](T10-REMEASURE-PLAN-2026-11-17.md).
 
-- [ ] Servidor con el código que incluye `SUBAGENT_CLOSING_CONTRACT`, `calls`, `stepTitles` e `informedShellDenial` endurecido en `/subagents` (código de `41358e4`; HEAD documental puede ir por delante).
+- [ ] Servidor con el código que incluye `SUBAGENT_CLOSING_CONTRACT`, `calls`, `stepTitles` e `informedShellDenial` endurecido en `/subagents` (código de `360f8c2`; HEAD documental puede ir por delante).
 - [ ] Workspace `tests/tmp-g1/d5-t10-01` re-sembrado; `G1-T10-01` reservado como extra fuera de las 24. `G1-D5-10` queda como extra fallida y no se reutiliza.
 - [ ] Guardar el `task` exacto enviado a cada hijo y su respuesta literal: `GET /api/agent/sessions/<padre>/subagents`.
 - [ ] Comprobar `askedShellRun`, `shellRunError` e `informedDenial` por hijo, más `calls` y `stepTitles`.
@@ -134,7 +136,7 @@ Corrida **extra, fuera de las 24**, con el criterio de F0 intacto: los dos hijos
 
 ## 7. Paso 5 — recibos y actualización
 
-- [ ] Completar la [plantilla CAL4H](receipts/G1-APPROVAL-CAL4H-2026-11-17.md) con operador, fecha, commit **`41358e4`**, `n`, p95, exclusiones, decisiones `deny` y decisión de la casilla. **No** se reutiliza el recibo de CAL4 ni se declara el `6838fa1` del runbook original.
+- [ ] Completar la [plantilla CAL4H](receipts/G1-APPROVAL-CAL4H-2026-11-17.md) con operador, fecha, commit **`360f8c2`**, `n`, p95, exclusiones, decisiones `deny` y decisión de la casilla. **No** se reutiliza el recibo de CAL4 ni se declara el `6838fa1` del runbook original.
 - [ ] `docs/parity/receipts/G1-CIERRE-<fecha>.md`: las ocho reglas de [§7.1](dogfooding-g1.md#71-reglas-de-decisión-criterio-de-puerta) con su evidencia, tasa global, tabla por tarea con delta frente a F0, avisos de regresión de §7.2, seguridad, fallbacks, límites y decisión **CERRADO / NO CERRADO** en ese orden.
 - [ ] Si CAL4H cumple: `ROADMAP.md` y `ROADMAP_PARITY.md` pasan G1 a cerrada y recién entonces se marcan los criterios de F1/F2 que dependían de la puerta.
 - [ ] Si CAL4H no cumple: los roadmaps siguen como están (G1 abierta) y el recibo declara el siguiente paso de producto.
