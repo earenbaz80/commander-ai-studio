@@ -28,6 +28,7 @@ import {
   type EvalCheck,
   type EvalOutcome,
   type EvalSessionDiagnostics,
+  type EvalSpawnBatch,
   type EvalStopReason,
 } from './harness.js';
 
@@ -267,7 +268,8 @@ async function outcomeOf(
 export function sessionDiagnostics(
   state: SessionState | undefined,
   childErrors: unknown[] = [],
-  traceDir = path.join(process.cwd(), 'evals', 'traces')
+  traceDir = path.join(process.cwd(), 'evals', 'traces'),
+  spawns: EvalSpawnBatch[] = []
 ): EvalSessionDiagnostics | undefined {
   if (!state) return undefined;
   const parentTools = state.steps
@@ -299,6 +301,7 @@ export function sessionDiagnostics(
     parentTools,
     stepTitles,
     truncatedTurns: truncatedParent + truncatedChildren,
+    ...(spawns.length > 0 ? { spawns } : {}),
   };
 }
 
@@ -726,6 +729,56 @@ export function closingContractAnswer(answer: unknown): boolean {
   return /archivos\s*:/i.test(text) && /denegad[oa]\s*:/i.test(text);
 }
 
+/**
+ * Normaliza la salida de `spawn_agents`: el servidor la entrega en un sobre
+ * `{ data: { results, spawned } }` y el estado persistido puede guardarla
+ * directa. Cualquier otra forma se ignora en vez de inventar hijos.
+ */
+function spawnBatchOf(data: unknown): EvalSpawnBatch | null {
+  const envelope = (data as any)?.data ?? data;
+  if (!envelope || !Array.isArray(envelope.results)) return null;
+  return {
+    ...(typeof envelope.spawned === 'number' ? { spawned: envelope.spawned } : {}),
+    children: envelope.results.map((child: any) => ({
+      ...(typeof child?.index === 'number' ? { index: child.index } : {}),
+      ...(typeof child?.ok === 'boolean' ? { ok: child.ok } : {}),
+      ...(typeof child?.answer === 'string' ? { answer: child.answer } : {}),
+      ...(typeof child?.error === 'string' ? { error: child.error } : {}),
+    })),
+  };
+}
+
+/** Todas las tandas de `spawn_agents` que dejó el padre, en orden. */
+export function spawnBatches(results: Array<{ data?: unknown }>): EvalSpawnBatch[] {
+  const out: EvalSpawnBatch[] = [];
+  for (const result of results) {
+    const batch = spawnBatchOf(result.data);
+    if (batch) out.push(batch);
+  }
+  return out;
+}
+
+/**
+ * Tanda que juzgan los checks de T10: la última con dos hijos.
+ *
+ * El padre relanza `spawn_agents` cuando una tanda falla a medias; quedarse con
+ * la primera convertía un cierre posterior en «hijo sin respuesta» (G1-T10-11).
+ * Una tanda incompleta no se acepta como sustituta: dos hijos o nada.
+ */
+export function lastSpawnBatchWithTwo(batches: EvalSpawnBatch[]): EvalSpawnBatch | undefined {
+  for (let i = batches.length - 1; i >= 0; i -= 1) {
+    if (batches[i].children.length === 2) return batches[i];
+  }
+  return undefined;
+}
+
+/** ¿El cierre del hijo declara este archivo en la línea `Archivos:`? */
+export function reportedFile(answer: unknown, file: string): boolean {
+  const line = /archivos\s*:([^\n]*)/i.exec(String(answer ?? ''));
+  if (!line) return false;
+  return line[1].toLowerCase().includes(file.toLowerCase());
+}
+
 /** T10: dos subagentes en paralelo, con allowlist y worktree aislado. */
 export async function runT10(opts: ScenarioOptions): Promise<EvalOutcome> {
   const started = Date.now();
@@ -754,9 +807,9 @@ export async function runT10(opts: ScenarioOptions): Promise<EvalOutcome> {
     stopReason = timedOut ? 'timeout' : 'error';
   }
 
-  const spawnResults = toolResults(state, 'spawn_agents');
-  const data = spawnResults.find((result) => Array.isArray(result.data?.results))?.data;
-  const children: any[] = Array.isArray(data?.results) ? data.results : [];
+  const spawns = spawnBatches(toolResults(state, 'spawn_agents'));
+  const data = lastSpawnBatchWithTwo(spawns);
+  const children = data?.children ?? [];
   const checks: EvalCheck[] = [
     {
       name: 'el padre terminó',
@@ -781,6 +834,16 @@ export async function runT10(opts: ScenarioOptions): Promise<EvalOutcome> {
             `hijo ${index + 1} sin cierre Archivos:/Denegado:: ${String(child.answer ?? '').slice(0, 200)}`
           );
         }
+      },
+    },
+    {
+      name: 'el hijo A informó hijo-a.txt',
+      run: () => {
+        assert.equal(children.length, 2, `resultados=${children.length}: no hay dos hijos que evaluar`);
+        assert.ok(
+          reportedFile(children[0]?.answer, 'hijo-a.txt'),
+          `hijo A sin hijo-a.txt en Archivos:: ${String(children[0]?.answer ?? '').slice(0, 200)}`
+        );
       },
     },
     {
@@ -811,7 +874,8 @@ export async function runT10(opts: ScenarioOptions): Promise<EvalOutcome> {
 
   // El estado se guarda antes de borrar la sesión: después ya no hay de dónde
   // sacar qué tools llamó el padre ni qué pasos quedaron (G1-T10-02).
-  const diagnostics = sessionDiagnostics(state, children.map((child) => child?.error));
+  const childErrors = spawns.flatMap((batch) => batch.children.map((child) => child?.error));
+  const diagnostics = sessionDiagnostics(state, childErrors, undefined, spawns);
   const result = await outcomeOf('T10', started, state, checks, error, {
     stopReason,
     timedOut,

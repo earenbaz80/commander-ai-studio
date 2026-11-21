@@ -158,6 +158,23 @@ export type EvalStopReason = 'completed' | 'timeout' | 'error';
  * fallo como T10-2 (`spawned=undefined`, 4 pasos, sin respuesta) sólo dejaba
  * el nombre del check roto y no qué tools había llamado el padre.
  */
+/** Un hijo tal como lo devolvió `spawn_agents`; se guarda aunque haya fallado. */
+export interface EvalSpawnChild {
+  index?: number;
+  ok?: boolean;
+  answer?: string;
+  error?: string;
+}
+
+/**
+ * Una tanda de `spawn_agents`. El padre puede relanzar tras un fallo parcial:
+ * los checks juzgan la última con dos hijos, y el JSONL guarda todas.
+ */
+export interface EvalSpawnBatch {
+  spawned?: number;
+  children: EvalSpawnChild[];
+}
+
 export interface EvalSessionDiagnostics {
   /** Ruta del volcado JSON del estado, relativa al cwd si se pudo guardar. */
   statePath?: string;
@@ -167,6 +184,8 @@ export interface EvalSessionDiagnostics {
   stepTitles: string[];
   /** Turnos cortados por presupuesto: del padre y de los hijos. */
   truncatedTurns: number;
+  /** Todas las tandas de `spawn_agents`, en orden; la última manda en los checks. */
+  spawns?: EvalSpawnBatch[];
 }
 
 export interface EvalOutcome {
