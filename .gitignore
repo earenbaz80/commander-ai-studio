@@ -34,6 +34,8 @@ target/
 # dejan los scripts a mano.
 tests/tmp/
 tests/tmp-*/
+# Volcados de sesión de la línea base (diagnóstico de fallos T10)
+evals/traces/
 
 # Registro local de proyectos del agente (permisos por máquina)
 .agent-roots.json

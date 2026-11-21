@@ -346,6 +346,12 @@ interface BaselineRecord {
   modelFallback?: { from: string; to: string };
   answeredModels?: string[];
   error?: string;
+  /** Diagnóstico del padre (T10): qué tools llamó, sus pasos y turnos cortados. */
+  parentTools?: string[];
+  stepTitles?: string[];
+  truncatedTurns?: number;
+  /** Volcado del estado de la sesión, guardado antes de borrarla. */
+  sessionStatePath?: string;
 }
 
 const args = process.argv.slice(2);
@@ -496,6 +502,16 @@ for (const id of selected) {
       ...(result.modelFallback ? { modelFallback: result.modelFallback } : {}),
       ...(result.answeredModels?.length ? { answeredModels: result.answeredModels } : {}),
       ...(result.error ? { error: result.error } : {}),
+      ...(result.diagnostics
+        ? {
+            parentTools: result.diagnostics.parentTools,
+            stepTitles: result.diagnostics.stepTitles,
+            truncatedTurns: result.diagnostics.truncatedTurns,
+            ...(result.diagnostics.statePath
+              ? { sessionStatePath: result.diagnostics.statePath }
+              : {}),
+          }
+        : {}),
     };
     records.push(record);
     fs.mkdirSync(path.dirname(RESULTS_PATH), { recursive: true });

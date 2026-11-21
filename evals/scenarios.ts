@@ -27,6 +27,7 @@ import {
   resolveTaskBudget,
   type EvalCheck,
   type EvalOutcome,
+  type EvalSessionDiagnostics,
   type EvalStopReason,
 } from './harness.js';
 
@@ -42,7 +43,7 @@ export interface ScenarioOptions {
   onStep?: (step: AgentStep) => void;
 }
 
-interface SessionState {
+export interface SessionState {
   id: string;
   goal: string;
   cwd: string;
@@ -236,7 +237,7 @@ async function outcomeOf(
   state: SessionState | undefined,
   checks: EvalCheck[],
   error?: string,
-  meta: { stopReason?: EvalStopReason; timedOut?: boolean } = {}
+  meta: { stopReason?: EvalStopReason; timedOut?: boolean; diagnostics?: EvalSessionDiagnostics } = {}
 ): Promise<EvalOutcome> {
   const results = await checksOf(checks);
   return {
@@ -249,6 +250,55 @@ async function outcomeOf(
     timedOut: meta.timedOut === true,
     ...(error ? { error } : {}),
     ...(state ? { modelFallback: detectModelFallback(state.steps) ?? undefined } : {}),
+    ...(meta.diagnostics ? { diagnostics: meta.diagnostics } : {}),
+  };
+}
+
+/**
+ * Guarda el estado de la sesión y resume lo que el JSONL necesita.
+ *
+ * El volcado va a `evals/traces/` (ignorado por git) porque el estado completo
+ * con pasos y turnos no cabe razonablemente en una línea del JSONL. El resumen
+ * sí queda en el registro: tools del padre, títulos de pasos y turnos cortados.
+ *
+ * `childErrors` aporta los errores de los resultados de `spawn_agents`: la
+ * truncación de un hijo no deja paso en la sesión padre, pero sí cuenta.
+ */
+export function sessionDiagnostics(
+  state: SessionState | undefined,
+  childErrors: unknown[] = [],
+  traceDir = path.join(process.cwd(), 'evals', 'traces')
+): EvalSessionDiagnostics | undefined {
+  if (!state) return undefined;
+  const parentTools = state.steps
+    .filter((step) => step.type === 'tool_result' || step.type === 'tool_call')
+    .map((step) => String(step.toolId ?? ''))
+    .filter((toolId) => toolId.length > 0);
+  const stepTitles = state.steps.map((step) => String(step.title ?? ''));
+  const truncatedParent = state.steps.filter(
+    (step) =>
+      step.title === 'Respuesta truncada' ||
+      /truncad[ao] por max_tokens/i.test(String(step.content ?? ''))
+  ).length;
+  const truncatedChildren = childErrors.filter((entry) =>
+    /truncad[ao]|finish_reason:\s*length/i.test(String(entry ?? ''))
+  ).length;
+  let statePath: string | undefined;
+  try {
+    fs.mkdirSync(traceDir, { recursive: true });
+    const safeId = String(state.id ?? 'session').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const file = path.join(traceDir, `${safeId}-${Date.now()}.json`);
+    fs.writeFileSync(file, JSON.stringify(state, null, 2), 'utf8');
+    statePath = path.relative(process.cwd(), file).replace(/\\/g, '/');
+  } catch {
+    // Sin volcado, el resumen sigue siendo útil: no se pierde la corrida.
+    statePath = undefined;
+  }
+  return {
+    ...(statePath ? { statePath } : {}),
+    parentTools,
+    stepTitles,
+    truncatedTurns: truncatedParent + truncatedChildren,
   };
 }
 
@@ -754,7 +804,14 @@ export async function runT10(opts: ScenarioOptions): Promise<EvalOutcome> {
     },
   ];
 
-  const result = await outcomeOf('T10', started, state, checks, error, { stopReason, timedOut });
+  // El estado se guarda antes de borrar la sesión: después ya no hay de dónde
+  // sacar qué tools llamó el padre ni qué pasos quedaron (G1-T10-02).
+  const diagnostics = sessionDiagnostics(state, children.map((child) => child?.error));
+  const result = await outcomeOf('T10', started, state, checks, error, {
+    stopReason,
+    timedOut,
+    ...(diagnostics ? { diagnostics } : {}),
+  });
   if (state?.id) await deleteSession(opts.baseUrl, state.id);
   fs.rmSync(dir, { recursive: true, force: true });
   return result;

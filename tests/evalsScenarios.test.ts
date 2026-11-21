@@ -463,6 +463,16 @@ test('T10 · dos subagentes en worktrees aislados con allowlist', async () => {
     /shell\.run/,
     'el catálogo del hijo A no ofrece shell.run'
   );
+  assert.deepEqual(
+    outcome.diagnostics?.parentTools,
+    ['spawn_agents'],
+    'el diagnóstico debe registrar la tool que llamó el padre'
+  );
+  assert.ok(
+    outcome.diagnostics?.stepTitles.includes('Inicio'),
+    'el diagnóstico debe traer los títulos de los pasos del padre'
+  );
+  assert.ok(outcome.diagnostics?.statePath, 'el estado se guarda antes de borrar la sesión');
 });
 
 test('T10 · sin dos hijos, los checks de hijos y worktrees fallan en vez de pasar vacíos', async () => {
@@ -477,6 +487,12 @@ test('T10 · sin dos hijos, los checks de hijos y worktrees fallan en vez de pas
 
   assert.equal(outcome.passed, false, 'sin dos hijos T10 no puede darse por bueno');
   const check = (name: string) => outcome.checks.find((entry) => entry.name === name);
+  // El fallo de T10-2 era diagnosticable sólo si el registro decía qué había
+  // llamado el padre: sin tools, sin títulos y sin truncaciones no se sabía.
+  assert.deepEqual(outcome.diagnostics?.parentTools, [], 'el padre no llamó tools en esta corrida');
+  assert.deepEqual(outcome.diagnostics?.stepTitles.slice(0, 1), ['Inicio']);
+  assert.equal(outcome.diagnostics?.truncatedTurns, 0);
+  assert.ok(outcome.diagnostics?.statePath, 'la sesión sin hijos también deja su volcado');
   assert.match(String(check('los dos subagentes terminaron')?.error), /resultados=0/);
   assert.match(
     String(check('los worktrees no ensuciaron el árbol principal')?.error),

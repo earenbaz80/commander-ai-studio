@@ -151,6 +151,24 @@ export interface EvalDiff extends EvalChangedFile {
 
 export type EvalStopReason = 'completed' | 'timeout' | 'error';
 
+/**
+ * Diagnóstico de la sesión autoritativa, capturado antes de borrarla.
+ *
+ * El workspace y la sesión se borran al terminar la corrida: sin esto, un
+ * fallo como T10-2 (`spawned=undefined`, 4 pasos, sin respuesta) sólo dejaba
+ * el nombre del check roto y no qué tools había llamado el padre.
+ */
+export interface EvalSessionDiagnostics {
+  /** Ruta del volcado JSON del estado, relativa al cwd si se pudo guardar. */
+  statePath?: string;
+  /** Tools del padre en orden de llamada (de los pasos persistidos). */
+  parentTools: string[];
+  /** Títulos de todos los pasos del padre, en orden. */
+  stepTitles: string[];
+  /** Turnos cortados por presupuesto: del padre y de los hijos. */
+  truncatedTurns: number;
+}
+
 export interface EvalOutcome {
   id: string;
   passed: boolean;
@@ -186,6 +204,8 @@ export interface EvalOutcome {
    * arreglo que funciona por la vía equivocada no debe pasar desapercibido.
    */
   outOfScope?: EvalChangedFile[];
+  /** Lo que el JSONL necesita para diagnosticar un fallo de T10. */
+  diagnostics?: EvalSessionDiagnostics;
 }
 
 export interface EvalOptions {
