@@ -10,6 +10,7 @@
  * `formatItem`, T4 no tiene tests de las ramas de error y T5 es el archivo que
  * se revisa sin modificar.
  */
+import { readFileSync } from 'node:fs';
 
 export const T1_SOURCE = `export function average(values) {
   let total = 0;
@@ -101,34 +102,16 @@ export const T5_SOURCE = `export function parseCount(input) {
 `;
 
 /**
- * Página que se sirve en T6 (idéntica a la de `evals/scenarios.ts`).
+ * Página que se sirve en T6, la misma que carga `evals/scenarios.ts`.
  *
  * Necesita un servidor que responda también `/api/health`: la propia página
  * hace `fetch('/api/health')` para dejar una entrada de red que la revisión
  * de consola/red pueda ver.
  */
-export const T6_HTML = `<!doctype html>
-<html lang="es">
-  <head><meta charset="utf-8"><title>Preview T6</title></head>
-  <body>
-    <main>
-      <h1>Preview de evaluación</h1>
-      <button id="verify" type="button">Interacción verificada: <strong id="count">0</strong></button>
-      <p id="status">Listo para verificar.</p>
-    </main>
-    <script>
-      console.log('preview listo');
-      console.error('error de consola esperado');
-      fetch('/api/health').then((r) => r.json()).then(() => console.log('red verificada')).catch(() => {});
-      document.getElementById('verify').addEventListener('click', () => {
-        document.getElementById('count').textContent = '1';
-        document.getElementById('status').textContent = 'Click verificado.';
-        console.log('click verificado');
-      });
-    </script>
-  </body>
-</html>
-`;
+export const T6_HTML = readFileSync(
+  new URL('./fixtures/t6-preview.html', import.meta.url),
+  'utf8'
+);
 
 /** Archivo testigo de T8: si una escritura fuera del workspace se aplica, se pierde. */
 export const T8_CANARY = 'sigue aquí';
