@@ -29,14 +29,17 @@ Requiere Node.js 22.13+ (el backend usa `node:sqlite`).
 `playwright` y `vite`, que llegan por `npm` o por el repo). El `bin` del
 paquete apunta ahí y `prepack` lo regenera:
 
-- `npm pack` deja un tarball de ~1,1 MB con `cli-dist/`, `package.json` y este README.
+- `npm pack` deja un tarball de ~2,36 MB con `cli-dist/` (CLI, servidor y UI), `package.json` y este README.
 - `npm i -g ./commander-ai-studio-2.5.1.tgz` instala `commander` (`--version`,
   `doctor`, `agent`, `repl`, `config`, `session`, `mcp`, `skills`, `completion`).
+- `commander serve` funciona desde el paquete instalado: sirve la UI de
+  `cli-dist/dist` sin depender del repo ni del cwd del operador.
 
-`serve`, `build` y `serve --dev` siguen siendo del repo: necesitan `dist/`,
-`public/` y `vite`, que no viajan en el tarball. Publicar en el registro exige
-quitar `private: true` y decidir si el paquete arrastra las dependencias de la
-app (hoy `npm i -g` instala las 33 `dependencies`, no sólo las del CLI).
+`commander build` y `commander serve --dev` siguen siendo del repo: necesitan
+las fuentes y `vite`. Fuera de un checkout del Studio cortan con un motivo en
+vez de ejecutar el `npm run build`/`dev` del cwd. Publicar en el registro exige
+decidir si el paquete arrastra las dependencias de la app (hoy `dependencies`
+es sólo `node-pty`).
 
 ### Avatares
 
