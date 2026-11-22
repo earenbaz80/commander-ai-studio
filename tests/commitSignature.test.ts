@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
   FIRMA,
@@ -104,6 +105,47 @@ test('firma: todo el historial del repo pasa el chequeo', (t) => {
     commits.map(problemaDe).filter((p) => p !== null),
     []
   );
+});
+
+test('firma: los merge commits no se revisan y el resto sigue igual', () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'firma-merge-'));
+  const git = (args: string[]): string =>
+    execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+
+  try {
+    git(['init', '-q', '-b', 'main']);
+    git(['config', 'user.name', 'earenbaz80']);
+    git(['config', 'user.email', 'earenbaz80@users.noreply.github.com']);
+
+    const commit = (archivo: string, mensaje: string): void => {
+      fs.writeFileSync(path.join(repo, archivo), `${mensaje}\n`);
+      git(['add', archivo]);
+      git(['commit', '-q', '-m', mensaje]);
+    };
+
+    commit('base.txt', 'base');
+    git(['checkout', '-q', '-b', 'lado']);
+    commit('lado.txt', 'lado');
+    git(['checkout', '-q', 'main']);
+    commit('main.txt', 'main');
+    git(['merge', '--no-ff', '-q', 'lado', '-m', "Merge branch 'lado'"]);
+
+    const merge = git(['rev-parse', 'HEAD']).trim();
+    // El merge de GitHub lleva la identidad del mantenedor, no la del repo:
+    // revisarlo hace fallar CI sin que haya nada que corregir en la rama.
+    const revisados = commitsDelRango('HEAD', repo);
+    assert.equal(revisados.length, 3, 'los tres commits normales, sin el merge');
+    assert.ok(!revisados.some((c) => c.hash === merge), 'el merge no se revisa');
+    assert.match(git(['log', '-1', '--format=%an', merge]), /earenbaz80/);
+
+    // Ignorar merges no apaga la guardia: los commits normales siguen fallando.
+    assert.deepEqual(
+      revisados.map(problemaDe).filter((p) => p === null),
+      []
+    );
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
 });
 
 test('firma: un commit con trailer se reporta con su hash y el motivo', () => {

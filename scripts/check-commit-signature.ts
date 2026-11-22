@@ -17,6 +17,10 @@
  *   npm run check:commit-signature -- --range origin/main..HEAD
  *   npm run check:commit-signature -- --message-file .git/COMMIT_EDITMSG   (hook)
  *
+ * Los merge commits no se revisan: GitHub fabrica uno por PR (`Merge … into …`)
+ * con la identidad del mantenedor, no la del repo, así que revisarlo hace fallar
+ * CI sin que la rama tenga nada que corregir.
+ *
  * Sale 1 con los commits y el motivo; 0 si todas las firmas son la del autor.
  */
 import { execFileSync } from 'node:child_process';
@@ -91,10 +95,14 @@ type CommitRevisado = {
   mensaje: string;
 };
 
-/** Lee los commits del rango (por defecto, toda la historia de HEAD). */
-export function commitsDelRango(rango: string): CommitRevisado[] {
+/**
+ * Lee los commits del rango (por defecto, toda la historia de HEAD), sin merges.
+ * El `cwd` permite probarlo contra un repo temporal.
+ */
+export function commitsDelRango(rango: string, cwd = process.cwd()): CommitRevisado[] {
   const formato = `%H${CAMPO}%an${CAMPO}%ae${CAMPO}%cn${CAMPO}%ce${CAMPO}%B${REGISTRO}`;
-  const salida = execFileSync('git', ['log', `--format=${formato}`, rango], {
+  const salida = execFileSync('git', ['log', '--no-merges', `--format=${formato}`, rango], {
+    cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     maxBuffer: 64 * 1024 * 1024,
