@@ -39,9 +39,16 @@ en vez de dejar un tarball sin `cli-dist/dist`.
 
 `commander build` y `commander serve --dev` siguen siendo del repo: necesitan
 las fuentes y `vite`. Fuera de un checkout del Studio cortan con un motivo en
-vez de ejecutar el `npm run build`/`dev` del cwd. Publicar en el registro exige
-decidir si el paquete arrastra las dependencias de la app (hoy `dependencies`
-es sólo `node-pty`).
+vez de ejecutar el `npm run build`/`dev` del cwd.
+
+La distribución sin registro npm es manual: `npm run build && npm pack` deja un
+`.tgz` que se comparte o se instala directamente. No hay publicación en npm ni
+asset automático en GitHub Releases. Para instalar el tarball:
+
+```bash
+npm i -g ./commander-ai-studio-2.5.1.tgz
+commander serve
+```
 
 ### Avatares
 
