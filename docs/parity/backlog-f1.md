@@ -195,7 +195,7 @@
 
 **Labels:** `f1`, `p0`, `area:cli`, `area:agent`
 **Estimación:** 1,5 d-persona · **Depende de:** F1-04
-**Estado:** Implementado y cerrado — commit `b01264a` (2026-11-09).
+**Estado:** Implementado y cerrado — commit `4a7098b` (2026-11-09).
 
 **Por qué.** El CLI filtra `ask_user` explícitamente, así que el agente supone en vez de preguntar. En el escritorio ya existe el modal y el canal.
 
@@ -454,7 +454,7 @@
 
 **Cierre**
 - Los 3 casos que quedaban —approval de escritura, `ask_user` en `--json` y reconexión SSE— ya están cubiertos en `tests/cli/e2e.test.ts` sobre `attach --json` y el fixture SSE; no quedan `test.todo` en F1-14.
-- `ask_user` en el bucle de `agent` ya está implementado (F1-06, commit `b01264a`); este arnés cubre el evento `question` en `attach --json` y el canal de sesión, no el prompt interactivo.
+- `ask_user` en el bucle de `agent` ya está implementado (F1-06, commit `4a7098b`); este arnés cubre el evento `question` en `attach --json` y el canal de sesión, no el prompt interactivo.
 
 **Pruebas**
 - `tests/cli/e2e.test.ts`: 16 casos implementados, sin `test.todo`, con `spawn` del CLI contra el falso. Escenarios: `final`, `tool`, `tool-three`, `tool-denied`, `max-steps`, `unknown-tool`, `stream`, `llm-error`, approvals, `question` y reconexión SSE.
@@ -506,7 +506,7 @@ F1-02 + F1-04 + F1-08 ───────────────────�
 ## 7. Definición de terminado de F1 (gate G1)
 
 - [x] `commander` abre REPL; una edición pide aprobación con diff y denegar no escribe.
-- [x] `ask_user` bloquea hasta respuesta y queda en el historial (F1-06, commit `b01264a`).
+- [x] `ask_user` bloquea hasta respuesta y queda en el historial (F1-06, commit `4a7098b`).
 - [x] Una tarea del CLI aparece en el escritorio con el mismo `sessionId`, pasos y plan.
 - [x] `--resume` continúa sin duplicar tool calls; `--fork` no muta la original.
 - [x] El plan sobrevive a reiniciar el servidor.

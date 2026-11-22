@@ -1,6 +1,6 @@
 # G1 — CAL4H: repetición de CAL4 con operador humano
 
-> **Estado:** **entorno previsto en `360f8c2`, sin operador asignado. NO EJECUTAR TODAVÍA.** El pin anterior `41358e4` ya no resuelve en el historial.
+> **Estado:** **entorno previsto en `360f8c2`, sin operador asignado. NO EJECUTAR TODAVÍA.** El pin anterior `41358e4` ya no resuelve en el historial; su tramo quedó en el squash #35 (`ce0bba0`).
 > **Bloque vigente:** el [plan congelado CAL4H](CAL4H-PLAN-2026-11-17.md) **sustituye §7 de este runbook** para el bloque actual, porque el commit previsto cambió a `360f8c2`. Este runbook se conserva como procedimiento general.
 > **Qué es:** el procedimiento para repetir el bloque CAL4 con una **persona real** leyendo el panel y pulsando `a`/`d` en el TTY. El agente **no envía ninguna tecla**, no conduce el PTY y no importa muestras por su cuenta.
 > **Qué no es:** no es una corrida autorizada, no reemplaza el recibo del bloque inválido y no cambia la referencia de 15 151 ms. G1 sigue **NO CERRADO**.
@@ -152,7 +152,7 @@ Fijado antes de la primera muestra, para que el recibo declare exactamente lo qu
 | Store humano | vacío (0 archivos) | `find tests/tmp-g1/cal4-human -type f` |
 | Rango | `CAL4-R22`…`R41` libre; el bloque inválido ocupa `R02`–`R21` | `grep -o 'CAL4-R[0-9][0-9]' .commander/g1/cal4/samples.jsonl` |
 
-El pin anterior `41358e4` ya no resuelve en el historial; el worktree se fija en `360f8c2` el 2026-11-21:
+El pin anterior `41358e4` ya no resuelve en el historial (hoy en el squash #35, `ce0bba0`); el worktree se fija en `360f8c2` el 2026-11-21:
 
 ```bash
 git -C tests/tmp-g1/cal4-repo checkout --detach 360f8c2

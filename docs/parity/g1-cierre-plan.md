@@ -35,7 +35,7 @@ Si el paso 3 falla, **se detiene el cierre**: G1 sigue NO CERRADO y el paso sigu
 
 ## 3. Paso 0 — congelar el árbol
 
-> **Pin revisado (2026-11-21):** `41358e4` ya no resuelve en este clon (`git cat-file -t 41358e4` → `Not a valid object name`), así que no se podía hacer el checkout del bloque. El pin pasa a **`360f8c2`**, HEAD publicado al revisar; verificar con `git rev-parse --verify 360f8c2` y un worktree detached antes de medir. Los commits posteriores a `360f8c2` que sólo toquen este plan no cambian el código medido.
+> **Pin revisado (2026-11-21):** `41358e4` ya no resuelve en este clon (`git cat-file -t 41358e4` → `Not a valid object name`; su tramo quedó en el squash #35, `ce0bba0`), así que no se podía hacer el checkout del bloque. El pin pasa a **`360f8c2`**, HEAD publicado al revisar; verificar con `git rev-parse --verify 360f8c2` y un worktree detached antes de medir. Los commits posteriores a `360f8c2` que sólo toquen este plan no cambian el código medido.
 
 - [ ] Árbol limpio y commit anotado: el bloque se mide en **`360f8c2`**. `git status --short` vacío; si `predev` regenera `public/avatars/manifest.json`, se restaura (es sólo fin de línea).
 - [ ] Worktree medido `tests/tmp-g1/cal4-repo` **detached en `360f8c2`** y limpio. Se movió con `git -C tests/tmp-g1/cal4-repo checkout --detach 360f8c2`; el lockfile es idéntico y no hace falta reinstalar. Si se recrea desde cero, usar `git worktree add --detach tests/tmp-g1/cal4-repo 360f8c2` y `npm ci --ignore-scripts --no-audit --no-fund` antes de sembrar.
@@ -133,7 +133,7 @@ T10 quedó **declarado `failed`** con la evidencia del [recibo `G1-T10-13`](rece
 
 ## 7. Paso 5 — recibos y actualización
 
-- [ ] Completar la [plantilla CAL4H](receipts/G1-APPROVAL-CAL4H-2026-11-17.md) con operador, fecha, commit **`360f8c2`**, `n`, p95, exclusiones, decisiones `deny` y decisión de la casilla. **No** se reutiliza el recibo de CAL4 ni se declara el `6838fa1` del runbook original.
+- [ ] Completar la [plantilla CAL4H](receipts/G1-APPROVAL-CAL4H-2026-11-17.md) con operador, fecha, commit **`360f8c2`**, `n`, p95, exclusiones, decisiones `deny` y decisión de la casilla. **No** se reutiliza el recibo de CAL4 ni se declara el `6838fa1` del runbook original (hoy en el squash #27, `07fc0e1`).
 - [ ] `docs/parity/receipts/G1-CIERRE-<fecha>.md`: las ocho reglas de [§7.1](dogfooding-g1.md#71-reglas-de-decisión-criterio-de-puerta) con su evidencia, tasa global, tabla por tarea con delta frente a F0, avisos de regresión de §7.2, seguridad, fallbacks, límites y decisión **CERRADO / NO CERRADO** en ese orden.
 - [ ] Si CAL4H cumple: `ROADMAP.md` y `ROADMAP_PARITY.md` pasan G1 a cerrada y recién entonces se marcan los criterios de F1/F2 que dependían de la puerta.
 - [ ] Si CAL4H no cumple: los roadmaps siguen como están (G1 abierta) y el recibo declara el siguiente paso de producto.
