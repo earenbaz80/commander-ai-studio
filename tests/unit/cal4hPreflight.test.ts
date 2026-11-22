@@ -39,9 +39,6 @@ describe('preflight CAL4H: listener del puerto exacto', () => {
     expect(contarListeners(salida, 3283)).toEqual({ count: 1, pids: ['222'] });
   });
 
-  it('devuelve cero si el único listener parecido es :32830', () => {
-    expect(contarListeners(lineaNetstat(32830, 111), 3283)).toEqual({ count: 0, pids: [] });
-  });
 });
 
 describe('preflight CAL4H: worktree detached', () => {

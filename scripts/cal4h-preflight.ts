@@ -8,7 +8,6 @@
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import path from 'node:path';
 
 export interface ListenerInfo {
   count: number;
@@ -50,8 +49,8 @@ export function gitAt(worktree: string, args: string[]): string {
  * devuelve `HEAD` sólo cuando no hay rama activa; una rama que apunte al mismo
  * commit también falla, porque el recibo declara el worktree detached.
  */
-export function verificarWorktree(worktree: string, pin: string, root = worktree): string {
-  if (!existsSync(worktree)) throw new Error(`no existe ${path.relative(root, worktree)}`);
+export function verificarWorktree(worktree: string, pin: string): string {
+  if (!existsSync(worktree)) throw new Error(`no existe ${worktree}`);
   const head = gitAt(worktree, ['rev-parse', 'HEAD']);
   if (head !== pin) throw new Error(`HEAD es ${head.slice(0, 12)}, se esperaba ${pin.slice(0, 12)}`);
 

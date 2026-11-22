@@ -3,7 +3,7 @@
  *
  * Comprueba que el entorno medido está listo **sin ejecutar ninguna corrida**:
  * health 200 con `status: "ok"` en `:3283`, exactamente un listener en ese
- * puerto, worktree limpio en `360f8c2` y store humano vacío.
+ * puerto, worktree detached y limpio en `360f8c2`, y store humano vacío.
  *
  * No escribe archivos, no arranca servidores, no importa muestras y no llama a
  * `g1-cal4.ts`. El PID del listener se imprime como dato observado: no es una
@@ -17,7 +17,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { contarListeners, gitAt, verificarWorktree } from './cal4h-preflight';
+import { contarListeners, gitAt, verificarWorktree, type ListenerInfo } from './cal4h-preflight';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PIN = '360f8c2ac6ecf4ec0459f204be66099354930ae9';
@@ -56,15 +56,6 @@ function intentar(nombre: string, fn: () => string): void {
   } catch (error) {
     falla(nombre, mensaje(error));
   }
-}
-
-function git(args: string[]): string {
-  return gitAt(WORKTREE, args);
-}
-
-interface ListenerInfo {
-  count: number;
-  pids: string[];
 }
 
 /**
@@ -107,13 +98,9 @@ function listeners(): ListenerInfo {
   return contarListeners(salida, PORT);
 }
 
-function checkWorktreePin(): string {
-  return verificarWorktree(WORKTREE, PIN, ROOT);
-}
-
 function checkWorktreeClean(): string {
   if (!existsSync(WORKTREE)) throw new Error(`no existe ${path.relative(ROOT, WORKTREE)}`);
-  const sucio = git(['status', '--porcelain']);
+  const sucio = gitAt(WORKTREE, ['status', '--porcelain']);
   if (sucio !== '') throw new Error(`worktree sucio:\n${sucio}`);
   return 'sin cambios ni archivos sin seguimiento';
 }
@@ -165,7 +152,7 @@ function checkListener(): void {
 
 async function main(): Promise<void> {
   console.log('[cal4h:preflight] validación read-only · sin corridas ni escrituras');
-  intentar('worktree pin', checkWorktreePin);
+  intentar('worktree pin', () => verificarWorktree(WORKTREE, PIN));
   intentar('worktree limpio', checkWorktreeClean);
   await checkHealth();
   checkListener();
