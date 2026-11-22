@@ -24,6 +24,18 @@ import { build } from 'esbuild';
 const OUT = 'cli-dist';
 const DIST = 'dist';
 
+// La UI es parte del contrato del tarball: `commander serve` la busca en
+// `cli-dist/dist`. Sin este corte, `npm pack` seguía adelante y publicaba un
+// paquete que instalaba pero servía 404. Se falla antes de generar bundles
+// para no dejar un `cli-dist` a medias que parezca empaquetable.
+if (!fs.existsSync(path.join(DIST, 'index.html'))) {
+  console.error(
+    `[build-cli] falta ${DIST}/index.html: el tarball quedaría sin UI. ` +
+      'Corré `npm run build` antes de `npm run build:cli` o `npm pack`.'
+  );
+  process.exit(1);
+}
+
 const shared = {
   bundle: true,
   platform: 'node',
@@ -50,19 +62,14 @@ await build({
 
 /**
  * Copia la UI construida a `cli-dist/dist`. Vite ya mete `public/` dentro de
- * `dist/`, así que no se copia aparte. Si falta `dist/index.html` no se
- * empaqueta una UI vieja como si fuera actual: se borra la copia anterior y se
- * avisa. El guardián `check:cli-package` corre `npm run build` antes de empacar.
+ * `dist/`, así que no se copia aparte. El guard de arriba ya exigió
+ * `dist/index.html`; el guardián `check:cli-package` corre `npm run build`
+ * antes de empacar.
  */
 function empaquetarAssets() {
   const destino = path.join(OUT, 'dist');
   // Restos de cuando `public/` se copiaba aparte: no deben viajar en el tarball.
   fs.rmSync(path.join(OUT, 'public'), { recursive: true, force: true });
-  if (!fs.existsSync(path.join(DIST, 'index.html'))) {
-    fs.rmSync(destino, { recursive: true, force: true });
-    console.warn(`[build-cli] falta ${DIST}/index.html: los assets no viajan (corré npm run build)`);
-    return;
-  }
   fs.rmSync(destino, { recursive: true, force: true });
   fs.cpSync(DIST, destino, { recursive: true });
   console.log(`[build-cli] assets: ${DIST}/ → ${OUT}/dist`);

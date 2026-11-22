@@ -27,9 +27,11 @@ Requiere Node.js 22.13+ (el backend usa `node:sqlite`).
 `npm run build:cli` empaqueta `bin/commander.ts` en `cli-dist/commander.mjs`
 (esbuild, ~5 MB con todo el JS inlineado; quedan externos `node-pty`,
 `playwright` y `vite`, que llegan por `npm` o por el repo). El `bin` del
-paquete apunta ahí y `prepack` lo regenera:
+paquete apunta ahí y `prepack` lo regenera. La UI es obligatoria: si falta
+`dist/index.html`, `build:cli` corta con un mensaje que pide `npm run build`
+en vez de dejar un tarball sin `cli-dist/dist`.
 
-- `npm pack` deja un tarball de ~2,36 MB con `cli-dist/` (CLI, servidor y UI), `package.json` y este README.
+- `npm run build && npm pack` deja un tarball de ~2,36 MB con `cli-dist/` (CLI, servidor y UI), `package.json` y este README. `check:cli-package` ya hace ese build antes de empacar.
 - `npm i -g ./commander-ai-studio-2.5.1.tgz` instala `commander` (`--version`,
   `doctor`, `agent`, `repl`, `config`, `session`, `mcp`, `skills`, `completion`).
 - `commander serve` funciona desde el paquete instalado: sirve la UI de
