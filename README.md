@@ -500,6 +500,6 @@ Si algún día se distribuyera a terceros, haría falta un certificado de firma 
 
 ## Empaquetado
 
-`npm run build:all` encadena tipos, Vite, los bundles del servidor y `electron-builder`. Desde el CLI, `commander build --electron` corre ese mismo pipeline; sin la bandera, `commander build` hace sólo `npm run build` (tipos + Vite). El paquete lleva `node-pty` como `extraResources` (no recompilado: es N-API y su prebuild sirve para Node y Electron) y un hook `afterPack` recorta sus prebuilds a la plataforma y arquitectura compiladas.
+`npm run build:all` encadena tipos, Vite, los bundles del servidor y `electron-builder`. Desde un checkout, el CLI `commander build --electron` corre ese mismo pipeline; sin la bandera, `commander build` hace sólo `npm run build` (tipos + Vite). El paquete lleva `node-pty` como `extraResources` (no recompilado: es N-API y su prebuild sirve para Node y Electron) y un hook `afterPack` recorta sus prebuilds a la plataforma y arquitectura compiladas.
 
 Un tag que no pase `scripts/check-signing.cjs --require` no publica: es la única forma de que un instalador sin firmar no llegue a nadie por descuido.
