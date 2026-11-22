@@ -364,15 +364,15 @@ test('CI: una guardia construye y empaqueta el CLI', () => {
     paso.split('\n').some((l) => l.trim() === `run: ${comando}`);
 
   // `prepack` construye el bundle, pero sin un job que empaquete nadie lo
-  // ejecuta: el `bin`, `files` o el banner podían romperse en silencio.
-  const build = pasos.findIndex((p) => esRun(p, 'npm run build:cli'));
+  // ejecuta: el `bin`, `files` o el banner podían romperse en silencio. El
+  // guardián construye la UI antes de `npm pack`; un `build:cli` separado
+  // fallaría en un checkout limpio porque todavía no existe `dist/`.
   const pack = pasos.findIndex((p) => esRun(p, 'npm run check:cli-package'));
-  assert.ok(build >= 0, 'falta el paso que construye el bundle del CLI');
-  assert.ok(pack >= 0, 'falta el paso que empaqueta y prueba el CLI');
-  assert.ok(build < pack, 'el bundle se construye antes de empaquetarlo');
+  assert.ok(pack >= 0, 'falta el paso que construye, empaqueta y prueba el CLI');
 
   // El script es el que mide: si se vacía, el job queda verde sin comprobar nada.
   const guion = leer('scripts/check-cli-package.mjs');
+  assert.match(guion, /npm\(\['run', 'build'\]\)/, 'el guardián construye la UI antes de empacar');
   assert.match(guion, /'pack'/, 'el script corre npm pack');
   assert.match(guion, /cli-dist\/commander\.mjs/, 'comprueba el bundle en el tarball');
   assert.match(guion, /--version/, 'ejecuta el bundle empaquetado');

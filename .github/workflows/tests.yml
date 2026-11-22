@@ -76,14 +76,11 @@ jobs:
       - name: Tipos (tsc --noEmit)
         run: npm run typecheck
 
-      # `prepack` construye el bundle del CLI, pero ningún job empaquetaba:
-      # un `bin`, un `files` o un banner roto pasaba inadvertido hasta publicar.
-      # Barato aquí porque `npm ci` ya está hecho. El segundo paso corre
-      # `npm pack` y arranca el ejecutable empaquetado.
-      - name: Bundle del CLI (build:cli)
-        run: npm run build:cli
-
-      - name: Paquete del CLI (npm pack + smoke)
+      # `check:cli-package` construye la UI, corre `npm pack` (que dispara
+      # `prepack` → `build:cli`) e instala/arranca el ejecutable. No hay paso
+      # separado de `build:cli`: en un checkout limpio falta `dist/` y el guard
+      # de la UI corta antes de empaquetar.
+      - name: Paquete del CLI (build + npm pack + smoke)
         run: npm run check:cli-package
 
       # `npm ci` instala el paquete de Playwright pero no sus navegadores. Los
