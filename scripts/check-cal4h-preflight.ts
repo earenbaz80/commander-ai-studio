@@ -17,6 +17,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { contarListeners, gitAt, verificarWorktree } from './cal4h-preflight';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PIN = '360f8c2ac6ecf4ec0459f204be66099354930ae9';
@@ -58,10 +59,7 @@ function intentar(nombre: string, fn: () => string): void {
 }
 
 function git(args: string[]): string {
-  return execFileSync('git', ['-C', WORKTREE, ...args], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim();
+  return gitAt(WORKTREE, args);
 }
 
 interface ListenerInfo {
@@ -106,27 +104,11 @@ function listeners(): ListenerInfo {
     }
   }
 
-  const lineas = salida
-    .split(/\r?\n/)
-    .filter((linea) => linea.includes(`:${PORT}`) && /\bLISTEN(?:ING)?\b/i.test(linea));
-
-  const pids = new Set<string>();
-  for (const linea of lineas) {
-    const deSs = linea.match(/pid=(\d+)/)?.[1];
-    const deLsof = linea.match(/^\S+\s+(\d+)\s/)?.[1];
-    const deNetstat = linea.match(/\s(\d+)\s*$/)?.[1];
-    const pid = deSs ?? deLsof ?? deNetstat;
-    if (pid) pids.add(pid);
-  }
-
-  return { count: lineas.length, pids: [...pids] };
+  return contarListeners(salida, PORT);
 }
 
 function checkWorktreePin(): string {
-  if (!existsSync(WORKTREE)) throw new Error(`no existe ${path.relative(ROOT, WORKTREE)}`);
-  const head = git(['rev-parse', 'HEAD']);
-  if (head !== PIN) throw new Error(`HEAD es ${head.slice(0, 12)}, se esperaba ${PIN.slice(0, 12)}`);
-  return `${PIN.slice(0, 7)} (detached)`;
+  return verificarWorktree(WORKTREE, PIN, ROOT);
 }
 
 function checkWorktreeClean(): string {
