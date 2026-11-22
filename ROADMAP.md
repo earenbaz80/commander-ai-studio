@@ -2,7 +2,7 @@
 
 > **Instantánea:** 2026-11-21. **Frentes:** paridad F0–F6, plataforma PL0–PL7 y UX 1.0.
 >
-> **Nota 2026-11-19:** Strata cloud se retiró en `6024ece`; Strata queda sólo como proveedor local (`strata-local`). No cambia el estado de ninguna fase ni puerta.
+> **Nota 2026-11-19:** el adaptador de Strata cloud se retiró en `43fc3ae`; `strata-local` siguió en `PROVIDER_SPECS` y es el único proveedor Strata vigente. No cambia el estado de ninguna fase ni puerta.
 >
 > **Detalle por frente:** [Paridad](ROADMAP_PARITY.md) · [Plataforma](ROADMAP_PLATFORM.md) · [UX](ROADMAP_UX.md).
 >

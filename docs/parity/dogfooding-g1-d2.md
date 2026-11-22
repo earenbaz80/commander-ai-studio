@@ -27,7 +27,7 @@ Marcas que el arnés acepta en la respuesta (≥2, sin distinguir mayúsculas): 
 
 ### 2.1 Árbol limpio y commit fijo
 
-D1 dejó el árbol limpio y el WIP de Strata en `stash@{0}` (hoy ya no existe: el proveedor cloud se retiró en `6024ece`). Al cerrar D1 el HEAD es `eff4aea`: desde `2017515` sólo cambiaron `docs/`, `evals/` y `scripts/` (fixtures compartidos y script de siembra), con `src/` y `bin/` intactos. D2 no cambia código: si el HEAD se mueve sólo por documentación, se anota; si cambia código, se repiten los gates de §2.3.
+D1 dejó el árbol limpio y el WIP de Strata en `stash@{0}` (hoy ya no existe: el adaptador de Strata cloud se retiró en `43fc3ae` y `strata-local` siguió en `PROVIDER_SPECS`). Al cerrar D1 el HEAD es `eff4aea`: desde `2017515` sólo cambiaron `docs/`, `evals/` y `scripts/` (fixtures compartidos y script de siembra), con `src/` y `bin/` intactos. D2 no cambia código: si el HEAD se mueve sólo por documentación, se anota; si cambia código, se repiten los gates de §2.3.
 
 ```bash
 git rev-parse HEAD

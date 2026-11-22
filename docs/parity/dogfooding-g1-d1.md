@@ -21,7 +21,7 @@ Tiempo estimado: 10–20 min por corrida y ~15 min de preflight. Presupuesto dur
 
 ### 2.1 Árbol limpio y commit fijo
 
-El runbook exige `git status --porcelain` vacío. **En D1 el árbol no estaba limpio**: había un cambio de Strata en `src/App.tsx` sin commitear, además del resto del worktree. Ese trabajo ya está integrado: el proveedor cloud se retiró en `6024ece` y no queda nada en `stash` (corrección 2026-11-19).
+El runbook exige `git status --porcelain` vacío. **En D1 el árbol no estaba limpio**: había un cambio de Strata en `src/App.tsx` sin commitear, además del resto del worktree. Ese trabajo ya está integrado: el adaptador de Strata cloud se retiró en `43fc3ae` y `strata-local` siguió en `PROVIDER_SPECS`; no queda nada en `stash` (corrección 2026-11-19).
 
 Elegir una opción y anotarla en el registro de D1:
 
@@ -37,7 +37,7 @@ git status --porcelain      # debe estar vacío
 git check-ignore -v .env    # .env sigue ignorado
 ```
 
-**Aplicado en D1:** opción **B**. Se commiteó primero la documentación del plan (`06951d7`, 3 archivos) y el trabajo de Strata a medias quedó en `stash@{0}` («WIP Strata provider - pausado para D1 de G1»). Árbol limpio en `06951d7` durante todas las corridas. **Corrección (2026-11-19):** ese `stash@{0}` ya no existe (`git stash list` está vacío): el WIP se integró en la pila de Strata y el proveedor cloud se retiró en `6024ece`. El proveedor Strata vigente es sólo `strata-local`. La nota original se conserva como registro de lo que se hizo en D1.
+**Aplicado en D1:** opción **B**. Se commiteó primero la documentación del plan (`06951d7`, 3 archivos) y el trabajo de Strata a medias quedó en `stash@{0}` («WIP Strata provider - pausado para D1 de G1»). Árbol limpio en `06951d7` durante todas las corridas. **Corrección (2026-11-19):** ese `stash@{0}` ya no existe (`git stash list` está vacío): el WIP se integró en la pila de Strata y el adaptador de Strata cloud se retiró en `43fc3ae`. `strata-local` siguió en `PROVIDER_SPECS` (el #35 retiró su panel de runtime y el descubrimiento del modelo; el #33 los restauró) y es el único proveedor Strata vigente. La nota original se conserva como registro de lo que se hizo en D1.
 
 ### 2.2 Entorno
 
