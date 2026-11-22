@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  COMMITTER_PLATAFORMA,
   FIRMA,
   commitsDelRango,
   desvioDeIdentidad,
@@ -79,6 +80,22 @@ test('firma: autor y committer tienen que ser la única firma', () => {
     desvioDeIdentidad({ ...FIRMA, email: FIRMA.email.toUpperCase() }, { ...FIRMA }),
     null
   );
+
+  // GitHub pone su propia identidad como committer en squash y rebase; el
+  // autor sigue siendo el del PR, así que la guardia mira ahí.
+  assert.equal(
+    desvioDeIdentidad({ ...FIRMA }, { nombre: 'GitHub', email: 'noreply@github.com' }),
+    null
+  );
+  assert.match(
+    String(desvioDeIdentidad({ ...FIRMA }, { nombre: 'GitHub', email: 'noreply@example.com' })),
+    /committer/
+  );
+  assert.match(
+    String(desvioDeIdentidad({ nombre: 'Otra Persona', email: FIRMA.email }, COMMITTER_PLATAFORMA)),
+    /autor/,
+    'el committer de plataforma no excusa un autor ajeno'
+  );
 });
 
 test('firma: `.mailmap` y `AGENTS.md` coinciden con la firma del script', () => {
@@ -143,6 +160,37 @@ test('firma: los merge commits no se revisan y el resto sigue igual', () => {
       revisados.map(problemaDe).filter((p) => p === null),
       []
     );
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test('firma: un squash de GitHub (committer de plataforma) pasa', () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'firma-squash-'));
+  const git = (args: string[]): string =>
+    execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+
+  try {
+    git(['init', '-q', '-b', 'main']);
+    git(['config', 'user.name', FIRMA.nombre]);
+    git(['config', 'user.email', FIRMA.email]);
+    fs.writeFileSync(path.join(repo, 'a.txt'), 'a\n');
+    git(['add', 'a.txt']);
+    // Un squash de GitHub: autor original, committer de la plataforma.
+    execFileSync('git', ['commit', '-q', '-m', 'feat(cli): algo'], {
+      cwd: repo,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GIT_COMMITTER_NAME: COMMITTER_PLATAFORMA.nombre,
+        GIT_COMMITTER_EMAIL: COMMITTER_PLATAFORMA.email,
+      },
+    });
+
+    const [commit] = commitsDelRango('HEAD', repo);
+    assert.equal(commit.autor.email, FIRMA.email);
+    assert.equal(commit.committer.nombre, COMMITTER_PLATAFORMA.nombre);
+    assert.equal(problemaDe(commit), null);
   } finally {
     fs.rmSync(repo, { recursive: true, force: true });
   }
