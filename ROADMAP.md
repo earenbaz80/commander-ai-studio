@@ -6,7 +6,7 @@
 >
 > **Detalle por frente:** [Paridad](ROADMAP_PARITY.md) · [Plataforma](ROADMAP_PLATFORM.md) · [UX](ROADMAP_UX.md).
 >
-> **Roadmap visual:** [roadmap autónomo publicado](https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html) — 62 % hacia el multiagente autónomo (2026-11-21), 12 de 27 pasos cerrados, con el avance por paso y su evidencia (fuente: [docs/roadmap-autonomo.html](docs/roadmap-autonomo.html)).
+> **Roadmap visual:** [roadmap autónomo publicado](https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html) — 64 % hacia el multiagente autónomo (2026-11-21), 13 de 27 pasos cerrados, con el avance por paso y su evidencia (fuente: [docs/roadmap-autonomo.html](docs/roadmap-autonomo.html)).
 >
 > **Evidencia:** [baseline F0](docs/parity/baseline-2026-11.md) · [runbook G1/F0](docs/parity/runbook-g1-f0.md) · [recibo F0 local](docs/parity/receipts/F0-LOCAL-2026-11-10.md) · [recibo del dogfooding G1](docs/parity/receipts/G1-DOGFOOD-2026-11-12.md) · [hoja de decisión del p95](docs/parity/g1-approval-gate-decision.md).
 
