@@ -127,7 +127,7 @@
       "steps": [
         { "id": "F2-1", "title": "Publicar en el registro de npm", "weight": 2, "progress": 85, "evidence": "sin private, deps mínimas y tarball de 2,36 MB (49 archivos) · falta cuenta npm y versión" },
         { "id": "F2-2", "title": "Paquete adelgazado (sólo dependencias del CLI)", "weight": 2, "progress": 100, "evidence": "dependencies = node-pty; npm i -g instala 3 paquetes (antes 273)" },
-        { "id": "F2-3", "title": "commander serve / build desde el paquete instalado", "weight": 1, "progress": 100, "evidence": "assets viajan en cli-dist/dist (public incluido por Vite) · tarball 2,36 MB / 49 archivos · serve instalado: health 200, `/` 200 y asset 200 · `build` y `serve --dev` cortan con motivo en 3 cwd sin checkout, sin escribir el marcador de delegación · check:cli-package (2026-11-21)" },
+        { "id": "F2-3", "title": "commander serve desde el paquete instalado", "weight": 1, "progress": 100, "evidence": "assets viajan en cli-dist/dist (public incluido por Vite) · tarball 2,36 MB / 49 archivos · serve instalado: health 200, `/` 200 y asset 200 · `build` desde el tarball no forma parte de F2-3: `build` y `serve --dev` se acotan a un checkout y cortan con motivo en 3 cwd sin checkout, sin escribir el marcador de delegación · check:cli-package (2026-11-21)" },
         { "id": "F2-4", "title": "Extensión de VS Code funcional (no scaffold)", "weight": 1, "progress": 25, "evidence": "vscode-extension/ lanza el CLI headless; no es un IDE integrado" }
       ]
     },
