@@ -63,12 +63,24 @@ describe('serve: entrada del servidor', () => {
     expect(resolveServerEntry('/x/bin', () => false)).toBeNull();
   });
 
-  it('sirve la UI empaquetada desde cli-dist/dist', () => {
+  it('sirve la UI empaquetada desde cli-dist/dist si la raíz no tiene dist', () => {
+    const empaquetado = path.join('/pkg/cli-dist', 'dist');
     const dir = resolveDistDir({
       cliDir: '/pkg/cli-dist',
-      exists: (file) => file.endsWith('index.html'),
+      exists: (file) => file === path.join(empaquetado, 'index.html'),
     });
-    expect(dir).toBe(path.join('/pkg/cli-dist', 'dist'));
+    expect(dir).toBe(empaquetado);
+  });
+
+  it('prefiere dist/ de la raíz cuando existen las dos copias', () => {
+    const rootDist = path.resolve('/repo', 'dist');
+    const cliDist = path.join('/repo/cli-dist', 'dist');
+    const dir = resolveDistDir({
+      cliDir: '/repo/cli-dist',
+      exists: (file) =>
+        file === path.join(rootDist, 'index.html') || file === path.join(cliDist, 'index.html'),
+    });
+    expect(dir).toBe(rootDist);
   });
 
   it('en el repo cae al dist de la raíz', () => {

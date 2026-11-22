@@ -32,10 +32,11 @@ export function resolveServerEntry(
 /**
  * Directorio de la UI que sirve `serve`.
  *
- * En el paquete instalado los assets viajan junto a los bundles
- * (`cli-dist/dist`). En el repo, `bin/` no tiene `dist/` y se usa el que genera
- * Vite en la raíz. Si no hay `index.html` en ninguno, se devuelve `null` y el
- * servidor conserva su propio fallback.
+ * La raíz manda: en un checkout, `npm run build` actualiza `dist/` y no debe
+ * quedar tapado por una copia vieja junto al CLI (`cli-dist/dist`). En el
+ * paquete instalado no hay `dist/` en la raíz, así que se usa la copia que
+ * viaja con los bundles. Si no hay `index.html` en ninguno, se devuelve `null`
+ * y el servidor conserva su propio fallback.
  */
 export function resolveDistDir(options: {
   cliDir: string;
@@ -43,7 +44,7 @@ export function resolveDistDir(options: {
 }): string | null {
   const exists = options.exists ?? fs.existsSync;
   const root = path.resolve(options.cliDir, '..');
-  const candidates = [path.join(options.cliDir, 'dist'), path.join(root, 'dist')];
+  const candidates = [path.join(root, 'dist'), path.join(options.cliDir, 'dist')];
   return candidates.find((dir) => exists(path.join(dir, 'index.html'))) ?? null;
 }
 
