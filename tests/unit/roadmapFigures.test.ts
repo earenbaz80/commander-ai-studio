@@ -1,4 +1,6 @@
-import { readFileSync } from 'fs';
+import { readdirSync, readFileSync } from 'fs';
+import { join, relative, sep } from 'path';
+import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -11,6 +13,40 @@ import { describe, expect, it } from 'vitest';
  */
 
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
+const root = fileURLToPath(new URL('../..', import.meta.url));
+
+/** Carpetas que no son documentación del repo (dependencias, artefactos y builds). */
+const SKIP_DIRS = new Set([
+  '.commander',
+  '.git',
+  'build',
+  'cli-dist',
+  'dist',
+  'local_models',
+  'node_modules',
+  'release',
+  'runtime',
+]);
+
+/** Recibos históricos y el worktree de CAL4H: fotos fechadas, no citas vivas. */
+const SKIP_PREFIXES = ['docs/parity/receipts/', 'tests/tmp-g1/'];
+
+/** Este archivo contiene fixtures viejos a propósito. */
+const SKIP_FILES = new Set(['tests/unit/roadmapFigures.test.ts']);
+
+function scannedDocs(dir: string, found: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      if (!SKIP_DIRS.has(entry.name)) scannedDocs(join(dir, entry.name), found);
+      continue;
+    }
+    if (!/\.(md|html)$/i.test(entry.name)) continue;
+    const rel = relative(root, join(dir, entry.name)).split(sep).join('/');
+    if (SKIP_FILES.has(rel) || SKIP_PREFIXES.some((prefix) => rel.startsWith(prefix))) continue;
+    found.push(rel);
+  }
+  return found;
+}
 
 type Figures = { percent: number; closed: number; total: number; updated: string };
 
@@ -57,6 +93,35 @@ function citedFigures(text: string): Figures | null {
   };
 }
 
+type Citation = { file: string; line: number; percent?: number; closed?: number; total?: number };
+
+/** Citas sueltas del global o de los pasos cerrados, sin exigir el formato de la línea de resumen. */
+function citationsIn(file: string, text: string): Citation[] {
+  const citations: Citation[] = [];
+  text.split(/\r?\n/).forEach((line, index) => {
+    const canonical = /hacia el multiagente autónomo/i.test(line);
+    const mentionsSteps = /pasos cerrados/i.test(line);
+    // «el roadmap visual va al 64 %» cita el global sin decir «pasos cerrados».
+    // La métrica de criterios de fase (55 %) no es el global y queda fuera.
+    const globalPercentOnly =
+      /roadmap/i.test(line) && /visual|autónomo|global/i.test(line) && !/criterios/i.test(line);
+    if (!canonical && !mentionsSteps && !globalPercentOnly) return;
+    const percent = line.match(/(\d+(?:[.,]\d+)?)\s*%/);
+    const steps =
+      line.match(/(\d+)\s+de\s+(\d+)\s+pasos cerrados/) ??
+      line.match(/(\d+)\/(\d+)\s+pasos cerrados/);
+    if (!percent && !steps) return;
+    citations.push({
+      file,
+      line: index + 1,
+      percent: percent ? Number(percent[1].replace(',', '.')) : undefined,
+      closed: steps ? Number(steps[1]) : undefined,
+      total: steps ? Number(steps[2]) : undefined,
+    });
+  });
+  return citations;
+}
+
 describe('cifras del roadmap visual', () => {
   const source = planFigures();
 
@@ -78,5 +143,44 @@ describe('cifras del roadmap visual', () => {
     expect(Math.round(cited.percent)).not.toBe(source.percent);
     expect(cited.closed).not.toBe(source.closed);
     expect(cited.updated).not.toBe(source.updated);
+  });
+
+  it('detecta una cita del global que sólo trae el porcentaje', () => {
+    const [citation] = citationsIn('nota.md', 'El roadmap visual va al 64 %.');
+    expect(citation?.percent).toBe(64);
+    expect(citation?.closed).toBeUndefined();
+  });
+
+  it('no cuenta la métrica de criterios del 55 %', () => {
+    const line =
+      'El 55 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto: 54 de los 99 criterios comprometidos tienen evidencia, y cada criterio es una casilla de los roadmaps de detalle.';
+    expect(citationsIn('ROADMAP.md', line)).toEqual([]);
+  });
+
+  it('ningún .md ni .html del repo cita el global o los pasos cerrados desfasados', () => {
+    const files = scannedDocs(root);
+    expect(files).toContain('ROADMAP.md');
+    expect(files).toContain('ROADMAP_PARITY.md');
+
+    const found = files.flatMap((file) => citationsIn(file, read(file)));
+    const stale = found.filter(
+      (citation) =>
+        (citation.percent !== undefined && Math.round(citation.percent) !== source.percent) ||
+        (citation.closed !== undefined &&
+          (citation.closed !== source.closed || citation.total !== source.total)),
+    );
+
+    expect(found.length, 'el barrido no encontró ninguna cita: el detector no está mirando').toBeGreaterThanOrEqual(
+      2,
+    );
+    expect(
+      stale,
+      `citas desfasadas respecto de docs/roadmap-autonomo.html (${source.percent} %, ${source.closed}/${source.total}):\n${stale
+        .map(
+          (citation) =>
+            `${citation.file}:${citation.line} → ${citation.percent ?? '?'} % · ${citation.closed ?? '?'}/${citation.total ?? '?'}`,
+        )
+        .join('\n')}`,
+    ).toEqual([]);
   });
 });
