@@ -150,10 +150,15 @@ try {
     const cwdServe = path.join(tmp, 'serve-cwd');
     fs.mkdirSync(cwdServe, { recursive: true });
     const port = await puertoLibre();
-    // Sin NODE_ENV explícito: se mide el `serve` por defecto del paquete, que
-    // resuelve `cli-dist/server.mjs` y arranca en producción sin cargar Vite.
-    const env = { ...process.env, HOST: '127.0.0.1', NO_COLOR: '1' };
-    delete env.NODE_ENV;
+    // NODE_ENV=development heredado: `serve` no-dev tiene que forzarlo a
+    // producción. Si lo respetara, el server intentaría importar Vite, que no
+    // viaja en el paquete, y este smoke no llegaría a /api/health.
+    const env = {
+      ...process.env,
+      HOST: '127.0.0.1',
+      NO_COLOR: '1',
+      NODE_ENV: 'development',
+    };
     const child = spawn(process.execPath, [cliInstalado, 'serve', '--port', String(port)], {
       cwd: cwdServe,
       env,

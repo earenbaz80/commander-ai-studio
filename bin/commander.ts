@@ -110,10 +110,11 @@ program
     } else {
       console.log(`[commander] Starting server on http://${host}:${port}`);
       process.env.PORT = String(port);
-      // `serve` sin `--dev` sirve el build: sin NODE_ENV explícito, producción.
-      // En desarrollo el servidor monta Vite por middleware, y el paquete
-      // instalado no lleva vite; `--dev` sigue siendo la vía para eso.
-      if (process.env.NODE_ENV === undefined) process.env.NODE_ENV = 'production';
+      // `serve` sin `--dev` siempre sirve el build, aunque el entorno traiga
+      // NODE_ENV=development: en desarrollo el servidor monta Vite por
+      // middleware y el paquete instalado no lleva vite. Para Vite está
+      // `serve --dev`, que corre `npm run dev` desde el checkout.
+      process.env.NODE_ENV = 'production';
       // El paquete instalado trae `cli-dist/server.mjs`; el repo, `server.ts`.
       // Se importa la ruta resuelta (URL file:// para Windows) en vez de un
       // especificador fijo, que esbuild inlineaba y ataba el paquete al repo.
