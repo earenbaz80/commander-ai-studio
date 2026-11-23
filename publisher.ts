@@ -87,7 +87,7 @@ const PROJECT_DIRS_TO_SKIP = new Set(['.git', '.commander', 'node_modules', '.ne
 
 const locks = new Map<string, Promise<unknown>>();
 
-function publishBaseDir(baseDir?: string): string {
+export function publishBaseDir(baseDir?: string): string {
   return path.resolve(
     baseDir || process.env.COMMANDER_PUBLISH_DIR || path.join(process.cwd(), '.commander', 'publish')
   );

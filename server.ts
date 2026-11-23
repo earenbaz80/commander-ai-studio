@@ -102,6 +102,7 @@ import { createBrowserRouter } from './browserRoutes';
 import { createIntegrationsRouter } from './src/integrations/router';
 import { createTenantBackendRouter } from './backend/routes';
 import { createBackendRouter } from './deploy/backend/routes';
+import { injectBackendEnv } from './deploy/backend/releaseEnv';
 import { createConfiguredBackendAdapter } from './deploy/backend/configuredAdapter';
 import { safeFetch } from './ssrf';
 import {
@@ -178,8 +179,18 @@ app.use((_req, _res, next) => {
 // /api/health queda exento: un pico de sondeo no puede dejar sin margen a
 // una mutación, ni una ráfaga de acciones bloquear el health del agente.
 const RATE_WINDOW_MS = 60_000;
-const RATE_READ_MAX = 1200;
-const RATE_WRITE_MAX = 300;
+/**
+ * Presupuesto por IP y minuto. En producción son 300 escrituras; la suite
+ * comparte un solo server entre decenas de archivos y ese volumen no es el de
+ * una UI, así que el arnés sube el tope por entorno (`COMMANDER_RATE_WRITE_MAX`)
+ * en lugar de repartir los tests o desactivar el límite.
+ */
+function rateLimitFromEnv(name: string, fallback: number): number {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
+}
+const RATE_READ_MAX = rateLimitFromEnv('COMMANDER_RATE_READ_MAX', 1200);
+const RATE_WRITE_MAX = rateLimitFromEnv('COMMANDER_RATE_WRITE_MAX', 300);
 const RATE_EXEMPT = new Set(['/api/health']);
 const globalRate = new Map<string, { read: number; write: number; reset: number }>();
 app.use((_req, _res, next) => {
@@ -2832,6 +2843,8 @@ app.post('/api/publish/preview', async (req, res) => {
       outputDir: outputDir || undefined,
       build: body.build === true,
     });
+    // Las credenciales rotadas van al entorno de la release, no a la respuesta.
+    await injectBackendEnv({ root, releaseId: result.release.id, environment: 'preview' });
     return res.json({ success: true, ...result });
   } catch (error: any) {
     return publishError(res, error);
@@ -2849,6 +2862,8 @@ app.post('/api/publish/production', async (req, res) => {
       : current.preview?.id;
     if (!releaseId) throw new Error('No hay una release en preview para promover');
     const status = await promoteRelease(root, releaseId, 'production');
+    // Producción recibe su propio entorno: no hereda el archivo de preview.
+    await injectBackendEnv({ root, releaseId, environment: 'production' });
     return res.json({ success: true, status });
   } catch (error: any) {
     return publishError(res, error);
@@ -2860,6 +2875,14 @@ app.post('/api/publish/rollback', async (req, res) => {
   try {
     const root = publishProjectRoot(req.body?.root);
     const status = await rollbackProduction(root);
+    // El entorno vuelve con la release restaurada.
+    if (status.production) {
+      await injectBackendEnv({
+        root,
+        releaseId: status.production.id,
+        environment: 'production',
+      });
+    }
     return res.json({ success: true, status });
   } catch (error: any) {
     return publishError(res, error);

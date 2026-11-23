@@ -35,6 +35,22 @@ export function readPendingDeploymentSecret(
   return pending.get(key(projectId, name));
 }
 
+/**
+ * Todos los valores pendientes de un proyecto, por nombre.
+ *
+ * Lo usa `releaseEnv.ts` al publicar para escribir el entorno de la release. Es
+ * una lectura interna del servidor: ningún resultado se serializa al cliente.
+ */
+export function readPendingDeploymentSecrets(projectId: string): Record<string, string> {
+  const prefix = `${projectId}\u0000`;
+  const secrets: Record<string, string> = {};
+  for (const [entry, value] of pending) {
+    if (!entry.startsWith(prefix)) continue;
+    secrets[entry.slice(prefix.length)] = value;
+  }
+  return secrets;
+}
+
 /** Vacía el destino; útil en tests y al cerrar un proyecto. */
 export function clearPendingDeploymentSecrets(): void {
   pending.clear();
