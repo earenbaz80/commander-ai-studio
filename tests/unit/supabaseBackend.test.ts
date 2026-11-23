@@ -7,8 +7,13 @@
  * idempotente, las migraciones no se repiten, la rotación entrega el valor una
  * sola vez al sink y ni el estado ni la respuesta llevan secretos.
  */
-import { describe, expect, test } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
+import { FileBackendProjectStore } from '../../deploy/backend/projectStore';
 import { SupabaseBackendAdapter } from '../../deploy/backend/supabase';
+import type { BackendProjectStore } from '../../deploy/backend/projectStore';
 import type { BackendSecretSink } from '../../deploy/backend/types';
 
 const TOKEN = 'token-de-prueba-no-real';
@@ -79,7 +84,10 @@ function stubApi() {
   return { calls, state, fetchImpl };
 }
 
-function adapter(api = stubApi(), options: { secretFactory?: () => string } = {}) {
+function adapter(
+  api = stubApi(),
+  options: { secretFactory?: () => string; store?: BackendProjectStore } = {}
+) {
   return {
     api,
     backend: new SupabaseBackendAdapter({
@@ -90,9 +98,22 @@ function adapter(api = stubApi(), options: { secretFactory?: () => string } = {}
       fetchImpl: api.fetchImpl,
       passwordFactory: () => 'password-rotada-1',
       ...(options.secretFactory ? { secretFactory: options.secretFactory } : {}),
+      ...(options.store ? { store: options.store } : {}),
     }),
   };
 }
+
+const tempDirs: string[] = [];
+
+function tempStateDir(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cmdr-backend-'));
+  tempDirs.push(dir);
+  return dir;
+}
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+});
 
 function collectSink(): { sink: BackendSecretSink; values: Record<string, string> } {
   const values: Record<string, string> = {};
@@ -229,6 +250,67 @@ describe('SupabaseBackendAdapter', () => {
     expect(values).toEqual({});
     // No se llama a la API de contraseña: nada se rotó de más.
     expect(api.state.password).toBe('');
+  });
+
+  test('persiste ref y bindings: un adaptador nuevo reconoce el proyecto tras reiniciar', async () => {
+    const api = stubApi();
+    const dir = tempStateDir();
+    const first = new SupabaseBackendAdapter({
+      token: TOKEN,
+      organizationId: ORG,
+      region: REGION,
+      apiBaseUrl: API,
+      fetchImpl: api.fetchImpl,
+      passwordFactory: () => 'password-rotada-1',
+      secretFactory: () => 'auth-rotada-1',
+      store: new FileBackendProjectStore(dir),
+    });
+    await first.provision({
+      projectId: PROJECT_ID,
+      bindings: ['database', 'storage', 'auth'],
+    });
+
+    // Otro adaptador (otro arranque del proceso) con la misma carpeta de estado.
+    const second = new SupabaseBackendAdapter({
+      token: TOKEN,
+      organizationId: ORG,
+      region: REGION,
+      apiBaseUrl: API,
+      fetchImpl: api.fetchImpl,
+      passwordFactory: () => 'password-rotada-2',
+      secretFactory: () => 'auth-rotada-2',
+      store: new FileBackendProjectStore(dir),
+    });
+
+    const status = await second.status(PROJECT_ID);
+    expect(status.bindings.map((binding) => binding.kind)).toEqual([
+      'database',
+      'storage',
+      'auth',
+    ]);
+    expect(status.bindings.find((binding) => binding.kind === 'database')?.resourceId).toBe(REF);
+    expect(status.bindings.every((binding) => binding.state === 'ready')).toBe(true);
+
+    // Rotar también funciona sin volver a aprovisionar.
+    const { sink, values } = collectSink();
+    const rotation = await second.rotateSecrets({ projectId: PROJECT_ID, sink });
+    expect(rotation.rotated).toEqual(['DATABASE_URL', 'AUTH_SECRET']);
+    expect(rotation.skipped.map((entry) => entry.kind)).toEqual(['storage']);
+    expect(values.DATABASE_URL).toContain('password-rotada-2');
+    // El proyecto no se duplicó en el proveedor al rehidratar.
+    expect(api.calls.filter((call) => call.method === 'POST' && call.path === '/projects')).toHaveLength(
+      1
+    );
+
+    // Lo persistido son identificadores y nombres, nunca valores.
+    const files = fs.readdirSync(path.join(dir, 'projects'));
+    expect(files).toHaveLength(1);
+    const raw = fs.readFileSync(path.join(dir, 'projects', files[0]), 'utf8');
+    expect(raw).toContain(REF);
+    expect(raw).toContain('AUTH_SECRET');
+    expect(raw).not.toContain('password-rotada-2');
+    expect(raw).not.toContain('auth-rotada-2');
+    expect(raw).not.toContain('db_pass');
   });
 
   test('las migraciones se aplican una vez y se saltan al repetir', async () => {
