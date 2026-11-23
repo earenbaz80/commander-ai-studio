@@ -299,6 +299,45 @@ test('publicar inyecta las credenciales rotadas en el entorno de la release', as
   }
 });
 
+test('un estado de publicación corrupto no filtra su contenido por /api/publish', async () => {
+  const tmpBase = path.join(process.cwd(), 'tests', 'tmp');
+  fs.mkdirSync(tmpBase, { recursive: true });
+  const app = fs.mkdtempSync(path.join(tmpBase, 'pl3-publish-corrupt-'));
+  const fragment = 'credencial-dentro-del-estado';
+
+  try {
+    fs.mkdirSync(path.join(app, 'dist'), { recursive: true });
+    fs.writeFileSync(
+      path.join(app, 'dist', 'index.html'),
+      '<!doctype html><html><body>app</body></html>',
+      'utf8'
+    );
+    const stateFile = path.join(srv.publishDir, projectSlug(app), 'state.json');
+    fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+    // JSON roto con el fragmento dentro: el mensaje del parser lo repetiría.
+    fs.writeFileSync(stateFile, `{"root":"${fragment}",`, 'utf8');
+
+    const status = await srv.request(
+      'GET',
+      `/api/publish/status?root=${encodeURIComponent(app)}`
+    );
+    assert.equal(status.status, 400, status.raw);
+    assert.equal(status.body.error, 'El estado de publicación está corrupto');
+    assert.doesNotMatch(status.raw, new RegExp(fragment));
+
+    const preview = await srv.request('POST', '/api/publish/preview', {
+      root: app,
+      outputDir: 'dist',
+      build: false,
+    });
+    assert.equal(preview.status, 400, preview.raw);
+    assert.equal(preview.body.error, 'El estado de publicación está corrupto');
+    assert.doesNotMatch(preview.raw, new RegExp(fragment));
+  } finally {
+    fs.rmSync(app, { recursive: true, force: true });
+  }
+});
+
 test('la ruta de gestión no tapa al backend multiinquilino de /api/backend', async () => {
   const manage = await srv.request('GET', '/api/backend/manage/rotate');
   assert.equal(manage.status, 404, manage.raw);

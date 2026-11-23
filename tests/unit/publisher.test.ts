@@ -98,6 +98,31 @@ describe('publisher', () => {
     expect(fs.readFileSync(path.join(firstDir, 'assets', 'app.js'), 'utf8')).toContain('primera');
   });
 
+  it('no filtra la salida de la build en el error', async () => {
+    const secret = 'credencial-de-build-que-no-sale';
+    fs.writeFileSync(
+      path.join(project, 'package.json'),
+      JSON.stringify({
+        name: 'demo',
+        scripts: { build: `node -e "console.error('${secret}'); process.exit(1)"` },
+      }),
+      'utf8'
+    );
+
+    const error = await createRelease(
+      project,
+      { outputDir: 'dist', build: true },
+      publishDir
+    ).then(
+      () => null,
+      (reason: Error) => reason
+    );
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error?.message).toMatch(/npm run build falló/);
+    expect(error?.message).not.toContain(secret);
+  });
+
   it('rechaza salidas fuera del proyecto o sin index.html', async () => {
     await expect(createRelease(project, { outputDir: '../fuera' }, publishDir)).rejects.toThrow(
       /dentro del proyecto/
