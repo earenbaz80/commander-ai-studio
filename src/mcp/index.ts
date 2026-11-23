@@ -140,6 +140,43 @@ mcpRouter.post('/uninstall', (req, res) => {
 });
 
 /**
+ * Registra en `servers` los servidores de los JSON de una carpeta.
+ *
+ * El mensaje de un `JSON.parse` fallido incluye un fragmento del archivo, y un
+ * archivo MCP puede llevar `env` con tokens. Por eso el error de cada entrada
+ * es fijo y sólo nombra el archivo.
+ */
+export function importMcpServersFromDir(
+  importPath: string,
+  servers: Record<string, unknown>
+): { imported: number; errors: string[] } {
+  let imported = 0;
+  const errors: string[] = [];
+  for (const entry of fs.readdirSync(importPath)) {
+    const fullPath = path.join(importPath, entry);
+    if (!fs.statSync(fullPath).isFile()) continue;
+    if (!entry.endsWith('.json') && !entry.endsWith('.mcp.json')) continue;
+    try {
+      const content = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+      if (content.mcpServers) {
+        for (const [name, cfg] of Object.entries(content.mcpServers)) {
+          servers[name] = cfg;
+          imported++;
+        }
+      } else if (content.command) {
+        // Formato individual: { command, args, env }
+        const name = entry.replace(/\.(json|mcp\.json)$/, '');
+        servers[name] = content;
+        imported++;
+      }
+    } catch {
+      errors.push(`${entry}: configuración JSON inválida`);
+    }
+  }
+  return { imported, errors };
+}
+
+/**
  * Importa servidores MCP desde una carpeta externa (ej. .config/mcp o similar).
  * body: { sourceDir: string }
  */
@@ -157,35 +194,7 @@ mcpRouter.post('/import', (req, res) => {
     const tools = getToolsConfig();
     const mcp = getMcp(tools);
     mcp.enabled = true;
-    let imported = 0;
-    const errors: string[] = [];
-    try {
-      const entries = fs.readdirSync(importPath);
-      for (const entry of entries) {
-        const fullPath = path.join(importPath, entry);
-        if (!fs.statSync(fullPath).isFile()) continue;
-        if (entry.endsWith('.json') || entry.endsWith('.mcp.json')) {
-          try {
-            const content = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
-            if (content.mcpServers) {
-              for (const [name, cfg] of Object.entries(content.mcpServers)) {
-                mcp.servers![name] = cfg as any;
-                imported++;
-              }
-            } else if (content.command) {
-              // Formato individual: { command, args, env }
-              const name = entry.replace(/\.(json|mcp\.json)$/, '');
-              mcp.servers![name] = content as any;
-              imported++;
-            }
-          } catch (e) {
-            errors.push(`${entry}: ${e instanceof Error ? e.message : String(e)}`);
-          }
-        }
-      }
-    } catch (e) {
-      errors.push(`lectura directorio: ${e instanceof Error ? e.message : String(e)}`);
-    }
+    const { imported, errors } = importMcpServersFromDir(importPath, mcp.servers!);
     writeConfig({ tools }, 'project');
     res.json({ success: true, imported, errors });
   } catch (err) {
