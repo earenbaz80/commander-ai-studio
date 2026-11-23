@@ -20,6 +20,7 @@ import {
   BACKEND_FAKE_FLAG,
 } from './configuredAdapter';
 import { createPendingDeploymentSink } from './secretSink';
+import { redactSecrets } from '../../secretRedaction';
 import { isBackendBindingKind } from './types';
 import type {
   BackendAdapter,
@@ -38,7 +39,8 @@ export interface BackendRouterOptions {
 }
 
 function backendError(res: Response, error: any) {
-  return res.status(400).json({ success: false, error: error?.message || 'Backend falló' });
+  const message = String(error?.message || 'Backend falló');
+  return res.status(400).json({ success: false, error: redactSecrets(message) });
 }
 
 function notConfigured(res: Response) {
@@ -137,7 +139,16 @@ export function createBackendRouter(
         projectId: String(body.projectId ?? ''),
         migrations: readMigrations(body.migrations),
       });
-      return res.json({ success: true, provider: adapter.id, result });
+      // El proveedor puede repetir en el fallo el SQL o una URL con contraseña;
+      // el mensaje de cada migración se sanea antes de salir por HTTP.
+      const safeResult = {
+        ...result,
+        failed: result.failed.map((failure) => ({
+          ...failure,
+          message: redactSecrets(String(failure.message ?? '')),
+        })),
+      };
+      return res.json({ success: true, provider: adapter.id, result: safeResult });
     } catch (error: any) {
       return backendError(res, error);
     }

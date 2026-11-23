@@ -7,6 +7,7 @@
  */
 import express, { type Response } from 'express';
 import { getReleaseForDeploy } from '../publisher';
+import { redactSecrets } from '../secretRedaction';
 import type {
   DeploymentAdapter,
   ProjectDescriptor,
@@ -14,7 +15,8 @@ import type {
 } from './types';
 
 function deployError(res: Response, error: any) {
-  return res.status(400).json({ success: false, error: error?.message || 'Despliegue falló' });
+  const message = String(error?.message || 'Despliegue falló');
+  return res.status(400).json({ success: false, error: redactSecrets(message) });
 }
 
 export function createDeployRouter(
@@ -159,7 +161,12 @@ export function createDeployRouter(
       if (!status.deployments.some((deployment) => deployment.id === deploymentId)) {
         throw new Error('Deployment no encontrado en este proyecto');
       }
-      return res.json({ success: true, log: await adapter.logs(deploymentId) });
+      // Los logs del proveedor pueden repetir variables del build; se sanean
+      // igual que el log de una build local antes de enviarlos al panel.
+      return res.json({
+        success: true,
+        log: redactSecrets(String((await adapter.logs(deploymentId)) ?? '')),
+      });
     } catch (error: any) {
       return deployError(res, error);
     }
