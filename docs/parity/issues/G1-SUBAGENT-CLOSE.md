@@ -289,11 +289,29 @@ El contrato de cierre y el turno sin tools ya estaban aplicados, pero el dialect
 - **Verificación:** con el `agentSession.ts` anterior el caso dirigido falla 5/5 con «El subagente terminó sin respuesta final»; con el arreglo pasa 10/10. El escenario T10 determinista del arnés (`tests/evalsScenarios.test.ts`) usa un guion que cierra bien, así que pasa 10/10 y **no** ejerce este camino: no es una medición de T10.
 - **Sin efecto sobre el criterio:** `runT10` sigue exigiendo «listo» y la denegación informada, y las cifras medidas no cambian (0/9 corridas y `G1-T10-08` 4/6); esto sólo evita que un hijo se pierda por no cerrar.
 
+## Re-medición `G1-T10-14` (2026-11-23): cero cierres huecos, 2/3
+
+Corrida de **diagnóstico fuera de las 24** con el arnés (`evals/baseline.ts --only T10 --runs 3`), commit **`9a99a90`** (el arreglo del turno vacío del CLI ya aplicado), servidor propio del arnés en `:3285` y modelo congelado. Recibo: [`G1-T10-14-2026-11-23.md`](../receipts/G1-T10-14-2026-11-23.md).
+
+| Corrida | Duración | Checks | Cierres de hijos |
+| --- | ---: | --- | --- |
+| T10-1 | 99 967 ms | **7/7** | A y B con `Archivos:`/`Denegado:` |
+| T10-2 | 127 163 ms | **7/7** | A y B con `Archivos:`/`Denegado:` |
+| T10-3 | 80 312 ms | 6/7 (worktree sin limpiar) | A y B con `Archivos:`/`Denegado:` |
+| T10-4 (complementaria, `dirty`) | 103 406 ms | 6/7 (falso negativo del check 7) | A y B con `Archivos:`/`Denegado:` |
+
+- **Cero cierres huecos y cero turnos vacíos:** 8 de 8 hijos cerraron con `ok:true`, las dos líneas del contrato y su archivo; los 4 hijos A informaron `shell.run` denegado con la tool nombrada. No apareció «Objetivo completado.» ni «Archivos: ninguno».
+- **No es atribuible al arreglo del turno vacío:** ese arreglo está en `src/cli/agentClient.ts` y `src/agent/` no cambió desde `360f8c2`; los hijos corren por el servidor. La mejora frente al 1/3 de `G1-T10-13` es de la tanda y del modelo.
+- **Dos bordes del criterio, no del producto:** el check 6 cayó en T10-3 por un worktree sin limpiar, y el check 7 rechazó «Total de hijos que terminaron: 2» (falso negativo del regex). El criterio no se toca.
+- **Sin efecto en G1:** T10 sigue **0/3** en las 24 y **0/9** con las extras; esta corrida no suma como pase. CAL4H no se ejecutó y el umbral de **15 151 ms** no se tocó.
+
 ## Evidencia
 
 | Archivo | Qué es |
 | --- | --- |
 | [`receipts/G1-T10-13-2026-11-21.md`](../receipts/G1-T10-13-2026-11-21.md) | Declaración vigente: **1/3** sobre `360f8c2`; 24 líneas T10 y 3 `passed`; T10 fuera de la puerta |
+| [`receipts/G1-T10-14-2026-11-23.md`](../receipts/G1-T10-14-2026-11-23.md) | Re-medición **2/3** sobre `9a99a90` con cero cierres huecos; diagnóstico, no cambia el 0/3 de las 24 |
+| `.commander/g1/G1-T10-14-run4.log` | salida de la corrida complementaria: siete `checks` y `spawns` con la respuesta literal de cada hijo |
 | `.commander/g1/sess_844bc8ee-t10.json` | informe del evaluador de `G1-D4-04`: `children[].answer`, `checks` y `passed` |
 | `.commander/g1/sess_01bb1f7e-t10.json` | ídem de `G1-D4-05` (cancelada por presupuesto) |
 | `.commander/g1/sess_a1be6243-t10.json` | ídem de `G1-D4-05R`, con el aislamiento en verde y las dos comprobaciones de texto en rojo |
