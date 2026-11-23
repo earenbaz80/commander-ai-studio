@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "kind": "ssr",
+  "build": {
+    "command": "npm run build",
+    "outputDir": "dist"
+  },
+  "bindings": {
+    "database": true,
+    "storage": true,
+    "auth": true
+  }
+}
