@@ -4,7 +4,7 @@
  * Aislados en un directorio temporal para no leer/escribir el
  * commander.json real del proyecto (que puede tener cambios de pruebas).
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -51,6 +51,26 @@ describe('Config System', () => {
     expect(config.ui?.language).toBe('es');
     expect(config.agent?.maxSteps).toBe(25);
     expect(config.server?.port).toBe(3280);
+  });
+
+  it('un commander.json corrupto no vuelca su contenido al log', () => {
+    const secret = 'sk-config-no-log';
+    fs.writeFileSync(
+      path.join(tmpDir, 'commander.json'),
+      `{"providers":{"xai":{"apiKey":${secret}}}}`,
+      'utf8'
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    resetConfig();
+    const config = loadConfig();
+    // Se leen las llamadas antes de restaurar: mockRestore las limpia.
+    const logged = warn.mock.calls.flat().map(String).join(' ');
+    warn.mockRestore();
+
+    expect(config.ui?.theme).toBe('norton');
+    expect(logged).toContain('No se pudo cargar');
+    expect(logged).not.toContain(secret);
+    expect(logged).not.toContain('apiKey');
   });
 
   it('debe persistir cambios en commander.json y releerlos', () => {
