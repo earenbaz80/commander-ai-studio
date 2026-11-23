@@ -38,6 +38,7 @@
     "tauri:build": "tauri build",
     "preview": "vite preview",
     "deploy:example": "tsx scripts/deploy-example.ts",
+    "verify:g3-supabase": "tsx scripts/verify-g3-supabase.ts",
     "electron": "electron .",
     "electron:dev": "ELECTRON_START_URL=http://localhost:5173 npm run electron",
     "test": "vitest run",
