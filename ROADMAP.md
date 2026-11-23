@@ -115,7 +115,7 @@ G1 no se cierra por ejecutar el dogfooding ni comparando contra una estimación:
 **Ahora**
 
 1. **Bloque de aprobación fuera del roadmap (2026-11-23):** por decisión del autor no se agenda; G1 queda **abierta**, la referencia de 15 151 ms intacta y ninguna fase se marca cerrada por la puerta.
-2. F1-1 (T10): el defecto sigue 0/3 en las 24 con issue abierto y es el paso de mayor peso fuera de la puerta (`G1-EMPTY-TURN`, `G1-SUBAGENT-CLOSE`).
+2. F1-1 (T10): sigue 0/3 en las 24 y es el paso de mayor peso fuera de la puerta; `G1-EMPTY-TURN` sigue abierto y `G1-SUBAGENT-CLOSE` quedó cerrado con el 6/6 de `G1-T10-15` y el riesgo residual de los worktrees `prunable` declarado.
 
 **Después de G1**
 
