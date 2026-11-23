@@ -83,7 +83,7 @@
   <div><b>Reglas de marcado.</b> Un paso llega a 100 % sólo con evidencia en el árbol o una corrida real (test, recibo, instalación comprobada). <span class="mark done">[x]</span> cerrado · <span class="mark partial">[~]</span> en curso · <span class="mark todo">[ ]</span> sin empezar.</div>
   <div style="margin-top:6px"><b>Cómo se actualiza.</b> Los datos viven en el bloque <code>&lt;script id="plan"&gt;</code> de este archivo (peso y % por paso). Al cerrar un paso se sube su <code>progress</code> y se anota la evidencia; los porcentajes de fase y el global se recalculan ponderados al abrir la página.</div>
   <div style="margin-top:6px"><b>Publicado en.</b> <a href="https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html">earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html</a> — versión gráfica de este documento.</div>
-  <div style="margin-top:6px"><b>Fuentes.</b> docs/parity/baseline-2026-11.md · docs/parity/dogfooding-g1-d5.md · docs/parity/receipts/G1-T10-13-2026-11-21.md · tests/agentLoop.test.ts · tests/cli/verifyGate.test.ts · tests/cli/defaultPermissions.test.ts · npm run build:cli.</div>
+  <div style="margin-top:6px"><b>Fuentes.</b> docs/parity/baseline-2026-11.md · docs/parity/dogfooding-g1-d5.md · docs/parity/receipts/G1-T10-15-2026-11-23.md · tests/agentLoop.test.ts · tests/cli/verifyGate.test.ts · tests/cli/defaultPermissions.test.ts · npm run build:cli.</div>
 </footer>
 
 <script type="application/json" id="plan">
@@ -112,10 +112,10 @@
       "name": "F1 · Fiabilidad medida",
       "goal": "Que la autonomía se pueda demostrar: subagentes que cierran bien, baseline y gate en todas las superficies.",
       "steps": [
-        { "id": "F1-1", "title": "T10: dos subagentes en paralelo que cierran bien (allowlist + worktree)", "weight": 3, "progress": 35, "evidence": "0/3 en las 24; 24 líneas T10 de diagnóstico, 3 passed; última tanda G1-T10-13 sobre 360f8c2: 1/3 (T10-2 pasó con denegación real; T10-1 y T10-3 fallaron por cierre hueco y turno vacío) · recibo G1-T10-13-2026-11-21; T10 no es regla de puerta" },
+        { "id": "F1-1", "title": "T10: dos subagentes en paralelo que cierran bien (allowlist + worktree)", "weight": 3, "progress": 70, "evidence": "0/3 en las 24 (0/9 con las extras); 24 líneas T10 de diagnóstico y 3 passed en esa serie; la tanda G1-T10-15 dio 6/6 con los siete checks fuera de las 24 tras cerrar G1-SUBAGENT-CLOSE · recibo G1-T10-15-2026-11-23; T10 no es regla de puerta y falta confirmarlo en las 24" },
         { "id": "F1-2", "title": "Baseline de 24 corridas en verde sostenido", "weight": 3, "progress": 30, "evidence": "F0: 8/24 (T1 3/3, T7 3/3, T3 y T5 1/2, resto 0)" },
         { "id": "F1-3", "title": "Gate de verificación también en escritorio y servidor", "weight": 2, "progress": 100, "evidence": "`refusalForClosing` en src/agent/verifyGate.ts · servidor (agentSession.ts) y escritorio (src/agent/loop.ts) alimentan el gate con ediciones y shell.run, ambos dialectos · tests/agentVerifyGate.api.test.ts, agentLoop.test.ts y agentTaskIntegration.test.ts · 6276e6e" },
-        { "id": "F1-4", "title": "Dogfooding G1 cerrado (5 días, 24 corridas comparadas)", "weight": 2, "progress": 60, "evidence": "D5 4/4 passed; G1 NO CERRADA con la única regla del p95 en rojo · T10 0/3 en las 24, declarado fuera de la puerta · recibo G1-DOGFOOD-2026-11-12 · bloque de medición de aprobación fuera del roadmap por decisión del 2026-11-23: no se ejecuta y G1 sigue abierta" },
+        { "id": "F1-4", "title": "Dogfooding G1 ejecutado (5 días, 24 corridas comparadas)", "weight": 2, "progress": 60, "evidence": "D5 4/4 passed; G1 NO CERRADA con la única regla del p95 en rojo · T10 0/3 en las 24, declarado fuera de la puerta · recibo G1-DOGFOOD-2026-11-12 · bloque de medición de aprobación fuera del roadmap por decisión del 2026-11-23: no se ejecuta y G1 sigue abierta" },
         { "id": "F1-5", "title": "Reparación autónoma rojo→verde sin intervención humana", "weight": 2, "progress": 40, "evidence": "el gate devuelve la salida real y bloquea el cierre; falta medir cuántas corridas llegan solas al verde" },
         { "id": "F1-6", "title": "Arnés determinista de escenarios T1–T10 en CI", "weight": 1, "progress": 100, "evidence": "evals/harness.ts · evals/scenarios.ts · tests/evalsScenarios.test.ts" }
       ]

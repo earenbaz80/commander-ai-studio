@@ -10,8 +10,7 @@ GitHub muestra los `.html` como código en el visor de archivos: el roadmap rend
 
 - [Referencia de API](docs/API.md): endpoints de IA, agente, plugins y seguridad.
 - [LM Studio](docs/API.md#lm-studio): generación, carga automática del modelo y aviso de contexto en la UI.
-- [Plan de paridad](ROADMAP_PARITY.md): comparación con OpenCode, Antigravity y Freebuff, fases y criterios de aceptación.
-- [Roadmap de evolución](ROADMAP.md): resumen de paridad, plataforma y UX, con estado, puertas y secuencia.
+- [Roadmap](ROADMAP.md): el único roadmap del proyecto — paridad F0–F6, plataforma PL0–PL7 y UX 1.0, con estado, criterios, puertas y secuencia.
 
 ## Run Locally
 
@@ -259,7 +258,7 @@ scrypt + salt, los tokens se guardan sólo como SHA-256 y las respuestas llevan
 [docs/API.md](docs/API.md#backend-multiinquilino).
 
 Es el backend local de Commander: no aprovisiona bindings para apps publicadas
-(eso sigue en la Fase 3 de [ROADMAP_PLATFORM.md](ROADMAP_PLATFORM.md)). La vista
+(eso sigue en **PL3** de [ROADMAP.md](ROADMAP.md) §4). La vista
 **Workbench → Backend** permite crear o iniciar sesión, gestionar registros y
 subir, descargar y borrar archivos contra `/api/backend`; el token vive en
 `sessionStorage` y se borra al cerrar sesión.
