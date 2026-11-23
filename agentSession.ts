@@ -22,7 +22,7 @@ import { uid } from './src/agent/id';
 import { diffLines, toUnifiedDiff } from './src/utils/patch';
 import { decide, needsHumanApproval } from './src/agent/permissionRules';
 import { enforceTool, getPermissions, type Permissions } from './permissions';
-import { createWorktree, removeWorktree, type WorktreeResult } from './worktrees';
+import { createWorktree, removeWorktreeSafe, type WorktreeCleanupResult, type WorktreeResult } from './worktrees';
 import { resolveSubagentPolicy } from './src/agent/subagentTemplates';
 import { agentMaxTokens, canDisableThinking, sessionGenerateRoute, toolDialectForModel, toOpenAITools } from './src/agent/providers';
 import { AGENT_RETRY_MAX_OUTPUT_TOKENS, isTruncatedTurn, truncatedTurnFailure } from './src/agent/outputBudget';
@@ -1975,7 +1975,7 @@ export async function executeTask(
   input: TaskToolInput,
   parentKeys?: AgentKeys,
   parentCwd?: string
-): Promise<{ ok: boolean; answer?: string; error?: string; status?: number }> {
+): Promise<{ ok: boolean; answer?: string; error?: string; status?: number; worktreeCleanup?: WorktreeCleanupResult }> {
   const parent = getSession(parentSessionId);
   if (!parent) return { ok: false, error: `Sesión padre no encontrada: ${parentSessionId}` };
 
@@ -2028,7 +2028,9 @@ export async function executeTask(
     });
   } catch (error: any) {
     if (worktree && !input.keepWorktree) {
-      try { removeWorktree(worktree.worktreePath, projectPath, true, worktree.branch); } catch { /* best-effort */ }
+      const cleanup = removeWorktreeSafe(worktree.worktreePath, projectPath, true, worktree.branch);
+      if (!cleanup.ok) console.warn(`[subagente] worktree sin limpiar: ${cleanup.error}`);
+      else if (cleanup.recovered) console.warn(`[subagente] worktree limpiado con poda tras un fallo: ${worktree.worktreePath}`);
     }
     return {
       ok: false,
@@ -2094,36 +2096,45 @@ export async function executeTask(
   startSubAgent({ id: session.id, parentSessionId, goal: input.goal, model });
 
   void session.start();
+  let result!: { ok: boolean; answer?: string; error?: string; cancelled?: boolean };
+  let worktreeCleanup: WorktreeCleanupResult | undefined;
   try {
-    const result = await resultPromise;
-    finishSubAgent(session.id, {
-      ok: result.ok,
-      answer: result.answer,
-      error: result.error,
-      steps: session.getSteps().length,
-      cancelled: result.cancelled,
-      // La sesión hija se borra justo después: si no se resume aquí, la
-      // evidencia de qué tools llamó (y cuál le denegaron) se pierde y
-      // `/subagents` no puede responder a la medición de T10.
-      calls: summarizeCalls(session.getSteps()),
-      // Los títulos separan un cierre que decidió no llamar tools de un turno
-      // vacío del proveedor: con sólo `calls:[]` los dos se veían iguales.
-      stepTitles: summarizeStepTitles(session.getSteps()),
-    });
-    return result;
+    result = await resultPromise;
   } finally {
     // El hijo es efímero: si se quedara en el registro, cada subagente dejaría
     // una sesión que nadie consulta y, al pasar de MAX_SESSIONS, el desalojo
     // podría tirar a la padre y dejar sin padre a los siguientes spawn_agents.
     removeSession(session.id);
     if (worktree && !input.keepWorktree) {
-      try {
-        removeWorktree(worktree.worktreePath, projectPath, true, worktree.branch);
-      } catch {
-        /* best-effort: un worktree huérfano no debe tapar el resultado */
+      // Se verifica el registro (remove + prune), no sólo el comando: un
+      // worktree huérfano no debe tapar el resultado, pero tampoco quedar sin
+      // explicación. El fallo viaja en el resultado del hijo y en el log.
+      worktreeCleanup = removeWorktreeSafe(worktree.worktreePath, projectPath, true, worktree.branch);
+      if (!worktreeCleanup.ok) {
+        console.warn(`[subagente ${session.id}] worktree sin limpiar: ${worktreeCleanup.error}`);
+      } else if (worktreeCleanup.recovered) {
+        // El registro se podó tras un fallo del primer `remove`: quedó limpio,
+        // pero sin este aviso la recuperación no dejaba rastro.
+        console.warn(`[subagente ${session.id}] worktree limpiado con poda tras un fallo: ${worktree.worktreePath}`);
       }
     }
   }
+  finishSubAgent(session.id, {
+    ok: result.ok,
+    answer: result.answer,
+    error: result.error,
+    steps: session.getSteps().length,
+    cancelled: result.cancelled,
+    // La sesión hija se borra justo después: si no se resume aquí, la
+    // evidencia de qué tools llamó (y cuál le denegaron) se pierde y
+    // `/subagents` no puede responder a la medición de T10.
+    calls: summarizeCalls(session.getSteps()),
+    // Los títulos separan un cierre que decidió no llamar tools de un turno
+    // vacío del proveedor: con sólo `calls:[]` los dos se veían iguales.
+    stepTitles: summarizeStepTitles(session.getSteps()),
+    worktreeCleanup,
+  });
+  return { ...result, worktreeCleanup };
 }
 
 export function removeSession(id: string): void {

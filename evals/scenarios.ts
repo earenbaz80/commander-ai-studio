@@ -775,6 +775,13 @@ function spawnBatchOf(data: unknown): EvalSpawnBatch | null {
       ...(typeof child?.ok === 'boolean' ? { ok: child.ok } : {}),
       ...(typeof child?.answer === 'string' ? { answer: child.answer } : {}),
       ...(typeof child?.error === 'string' ? { error: child.error } : {}),
+      ...(child?.worktreeCleanup && typeof child.worktreeCleanup.ok === 'boolean'
+        ? { worktreeCleanup: {
+            ok: child.worktreeCleanup.ok,
+            ...(child.worktreeCleanup.recovered === true ? { recovered: true } : {}),
+            ...(typeof child.worktreeCleanup.error === 'string' ? { error: child.worktreeCleanup.error } : {}),
+          } }
+        : {}),
     })),
   };
 }

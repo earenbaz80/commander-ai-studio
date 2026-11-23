@@ -75,21 +75,102 @@ export function createWorktree(threadId: string, projectPath: string): WorktreeR
   return { worktreePath: base, branch, copied, bootstrapped };
 }
 
-export function removeWorktree(
+export interface WorktreeCleanupResult {
+  /** `true` sólo si el registro del worktree ya no aparece en `git worktree list`. */
+  ok: boolean;
+  /** Motivo por el que no se pudo dejar limpio el registro; sólo con `ok:false`. */
+  error?: string;
+  /** `true` si hubo que borrar el directorio y podar el registro a mano. */
+  recovered?: boolean;
+}
+
+/** Compara rutas como las imprime git (`C:/...`), sin distinguir mayúsculas en Windows. */
+function sameWorktreePath(a: string, b: string): boolean {
+  const norm = (p: string) => path.resolve(p).replace(/\\/g, '/').toLowerCase();
+  return norm(a) === norm(b);
+}
+
+function firstGitError(error: unknown): string {
+  const raw = String((error as any)?.stderr || (error as any)?.message || error);
+  return raw.split(/\r?\n/).map((l) => l.trim()).find(Boolean) || 'error desconocido';
+}
+
+function isWorktreeRegistered(projectPath: string, worktreePath: string): boolean {
+  return listWorktrees(projectPath).some((w) => sameWorktreePath(w.path, worktreePath));
+}
+
+/**
+ * Retira un worktree y **verifica el registro**, no sólo el comando.
+ *
+ * `git worktree remove` puede fallar a medias (o el directorio puede haber
+ * desaparecido por fuera) y dejar una entrada `prunable` en
+ * `.git/worktrees`: el directorio no está, pero `git worktree list` la cuenta
+ * y el check 6 de T10 la ve como fuga. Si tras el `remove` la ruta sigue
+ * registrada, se borra lo que quede del directorio y se poda antes de darse
+ * por vencido. No lanza: devuelve el motivo para que el llamador lo anote.
+ */
+export function removeWorktreeSafe(
   worktreePath: string,
   projectPath: string,
   force = false,
   branch?: string
-): void {
+): WorktreeCleanupResult {
   const args = ['worktree', 'remove', worktreePath];
   if (force) args.push('--force');
-  runGit(projectPath, args);
+  let error: string | undefined;
+  let recovered = false;
+  try {
+    runGit(projectPath, args);
+  } catch (e) {
+    error = firstGitError(e);
+  }
+
+  let registered = true;
+  try {
+    registered = isWorktreeRegistered(projectPath, worktreePath);
+  } catch (e) {
+    // Sin poder leer el registro no se puede afirmar que quedó limpio.
+    error = error ?? firstGitError(e);
+  }
+
+  if (registered) {
+    recovered = true;
+    try { fs.rmSync(worktreePath, { recursive: true, force: true }); } catch (e) { error = error ?? firstGitError(e); }
+    try {
+      runGit(projectPath, ['worktree', 'prune']);
+    } catch (e) {
+      error = error ?? firstGitError(e);
+    }
+    try {
+      registered = isWorktreeRegistered(projectPath, worktreePath);
+    } catch {
+      registered = true;
+    }
+  }
+
+  if (registered) {
+    return { ok: false, recovered, error: error ?? `el worktree sigue registrado: ${worktreePath}` };
+  }
   if (branch) {
     try { runGit(projectPath, ['branch', '-D', branch]); } catch { /* la rama ya no existe */ }
   }
   // El directorio padre queda vacío tras retirar el worktree; si otro proceso
   // lo usa, `rmdir` falla y no tocamos nada.
   try { fs.rmdirSync(path.dirname(worktreePath)); } catch { /* no vacío */ }
+  // Con `ok:true` no se devuelve `error`: el fallo quedó resuelto y lo que
+  // importa es `recovered`, para que el llamador lo registre igual.
+  return { ok: true, recovered };
+}
+
+/** API clásica: mismo trabajo, pero lanza si el registro no quedó limpio. */
+export function removeWorktree(
+  worktreePath: string,
+  projectPath: string,
+  force = false,
+  branch?: string
+): void {
+  const result = removeWorktreeSafe(worktreePath, projectPath, force, branch);
+  if (!result.ok) throw new Error(result.error || `No se pudo retirar el worktree: ${worktreePath}`);
 }
 
 export function listWorktrees(projectPath: string): { path: string; head: string; branch: string }[] {

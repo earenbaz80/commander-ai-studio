@@ -2045,6 +2045,7 @@ async function executeAgentToolCore(
       cancelled: r.status === 'fulfilled' ? (r.value as any).cancelled : undefined,
       answer: r.status === 'fulfilled' ? (r.value as any).answer : undefined,
       error: r.status === 'rejected' ? String(r.reason) : (r.status === 'fulfilled' ? (r.value as any).error : undefined),
+      worktreeCleanup: r.status === 'fulfilled' ? (r.value as any).worktreeCleanup : undefined,
     }));
     return { ok: true, data: { results: out, spawned: capped.length, capped: agents.length > 6 } };
   }
