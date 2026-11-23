@@ -175,18 +175,60 @@ describe('SupabaseBackendAdapter', () => {
     expect(JSON.stringify(status)).not.toContain('password-rotada-1');
   });
 
-  test('rotar todo se rechaza antes de emitir nada: el storage no se rota por API', async () => {
-    const { backend } = adapter();
+  test('rotar todo rota database y auth, y deja el storage explícito sin valor', async () => {
+    const { api, backend } = adapter();
     await backend.provision({
       projectId: PROJECT_ID,
       bindings: ['database', 'storage', 'auth'],
     });
     const { sink, values } = collectSink();
 
-    await expect(backend.rotateSecrets({ projectId: PROJECT_ID, sink })).rejects.toThrow(
-      /storage/
-    );
+    const rotation = await backend.rotateSecrets({ projectId: PROJECT_ID, sink });
+
+    // Se rota lo que la API permite; el storage no se finge: se informa.
+    expect(rotation.rotated).toEqual(['DATABASE_URL', 'AUTH_SECRET']);
+    expect(rotation.skipped).toEqual([
+      {
+        kind: 'storage',
+        name: 'STORAGE_SECRET',
+        reason: expect.stringContaining('Management API'),
+      },
+    ]);
+    expect(Object.keys(values).sort()).toEqual(['AUTH_SECRET', 'DATABASE_URL']);
+    expect(values.STORAGE_SECRET).toBeUndefined();
+    expect(values.AUTH_SECRET).toBeTruthy();
+    expect(api.state.password).toBe('password-rotada-1');
+
+    const status = await backend.status(PROJECT_ID);
+    expect(status.secretNames).toEqual(['DATABASE_URL', 'AUTH_SECRET']);
+    expect(JSON.stringify({ rotation, status })).not.toContain('password-rotada-1');
+  });
+
+  test('pedir sólo storage no escribe en el sink y lo informa como omitido', async () => {
+    const { api, backend } = adapter();
+    await backend.provision({
+      projectId: PROJECT_ID,
+      bindings: ['database', 'storage', 'auth'],
+    });
+    const { sink, values } = collectSink();
+
+    const rotation = await backend.rotateSecrets({
+      projectId: PROJECT_ID,
+      kinds: ['storage'],
+      sink,
+    });
+
+    expect(rotation.rotated).toEqual([]);
+    expect(rotation.skipped).toEqual([
+      {
+        kind: 'storage',
+        name: 'STORAGE_SECRET',
+        reason: expect.stringContaining('Management API'),
+      },
+    ]);
     expect(values).toEqual({});
+    // No se llama a la API de contraseña: nada se rotó de más.
+    expect(api.state.password).toBe('');
   });
 
   test('las migraciones se aplican una vez y se saltan al repetir', async () => {

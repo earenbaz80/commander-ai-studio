@@ -175,6 +175,59 @@ describe('BackendBindingsPanel', () => {
     expect(document.body.textContent).not.toContain(secretValue);
   });
 
+  test('muestra explícito lo que el proveedor no puede rotar, sin inventar la credencial', async () => {
+    const reason =
+      'Supabase no emite las claves S3 del storage por la Management API: se generan en los ajustes del proyecto.';
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
+      if (String(url).includes('/api/backend/manage/rotate')) {
+        return jsonResponse({
+          success: true,
+          provider: 'supabase',
+          rotation: {
+            provider: 'supabase',
+            projectId,
+            rotated: ['DATABASE_URL', 'AUTH_SECRET'],
+            skipped: [{ kind: 'storage', name: 'STORAGE_SECRET', reason }],
+            createdAt: '2026-11-23T10:00:00.000Z',
+          },
+        });
+      }
+      return jsonResponse({
+        success: true,
+        provider: 'supabase',
+        configured: true,
+        enabled: true,
+        status: fakeStatus({
+          provider: 'supabase',
+          bindings: [
+            { kind: 'database', resourceId: 'ref', state: 'ready' },
+            { kind: 'storage', resourceId: 'ref-files', state: 'ready' },
+            { kind: 'auth', resourceId: 'ref', state: 'ready' },
+          ],
+          secretNames: ['DATABASE_URL', 'AUTH_SECRET'],
+          ready: true,
+        }),
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<BackendBindingsPanel projectId={projectId} lang="es" />);
+
+    const button = await screen.findByTestId('backend-rotate');
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(button);
+
+    // El binding omitido se ve con su motivo y su nombre, no con un valor.
+    const note = await screen.findByTestId('backend-rotate-skipped');
+    expect(note.textContent).toContain('STORAGE_SECRET');
+    expect(note.textContent).toContain('Management API');
+
+    // Las credenciales emitidas son sólo las que sí se rotaron: el storage
+    // aparece en el aviso, no en la lista de credenciales del estado.
+    const summary = screen.getByTestId('backend-bindings');
+    expect(summary.textContent).toContain('credenciales: DATABASE_URL, AUTH_SECRET');
+  });
+
   test('rotar credenciales llama a la ruta y refresca los nombres sin valores', async () => {
     const secretValue = 'fake-database-url-rotada';
     const bindings = [
