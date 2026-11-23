@@ -21,7 +21,7 @@ No promete fechas; los esfuerzos son órdenes de magnitud. Una fase o un criteri
 - **5 parciales:** F1, F2, PL2, PL5 y PL6.
 - **5 pendientes:** F3, F4, F5, PL3 y PL4.
 - **Fuera del cómputo:** PL1 (fuera de alcance hasta G3) y F6/PL7 (opcionales).
-- **Puertas:** G0 cerrada; G1 abierta (dogfooding ejecutado, p95 en rojo); G2 y G3 no iniciadas.
+- **Puertas:** G0 cerrada; G1 abierta (dogfooding ejecutado; **no retiene fases**, §2.1); G2 y G3 no iniciadas.
 
 El 53 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tampoco dice que la app esté al 53 %: dice que 50 de los 95 criterios en alcance tienen evidencia. Cada criterio es una casilla de este documento: cuenta el `[x]` o la cobertura que la fase declara (F2, cubierta por evidencia y sin marcar); los `[—]`, las fases opcionales y PL1 quedan fuera del numerador y del denominador. F0 cerró G0 con una baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts y 0 inválidas); la paridad es baja. El dogfooding de G1 se ejecutó el 2026-11-12 (17/28, 60,7 %) y la puerta sigue abierta por una sola regla: el p95 de aprobación.
 
@@ -32,11 +32,21 @@ El 53 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tamp
 | Puerta | Exige | Estado | Qué la desbloquea |
 | --- | --- | --- | --- |
 | **G0** Verdad externa | GitHub verificado + línea base de 24 corridas | **Cerrada** | Baseline NVIDIA válida: 24 corridas, 0 timeouts |
-| **G1** Dogfooding del CLI | 5 días y 24 corridas usando el CLI como superficie principal, sin retroceder frente a F0 | **Abierta** · dogfooding ejecutado; p95 en rojo | T10 sigue 0/3 en las 24 (6/6 fuera de ellas, `G1-T10-15`); el bloque de medición de aprobación no está en el roadmap (decisión del 2026-11-23) |
+| **G1** Dogfooding del CLI | 5 días y 24 corridas usando el CLI como superficie principal, sin retroceder frente a F0 | **Abierta** · dogfooding ejecutado; su única regla pendiente salió del roadmap | Sólo la cerraría un recibo humano de `latencyMs`; **no retiene ninguna fase** (§2.1) |
 | **G2** Seguridad remota | Modelo de amenazas y revisión antes de habilitar `--remote` | **No iniciada** | Aprobar el modelo de amenazas remoto (`docs/parity/threat-model-remote.md`, todavía sin versionar) |
 | **G3** Proveedor de plataforma | Proveedor y modelo de costo decididos antes de 5A | **No iniciada** | Decisión explícita de proveedor |
 
 G1 no se cierra por ejecutar el dogfooding ni comparando contra una estimación: le falta que el producto cumpla el presupuesto de aprobación con una muestra humana válida. G2 bloquea F3; G3 bloquea F5A. Ninguna puerta se cierra por compilar o por tener tests con mocks.
+
+### 2.1 Regla de cierre (2026-11-23)
+
+**Cada fase se cierra con la evidencia de sus propios criterios y, si la tiene, con su puerta.** G1 rige **sólo F1**, la fase que existe para medir: por eso F1 queda «hecho en código» con G1 abierta y no se marca cerrada. Las fases posteriores **no heredan G1**: F2 se cierra con sus siete criterios y su verificación visual en Electron; F3 con los suyos y con G2; F4 y PL3–PL6 con los suyos, sin puerta.
+
+**Por qué.** El único rojo de G1 era el p95 de aprobación ≤ 15 151 ms, y ese bloque salió del roadmap por decisión del autor del 2026-11-23: no se ejecuta ni está agendado. Una puerta cuya única regla pendiente ya no se mide no puede quedar de guardia sobre fases que sí tienen evidencia; si lo hiciera, el roadmap quedaría bloqueado para siempre y la cifra de §1 dejaría de significar algo.
+
+**Qué sigue significando G1.** No se declara cerrada por omisión: sigue abierta en §1, en la tabla de arriba y en los issues de §6, con el dogfooding del 2026-11-12 como recibo. Sólo la cerraría una muestra humana válida de `latencyMs` (n ≥ 40, ≤ 2 de 40 por encima) o una decisión explícita del autor que la retire como puerta. Mientras tanto, T10 y T2 se siguen trabajando por sus issues, no por la puerta.
+
+**Lo que no cambia.** Ninguna fase se cierra por compilar, por tests con mocks o por «pasó una puerta que no le toca»: hace falta evidencia (ruta de código, test, recibo, URL) y, cuando la fase toca a un proveedor externo, una ejecución real.
 
 ## 3. Paridad — F0 a F6
 
@@ -73,7 +83,7 @@ Los 14 issues de F1 están cerrados ([backlog](docs/parity/backlog-f1.md), 21,0 
 - [x] 10 casos adversariales de permisos (shell, escritura, red, MCP, subagente) no ejecutan nada fuera de política.
 - [x] Pruebas focalizadas del CLI/sesiones, `tsc --noEmit` y `vite build` en verde.
 
-**G1 sigue abierta con el dogfooding ejecutado.** D1–D5 se corrieron el 2026-11-12 con modelo y `maxSteps` congelados: 24 corridas planificadas, 28 válidas y **17 `passed` (60,7 %)** frente a 8/24 (33,3 %) de F0, con 0 escrituras sin aprobación, 0 duplicadas en `--resume`, 0 secretos y 0 fallbacks ([recibo](docs/parity/receipts/G1-DOGFOOD-2026-11-12.md)). Siete de las ocho reglas están en verde; la única en rojo es el **p95 de aprobación ≤ 15 151 ms**: 76 982 ms (n=40, operador automatizado), 65 056 ms en CAL2 (n=6) y 26 501 ms en CAL4 (n=41), este último **no válido como muestra humana**. La [hoja de decisión](docs/parity/g1-approval-gate-decision.md) deja rigiendo la **salida B**: la referencia no se toca y la casilla sólo pasa a verde con `latencyMs`, n ≥ 40 y ≤ 2 de 40 por encima. **Ese bloque sale del roadmap por decisión del autor del 2026-11-23:** no se ejecuta, no está agendado, G1 sigue abierta sin fecha y ninguna fase se marca cerrada por la puerta.
+**G1 sigue abierta con el dogfooding ejecutado.** D1–D5 se corrieron el 2026-11-12 con modelo y `maxSteps` congelados: 24 corridas planificadas, 28 válidas y **17 `passed` (60,7 %)** frente a 8/24 (33,3 %) de F0, con 0 escrituras sin aprobación, 0 duplicadas en `--resume`, 0 secretos y 0 fallbacks ([recibo](docs/parity/receipts/G1-DOGFOOD-2026-11-12.md)). Siete de las ocho reglas están en verde; la única en rojo es el **p95 de aprobación ≤ 15 151 ms**: 76 982 ms (n=40, operador automatizado), 65 056 ms en CAL2 (n=6) y 26 501 ms en CAL4 (n=41), este último **no válido como muestra humana**. La [hoja de decisión](docs/parity/g1-approval-gate-decision.md) deja rigiendo la **salida B**: la referencia no se toca y la casilla sólo pasa a verde con `latencyMs`, n ≥ 40 y ≤ 2 de 40 por encima. **Ese bloque sale del roadmap por decisión del autor del 2026-11-23:** no se ejecuta, no está agendado y G1 sigue abierta sin fecha; por la regla de §2.1 retiene sólo a F1.
 
 **T10 no es regla de puerta.** Sigue **0/3 en las 24** (0/9 con las extras) con issue propio; fuera de ellas, `G1-T10-15` dio **6/6 con los siete checks** y `G1-SUBAGENT-CLOSE` quedó cerrado con el riesgo residual de los worktrees `prunable` declarado. `G1-EMPTY-TURN` sigue abierto. Detalle en §6.
 
@@ -81,7 +91,7 @@ Los 14 issues de F1 están cerrados ([backlog](docs/parity/backlog-f1.md), 21,0 
 
 **Alcance.** Plan artifact (pasos, estado, archivos tocados, criterios y decisiones, enlazado a la sesión), diff artifact (parche completo, revisión por hunk, comentarios, aplicar/descartar y auditoría de lo aplicado), grabación de navegador (WebM con la misma sesión de Playwright y log JSON de consola/red; si no hay encoder, frames + informe, nunca un MP4 falso), evidencia de tests (comando, `exitCode`, duración, versión de Node/SO, commit y cola de stdout/stderr, con un test fallido que no puede pintarse verde), informe local HTML/Markdown autocontenido sin peticiones externas ni secretos, y visor de artifacts con filtros por proyecto/sesión y «abrir carpeta», sin subida remota por defecto.
 
-Plan, diff, evidencia de tests, informe local, visor, revisión por hunk con auditoría y grabación WebM: F2-01 a F2-09 están hechos ([backlog](docs/parity/backlog-f2.md)), pero las casillas siguen vacías porque la regla no cierra criterios de F2 con G1 abierto y falta la verificación visual en Electron (el E2E de Chromium no la sustituye).
+Plan, diff, evidencia de tests, informe local, visor, revisión por hunk con auditoría y grabación WebM: F2-01 a F2-09 están hechos ([backlog](docs/parity/backlog-f2.md)), pero las casillas siguen vacías por una sola razón: falta la verificación visual en Electron (el E2E de Chromium no la sustituye).
 
 - [ ] Una tarea de código produce plan, diff, evidencia de tests y (si hubo navegador) grabación, todos enlazados al mismo `sessionId`.
 - [ ] El estado del plan coincide con las tool calls reales; un paso bloqueado se distingue de uno completado.
@@ -468,19 +478,20 @@ Una fase termina sólo si:
 
 **Ahora**
 
-1. **Bloque de aprobación fuera del roadmap (2026-11-23):** por decisión del autor no se agenda; G1 queda **abierta**, la referencia de 15 151 ms intacta y ninguna fase se marca cerrada por la puerta.
-2. F1-1 (T10): sigue 0/3 en las 24 y es el paso de mayor peso fuera de la puerta; `G1-EMPTY-TURN` sigue abierto y `G1-SUBAGENT-CLOSE` quedó cerrado con el 6/6 de `G1-T10-15`. Los otros dos issues de G1 siguen abiertos y tampoco son regla de puerta: `G1-T2-READ-LOOP` (T2 en 0/2, guardas aplicadas) y `G1-APPROVAL-SHELL-TAIL` (P0/P1 hechos, P2 en pausa).
+1. **Bloque de aprobación fuera del roadmap (2026-11-23):** por decisión del autor no se agenda; G1 queda **abierta**, la referencia de 15 151 ms intacta y, por §2.1, sólo retiene a F1. F2, F3, F4 y PL3 avanzan con su propia evidencia.
+2. **PL3 (backend gestionado)** y **F2 (verificación visual en Electron)**: las dos sin puerta. PL3 tiene el contrato y el doble en memoria hechos; F2 sólo espera el instalador.
+3. T10 y T2 se trabajan por sus issues, no por la puerta: `G1-EMPTY-TURN` abierto (arreglo aplicado, falta re-medir), `G1-T2-READ-LOOP` abierto (T2 en 0/2, guardas aplicadas) y `G1-APPROVAL-SHELL-TAIL` con P0/P1 hechos y P2 en pausa. `G1-SUBAGENT-CLOSE` quedó cerrado con el 6/6 de `G1-T10-15`.
 
-**Después de G1**
+**Después**
 
-3. F3 (pair/PWA) y F4A (VS Code) en paralelo, con G2 antes de habilitar remote.
-4. Decidir proveedor en G3.
-5. F5A (SSR/Workers) y 5B (backend gestionado).
+4. F3 (pair/PWA) en cuanto G2 esté aprobada, y F4A (VS Code) en paralelo: ninguna de las dos espera a G1.
+5. Decidir proveedor en G3.
+6. F5A (SSR/Workers) y 5B (backend gestionado).
 
 **Más adelante**
 
-6. F5C (realtime), PL4, PL6.
-7. F6 y PL7 sólo con una decisión de producto explícita.
+7. F5C (realtime), PL4, PL6.
+8. F6 y PL7 sólo con una decisión de producto explícita.
 
 Con dos personas, el alcance P0 + P1 es del orden de 9–12 semanas de trabajo efectivo; con una, 12–16. Primeros 30 días: cerrar F0 (hecho), completar F1 y dejar F2 en revisión.
 
@@ -505,6 +516,7 @@ Con dos personas, el alcance P0 + P1 es del orden de 9–12 semanas de trabajo e
 
 - Este archivo es el roadmap completo y el único. Los criterios viven aquí y sólo aquí: no se duplican en otros documentos, y las fases que se retiraron (`ROADMAP_PARITY.md`, `ROADMAP_PLATFORM.md`, `ROADMAP_UX.md`) no se recrean.
 - Al cambiar el estado de una fase o puerta se actualiza su sección y se mueve la fecha de la instantánea. Todo «hecho» necesita evidencia: ruta de código, test, PR, issue, recibo o URL. Lo no medido se queda como **sin medir**.
+- El cierre de fases sigue §2.1: la puerta de esa fase y sólo esa. G1 no se hereda hacia fases posteriores, y una puerta sin regla ejecutable no se usa para retener trabajo ya evidenciado.
 - `docs/parity/` guarda la evidencia (baseline, dogfooding, recibos, backlogs, hojas de decisión) y `docs/parity/issues/` el cuerpo de cada issue; ningún documento de ahí es un roadmap paralelo.
 - La vista publicada se actualiza en el bloque `<script id="plan">` de `docs/roadmap-autonomo.html` (peso y % por paso); los porcentajes de fase y el global se recalculan al abrir la página.
 - Guardas en CI: `tests/unit/roadmapFigures.test.ts` comprueba que la vista y este documento citan las mismas cifras, que la tabla de §1 cuadra con las casillas de §3/§4/§5 y que se cita el recibo `G1-T10-*` más alto; `npm run check:criteria` falla si un issue cerrado conserva criterios sin marcar.
