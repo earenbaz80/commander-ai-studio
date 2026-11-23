@@ -147,7 +147,8 @@ describe('entorno de la release en la app de ejemplo PL3', () => {
     expect(privateText).not.toContain(DATABASE_SECRET);
     expect(privateText).not.toContain(STORAGE_SECRET);
 
-    // El banner nombra el archivo y las credenciales, nunca sus valores.
+    // El banner nombra la release, el directorio de datos y las credenciales;
+    // nunca sus valores ni la ruta del archivo de entorno.
     const logs = emitted();
     expect(logs).toContain('[pl3-example]');
     expect(logs).toContain('DATABASE_URL');
@@ -183,6 +184,33 @@ describe('entorno de la release en la app de ejemplo PL3', () => {
 
     expect(server.release?.file).toBe(path.resolve(file));
     expect(process.env.STORAGE_SECRET).toBe(STORAGE_SECRET);
+  });
+
+  it('un archivo malformado falla sin repetir el contenido en el error ni la salida', async () => {
+    const emitted = captureLogs();
+    // El archivo se corta a mitad de una credencial: si el error repitiera el
+    // mensaje del parser, ese trozo acabaría en stderr (el CLI publica
+    // `error.message`).
+    const file = path.join(publishDir, 'malformado.json');
+    fs.writeFileSync(
+      file,
+      `{"releaseId":"rel-1","vars":{"DATABASE_URL":"${DATABASE_SECRET}"`,
+      'utf8'
+    );
+
+    const error = await start(['--env-file', file]).then(
+      () => null,
+      (failure) => failure as Error
+    );
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error?.message).toBe('El archivo de entorno de la release no es JSON válido');
+    expect(error?.message).not.toContain(DATABASE_SECRET);
+    expect(String(error)).not.toContain(DATABASE_SECRET);
+    // No llegó a escuchar ni a escribir el banner, y nada tocó `process.env`.
+    expect(emitted()).toBe('');
+    expect(process.env.DATABASE_URL).toBeUndefined();
+    expect(process.env.STORAGE_SECRET).toBeUndefined();
   });
 
   it('falla antes de escuchar si el archivo no existe', async () => {
