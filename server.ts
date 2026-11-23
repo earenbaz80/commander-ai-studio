@@ -101,6 +101,8 @@ import { createDeployRouter } from './deploy/routes';
 import { createBrowserRouter } from './browserRoutes';
 import { createIntegrationsRouter } from './src/integrations/router';
 import { createTenantBackendRouter } from './backend/routes';
+import { createBackendRouter } from './deploy/backend/routes';
+import { createConfiguredBackendAdapter } from './deploy/backend/configuredAdapter';
 import { safeFetch } from './ssrf';
 import {
   LocalModelDownloadManager,
@@ -2874,6 +2876,13 @@ app.use(
 // La misma sesión de Playwright que usan las tools del agente, expuesta al panel.
 app.use('/api/browser', createBrowserRouter());
 app.use('/api/integrations', createIntegrationsRouter());
+
+// Gestión del backend de las apps publicadas (PL3): aprovisionar bindings y
+// consultar su estado. Sin proveedor elegido, el único adaptador es el doble en
+// memoria y sólo existe con `COMMANDER_BACKEND_FAKE=1`; sin la bandera la ruta
+// responde deshabilitada y no finge un backend. Va antes del router
+// multiinquilino, que ocupa `/api/backend` completo con su propio catch-all.
+app.use('/api/backend/manage', createBackendRouter(createConfiguredBackendAdapter()));
 
 // Backend de datos multiinquilino: auth bearer, registros y archivos aislados
 // por inquilino. Se monta antes del estático/Vite para que ninguna ruta SPA

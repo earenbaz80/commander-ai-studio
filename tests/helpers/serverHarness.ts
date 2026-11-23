@@ -377,6 +377,10 @@ export async function spawnServer(): Promise<ServerHarness> {
       COMMANDER_PUBLISH_DIR: publishDir,
       // Las sesiones del agente (F1-02) tampoco.
       COMMANDER_AGENT_SESSIONS_DIR: path.join(dir, 'agent-sessions'),
+      // El doble del backend gestionado (PL3) sólo se enciende en el arnés: en
+      // producción la bandera no se define y `/api/backend/manage` responde
+      // deshabilitado. Es memoria del proceso, sin credenciales ni red.
+      COMMANDER_BACKEND_FAKE: '1',
       // Aunque el shell tenga credenciales, la suite nunca debe publicar en
       // una cuenta Vercel real. Los tests del adaptador usan un servidor local.
       VERCEL_TOKEN: '',
