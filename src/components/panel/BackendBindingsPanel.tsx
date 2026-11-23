@@ -213,9 +213,9 @@ export function BackendBindingsPanel({ projectId, lang = 'es' }: BackendBindings
       {!enabled && !error && (
         <div className="text-[9px] text-[var(--nc-text-dim)]">
           {t(
-            'Todavía no hay proveedor elegido (G3). Para probar el contrato, arranca con COMMANDER_BACKEND_FAKE=1.',
-            'No provider chosen yet (G3). To exercise the contract, start with COMMANDER_BACKEND_FAKE=1.',
-            'Noch kein Anbieter gewählt (G3). Um den Vertrag zu testen, mit COMMANDER_BACKEND_FAKE=1 starten.'
+            'Sin backend configurado: define COMMANDER_BACKEND_PROVIDER=supabase con sus credenciales, o COMMANDER_BACKEND_FAKE=1 para probar el contrato.',
+            'No backend configured: set COMMANDER_BACKEND_PROVIDER=supabase with its credentials, or COMMANDER_BACKEND_FAKE=1 to exercise the contract.',
+            'Kein Backend konfiguriert: COMMANDER_BACKEND_PROVIDER=supabase mit Zugangsdaten setzen oder COMMANDER_BACKEND_FAKE=1 zum Testen des Vertrags.'
           )}
         </div>
       )}
