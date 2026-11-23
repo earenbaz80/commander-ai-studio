@@ -363,11 +363,18 @@ async function runBuild(root: string): Promise<string> {
     child.once('error', (error) => finish(error));
     child.once('close', (code) => {
       if (code === 0) finish();
-      else finish(new Error(`npm run build falló (código ${code})\n${tail(output)}`));
+      // La salida puede contener código fuente, rutas o valores impresos por la
+      // build; el mensaje viaja por `/api/publish/*` y a la UI, así que no se
+      // adjunta. El diagnóstico queda en la consola del proyecto que construye.
+      else finish(new Error(`npm run build falló (código ${code}); la salida de la build no se devuelve`));
     });
     const timer = setTimeout(() => {
       try { child.kill(); } catch { /* ya terminó */ }
-      finish(new Error(`npm run build excedió ${BUILD_TIMEOUT_MS / 60000} minutos\n${tail(output)}`));
+      finish(
+        new Error(
+          `npm run build excedió ${BUILD_TIMEOUT_MS / 60000} minutos; la salida de la build no se devuelve`
+        )
+      );
     }, BUILD_TIMEOUT_MS);
   });
 }

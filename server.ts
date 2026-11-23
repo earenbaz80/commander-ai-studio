@@ -2818,6 +2818,11 @@ function publishProjectRoot(value: unknown): string {
   return resolveProjectPath('.', raw).abs;
 }
 
+/**
+ * Errores de publicación. Sólo se devuelve `message` porque sus fuentes no
+ * adjuntan contenido: el estado y el entorno usan mensajes fijos ante un JSON
+ * inválido, y la build ya no incluye su salida (podría traer código o valores).
+ */
 function publishError(res: any, error: any) {
   return res.status(400).json({ success: false, error: error?.message || 'Publicación falló' });
 }
