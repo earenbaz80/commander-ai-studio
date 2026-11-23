@@ -75,6 +75,7 @@ export interface CreateReleaseOptions {
 export interface CreateReleaseResult {
   release: ReleaseMeta;
   status: PublishStatus;
+  /** Salida de la build con valores sensibles redactados; va al panel. */
   buildLog: string;
 }
 
@@ -334,6 +335,52 @@ function tail(text: string, max = 6000): string {
   return text.length > max ? `…${text.slice(-max)}` : text;
 }
 
+/** Variables cuyo valor no debe aparecer en un log que viaja al cliente. */
+const SENSITIVE_ENV =
+  /(?:^|_)(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|CREDENTIAL|AUTH|DATABASE_URL|DSN|CONNECTION_STRING)(?:_|$)/i;
+
+const SECRET_PATTERNS: Array<[RegExp, string]> = [
+  [/\bsbp_[A-Za-z0-9]{8,}\b/g, '[redactado]'],
+  [/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[redactado]'],
+  [/\bgh[pousr]_[A-Za-z0-9]{8,}\b/g, '[redactado]'],
+  [/\bgithub_pat_[A-Za-z0-9_]{8,}\b/g, '[redactado]'],
+  [/\bxox[abp]-[A-Za-z0-9-]{8,}\b/g, '[redactado]'],
+  [/\bAKIA[0-9A-Z]{12,}\b/g, '[redactado]'],
+  [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, '[redactado]'],
+];
+
+/**
+ * Redacta el log de una build antes de devolverlo por HTTP.
+ *
+ * La build corre con el entorno del server y puede imprimir tokens, URLs con
+ * contraseña o pares `CLAVE=valor`. Se ocultan los valores de variables
+ * sensibles presentes en ese entorno y los formatos de token conocidos; el
+ * resto del log queda legible para diagnosticar.
+ */
+function sanitizeBuildLog(log: string, env: NodeJS.ProcessEnv): string {
+  let text = log;
+  const values = Object.entries(env)
+    .filter(
+      ([name, value]) =>
+        typeof value === 'string' && value.length >= 6 && SENSITIVE_ENV.test(name)
+    )
+    .map(([, value]) => String(value))
+    // Los valores largos primero: si uno contiene a otro, se tapa entero.
+    .sort((a, b) => b.length - a.length);
+  for (const value of values) text = text.split(value).join('[redactado]');
+
+  text = text.replace(/\bpostgres(?:ql)?:\/\/[^\s"'`]+/gi, 'postgresql://[redactado]');
+  text = text.replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer [redactado]');
+  text = text.replace(
+    /(\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_?KEY|DATABASE_URL)\s*=\s*)\S+/g,
+    '$1[redactado]'
+  );
+  for (const [pattern, replacement] of SECRET_PATTERNS) {
+    text = text.replace(pattern, replacement);
+  }
+  return text;
+}
+
 async function runBuild(root: string): Promise<string> {
   const scripts = readPackageScripts(root);
   if (typeof scripts.build !== 'string') {
@@ -342,18 +389,21 @@ async function runBuild(root: string): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     let output = '';
     let settled = false;
+    const buildEnv = { ...process.env, CI: '1' };
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       if (error) reject(error);
-      else resolve(tail(output));
+      // Se sanea el log completo y después se recorta: al revés, el corte
+      // podría dejar media credencial fuera del alcance de los patrones.
+      else resolve(tail(sanitizeBuildLog(output, buildEnv)));
     };
     // El comando es fijo y el script lo define el propio proyecto: publicar con
     // "construir" es una acción explícita del usuario, no una entrada libre.
     const child = spawn('npm', ['run', 'build'], {
       cwd: root,
-      env: { ...process.env, CI: '1' },
+      env: buildEnv,
       shell: true,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
