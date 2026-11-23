@@ -51,6 +51,7 @@ export function BackendBindingsPanel({ projectId, lang = 'es' }: BackendBindings
   const [provider, setProvider] = useState('');
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [rotating, setRotating] = useState(false);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -124,6 +125,37 @@ export function BackendBindingsPanel({ projectId, lang = 'es' }: BackendBindings
       );
     } finally {
       setBusy(false);
+    }
+  };
+
+  const rotate = async () => {
+    if (!projectId) return;
+    setRotating(true);
+    setError('');
+    try {
+      const res = await fetch('/api/backend/manage/rotate', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId }),
+      });
+      const data = (await res.json().catch(() => ({}))) as BackendManageResponse;
+      if (!res.ok || data.success === false) {
+        throw new Error(
+          data.error ||
+            t('No se pudieron rotar', 'Could not rotate', 'Rotation fehlgeschlagen')
+        );
+      }
+      // La rotación no devuelve valores: el panel relee el estado para mostrar
+      // los nombres de las credenciales que el adaptador acaba de emitir.
+      await load();
+    } catch (e: any) {
+      setError(
+        e?.message ||
+          t('No se pudieron rotar', 'Could not rotate', 'Rotation fehlgeschlagen')
+      );
+    } finally {
+      setRotating(false);
     }
   };
 
@@ -244,6 +276,18 @@ export function BackendBindingsPanel({ projectId, lang = 'es' }: BackendBindings
             {busy
               ? t('Aprovisionando…', 'Provisioning…', 'Wird bereitgestellt…')
               : t('Aprovisionar DB, storage y auth', 'Provision DB, storage and auth', 'DB, Storage und Auth bereitstellen')}
+          </button>
+          <button
+            type="button"
+            data-testid="backend-rotate"
+            onClick={() => void rotate()}
+            disabled={busy || rotating || !configured || !status || status.bindings.length === 0}
+            className="nc-button !py-1 text-[9px] flex items-center justify-center gap-1 disabled:opacity-50"
+          >
+            <KeyRound className="w-3 h-3" />
+            {rotating
+              ? t('Rotando…', 'Rotating…', 'Wird rotiert…')
+              : t('Rotar credenciales', 'Rotate credentials', 'Zugangsdaten rotieren')}
           </button>
         </>
       )}
