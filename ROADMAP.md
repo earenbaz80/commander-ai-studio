@@ -13,17 +13,17 @@ No promete fechas; los esfuerzos son órdenes de magnitud. Una fase o un criteri
 | Frente | Fases | Cerradas | Criterios en alcance |
 | --- | ---: | ---: | ---: |
 | Paridad | 7 | 1 (F0) | 21/47 |
-| Plataforma | 8 | 1 (PL0) | 19/38 |
+| Plataforma | 8 | 1 (PL0) | 24/38 |
 | UX | 1 | 1 (UX 1.0) | 10/10 |
-| **Total** | **16** | **4/13 en alcance** | **50/95 (53 %)** |
+| **Total** | **16** | **4/13 en alcance** | **55/95 (58 %)** |
 
 - **4 fases cerradas:** F0, PL0, UX 1.0 y F2.
-- **4 parciales:** F1, PL2, PL5 y PL6.
-- **5 pendientes:** F3, F4, F5, PL3 y PL4.
+- **5 parciales:** F1, PL2, PL3, PL5 y PL6.
+- **4 pendientes:** F3, F4, F5 y PL4.
 - **Fuera del cómputo:** PL1 (fuera de alcance hasta G3) y F6/PL7 (opcionales).
 - **Puertas:** G0 cerrada; G1 abierta (dogfooding ejecutado; **no retiene fases**, §2.1); G2 y G3 no iniciadas.
 
-El 53 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tampoco dice que la app esté al 53 %: dice que 50 de los 95 criterios en alcance tienen evidencia. Cada criterio es una casilla de este documento: cuenta el `[x]` o la cobertura que la fase declara (F2 cerró con sus siete criterios y su verificación en Electron); los `[—]`, las fases opcionales y PL1 quedan fuera del numerador y del denominador. F0 cerró G0 con una baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts y 0 inválidas); la paridad es baja. El dogfooding de G1 se ejecutó el 2026-11-12 (17/28, 60,7 %) y la puerta sigue abierta por una sola regla: el p95 de aprobación.
+El 58 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tampoco dice que la app esté al 58 %: dice que 55 de los 95 criterios en alcance tienen evidencia. Cada criterio es una casilla de este documento: cuenta el `[x]` o la cobertura que la fase declara (F2 cerró con sus siete criterios y su verificación en Electron); los `[—]`, las fases opcionales y PL1 quedan fuera del numerador y del denominador. F0 cerró G0 con una baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts y 0 inválidas); la paridad es baja. El dogfooding de G1 se ejecutó el 2026-11-12 (17/28, 60,7 %) y la puerta sigue abierta por una sola regla: el p95 de aprobación.
 
 **El norte no es la cifra, es el producto:** un agente que corre local-first, que pide aprobación con diff antes de escribir, que deja evidencia revisable de lo que hizo y que puede instalarse y publicarse sin cuenta. Lo que sigue a §2 mide cuánto de eso está verificado.
 
@@ -208,19 +208,19 @@ Adaptador, rutas y UI implementados; **no hay despliegue real**: la cobertura es
 - [x] Navegar fuera de loopback sigue pidiendo aprobación.
 - [x] Grabar una sesión, guardar frames y comentarios, y revisarlos (UI e IndexedDB; sin verificación visual en Electron).
 
-### PL3 · Backend gestionado — Pendiente · siguiente P0 · 2–3 sem · 0/7
+### PL3 · Backend gestionado — Parcial: contrato, app de ejemplo y panel · P0 · 2–3 sem · 5/7
 
 **Alcance.** `BackendAdapter` con `provision(projectId, bindings)`, `migrate(projectId, migrations)`, `status(projectId)` y `rotateSecrets(projectId)`. Tres bindings iniciales: base de datos relacional/SQL, object storage y auth para la app publicada. Ampliar `commander.app.json` con `backend.database`, `backend.storage`, `backend.auth`, migraciones en `migrations/` y variables por entorno. Credenciales sólo en el entorno de despliegue, nunca en el bundle del cliente. Ejemplo funcional: registro/login, crear una fila propia, subir un archivo propio, cerrar sesión. Aislamiento: consultas filtradas por `user.id` en el servidor, IDs de recurso nunca confiados al cliente, 401 sin sesión y 403 para recursos ajenos. Archivos previstos: `deploy/backend/types.ts`, `deploy/backend/<provider>.ts`, `deploy/migrations.ts`, `PublishView.tsx`, `tests/unit/backendProvision.test.ts`, `tests/backendEndpoints.test.ts`, app de referencia en `examples/` o `templates/`. **Decisiones abiertas:** proveedor gestionado o también self-hosted; auth del proveedor o reutilizar la cuenta de Commander (recomendación: aislar, cada app su tenant); flujo explícito de exportación/borrado al borrar la app.
 
-`BackendAdapter` con `provision`/`migrate`/`status`/`rotateSecrets`, bindings de base de datos, storage y auth por app, y una app de ejemplo con aislamiento entre cuentas. Hoy existe la base local multiinquilino de `/api/backend`, pero no aprovisiona ni despliega.
+`BackendAdapter` con `provision`/`migrate`/`status`/`rotateSecrets`, bindings de base de datos, storage y auth por app, y una app de ejemplo con aislamiento entre cuentas. Hecho: el contrato y su doble en memoria (`deploy/backend/`), las rutas `/api/backend/manage`, el runner de migraciones SQLite real (`deploy/backend/migrations.ts`, `schema_migrations`, una transacción por migración) y la app de referencia `examples/pl3-backend-app` —registro/login, notas y archivos con 401/403 y una base y un storage por proyecto— con su suite (`tests/unit/pl3ExampleApp.test.ts`, 11 casos). El panel de `PublishView` muestra estado, bindings y migraciones sin valores de credenciales. Falta lo que depende de G3: aprovisionar contra un proveedor real y que los valores de los secretos lleguen al entorno desplegado; hoy el único adaptador seleccionable es el doble tras `COMMANDER_BACKEND_FAKE=1`.
 
 - [ ] Un proyecto nuevo aprovisiona base de datos, storage y auth desde la UI o un comando explícito.
-- [ ] Las migraciones se ejecutan en el servidor y son idempotentes.
-- [ ] La app de ejemplo permite registro, login, creación de datos y subida de archivo.
-- [ ] Dos cuentas distintas no ven datos ni archivos de la otra.
-- [ ] Una petición sin sesión recibe 401; una petición a un recurso ajeno recibe 403.
+- [x] Las migraciones se ejecutan en el servidor y son idempotentes.
+- [x] La app de ejemplo permite registro, login, creación de datos y subida de archivo.
+- [x] Dos cuentas distintas no ven datos ni archivos de la otra.
+- [x] Una petición sin sesión recibe 401; una petición a un recurso ajeno recibe 403.
 - [ ] Las credenciales no aparecen en el HTML, JS público, logs ni repositorio.
-- [ ] El estado del backend se puede consultar sin exponer secretos.
+- [x] El estado del backend se puede consultar sin exponer secretos.
 
 ### PL4 · Realtime para apps — Pendiente · depende de PL3 · 1 sem · 0/5
 
@@ -479,7 +479,7 @@ Una fase termina sólo si:
 **Ahora**
 
 1. **Bloque de aprobación fuera del roadmap (2026-11-23):** por decisión del autor no se agenda; G1 queda **abierta**, la referencia de 15 151 ms intacta y, por §2.1, sólo retiene a F1. F2, F3, F4 y PL3 avanzan con su propia evidencia.
-2. **PL3 (backend gestionado)** y **F2 (verificación visual en Electron)**: las dos sin puerta. PL3 tiene el contrato y el doble en memoria hechos; F2 sólo espera el instalador.
+2. **PL3 (backend gestionado)**: sin puerta. Tiene contrato, doble, rutas, migraciones reales, app de ejemplo y panel; lo que falta es el proveedor real de G3. **F2** quedó cerrada con su verificación automática en Electron (`npm run test:electron`).
 3. T10 y T2 se trabajan por sus issues, no por la puerta: `G1-EMPTY-TURN` abierto (arreglo aplicado, falta re-medir), `G1-T2-READ-LOOP` abierto (T2 en 0/2, guardas aplicadas) y `G1-APPROVAL-SHELL-TAIL` con P0/P1 hechos y P2 en pausa. `G1-SUBAGENT-CLOSE` quedó cerrado con el 6/6 de `G1-T10-15`.
 
 **Después**
