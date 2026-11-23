@@ -135,6 +135,92 @@ test('aísla bindings y estado entre dos proyectos', async () => {
   );
 });
 
+test('migrate aplica migraciones idempotentes y responde sólo con ids', async () => {
+  await srv.request('POST', '/api/backend/manage/provision', {
+    projectId: projectB,
+    bindings: ['database'],
+  });
+  const migrations = [
+    { id: '001_init', sql: 'create table if not exists notes (id text primary key);' },
+    { id: '002_indexes', sql: 'create index if not exists notes_id on notes (id);' },
+  ];
+
+  const first = await srv.request('POST', '/api/backend/manage/migrate', {
+    projectId: projectB,
+    migrations,
+  });
+  assert.equal(first.status, 200, first.raw);
+  assert.deepEqual(first.body.result, {
+    applied: ['001_init', '002_indexes'],
+    skipped: [],
+    failed: [],
+  });
+  // El SQL no vuelve por HTTP: sólo los ids aplicados.
+  assert.doesNotMatch(first.raw, /create table|create index/);
+
+  const second = await srv.request('POST', '/api/backend/manage/migrate', {
+    projectId: projectB,
+    migrations,
+  });
+  assert.equal(second.status, 200, second.raw);
+  assert.deepEqual(second.body.result, {
+    applied: [],
+    skipped: ['001_init', '002_indexes'],
+    failed: [],
+  });
+
+  const bad = await srv.request('POST', '/api/backend/manage/migrate', {
+    projectId: projectB,
+    migrations: [{ id: '003', sql: '   ' }],
+  });
+  assert.equal(bad.status, 400, bad.raw);
+  assert.match(String(bad.body.error), /no tiene SQL/);
+});
+
+test('rotate entrega el valor al sink y la respuesta sólo lleva nombres', async () => {
+  const res = await srv.request('POST', '/api/backend/manage/rotate', { projectId: projectA });
+
+  assert.equal(res.status, 200, res.raw);
+  assert.equal(res.body.success, true);
+  assert.deepEqual(res.body.rotation.rotated, [
+    'DATABASE_URL',
+    'STORAGE_SECRET',
+    'AUTH_SECRET',
+  ]);
+  // El valor rotado va al sink del adaptador, nunca al cliente.
+  assert.doesNotMatch(res.raw, /valor-/);
+  assert.doesNotMatch(res.raw, /fake-(database|storage|auth)-/);
+  assert.doesNotMatch(res.raw, /DATABASE_URL=/);
+
+  const after = await statusOf(projectA);
+  assert.deepEqual(after.body.status.secretNames, [
+    'DATABASE_URL',
+    'STORAGE_SECRET',
+    'AUTH_SECRET',
+  ]);
+  assert.doesNotMatch(after.raw, /fake-(database|storage|auth)-/);
+
+  const one = await srv.request('POST', '/api/backend/manage/rotate', {
+    projectId: projectA,
+    kinds: ['database'],
+  });
+  assert.equal(one.status, 200, one.raw);
+  assert.deepEqual(one.body.rotation.rotated, ['DATABASE_URL']);
+
+  const unknown = await srv.request('POST', '/api/backend/manage/rotate', {
+    projectId: projectA,
+    kinds: ['realtime'],
+  });
+  assert.equal(unknown.status, 400, unknown.raw);
+  assert.match(String(unknown.body.error), /Binding desconocido/);
+
+  const noBindings = await srv.request('POST', '/api/backend/manage/rotate', {
+    projectId: `app-pl3-vacio-${run}`,
+  });
+  assert.equal(noBindings.status, 400, noBindings.raw);
+  assert.match(String(noBindings.body.error), /no tiene un backend aprovisionado/);
+});
+
 test('la ruta de gestión no tapa al backend multiinquilino de /api/backend', async () => {
   const manage = await srv.request('GET', '/api/backend/manage/rotate');
   assert.equal(manage.status, 404, manage.raw);
