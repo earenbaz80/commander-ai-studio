@@ -292,6 +292,8 @@ El contrato de cierre y el turno sin tools ya estaban aplicados, pero el dialect
 ## Re-medición `G1-T10-14` (2026-11-23): cero cierres huecos, 2/3
 
 Corrida de **diagnóstico fuera de las 24** con el arnés (`evals/baseline.ts --only T10 --runs 3`), commit **`9a99a90`** (el arreglo del turno vacío del CLI ya aplicado), servidor propio del arnés en `:3285` y modelo congelado. Recibo: [`G1-T10-14-2026-11-23.md`](../receipts/G1-T10-14-2026-11-23.md).
+| [`receipts/G1-T10-15-2026-11-23.md`](../receipts/G1-T10-15-2026-11-23.md) | Dos tandas sobre `4af10ee`: **6/6** con los checks 6 y 7 en verde y 12 hijos con limpieza verificada; no cambia el 0/3 de las 24 |
+| `.commander/g1/t10-4af10ee.log`, `.commander/g1/t10-4af10ee-b.log` | salidas del arnés de las dos tandas (tres corridas cada una) |
 
 | Corrida | Duración | Checks | Cierres de hijos |
 | --- | ---: | --- | --- |
@@ -337,6 +339,20 @@ El check 7 falló en `T10-4` con esta respuesta literal del padre: «…**Total 
 **Alcance:** sólo el evaluador (`confirmsTwoChildren`). No toca el encargo de T10, `maxSteps`, el contrato de cierre, el modelo congelado, el umbral de **15 151 ms** ni el denominador de 24, y **no mueve el 0/3** de las 24: es corrección de un falso negativo del criterio, no un pase nuevo. **Aplicado el 2026-11-23** con sus casos en `tests/unit/t10ParentCount.test.ts`; no mueve el 0/3 ni el resto del criterio.
 
 - **Sin efecto en G1:** T10 sigue **0/3** en las 24 y **0/9** con las extras; esta corrida no suma como pase. CAL4H no se ejecutó y el umbral de **15 151 ms** no se tocó.
+
+## Re-medición `G1-T10-15` (2026-11-23): dos tandas, 6/6 con los checks 6 y 7 en verde
+
+Dos tandas de **diagnóstico fuera de las 24** con el arnés (`evals/baseline.ts --only T10 --runs 3`), commit **`4af10ee`** (la limpieza de worktrees con `removeWorktreeSafe` ya aplicada), servidor propio en `:3280` y modelo congelado. Recibo: [`G1-T10-15-2026-11-23.md`](../receipts/G1-T10-15-2026-11-23.md).
+
+| Tanda | Corridas | Checks | Worktrees sin limpiar | Cierres de hijos |
+| --- | ---: | --- | ---: | --- |
+| A | 3 | **7/7** en las tres | 0 | 6 de 6 con `Archivos:`/`Denegado:` |
+| B | 3 | **7/7** en las tres | 0 | 6 de 6 con `Archivos:`/`Denegado:` |
+
+- **6 de 6 `passed`**, p50 102 336 ms, sin timeouts: el check 6 no volvió a caer y el check 7 aceptó `2` en las seis.
+- **12 de 12 hijos** con `ok:true`, las dos líneas del contrato y `worktreeCleanup: {"ok":true}`; ninguno necesitó `recovered`. El caso de recuperación lo cubre `tests/unit/worktreeCleanup.test.ts`.
+- **No mueve el 0/3 de las 24** ni el 0/9: las filas llevan `subset: true` y fuera de la tanda T10 sigue 0 de 6. Tampoco toca el p95 ni el umbral de **15 151 ms**.
+- **No cierra el issue:** seis corridas verdes no demuestran que la causa raíz desaparezca; el arreglo hace visible y recuperable la limpieza.
 
 ## Evidencia
 
