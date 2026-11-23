@@ -1,6 +1,10 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { startServer, type ServerHarness } from './helpers/serverHarness.js';
+import { projectSlug } from '../publisher.js';
+import { releaseEnvFile } from '../deploy/backend/releaseEnv.js';
 
 /**
  * Endpoints de gestión del backend de apps publicadas (PL3).
@@ -219,6 +223,80 @@ test('rotate entrega el valor al sink y la respuesta sólo lleva nombres', async
   });
   assert.equal(noBindings.status, 400, noBindings.raw);
   assert.match(String(noBindings.body.error), /no tiene un backend aprovisionado/);
+});
+
+test('publicar inyecta las credenciales rotadas en el entorno de la release', async () => {
+  const tmpBase = path.join(process.cwd(), 'tests', 'tmp');
+  fs.mkdirSync(tmpBase, { recursive: true });
+  const app = fs.mkdtempSync(path.join(tmpBase, 'pl3-publish-'));
+
+  try {
+    fs.mkdirSync(path.join(app, 'dist'), { recursive: true });
+    fs.writeFileSync(
+      path.join(app, 'dist', 'index.html'),
+      '<!doctype html><html><body><h1>app con backend</h1></body></html>',
+      'utf8'
+    );
+
+    // El id que usa el panel es el slug de publicación del proyecto.
+    const slug = projectSlug(app);
+    const provisioned = await srv.request('POST', '/api/backend/manage/provision', {
+      projectId: slug,
+      bindings: ['database', 'auth'],
+    });
+    assert.equal(provisioned.status, 200, provisioned.raw);
+    const rotated = await srv.request('POST', '/api/backend/manage/rotate', {
+      projectId: slug,
+    });
+    assert.equal(rotated.status, 200, rotated.raw);
+
+    const published = await srv.request('POST', '/api/publish/preview', {
+      root: app,
+      outputDir: 'dist',
+      build: false,
+    });
+    assert.equal(published.status, 200, published.raw);
+    const preview = published.body.status.preview;
+    assert.ok(preview, 'preview debe apuntar a la release publicada');
+    // La respuesta de publicación no transporta credenciales.
+    assert.doesNotMatch(published.raw, /fake-(database|auth)-/);
+
+    // El entorno de la release sí las tiene, listas para el runner de la app.
+    const envFile = releaseEnvFile(srv.publishDir, slug, preview.id, 'preview');
+    assert.ok(fs.existsSync(envFile), `la release no recibió su entorno: ${envFile}`);
+    const env = JSON.parse(fs.readFileSync(envFile, 'utf8'));
+    assert.deepEqual(Object.keys(env.vars).sort(), ['AUTH_SECRET', 'DATABASE_URL']);
+    for (const value of Object.values(env.vars)) {
+      assert.match(String(value), /^fake-(database|auth)-/);
+    }
+
+    // Servido por HTTP no se filtra: ni en el HTML ni pedido como archivo.
+    const served = await srv.request('GET', preview.url);
+    assert.equal(served.status, 200, served.raw);
+    assert.match(served.raw, /app con backend/);
+    assert.doesNotMatch(served.raw, /fake-(database|auth)-/);
+    const leak = await srv.request('GET', `${preview.url}env/preview-${preview.id}.json`);
+    assert.equal(leak.status, 404, leak.raw);
+
+    // Producción recibe su propio entorno; no hereda el archivo de preview.
+    const promoted = await srv.request('POST', '/api/publish/production', {
+      root: app,
+      releaseId: preview.id,
+    });
+    assert.equal(promoted.status, 200, promoted.raw);
+    assert.doesNotMatch(promoted.raw, /fake-(database|auth)-/);
+    assert.ok(fs.existsSync(releaseEnvFile(srv.publishDir, slug, preview.id, 'production')));
+
+    // El estado de publicación tampoco devuelve valores.
+    const status = await srv.request(
+      'GET',
+      `/api/publish/status?root=${encodeURIComponent(app)}`
+    );
+    assert.equal(status.status, 200, status.raw);
+    assert.doesNotMatch(status.raw, /fake-(database|auth)-/);
+  } finally {
+    fs.rmSync(app, { recursive: true, force: true });
+  }
 });
 
 test('la ruta de gestión no tapa al backend multiinquilino de /api/backend', async () => {

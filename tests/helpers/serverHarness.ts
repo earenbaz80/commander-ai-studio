@@ -81,6 +81,11 @@ export interface ServerHarness {
   baseUrl: string;
   /** Base de datos temporal del hijo (borrada al parar). */
   dbPath: string;
+  /**
+   * Directorio de publicación del hijo, donde caen las releases y su entorno.
+   * Vacío si el arnés no lo conoce (p. ej. un server ya arrancado a mano).
+   */
+  publishDir: string;
   /** Log del server, para entender un fallo. */
   logs: () => string;
   stop: () => Promise<void>;
@@ -188,7 +193,7 @@ export async function startServer(): Promise<ServerHarness> {
  * resto recibe la misma URL ya lista.
  */
 async function acquireShared(control: string): Promise<ServerHarness> {
-  const reply = await new Promise<{ baseUrl: string; dbPath: string }>((resolve, reject) => {
+  const reply = await new Promise<{ baseUrl: string; dbPath: string; publishDir: string }>((resolve, reject) => {
     const sep = control.lastIndexOf(':');
     const host = control.slice(0, sep) || '127.0.0.1';
     const port = Number(control.slice(sep + 1));
@@ -232,7 +237,11 @@ async function acquireShared(control: string): Promise<ServerHarness> {
       settled = true;
       clearTimeout(timer);
       socket.destroy();
-      resolve({ baseUrl: String(msg.baseUrl), dbPath: String(msg.dbPath ?? '') });
+      resolve({
+        baseUrl: String(msg.baseUrl),
+        dbPath: String(msg.dbPath ?? ''),
+        publishDir: String(msg.publishDir ?? ''),
+      });
     });
     socket.on('error', (e: NodeJS.ErrnoException) =>
       fail(
@@ -255,6 +264,7 @@ async function acquireShared(control: string): Promise<ServerHarness> {
   return {
     baseUrl: reply.baseUrl,
     dbPath: reply.dbPath,
+    publishDir: reply.publishDir,
     logs: () => `(server compartido en ${reply.baseUrl}; su log lo imprime quien lo arrancó)`,
     stop: async () => { /* no es nuestro: lo para el padre */ },
     request: makeRequest(reply.baseUrl),
@@ -308,7 +318,14 @@ export async function createServerBroker(onBoot?: (srv: ServerHarness) => void):
       requests++;
       try {
         const srv = await ensure();
-        socket.end(`${JSON.stringify({ ok: true, baseUrl: srv.baseUrl, dbPath: srv.dbPath })}\n`);
+        socket.end(
+          `${JSON.stringify({
+            ok: true,
+            baseUrl: srv.baseUrl,
+            dbPath: srv.dbPath,
+            publishDir: srv.publishDir,
+          })}\n`
+        );
       } catch (e: any) {
         // Un arranque fallido no debe envenenar el siguiente intento.
         pending = null;
@@ -377,6 +394,11 @@ export async function spawnServer(): Promise<ServerHarness> {
       COMMANDER_PUBLISH_DIR: publishDir,
       // Las sesiones del agente (F1-02) tampoco.
       COMMANDER_AGENT_SESSIONS_DIR: path.join(dir, 'agent-sessions'),
+      // El tope de escrituras por IP protege a una UI, no a la suite: decenas
+      // de archivos comparten este server y sus POST legítimos agotaban las
+      // 300/min, que aparecian como 429 en un test ajeno (y en las corridas de
+      // agente, que escribe por HTTP). Se sube sólo aquí.
+      COMMANDER_RATE_WRITE_MAX: '20000',
       // El doble del backend gestionado (PL3) sólo se enciende en el arnés: en
       // producción la bandera no se define y `/api/backend/manage` responde
       // deshabilitado. Es memoria del proceso, sin credenciales ni red.
@@ -431,6 +453,7 @@ export async function spawnServer(): Promise<ServerHarness> {
         return {
           baseUrl,
           dbPath,
+          publishDir,
           logs: () => tail(log),
           request: makeRequest(baseUrl),
           stop: async () => {
