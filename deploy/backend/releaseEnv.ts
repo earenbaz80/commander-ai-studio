@@ -97,14 +97,15 @@ export interface ReleaseEnvContents {
  * Lo usan el publicador (`loadReleaseEnv`, que deriva la ruta del proyecto) y el
  * runner de la app, que recibe la ruta directamente: es el mismo formato y la
  * misma validación de nombres en los dos lados.
+ *
+ * Un archivo inválido falla con un mensaje fijo, sin el del parser: el de
+ * `JSON.parse` incluye un trozo del contenido, y el CLI de la app publica
+ * `error.message` por stderr, así que ese trozo podría acabar mostrando parte
+ * de una credencial.
  */
 export async function readReleaseEnv(file: string): Promise<ReleaseEnvContents> {
   const raw = await fsp.readFile(file, 'utf8');
-  const parsed = JSON.parse(raw) as {
-    releaseId?: unknown;
-    environment?: unknown;
-    vars?: Record<string, unknown>;
-  } | null;
+  const parsed = parseReleaseEnv(raw);
   const vars: Record<string, string> = {};
   for (const [name, value] of Object.entries(parsed?.vars ?? {})) {
     if (SECRET_NAME.test(name) && typeof value === 'string') vars[name] = value;
@@ -114,6 +115,21 @@ export async function readReleaseEnv(file: string): Promise<ReleaseEnvContents> 
     environment: typeof parsed?.environment === 'string' ? parsed.environment : null,
     vars,
   };
+}
+
+interface RawReleaseEnv {
+  releaseId?: unknown;
+  environment?: unknown;
+  vars?: Record<string, unknown>;
+}
+
+/** El error nunca repite el contenido: sólo dice que el archivo no es JSON. */
+function parseReleaseEnv(raw: string): RawReleaseEnv | null {
+  try {
+    return JSON.parse(raw) as RawReleaseEnv | null;
+  } catch {
+    throw new Error('El archivo de entorno de la release no es JSON válido');
+  }
 }
 
 /** Lo que el runner de la app lee al arrancar para poblar su entorno. */
