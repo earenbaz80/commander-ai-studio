@@ -1,8 +1,8 @@
-# Roadmap — Commander AI Studio
+# Roadmap autónomo — Commander AI Studio
 
-> **Instantánea:** 2026-11-23. **Éste es el único roadmap del proyecto:** paridad F0–F6, plataforma PL0–PL7 y UX 1.0 viven aquí, con sus criterios y su evidencia. `ROADMAP_PARITY.md`, `ROADMAP_PLATFORM.md` y `ROADMAP_UX.md` quedaron como punteros a este archivo.
+> **Instantánea:** 2026-11-23. **Éste es el único roadmap del proyecto.** Paridad F0–F6, plataforma PL0–PL7 y UX 1.0 viven aquí con sus criterios, su alcance, sus métricas y su evidencia; la comparación con los competidores está en §8 y las reglas de cierre en §9. No hay otros documentos de roadmap: `ROADMAP_PARITY.md`, `ROADMAP_PLATFORM.md` y `ROADMAP_UX.md` se retiraron y sus enlaces vivos apuntan a este archivo.
 >
-> **Vista gráfica:** [roadmap autónomo publicado](https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html) — 67 % hacia el multiagente autónomo (2026-11-23), 15 de 27 pasos cerrados, con el avance por paso y su evidencia (fuente: [docs/roadmap-autonomo.html](docs/roadmap-autonomo.html)). Es una vista del mismo roadmap con su propia numeración; el mapeo está en §7.
+> **Vista publicada:** [roadmap autónomo](https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html) — 67 % hacia el multiagente autónomo (2026-11-23), 15 de 27 pasos cerrados, con el avance por paso y su evidencia (fuente: [docs/roadmap-autonomo.html](docs/roadmap-autonomo.html)). Es una vista de este mismo roadmap con su propia numeración; el mapeo está en §7.
 >
 > **Evidencia:** [baseline F0](docs/parity/baseline-2026-11.md) · [runbook G1/F0](docs/parity/runbook-g1-f0.md) · [recibo F0 local](docs/parity/receipts/F0-LOCAL-2026-11-10.md) · [recibo del dogfooding G1](docs/parity/receipts/G1-DOGFOOD-2026-11-12.md) · [hoja de decisión del p95](docs/parity/g1-approval-gate-decision.md).
 
@@ -25,22 +25,26 @@ No promete fechas; los esfuerzos son órdenes de magnitud. Una fase o un criteri
 
 El 53 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tampoco dice que la app esté al 53 %: dice que 50 de los 95 criterios en alcance tienen evidencia. Cada criterio es una casilla de este documento: cuenta el `[x]` o la cobertura que la fase declara (F2, cubierta por evidencia y sin marcar); los `[—]`, las fases opcionales y PL1 quedan fuera del numerador y del denominador. F0 cerró G0 con una baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts y 0 inválidas); la paridad es baja. El dogfooding de G1 se ejecutó el 2026-11-12 (17/28, 60,7 %) y la puerta sigue abierta por una sola regla: el p95 de aprobación.
 
+**El norte no es la cifra, es el producto:** un agente que corre local-first, que pide aprobación con diff antes de escribir, que deja evidencia revisable de lo que hizo y que puede instalarse y publicarse sin cuenta. Lo que sigue a §2 mide cuánto de eso está verificado.
+
 ## 2. Puertas
 
 | Puerta | Exige | Estado | Qué la desbloquea |
 | --- | --- | --- | --- |
 | **G0** Verdad externa | GitHub verificado + línea base de 24 corridas | **Cerrada** | Baseline NVIDIA válida: 24 corridas, 0 timeouts |
 | **G1** Dogfooding del CLI | 5 días y 24 corridas usando el CLI como superficie principal, sin retroceder frente a F0 | **Abierta** · dogfooding ejecutado; p95 en rojo | T10 sigue 0/3 en las 24 (6/6 fuera de ellas, `G1-T10-15`); el bloque de medición de aprobación no está en el roadmap (decisión del 2026-11-23) |
-| **G2** Seguridad remota | Modelo de amenazas y revisión antes de habilitar `--remote` | **No iniciada** | Aprobar el [modelo de amenazas](docs/parity/threat-model-remote.md) |
+| **G2** Seguridad remota | Modelo de amenazas y revisión antes de habilitar `--remote` | **No iniciada** | Aprobar el modelo de amenazas remoto (`docs/parity/threat-model-remote.md`, todavía sin versionar) |
 | **G3** Proveedor de plataforma | Proveedor y modelo de costo decididos antes de 5A | **No iniciada** | Decisión explícita de proveedor |
 
 G1 no se cierra por ejecutar el dogfooding ni comparando contra una estimación: le falta que el producto cumpla el presupuesto de aprobación con una muestra humana válida. G2 bloquea F3; G3 bloquea F5A. Ninguna puerta se cierra por compilar o por tener tests con mocks.
 
 ## 3. Paridad — F0 a F6
 
-Paridad significa **la misma capacidad de producto**, no la misma implementación, el mismo modelo ni la misma estética. Commander conserva local-first, Norton y Nono. La comparación con OpenCode, Antigravity y Freebuff está en [referencia-competencia-y-alcance.md](docs/parity/referencia-competencia-y-alcance.md) (documentación oficial consultada el 2026-11-07; F0 revalida lo que allí se afirma), junto con el alcance por fase que no cabe en las casillas.
+Paridad significa **la misma capacidad de producto**, no la misma implementación, el mismo modelo ni la misma estética. Commander conserva local-first, Norton y Nono. De dónde sale cada exigencia está en §8 (matriz de competidores del 2026-11-07, que F0 revalida).
 
 ### F0 · Verdad y línea base — Hecho · G0 cerrada · P0 · 4–5 d · 6/6
+
+**Alcance.** Verificar con cuentas reales dentro del alcance vigente: OAuth de GitHub (conectar, leer un PR, comentar con aprobación, revocar y comprobar que el token no aparece en UI/logs) y GitHub Actions (`/commander` en modo plan y `--write` en un repo de prueba, con PR y comentario reales). Medir 10 tareas canónicas (bugfix, feature pequeña, refactor, tests, revisión, browser, deploy, permiso denegado, resume y subagente) con 2 corridas, y 3 en las 4 críticas, registrando éxito, pasos, tokens/costo, aprobaciones, duración y fallos. Revisar la matriz de §8 marcando cada fila con evidencia o con «sin verificar». Corregir sólo los defectos que impidan la verificación, sin abrir features nuevas. **Fuera:** Vercel en pausa hasta G3 y Linear fuera de alcance (2026-11-10); ninguna de las dos bloquea F0 ni se declara verificada.
 
 - [x] GitHub completa OAuth real: lectura de un PR, comentario con aprobación y revocación que invalida el acceso (recibo `F0-LOCAL-2026-11-10` §8).
 - [x] GitHub Actions ejecuta `/commander` en modo plan y `--write` en el repo de prueba; el comentario y el PR son reales (recibo `F0-LOCAL-2026-11-10` §11).
@@ -55,6 +59,8 @@ Paridad significa **la misma capacidad de producto**, no la misma implementació
 **G0 cerrada (2026-11-11).** GitHub verificado y baseline registrada; Vercel en pausa hasta G3 y Linear fuera de alcance no forman parte de la puerta.
 
 ### F1 · Núcleo de agente y CLI — Hecho en código · G1 abierto · P0 · 10–12 d · 8/8
+
+**Alcance.** Modo interactivo en `commander`/`commander agent` con prompt multi-turno, selección de modelo/agente y comandos `/plan`, `/build`, `/review`, `/compact`, `/undo`, `/resume`, `/fork`, `/exit`. Aprobaciones en terminal con diff por hunk (aprobar, denegar, recordar para la sesión) y `ask_user` con opciones y texto libre. Mantener `--json` y el contrato NDJSON de la extensión y CI, y añadir `--resume <id>`/`--fork <id>` sin romper flags existentes. Sesión autoritativa en el servidor: el CLI se conecta al servidor embebido y no reimplementa el bucle; al salir y volver, historial, plan y approvals se conservan. Activar `update_plan` en el CLI con estados (`pending`, `in_progress`, `done`, `blocked`), archivos y criterios. Ampliar el catálogo de subagentes a al menos 6 roles (explorer, planner, coder, reviewer, tester, researcher) con allowlist de tools, modo y `maxSteps`, con worktree por subagente cuando se pida. Reutilizar exactamente el motor de permisos del escritorio: el CLI no puede saltarse una regla `ask`/`deny`.
 
 Los 14 issues de F1 están cerrados ([backlog](docs/parity/backlog-f1.md), 21,0 d-persona): `ask_user` en el CLI (`b01264a`), REPL multi-turno, diff por hunk, paridad de permisos del escritorio, seis roles de subagente con allowlist y worktree, y plan persistente con estados, archivos y criterios.
 
@@ -73,6 +79,8 @@ Los 14 issues de F1 están cerrados ([backlog](docs/parity/backlog-f1.md), 21,0 
 
 ### F2 · Artifacts de verificación — Parcial: criterios cubiertos, sin marcar · P1 · 6–8 d · 7/7 con evidencia
 
+**Alcance.** Plan artifact (pasos, estado, archivos tocados, criterios y decisiones, enlazado a la sesión), diff artifact (parche completo, revisión por hunk, comentarios, aplicar/descartar y auditoría de lo aplicado), grabación de navegador (WebM con la misma sesión de Playwright y log JSON de consola/red; si no hay encoder, frames + informe, nunca un MP4 falso), evidencia de tests (comando, `exitCode`, duración, versión de Node/SO, commit y cola de stdout/stderr, con un test fallido que no puede pintarse verde), informe local HTML/Markdown autocontenido sin peticiones externas ni secretos, y visor de artifacts con filtros por proyecto/sesión y «abrir carpeta», sin subida remota por defecto.
+
 Plan, diff, evidencia de tests, informe local, visor, revisión por hunk con auditoría y grabación WebM: F2-01 a F2-09 están hechos ([backlog](docs/parity/backlog-f2.md)), pero las casillas siguen vacías porque la regla no cierra criterios de F2 con G1 abierto y falta la verificación visual en Electron (el E2E de Chromium no la sustituye).
 
 - [ ] Una tarea de código produce plan, diff, evidencia de tests y (si hubo navegador) grabación, todos enlazados al mismo `sessionId`.
@@ -85,7 +93,9 @@ Plan, diff, evidencia de tests, informe local, visor, revisión por hunk con aud
 
 ### F3 · Continuidad remota y PWA — Pendiente · espera G2 · P1 · 10–14 d · 0/8
 
-Continuar la misma sesión desde el móvil o el navegador con la misma política de aprobación, sin convertir a Commander en una nube. Requisito previo: [modelo de amenazas](docs/parity/threat-model-remote.md); `--remote` no se habilita en una release hasta que esa revisión pase.
+**Alcance.** `commander pair` con enlace de un solo uso, QR y caducidad de 5 minutos, cookie de sesión de 30 días y `--remote` explícito para exponer fuera de loopback. Cliente web responsive/PWA con sesiones, chat, plan, approvals, artifacts y estado de trabajos; no es un IDE ni un editor de código. **Control lease:** un dispositivo controla la sesión y los demás ven en lectura, con traspaso explícito y auditado. Registro de dispositivos, revocación, auditoría por dispositivo, rate limit, CSRF y `Origin` ajeno → 403. Streaming reanudable: al caer la red el cliente se reconecta y pide el estado, y las approvals son idempotentes.
+
+Continuar la misma sesión desde el móvil o el navegador con la misma política de aprobación, sin convertir a Commander en una nube. Requisito previo: el modelo de amenazas remoto (`docs/parity/threat-model-remote.md`, **todavía sin versionar**); `--remote` no se habilita en una release hasta que esa revisión pase.
 
 - [ ] Se inicia una tarea en escritorio, se empareja el móvil, se ve la misma sesión y se aprueba un diff; el escritorio refleja la aprobación sin duplicar pasos.
 - [ ] El enlace caduca a los 5 minutos, no se puede reutilizar y un `Origin` ajeno recibe 403.
@@ -99,6 +109,10 @@ Continuar la misma sesión desde el móvil o el navegador con la misma política
 **G2** exige la revisión de seguridad antes de habilitar `--remote` en builds de release; si no pasa, queda sólo el cliente local en loopback.
 
 ### F4 · Editor y ecosistema — Pendiente · P1 · 12–15 d · 0/11
+
+**Alcance 4A (extensión VS Code).** Compilar e instalar el `.vsix`, arrancar/reutilizar el servidor embebido sin exigir `npx` en producción, webview de chat con streaming, modelo/modo, selección de código como contexto, plan y approvals con diff; abrir archivo/línea desde un resultado de tool, mostrar diagnósticos del editor y conservar la misma sesión del escritorio, sin duplicar el bucle del agente.
+
+**Alcance 4B (hooks, plugins y política MCP).** Lifecycle `sessionStart`, `beforeModel`, `afterModel`, `beforeTool`, `afterTool`, `sessionEnd`, `stop` y `error` con timeout, orden y aislamiento de fallos; manifiesto de plugin con versión de API y permisos declarados, catálogo con instalación revisable y checksum, y nada de ejecutar código sin instalación explícita; MCP con política por tool (`allow`/`ask`/`deny`), salud/reintento, alcance por proyecto y errores visibles; importación de skills compatibles con `SKILL.md`, precedencia proyecto > global y validación de front matter.
 
 Llevar el agente al editor dominante y convertir la extensibilidad en una API estable, no en dos hooks ad-hoc. Paridad de IDE limitada a VS Code: JetBrains/Zed/Xcode sólo con demanda.
 
@@ -121,7 +135,13 @@ Llevar el agente al editor dominante y convertir la extensibilidad en una API es
 
 ### F5 · SSR, backend y realtime — Pendiente · espera G3 · P1 · 18–25 d · 0/7
 
-Que una app creada en Commander se pueda publicar completa (auth, datos, archivos y realtime) sin fingir que un build estático es full-stack. Tres entregas: **5A** hosting SSR/Workers, **5B** backend gestionado, **5C** realtime.
+**Alcance 5A (hosting SSR/Workers).** Extender `DeploymentAdapter` para `ssr`/`worker`, elegir proveedor en G3 (Vercel fuera por la decisión del 2026-11-10; candidato natural, Cloudflare Workers), variables públicas/secretas, logs, previews, dominios y rollback.
+
+**Alcance 5B (backend gestionado).** Aprovisionar auth, DB y storage por app reutilizando el contrato y las garantías de aislamiento de `/api/backend`, con migraciones, cuotas, backup/export y borrado.
+
+**Alcance 5C (realtime).** Salas autenticadas, snapshots durables y reconexión, con el cliente sin poder elegir `userId` ni capacidades y el estado crítico en el servidor.
+
+Plantilla full-stack de referencia: registro/login/logout, CRUD, subida de archivo y una sala realtime. Que una app creada en Commander se pueda publicar completa (auth, datos, archivos y realtime) sin fingir que un build estático es full-stack.
 
 - [ ] Una app SSR de ejemplo se despliega en preview y una ruta dinámica responde con variables de entorno correctas.
 - [ ] Registro, login, logout y sesión funcionan; sin sesión, las rutas privadas responden 401.
@@ -135,13 +155,15 @@ Que una app creada en Commander se pueda publicar completa (auth, datos, archivo
 
 ### F6 · Apuestas opcionales — no comprometido · P2 · 20–30 d · n/c
 
-Ejecución remota/cloud, automatizaciones/cron, voz conversacional y equipos/SSO. **No forman parte del compromiso P0/P1** y no se empiezan por imitación: exigen demanda de usuarios, revisión de seguridad, modelo de costo y prueba de que no degradan el camino local-first.
+**No forma parte del compromiso P0/P1** y no se empieza por imitación. *Ejecución remota/cloud:* una tarea corre en un workspace aislado, sin acceso al FS del host, con upload/download explícito, logs, cancelación, reconexión y presupuesto; paridad funcional con Remote Agents/Freebuff Cloud, no con su escala. *Automatizaciones/cron:* horario, historial, política de approvals, presupuesto y parada, sin escrituras desatendidas sin opt-in. *Voz conversacional:* el dictado ya existe; full-duplex con interrupción sólo con demanda y un proveedor de audio verificable. *Equipos/SSO:* cuentas compartidas, roles, auditoría y SSO, que exigen un modelo de identidad que no existe y no se improvisa en F3. **Puertas para empezar:** demanda de usuarios, revisión de seguridad, modelo de costo y prueba de que no degrada el camino local-first.
 
 ## 4. Plataforma — PL0 a PL7
 
-Hosting, backend, conectores y cuenta, sin dejar de ser local-first. Lo remoto es opt-in y el artefacto se construye una vez y se despliega tal cual. Los criterios de cada fase están abajo; el detalle de implementación y de archivos vive en `docs/parity/` y en los recibos.
+Hosting, backend, conectores y cuenta, sin dejar de ser local-first. Lo remoto es opt-in y el artefacto se construye una vez y se despliega tal cual. Cada fase trae su alcance, sus decisiones tomadas y sus criterios; el detalle de implementación y los recibos viven en `docs/parity/`.
 
 ### PL0 · Contrato de despliegue — Hecho · P0 · 2–3 d · 5/5
+
+**Alcance.** `DeploymentAdapter` con `detectProject(root)` (estático, SPA, Workers/SSR o desconocido), `deploy(releaseDir, environment)`, `promote(deploymentId, environment)`, `rollback(environment)`, `status(environment)` y `logs(deploymentId)`. Extender el estado local sin romperlo: `state.json` sigue siendo la fuente de verdad y se añade `remote: { provider, preview, production, deployments }` con migración tolerante, donde un `release.id` local puede mapear a uno o varios IDs remotos. Manifiesto opcional `commander.app.json` (tipo de app `static`/`spa`/`worker`/`ssr`, comando de build, carpeta de salida, variables públicas y bindings de `database`, `storage`, `auth` y `realtime`). Test double en memoria para preview, promoción y rollback sin red; no es un backend de producción. Archivos: `deploy/types.ts`, `deploy/adapter.ts`, `deploy/fakeAdapter.ts`, `deploy/preflight.ts`, `deploy/stateStore.ts`, `publisher.ts`. **Decisión tomada:** Vercel como primer proveedor (en pausa hasta G3), builds `static`/`spa` y rechazo claro de `worker`/`ssr`, credenciales sólo en el servidor, entornos preview/producción fijos sin dominios personalizados ni previews por rama.
 
 - [x] El publicador local actual sigue pasando sus pruebas sin cambios de comportamiento.
 - [x] Un estado antiguo sin `remote` se lee y se guarda con migración.
@@ -153,6 +175,8 @@ Hosting, backend, conectores y cuenta, sin dejar de ser local-first. Lo remoto e
 
 Adaptador, rutas y UI implementados; **no hay despliegue real**: la cobertura es con `fetch` simulado y un servidor de contrato. Fuera del cómputo hasta G3.
 
+**Alcance.** Primer `DeploymentAdapter` real para builds estáticas/SPA, reutilizando el artefacto de `createRelease` sin volver a compilar al promover. Rutas `GET /api/deploy/status?root=…`, `POST /api/deploy/preview`, `POST /api/deploy/production`, `POST /api/deploy/rollback` y `GET /api/deploy/logs`. UI en `PublishView.tsx` con selector Local/Remoto, URL por entorno, estado del deployment y botones de abrir, promover, rollback y ver logs. Persistir el mapeo release local ↔ deployment remoto. Preflight antes de subir: rechazar `.env*`, `.npmrc`, `.netrc`, symlinks y archivos fuera de la release, avisar de source maps o secretos evidentes y comprobar tamaño y número de archivos. **Fuera:** SSR/Workers, funciones serverless, dominios personalizados y CI/CD externo o deploys en cada push.
+
 - [ ] Una app Vite de ejemplo se publica en preview y devuelve una URL pública que carga HTML, JS y CSS con los content types correctos. **Pendiente de verificación real:** los tests usan un `fetch` simulado.
 - [x] Promover preview a producción no vuelve a compilar ni a copiar la release (cubierto en `vercelAdapter.test.ts`).
 - [ ] Rollback vuelve a la release anterior en menos de 30 segundos. **Pendiente de medición real.**
@@ -163,7 +187,7 @@ Adaptador, rutas y UI implementados; **no hay despliegue real**: la cobertura es
 
 ### PL2 · Navegador real y artifacts — Hecho con límites · P2 · 8/8
 
-Frames JPEG (~1,4 fps), consola y red reales, entrada, reconexión y grabación local de 120 s / 180 frames; sin verificación visual en Electron y sin MP4 ni export remoto.
+**Alcance.** Exponer la sesión de `browserSession.ts` al renderer (`POST /api/browser/session`, `GET /api/browser/session/:id/stream`, `POST /api/browser/session/:id/input`, `GET /api/browser/session/:id/logs`). Sustituir el iframe de `BrowserView.tsx` por una vista de frames y conservar la barra de URL. Reutilizar `LiveConsole` y `NetworkMonitor` con eventos reales, eliminando datos de demo y el comando simulado. Añadir selector de sesión, captura, grabación local e indicador de «agente controlando» / «usuario controlando». Mantener intacta la tool `browser` (`open`, `navigate`, `snapshot`, `click`, `type`, `press`, `scroll`, `screenshot`, `logs`, `close`) y respetar la guardia SSRF y la aprobación fuera de loopback. Implementado además: grabación de frames JPEG desde el SSE con botón **REC**, persistencia en IndexedDB con límite de 120 s y 180 frames, reproductor con timeline, marcadores y comentarios anclados a `atMs` y a coordenadas normalizadas, y auto-apertura de Artifacts al detener la grabación. **Límites:** ~1,4 fps (un frame cada 700 ms), sin captura bajo demanda, sin MP4, sin exportación ni visor remoto, y sin verificación visual en Electron.
 
 - [x] Un dev server local se ve en el panel y el agente puede hacer clic en un elemento visible (fixture local en `browserSse.test.ts`; sin verificación visual en Electron).
 - [x] La consola muestra un `console.error` real de la página.
@@ -172,9 +196,11 @@ Frames JPEG (~1,4 fps), consola y red reales, entrada, reconexión y grabación 
 - [x] Al cerrar y reabrir el panel, la sesión se reconecta o se explica que expiró.
 - [x] No queda ningún texto de “demo” ni de “simulate” en la ruta de preview.
 - [x] Navegar fuera de loopback sigue pidiendo aprobación.
-- [x] Grabar una sesión, guardar frames y comentarios, y revisarlos (UI y IndexedDB; sin verificación visual en Electron).
+- [x] Grabar una sesión, guardar frames y comentarios, y revisarlos (UI e IndexedDB; sin verificación visual en Electron).
 
 ### PL3 · Backend gestionado — Pendiente · siguiente P0 · 2–3 sem · 0/7
+
+**Alcance.** `BackendAdapter` con `provision(projectId, bindings)`, `migrate(projectId, migrations)`, `status(projectId)` y `rotateSecrets(projectId)`. Tres bindings iniciales: base de datos relacional/SQL, object storage y auth para la app publicada. Ampliar `commander.app.json` con `backend.database`, `backend.storage`, `backend.auth`, migraciones en `migrations/` y variables por entorno. Credenciales sólo en el entorno de despliegue, nunca en el bundle del cliente. Ejemplo funcional: registro/login, crear una fila propia, subir un archivo propio, cerrar sesión. Aislamiento: consultas filtradas por `user.id` en el servidor, IDs de recurso nunca confiados al cliente, 401 sin sesión y 403 para recursos ajenos. Archivos previstos: `deploy/backend/types.ts`, `deploy/backend/<provider>.ts`, `deploy/migrations.ts`, `PublishView.tsx`, `tests/unit/backendProvision.test.ts`, `tests/backendEndpoints.test.ts`, app de referencia en `examples/` o `templates/`. **Decisiones abiertas:** proveedor gestionado o también self-hosted; auth del proveedor o reutilizar la cuenta de Commander (recomendación: aislar, cada app su tenant); flujo explícito de exportación/borrado al borrar la app.
 
 `BackendAdapter` con `provision`/`migrate`/`status`/`rotateSecrets`, bindings de base de datos, storage y auth por app, y una app de ejemplo con aislamiento entre cuentas. Hoy existe la base local multiinquilino de `/api/backend`, pero no aprovisiona ni despliega.
 
@@ -188,6 +214,8 @@ Frames JPEG (~1,4 fps), consola y red reales, entrada, reconexión y grabación 
 
 ### PL4 · Realtime para apps — Pendiente · depende de PL3 · 1 sem · 0/5
 
+**Alcance.** `RealtimeAdapter` con salas, presencia, publicación de eventos y tickets de conexión autenticados. Ticket de corta duración emitido por el servidor: el navegador nunca decide `userId` ni permisos. Persistencia authoritative en la base de datos y realtime sólo como notificación. Throttle de eventos interactivos, sin bucles de heartbeat. Pruebas con dos clientes, sala no autorizada, desconexión y reconexión. Archivos previstos: `deploy/realtime/types.ts`, `deploy/realtime/<provider>.ts`, ruta de ticket y `tests/realtimeEndpoints.test.ts`, `tests/unit/realtimeTicket.test.ts`.
+
 Salas, presencia y eventos con tickets autenticados; el estado crítico queda en la base y realtime sólo notifica.
 
 - [ ] Dos clientes autenticados en la misma sala reciben eventos.
@@ -197,6 +225,8 @@ Salas, presencia y eventos con tickets autenticados; el estado crítico queda en
 - [ ] Los eventos no se usan como fuente de verdad para permisos ni para reglas de negocio.
 
 ### PL5 · Conectores nativos — GitHub verificado · Linear fuera · P1 · 6/7
+
+**Alcance.** Registro de conectores (`id`, nombre, icono, scopes, URLs de autorización/token, herramientas expuestas y permisos requeridos). Almacén de tokens cifrado con `safeStorage` de Electron cuando esté disponible y fallback a archivo cifrado con clave del sistema; nunca `localStorage`. OAuth con PKCE, state y callback loopback, con refresco automático y revocación. Conectores verticales: Linear (`whoami`, `list_teams`, `list_issues`, `create_issue`) y GitHub (OAuth para `github.pr`/`github.comment`, con fallback a `GITHUB_TOKEN`). UI con conectado/desconectado, cuenta y scopes, botón de revocar y último uso. Archivos: `src/integrations/*`, `src/components/settings/IntegrationsSettings.tsx`, `src/agent/tools/{linear,github}.ts`, `tests/unit/integrations.test.ts`, `tests/integrationsEndpoints.test.ts`.
 
 OAuth con PKCE, vault AES-256-GCM, refresh y revocación remota. GitHub verificado con cuenta real (recibo §8 y §11); Linear no se configura.
 
@@ -212,6 +242,8 @@ Pendiente real: revisar los scopes de GitHub (`repo` es amplio) y decidir si se 
 
 ### PL6 · Skills de cuenta y plantillas — Parcial · P2 · 1–2 sem · 0/6
 
+**Alcance.** Formato de «skill pack» con manifiesto (`id`, versión, descripción, permisos, compatibilidad), contenido Markdown/recursos, checksum, origen y autor. Sincronización con la cuenta: instalar, actualizar, desinstalar, cache offline y resolución de conflictos por versión. Catálogo curado de plantillas con preview antes de crear, una plantilla = proyecto completo y categorías/búsqueda. Reutilizar `skills/loader.ts` y el marketplace de plugins, sin un segundo cargador paralelo. Permisos explícitos: una skill no puede ejecutar shell ni escribir fuera del proyecto sin declararlo. Archivos previstos: `skills/pack.ts`, `skills/sync.ts`, `ExtensionsSettings.tsx`, `src/data/composerTemplates.ts`, `tests/unit/skillPack.test.ts`, `tests/ui/ExtensionsSettings.skills.test.tsx`.
+
 Hay catálogo de plugins y cinco plantillas locales; falta que skills y plantillas viajen con la cuenta.
 
 - [ ] Una skill instalada en una máquina aparece en otra tras iniciar sesión.
@@ -223,7 +255,9 @@ Hay catálogo de plugins y cinco plantillas locales; falta que skills y plantill
 
 ### PL7 · Workspaces remotos — Opcional · no iniciar sin decisión · 4–6 sem · 0/5
 
-Ejecutar el agente fuera de la máquina cambia el modelo del producto. No se empieza «porque Freebuff lo tiene».
+**Alcance mínimo si se aprueba.** Runner remoto con Node, shell, PTY y filesystem efímero o persistente; sincronización explícita de workspace sin sync implícito de secretos; cola de trabajos y reconexión; auth de usuario y aislamiento por workspace; límites de CPU, memoria, disco y tiempo; visor de logs y artefactos **remotos** (los artifacts locales del navegador no cubren este caso). **Decisión previa:** cambia el modelo del producto; si Commander sigue siendo una app personal local-first, se queda fuera y se documenta como no objetivo. No se empieza «porque Freebuff lo tiene».
+
+Ejecutar el agente fuera de la máquina cambia el modelo del producto y no se inicia por imitación.
 
 - [ ] Un trabajo lanzado en la nube sobrevive a cerrar el portátil.
 - [ ] Al reconectar, el usuario ve el estado y los artefactos.
@@ -275,7 +309,162 @@ El roadmap visual numera sus cinco bloques `F0`–`F4`, y esas etiquetas **no** 
 | **F4 · Plataforma** (`F4-2`, `F4-3`) | `F4-2` (marketplace) es la apuesta **F6**/PL6; `F4-3` (coste y tokens) no tiene fase | El `F4` del visual no es el `F4` de paridad (editor) |
 | **F4-1 · Backend de las apps publicadas** | Plataforma **PL3**, con **PL4** detrás | El paso `F4-1` no es la fase `F4` de paridad: es `PL3` |
 
-## 8. Secuencia recomendada
+La página no es un segundo roadmap: es la vista publicada de este archivo, con pesos por paso y su evidencia. Se actualiza en el bloque `<script id="plan">` de `docs/roadmap-autonomo.html`.
+
+## 8. Competencia — matriz del 2026-11-07
+
+De dónde salen las exigencias de §3 y §4. **Foto fechada:** documentación oficial publicada, consultada el 2026-11-07; no se ejecutaron OpenCode, Antigravity ni Freebuff en esta máquina, así que describe capacidades **documentadas**, no rendimiento. F0 revalida lo que aquí se afirma y el producto comparado puede haber cambiado.
+
+### 8.1 Cómo se construyó
+
+- **Evidencia del árbol:** se leyó el código real (`bin/commander.ts`, `src/cli/`, `src/agent/`, `browserSession.ts`, `pluginsRuntime.ts`, `publisher.ts`, `deploy/`, `backend/`, `tests/`) y los roadmaps de la época.
+- **Regla de honestidad:** una fila no pasa a «hecho» porque compile o tenga un test con un mock. Si depende de un proveedor externo, necesita una ejecución real y un recibo verificable (URL, issue, PR, captura o log sin secretos).
+- **Alcance de la comparación:** se compara la mejor superficie de cada producto, no todas sus superficies a la vez. Una capacidad que sólo existe en la app de escritorio del competidor no se exige a cada superficie de Commander.
+
+### 8.2 Leyenda
+
+| Marca | Significado en Commander | Significado en competidores |
+| --- | --- | --- |
+| **V** | Implementado y con prueba local; si es externo, verificado contra el proveedor real | Documentado como disponible en la superficie indicada |
+| **I** | Implementado, pero falta verificación externa o visual | — |
+| **P** | Parcial, scaffold o límite conocido | Parcial o limitado a una superficie |
+| **F** | Ausente | No documentado como primera parte |
+| **—** | No aplica a Commander | No es la propuesta del producto |
+
+### 8.3 Punto de partida de Commander (2026-11-07)
+
+Foto del árbol en esa fecha; el estado actual está en §1 y §3.
+
+| Área | Estado | Evidencia en el árbol | Límite actual |
+| --- | --- | --- | --- |
+| Bucle del agente, tools y subagentes | **V** | `src/agent/loop.ts`, `src/agent/fnTools.ts`, `src/agent/orchestrator.ts`; pruebas de agente | El CLI no expone todas las tools ni aprobaciones |
+| Permisos, aprobaciones y undo | **V** | `permissionRules`, `AgentApprovalModal`, checkpoints y `undoStep`/`redo` | La política vive sobre todo en la UI de escritorio |
+| Sesiones | **V** | `src/agent/sessions.ts`, rutas de sesiones y threads del servidor | No hay reanudación desde CLI ni desde un cliente remoto |
+| Navegador y artifacts | **V/P** | `browserSession.ts`, `BrowserView.tsx`, `useBrowserRecording.ts`, `ArtifactsView.tsx` | Frames a ~1,4 fps; sin exportación, sin MP4 y sin verificación visual en Electron |
+| Publicación estática/SPA | **V local; remoto en pausa hasta G3** | `publisher.ts`, `deploy/vercelAdapter.ts`, tests de contrato | Sin proveedor verificado; sin SSR/Workers |
+| Backend multiinquilino | **V local** | `backend/tenantStore.ts`, `backend/routes.ts`, `tests/tenantBackend.test.ts` (6/6) | No aprovisiona bindings para apps publicadas |
+| Integraciones GitHub/Linear | **V GitHub; Linear fuera de alcance** | `src/integrations/`, rutas OAuth, vault AES-256-GCM | GitHub con OAuth real verificado; Linear no se configura |
+| GitHub Actions | **V** | `.github/workflows/commander-agent.yml`, `scripts/github-agent.ts` | Corrida real en el repo de prueba con PR y comentario (recibo `F0-LOCAL-2026-11-10` §11) |
+| CLI | **P** | `bin/commander.ts`, `src/cli/repl.ts`, `src/cli/agentClient.ts`, `src/cli/tui.ts` | REPL multi-turno, `ask_user`, `--resume`/`--fork`, diff por hunk y paridad de permisos del escritorio operativos |
+| Extensión de VS Code | **P** | `vscode-extension/` | Scaffold: webview que lanza `npx commander agent`; no es un IDE integrado |
+| Skills/plugins/MCP | **V/P** | `skills/`, `pluginsRuntime.ts`, `src/agent/mcp.ts` | Hooks sólo `beforeTool`/`afterTool`; sin lifecycle completo ni marketplace propio |
+
+### 8.4 Superficies y continuidad
+
+| Capacidad | Commander | OpenCode | Antigravity | Freebuff |
+| --- | --- | --- | --- | --- |
+| App de escritorio | **V** (Electron/Tauri) | **V** | **V** (App) | **V** (Desktop) |
+| CLI/TUI interactivo | **P** (REPL multi-turno, `ask_user` y diff por hunk operativos; faltaba paridad de permisos) | **V** (TUI) | **V** (CLI) | **V** (CLI) |
+| Web local / navegador | **V** (Workbench embebido) | **V** (web y `pair`) | **V** (Remote Control web) | **V** (Web) |
+| Extensión de IDE | **P** (VS Code scaffold) | **—** | **V** (VS Code, JetBrains, VS, Zed, Xcode, Eclipse) | **—** |
+| Móvil / control remoto | **F** | **P** (web pair/QR) | **V** (Remote Control) | **V** (Web/Chat) |
+| Ejecución en nube | **F** | **F** (servidor propio; pair remoto no es nube) | **V** (Remote Agents/CLI cloud) | **V** (Cloud) |
+| Cuenta, historial y compartir | **F** (todo local) | **P** (share V1; V2 aún no lo soporta) | **V** (historial/conversaciones) | **V** (hilos/cuenta) |
+| SDK / automatización programática | **P** (CLI `--json` + HTTP) | **P** (API del servidor) | **V** (SDK Python) | **V** (`@codebuff/sdk`) |
+
+### 8.5 Agente y verificación
+
+| Capacidad | Commander | OpenCode | Antigravity | Freebuff |
+| --- | --- | --- | --- | --- |
+| Multi-proveedor / routing | **V** (muchos proveedores, fallback, modelos locales) | **V** | **P** (Gemini + Claude/GPT) | **P** (catálogo curado/financiado) |
+| Modos plan / build / readonly | **V** | **V** | **V** | **V** |
+| Subagentes | **V** (hasta 6 en paralelo; 6 plantillas) | **V** (custom, foreground/background) | **V** (async/swarms) | **V** (especializados) |
+| Worktrees aislados | **V** (worktree por subagente y tool `git.worktree`) | **P** | **V** | **V** (workspaces paralelos) |
+| Sesiones: resume / fork / rewind | **V** en escritorio; **P** en CLI | **V** (snapshots) | **V** | **V** |
+| Compactación de contexto | **V** (`contextBudget.ts`) | **V** | **V** | **V** |
+| Plan persistente / artifact de plan | **P** (tool de plan; no artifact de primera clase) | **P** (`todowrite`) | **V** (planes interactivos) | **P** |
+| Diagnósticos / LSP | **P** (language service de TypeScript; no LSP genérico) | **F** (V2 sin runtime; V1 experimental) | **V** (integrado en el IDE) | **—** |
+| Automatizaciones / cron | **P** (GitHub Actions; sin cron UI) | **P** (GitHub) | **V** (tareas programadas/sidecars) | **—** |
+| Voz | **P** (dictado STT, sin conversación full-duplex) | **F** | **V** (voice mode) | **—** |
+| Terminal / PTY / background | **V** | **V** | **V** | **V** |
+| Browser agent | **V** (Playwright) | **F** (sólo webfetch) | **V** (Chromium sandbox) | **V** |
+| Browser UI (consola/red/live) | **V** (con reserva: fixture SSE; sin verificación visual en Electron) | **P** (web UI, sin panel de navegador) | **V** | **V** |
+| Artifacts (plan/diff/grabación) | **P** (grabación y comentarios locales; sin export) | **F** | **V** (planes, diffs, grabaciones) | **P** (previews) |
+| Diff y aprobación por hunk | **V** | **V** | **V** | **V** |
+| Evidencia de tests | **P** (tests y diagnósticos, no artifact de primera clase) | **P** | **V** (verification loops) | **P** |
+| Preview de dev server | **V** | **P** (terminal) | **V** | **V** |
+
+### 8.6 Extensibilidad
+
+| Capacidad | Commander | OpenCode | Antigravity | Freebuff |
+| --- | --- | --- | --- | --- |
+| MCP | **V** | **V** | **V** | **V** |
+| Skills | **V** local | **V** | **V** (`SKILL.md`) | **V** (`AGENTS.md`/skills) |
+| Plugins / hooks | **P** (sólo `beforeTool`/`afterTool`) | **V** | **V** (hooks/plugins) | **P** (MCP/skills; sin hooks documentados) |
+| Agentes y comandos custom | **V** | **V** | **V** | **V** |
+| Marketplace / ecosistema | **P** (catálogo de plugins de Claude) | **P** (comunidad) | **V** (plugins) | **—** |
+| Integraciones nativas | **V** (GitHub con OAuth real; Linear fuera de alcance) | **P** (MCP/GitHub) | **V** (bundles de Google + MCP) | **P** (GitHub/repos; sin catálogo amplio documentado) |
+| SSO / enterprise | **F** | **P** | **V** (SSO/BYOID, VPC-SC, residencia) | **—** |
+
+### 8.7 Plataforma de apps
+
+| Capacidad | Commander | OpenCode | Antigravity | Freebuff |
+| --- | --- | --- | --- | --- |
+| Hosting estático/SPA | **P** (local **V**; proveedor remoto fuera de alcance) | **—** | **—** | **V** |
+| Hosting SSR/full-stack | **F** | **—** | **P** (Google Cloud) | **V** |
+| Auth/DB/storage para apps publicadas | **P** (backend local; sin bindings desplegados) | **—** | **P** (Firebase/Google) | **V** |
+| Realtime para apps | **F** | **—** | **P** | **—** (no documentado) |
+| App builder / deploy en un clic | **P** (estático/SPA) | **—** | **P** | **V** |
+
+### 8.8 Lectura competitiva
+
+- **OpenCode** es el más cercano en el núcleo: TUI madura, agentes/subagentes custom, permisos granulares, snapshots, MCP, plugins y web/pair. No compite como plataforma de apps ni tiene browser/artifacts de primera clase. Su ventaja frente a Commander es la **superficie de terminal** y la **continuidad TUI ↔ web**; no la nube.
+- **Antigravity** es el más cercano en **verificación**: planes interactivos, diffs multiarchivo, grabaciones de navegador, subagentes asíncronos con worktrees, Remote Control, CLI/IDE/SDK y tareas programadas. Su centro es Gemini/Google y su oferta empresarial; no es local-first ni multi-proveedor abierto.
+- **Freebuff** es el más cercano en **producto de extremo a extremo**: Desktop/CLI/Web/Cloud/Chat, subagentes, browser, previews, auth/DB/storage y despliegue. Su ventaja es la app builder gestionada y la disponibilidad; su costo es depender de su nube y su catálogo.
+- **Commander** no debe competir en modelos ni en infraestructura global. Su espacio defendible es **control local, aprobaciones visibles, reproducibilidad, costo y elección de proveedor**. La paridad debe reforzar eso, no diluirlo.
+
+### 8.9 Fuentes
+
+- OpenCode — introducción y superficies: <https://opencode.ai/v2/docs>
+- OpenCode — agentes, subagentes y permisos: <https://opencode.ai/docs/agents/>
+- OpenCode — web y `pair`: <https://opencode.ai/v2/docs/cli/web>
+- OpenCode — sharing V1 y límites de V2: <https://opencode.ai/docs/share> y <https://opencode.ai/v2/docs/sharing>
+- OpenCode — LSP: <https://opencode.ai/v2/docs/lsp>
+- Antigravity — superficies y capacidades: <https://antigravity.google/docs/ide/overview>
+- Antigravity — artifacts: <https://antigravity.google/docs/artifacts>
+- Antigravity — permisos: <https://antigravity.google/docs/permissions/>
+- Antigravity — subagentes: <https://antigravity.google/docs/subagents/>
+- Antigravity — remote control: <https://antigravity.google/docs/remote-control/>
+- Antigravity — enterprise: <https://antigravity.google/docs/enterprise/>
+- Freebuff — repositorio y superficies: <https://github.com/CodebuffAI/freebuff>
+- Freebuff — SDK: <https://github.com/CodebuffAI/freebuff/blob/main/sdk/README.md>
+
+**Evidencia local principal:** `bin/commander.ts`, `src/cli/`, `src/agent/`, `browserSession.ts`, `pluginsRuntime.ts`, `publisher.ts`, `deploy/`, `backend/`, `vscode-extension/` y `tests/tenantBackend.test.ts`.
+
+## 9. Métricas y definición de terminado
+
+### 9.1 Métricas
+
+Objetivos declarados el 2026-11-07; **no son estado medido**. La línea base se mide en F0 y no se inventa aquí; se actualiza con recibos, no con estimaciones.
+
+| Dimensión | Métrica | Línea base | Objetivo |
+| --- | --- | --- | --- |
+| Verdad | Afirmaciones P0 con recibo real / total | F0 | 100 %; cero «hecho» sin verificación externa |
+| Éxito | Tareas canónicas completadas | F0 | ≥ 8/10, sin regresión frente a la línea base |
+| Eficiencia | Pasos y tokens por tarea | F0 | ≤ +10 % de la línea base; costo visible |
+| Seguridad de permisos | Escrituras sin aprobación en casos adversariales | F0 | 0 |
+| Continuidad | Reanudar la misma sesión en 3 superficies | F0 | p95 < 60 s; 0 tool calls duplicadas |
+| Artifacts | Tareas de código con plan + diff + evidencia | F2 | ≥ 90 %; grabaciones 100 % reproducibles |
+| Remoto | Enlaces caducados/reutilizados/Origin ajeno rechazados | F3 | 100 % |
+| Aislamiento | Accesos cruzados entre inquilinos | F5 | 100 % denegados; 401 sin sesión |
+| Realtime | Recuperación tras reconexión | F5 | 100 % con snapshot durable |
+| Documentación | Filas de la matriz de §8 con estado y límite | Todas | 100 % |
+
+### 9.2 Definición de terminado de una fase
+
+Una fase termina sólo si:
+
+- La funcionalidad existe y tiene pruebas focalizadas; no se sustituyen aserciones por mocks para pasar.
+- Si toca un proveedor externo, hay una ejecución real con recibo y limitaciones escritas.
+- El camino local-first sigue funcionando sin cuenta, sin red y sin proveedor cuando aplique.
+- La documentación de usuario y la matriz de §8 reflejan el estado real, incluidos los límites.
+- Hay revisión de seguridad para remote, plugins, backend o realtime.
+- Hay rollback o feature flag para lo riesgoso.
+- Las métricas de la fase se registraron antes/después.
+- `tsc --noEmit`, `vite build` y las pruebas de la fase están en verde.
+- No hay secretos en código, logs, artifacts, releases ni capturas.
+
+## 10. Secuencia recomendada
 
 **Ahora**
 
@@ -295,27 +484,29 @@ El roadmap visual numera sus cinco bloques `F0`–`F4`, y esas etiquetas **no** 
 
 Con dos personas, el alcance P0 + P1 es del orden de 9–12 semanas de trabajo efectivo; con una, 12–16. Primeros 30 días: cerrar F0 (hecho), completar F1 y dejar F2 en revisión.
 
-## 9. Riesgos y no objetivos
+## 11. Riesgos y no objetivos
 
-| Riesgo | Mitigación |
-| --- | --- |
-| Falta la credencial real de un proveedor (Vercel en pausa hasta G3, Linear fuera) | Se mide lo que sí hay (GitHub) y no se declara paridad con mocks; un proveedor nuevo exige su propio recibo |
-| El alcance crece por comparar tres productos a la vez | Puertas G0–G3, no objetivos y fases separadas; F6 sólo con aprobación |
-| El pair remoto expone código o approvals | Loopback por defecto, enlace de un uso, caducidad, cookie, Origin/CSRF, control lease, revisión de seguridad |
-| Un plugin ejecuta código no confiable | Instalación explícita, manifiesto, permisos, revisión y aislamiento de fallos |
-| El backend gestionado se dispara en costo | Cuotas, presupuestos, opt-in, proveedor decidido en G3 |
-| Migración de sesiones/artifacts rompe datos | Esquema versionado, migración tolerante, backup y prueba de reinicio |
-| Playwright/ffmpeg no empaqueta bien en Electron | Vídeo opcional, fallback a frames + informe, prueba en el instalador |
-| La UI de artifacts no se ve bien en Electron | Verificación visual en el instalador, no sólo tests de jsdom |
+| Riesgo | Prob. | Impacto | Mitigación |
+| --- | --- | --- | --- |
+| Falta la credencial real de un proveedor (Vercel en pausa hasta G3, Linear fuera) | Media | Medio | Se mide lo que sí hay (GitHub) y no se declara paridad con mocks; un proveedor nuevo exige su propio recibo |
+| El alcance crece por comparar tres productos a la vez | Alta | Alto | Puertas G0–G3, no objetivos y fases separadas; F6 sólo con aprobación |
+| El pair remoto expone código o approvals | Media | Alto | Loopback por defecto, enlace de un uso, caducidad, cookie, Origin/CSRF, control lease, revisión de seguridad |
+| Un plugin ejecuta código no confiable | Media | Alto | Instalación explícita, manifiesto, permisos, revisión y aislamiento de fallos |
+| El backend gestionado se dispara en costo | Media | Alto | Cuotas, presupuestos, opt-in, proveedor decidido en G3 |
+| Migración de sesiones/artifacts rompe datos | Media | Alto | Esquema versionado, migración tolerante, backup y prueba de reinicio |
+| Playwright/ffmpeg no empaqueta bien en Electron | Media | Medio | Vídeo opcional, fallback a frames + informe, prueba en el instalador |
+| La UI de artifacts no se ve bien en Electron | Media | Medio | Verificación visual en el instalador, no sólo tests de jsdom |
+| Cambian las APIs de los proveedores | Media | Medio | Adaptadores, tests de contrato, versiones y recibos por release |
+| Un LSP genérico consume el proyecto | Alta | Medio | No construir un LSP propio; usar el language service de TS y los diagnósticos del editor |
 
-**No objetivos:** nube por defecto o workspace siempre encendido; app móvil nativa iOS/Android en este horizonte (la apuesta es PWA); edición multiusuario en tiempo real; seis extensiones de IDE (VS Code primero); runtime LSP universal; SSO empresarial, VPC-SC o residencia regional; marketplace propio con pagos y ejecución automática de plugins de terceros; entrenar o poseer modelos fundacionales; facturación, planes o créditos; multi-tenant SaaS para terceros; Kubernetes o contenedores arbitrarios en el hosting.
+**No objetivos:** nube por defecto o workspace siempre encendido; app móvil nativa iOS/Android en este horizonte (la apuesta es PWA); edición multiusuario en tiempo real; seis extensiones de IDE (VS Code primero); runtime LSP universal; SSO empresarial, VPC-SC o residencia regional; marketplace propio con pagos y ejecución automática de plugins de terceros; entrenar o poseer modelos fundacionales; inferencia gratuita financiada por anuncios; facturación, planes o créditos; multi-tenant SaaS para terceros; Kubernetes o contenedores arbitrarios en el hosting.
 
-## 10. Cómo se mantiene
+## 12. Cómo se mantiene
 
-- Este archivo es el roadmap completo. Los criterios viven aquí y sólo aquí: no se duplican en otros documentos.
+- Este archivo es el roadmap completo y el único. Los criterios viven aquí y sólo aquí: no se duplican en otros documentos, y las fases que se retiraron (`ROADMAP_PARITY.md`, `ROADMAP_PLATFORM.md`, `ROADMAP_UX.md`) no se recrean.
 - Al cambiar el estado de una fase o puerta se actualiza su sección y se mueve la fecha de la instantánea. Todo «hecho» necesita evidencia: ruta de código, test, PR, issue, recibo o URL. Lo no medido se queda como **sin medir**.
-- `docs/parity/` guarda la evidencia (baseline, dogfooding, recibos, backlogs, hojas de decisión) y `docs/parity/issues/` el cuerpo de cada issue; ningún documento de ahí es un roadmap paralelo. [referencia-competencia-y-alcance.md](docs/parity/referencia-competencia-y-alcance.md) es material de consulta (matriz de competidores y alcance por fase), sin criterios ni casillas.
-- La vista gráfica se actualiza en el bloque `<script id="plan">` de `docs/roadmap-autonomo.html` (peso y % por paso); los porcentajes de fase y el global se recalculan al abrir la página.
+- `docs/parity/` guarda la evidencia (baseline, dogfooding, recibos, backlogs, hojas de decisión) y `docs/parity/issues/` el cuerpo de cada issue; ningún documento de ahí es un roadmap paralelo.
+- La vista publicada se actualiza en el bloque `<script id="plan">` de `docs/roadmap-autonomo.html` (peso y % por paso); los porcentajes de fase y el global se recalculan al abrir la página.
 - Guardas en CI: `tests/unit/roadmapFigures.test.ts` comprueba que la vista y este documento citan las mismas cifras, que la tabla de §1 cuadra con las casillas de §3/§4/§5 y que se cita el recibo `G1-T10-*` más alto; `npm run check:criteria` falla si un issue cerrado conserva criterios sin marcar.
-- Gates mínimos antes de cerrar una fase: `npx tsc --noEmit`, `npx vite build` y las pruebas focalizadas de la fase. Los tests de endpoints usan el arnés compartido (`startServer()`), no un servidor propio.
+- Gates mínimos antes de cerrar una fase: `npx tsc --noEmit`, `npx vite build` y las pruebas focalizadas de la fase, más la definición de terminado de §9.2. Los tests de endpoints usan el arnés compartido (`startServer()`), no un servidor propio.
 - La línea base se ejecuta con `npm run baseline` y se registra en [docs/parity/baseline-2026-11.md](docs/parity/baseline-2026-11.md).

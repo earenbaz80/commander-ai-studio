@@ -1,6 +1,6 @@
 # Backlog ejecutable — Fase 2 (artifacts de verificación)
 
-> **Base:** Fase 2 de [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md).
+> **Base:** fase **F2** de [ROADMAP.md](../../ROADMAP.md) §3.
 > **Estado (2026-11-09):** **F2-01 a F2-07 implementados** (contrato/store, evidencia de tests, diff/decisiones, informe local, visor, enlace a la grabación y E2E local); G1 sigue pendiente. **G1 sigue sin medirse**: F0 ya tiene una baseline válida con NVIDIA (24 corridas, 8/24, 0 timeouts), pero no se ejecutó el dogfooding que permita comparar latencia/éxito. F2-02 añade evidencia al resultado de `shell.run` sin cambiar el bucle ni las aprobaciones.
 > **Actualización (2026-11-16):** **F2-08 y F2-09 implementados** (revisión por hunk con auditoría; WebM, consola/red y reproducción de 30 s). G1 sigue sin medirse y los criterios de fase siguen sin marcar por esa regla.
 > **Estimaciones:** días-persona, ±30 %. Suman **8,25 d-persona** con F2-08/F2-09; el roadmap estima 6–8 días.

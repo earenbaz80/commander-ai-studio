@@ -4,7 +4,7 @@
 > **Corrida:** 2026-11-07, 08:05 UTC (histórica).
 > **Baseline vigente:** 2026-11-11, 24 corridas con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` sobre `c3ffb0b*` (árbol sucio; ese hash no resuelve tras la reescritura y no tiene equivalente en el historial actual); 8/24, 0 timeouts y 0 inválidas. El detalle está en §6.
 > **Revisión:** `f7822ed` en `main` (remoto `github.com/earenbaz80/commander-ai-studio`), con 115 entradas sin commitear al inicio de la corrida —este documento y la nota del roadmap se añaden después, también sin commitear—. El commit por sí solo **no** identifica el árbol medido.
-> **Alcance:** criterios de aceptación de la Fase 0 de [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md), con el alcance ajustado el **2026-11-10**: Vercel y Linear quedan **fuera de alcance por decisión explícita** (sólo hay cuenta de GitHub). La decisión y sus recibos están en [receipts/F0-LOCAL-2026-11-10.md](receipts/F0-LOCAL-2026-11-10.md).
+> **Alcance:** criterios de aceptación de la fase **F0** de [ROADMAP.md](../../ROADMAP.md) §3, con el alcance ajustado el **2026-11-10**: Vercel y Linear quedan **fuera de alcance por decisión explícita** (sólo hay cuenta de GitHub). La decisión y sus recibos están en [receipts/F0-LOCAL-2026-11-10.md](receipts/F0-LOCAL-2026-11-10.md).
 
 ## 1. Resumen
 

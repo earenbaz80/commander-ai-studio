@@ -360,7 +360,7 @@ Parar el dogfooding y no declarar nada si:
 Sólo con el recibo y el diario D1–D5:
 
 1. Actualizar [backlog-f1.md](backlog-f1.md) §7: sustituir `NO CERRADO` por `CERRADO` **sólo** si §7.1 está completo; enlazar el recibo; anotar límites.
-2. Actualizar la matriz de `ROADMAP_PARITY.md` y la tabla de puertas de `ROADMAP.md` §4 con el mismo estado.
+2. Actualizar la tabla de puertas de `ROADMAP.md` §2 y el estado de F1 en §3 con el mismo estado.
 3. Si falla: dejar `NO CERRADO`, abrir los fixes y repetir las corridas afectadas. No se maquilla un fallo como «paridad parcial».
 
 ## 12. Riesgos operativos

@@ -3,7 +3,7 @@
 > **Estado:** F0 cerrado y G0 cerrada el 2026-11-11; G1 pendiente. F0-GITHUB verificado (OAuth y Actions) y baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts, 0 inválidas). Falta el dogfooding de G1.
 > **Objetivo:** conservar la evidencia de F0 y ejecutar el dogfooding de G1 sin convertir tests locales en falsa paridad.
 > **Alcance (2026-11-10):** Vercel y Linear quedan **fuera de F0 por decisión explícita**; sólo hay cuenta de GitHub. Detalle y recibos en [receipts/F0-LOCAL-2026-11-10.md](receipts/F0-LOCAL-2026-11-10.md).
-> **Documentos base:** [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md), [baseline-2026-11.md](baseline-2026-11.md), [backlog-f1.md](backlog-f1.md) §7 y [backlog-f2.md](backlog-f2.md).
+> **Documentos base:** [ROADMAP.md](../../ROADMAP.md) §3, [baseline-2026-11.md](baseline-2026-11.md), [backlog-f1.md](backlog-f1.md) §7 y [backlog-f2.md](backlog-f2.md).
 > **Regla de honestidad:** si falta una credencial, una cuenta, un modelo o una medición, el estado es `bloqueado` o `sin medir`. Nunca se estima un resultado ni se marca una fila como verificada por un mock.
 
 ## 1. Qué cierra este runbook
@@ -115,7 +115,7 @@ Actualizar [baseline-2026-11.md](baseline-2026-11.md) §5 y §9:
 - cambiar cada `Sin verificar` por `Verificado` sólo si existe recibo con URL/fecha;
 - marcar `Fuera de alcance` —no `Verificado`— lo que la decisión del 2026-11-10 excluyó;
 - anotar las limitaciones (scopes de GitHub, ventana de revocación);
-- actualizar la matriz de `ROADMAP_PARITY.md` sólo después de los recibos.
+- actualizar el estado de F0 en `ROADMAP.md` §3 sólo después de los recibos.
 
 **G0 se cierra** con dos piezas: GitHub verificado (OAuth y Actions, ya con recibo) y la línea base de 24 corridas registrada. Vercel y Linear no forman parte de la puerta desde el 2026-11-10. F5 no depende ya de un criterio de Vercel, pero 5A sigue necesitando una decisión de proveedor en G3.
 
@@ -288,7 +288,7 @@ Si falta la baseline F0, el resultado se etiqueta **provisional** y G1 queda **N
 
 ### 5.6 Cierre de G1
 
-Actualizar [backlog-f1.md](backlog-f1.md) §7 y la matriz de `ROADMAP_PARITY.md`:
+Actualizar [backlog-f1.md](backlog-f1.md) §7 y el estado de F1/G1 en `ROADMAP.md` §2 y §3:
 
 - sustituir `NO CERRADO` por `CERRADO` sólo con el diario y la comparación;
 - enlazar los recibos;
@@ -344,4 +344,4 @@ En esos casos, el estado correcto es `bloqueado` o `no verificado`, nunca `hecho
 - [ ] Cero escrituras sin aprobación y cero tool calls duplicadas en resume.
 - [ ] Artifacts F2 con plan, diff y tests; fallo sigue rojo.
 - [ ] Cero secretos en UI, logs, artifacts y capturas.
-- [ ] `baseline-2026-11.md`, `backlog-f1.md` y `ROADMAP_PARITY.md` actualizados con evidencia y límites.
+- [ ] `baseline-2026-11.md`, `backlog-f1.md` y `ROADMAP.md` actualizados con evidencia y límites.

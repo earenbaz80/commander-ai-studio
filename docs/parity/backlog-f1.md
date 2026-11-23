@@ -1,6 +1,6 @@
 # Backlog ejecutable — Fase 1 (CLI/TUI de primera clase y sesión única)
 
-> **Base:** Fase 1 de [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md).
+> **Base:** fase **F1** de [ROADMAP.md](../../ROADMAP.md) §3.
 > **Estado:** los **14 issues están cerrados como completados** (#2–#15; el #1 es un PR ajeno a este backlog). La tabla de §2 enlaza cada ID con su issue; los cuerpos versionados están en [docs/parity/issues/](issues/README.md).
 > **G1: NO CERRADO.** El cierre de los issues acredita la implementación y sus pruebas, no el dogfooding de 5 días. Ver §7.
 > **Estimaciones:** días-persona, ±30 %. Suman **21,0 d-persona**, que con 2 personas en paralelo son ≈ 11–12 días de calendario; el gate G1 añade 5 días de dogfooding.

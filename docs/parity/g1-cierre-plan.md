@@ -137,8 +137,8 @@ T10 quedó **declarado `failed`** con la evidencia del [recibo `G1-T10-13`](rece
 
 - [ ] Completar la [plantilla CAL4H](receipts/G1-APPROVAL-CAL4H-2026-11-17.md) con operador, fecha, commit **`360f8c2`**, `n`, p95, exclusiones, decisiones `deny` y decisión de la casilla. **No** se reutiliza el recibo de CAL4 ni se declara el `6838fa1` del runbook original (hoy en el squash #27, `07fc0e1`).
 - [ ] `docs/parity/receipts/G1-CIERRE-<fecha>.md`: las ocho reglas de [§7.1](dogfooding-g1.md#71-reglas-de-decisión-criterio-de-puerta) con su evidencia, tasa global, tabla por tarea con delta frente a F0, avisos de regresión de §7.2, seguridad, fallbacks, límites y decisión **CERRADO / NO CERRADO** en ese orden.
-- [ ] Si CAL4H cumple: `ROADMAP.md` y `ROADMAP_PARITY.md` pasan G1 a cerrada y recién entonces se marcan los criterios de F1/F2 que dependían de la puerta.
-- [ ] Si CAL4H no cumple: los roadmaps siguen como están (G1 abierta) y el recibo declara el siguiente paso de producto.
+- [ ] Si CAL4H cumple: `ROADMAP.md` pasa G1 a cerrada y recién entonces se marcan los criterios de F1/F2 que dependían de la puerta.
+- [ ] Si CAL4H no cumple: el roadmap sigue como está (G1 abierta) y el recibo declara el siguiente paso de producto.
 
 ## 8. Dónde se registra cada dato
 
@@ -195,7 +195,7 @@ G1 se declara **CERRADO** sólo si todas se cumplen:
 - [ ] 0 escrituras sin aprobación, 0 tool calls duplicadas en `--resume`, 0 secretos y 0 fallbacks en las corridas válidas.
 - [x] T10 **declarado `failed`** con issue abierto y `G1-T10-13` (1/3) registrado; **no es regla de puerta**, pero no se omite.
 - [ ] Recibo `G1-CIERRE-<fecha>` emitido con la decisión y la tabla F0 por tarea.
-- [ ] `ROADMAP.md` y `ROADMAP_PARITY.md` con G1 cerrada y sin criterios de fase marcados antes de tiempo.
+- [ ] `ROADMAP.md` con G1 cerrada y sin criterios de fase marcados antes de tiempo.
 
 Si cualquiera falla, el resultado es **NO CERRADO** con el paso siguiente escrito; no se declara «paridad parcial» ni se cambia la métrica para que cuadre.
 
