@@ -165,7 +165,7 @@ export interface EvalSpawnChild {
   answer?: string;
   error?: string;
   /** Limpieza del worktree del hijo: `ok:false` explica un check 6 en rojo. */
-  worktreeCleanup?: { ok: boolean; error?: string; recovered?: boolean };
+  worktreeCleanup?: { ok: boolean; error?: string; cause?: string; recovered?: boolean };
 }
 
 /**

@@ -38,6 +38,7 @@ describe('limpieza de worktrees', () => {
 
     expect(result.ok).toBe(true);
     expect(result.error).toBeUndefined();
+    expect(result.cause).toBeUndefined();
     expect(listWorktrees(dir)).toHaveLength(1);
     expect(fs.existsSync(wt.worktreePath)).toBe(false);
   });
@@ -52,6 +53,32 @@ describe('limpieza de worktrees', () => {
     const result = removeWorktreeSafe(wt.worktreePath, dir, true, wt.branch);
 
     expect(result.ok).toBe(true);
+    expect(listWorktrees(dir)).toHaveLength(1);
+  });
+
+  it('conserva el motivo cuando git worktree remove falla a medias y la poda recupera', () => {
+    const dir = makeRepo();
+    const wt = createWorktree('sub_eee555', dir);
+    // Reproduce el fallo parcial de `git worktree remove`: borra el directorio
+    // y después no puede eliminar `.git/worktrees/<id>`, así que la entrada
+    // queda viva como `prunable`. Ese es el estado que llegó a T10-3.
+    const run = (cwd: string, args: string[]): string => {
+      if (args[0] === 'worktree' && args[1] === 'remove') {
+        fs.rmSync(wt.worktreePath, { recursive: true, force: true });
+        throw Object.assign(new Error('fallo parcial'), {
+          stderr: 'fatal: could not delete .git/worktrees/sub_eee555: Permission denied',
+        });
+      }
+      return git(cwd, args);
+    };
+
+    const result = removeWorktreeSafe(wt.worktreePath, dir, true, wt.branch, run);
+
+    expect(result.ok).toBe(true);
+    expect(result.recovered).toBe(true);
+    expect(result.cause).toContain('Permission denied');
+    // `error` sigue reservado para los fallos que no se pudieron resolver.
+    expect(result.error).toBeUndefined();
     expect(listWorktrees(dir)).toHaveLength(1);
   });
 

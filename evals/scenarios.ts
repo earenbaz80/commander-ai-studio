@@ -780,6 +780,7 @@ function spawnBatchOf(data: unknown): EvalSpawnBatch | null {
             ok: child.worktreeCleanup.ok,
             ...(child.worktreeCleanup.recovered === true ? { recovered: true } : {}),
             ...(typeof child.worktreeCleanup.error === 'string' ? { error: child.worktreeCleanup.error } : {}),
+            ...(typeof child.worktreeCleanup.cause === 'string' ? { cause: child.worktreeCleanup.cause } : {}),
           } }
         : {}),
     })),

@@ -2114,8 +2114,10 @@ export async function executeTask(
         console.warn(`[subagente ${session.id}] worktree sin limpiar: ${worktreeCleanup.error}`);
       } else if (worktreeCleanup.recovered) {
         // El registro se podó tras un fallo del primer `remove`: quedó limpio,
-        // pero sin este aviso la recuperación no dejaba rastro.
-        console.warn(`[subagente ${session.id}] worktree limpiado con poda tras un fallo: ${worktree.worktreePath}`);
+        // pero sin este aviso la recuperación no dejaba rastro. El motivo se
+        // conserva en `cause` aunque ya esté resuelto.
+        const cause = worktreeCleanup.cause ? ` · ${worktreeCleanup.cause}` : '';
+        console.warn(`[subagente ${session.id}] worktree limpiado con poda tras un fallo${cause}: ${worktree.worktreePath}`);
       }
     }
   }

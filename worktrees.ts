@@ -80,9 +80,14 @@ export interface WorktreeCleanupResult {
   ok: boolean;
   /** Motivo por el que no se pudo dejar limpio el registro; sólo con `ok:false`. */
   error?: string;
+  /** Motivo del primer `remove`, aunque la poda posterior lo haya resuelto. */
+  cause?: string;
   /** `true` si hubo que borrar el directorio y podar el registro a mano. */
   recovered?: boolean;
 }
+
+/** Ejecutor de git inyectable: las pruebas simulan un fallo parcial del `remove`. */
+export type GitRunner = (cwd: string, args: string[]) => string;
 
 /** Compara rutas como las imprime git (`C:/...`), sin distinguir mayúsculas en Windows. */
 function sameWorktreePath(a: string, b: string): boolean {
@@ -113,16 +118,17 @@ export function removeWorktreeSafe(
   worktreePath: string,
   projectPath: string,
   force = false,
-  branch?: string
+  branch?: string,
+  run: GitRunner = runGit
 ): WorktreeCleanupResult {
   const args = ['worktree', 'remove', worktreePath];
   if (force) args.push('--force');
-  let error: string | undefined;
+  let cause: string | undefined;
   let recovered = false;
   try {
-    runGit(projectPath, args);
+    run(projectPath, args);
   } catch (e) {
-    error = firstGitError(e);
+    cause = firstGitError(e);
   }
 
   let registered = true;
@@ -130,16 +136,16 @@ export function removeWorktreeSafe(
     registered = isWorktreeRegistered(projectPath, worktreePath);
   } catch (e) {
     // Sin poder leer el registro no se puede afirmar que quedó limpio.
-    error = error ?? firstGitError(e);
+    cause = cause ?? firstGitError(e);
   }
 
   if (registered) {
     recovered = true;
-    try { fs.rmSync(worktreePath, { recursive: true, force: true }); } catch (e) { error = error ?? firstGitError(e); }
+    try { fs.rmSync(worktreePath, { recursive: true, force: true }); } catch (e) { cause = cause ?? firstGitError(e); }
     try {
-      runGit(projectPath, ['worktree', 'prune']);
+      run(projectPath, ['worktree', 'prune']);
     } catch (e) {
-      error = error ?? firstGitError(e);
+      cause = cause ?? firstGitError(e);
     }
     try {
       registered = isWorktreeRegistered(projectPath, worktreePath);
@@ -149,17 +155,22 @@ export function removeWorktreeSafe(
   }
 
   if (registered) {
-    return { ok: false, recovered, error: error ?? `el worktree sigue registrado: ${worktreePath}` };
+    return {
+      ok: false,
+      recovered,
+      error: cause ?? `el worktree sigue registrado: ${worktreePath}`,
+      ...(cause ? { cause } : {}),
+    };
   }
   if (branch) {
-    try { runGit(projectPath, ['branch', '-D', branch]); } catch { /* la rama ya no existe */ }
+    try { run(projectPath, ['branch', '-D', branch]); } catch { /* la rama ya no existe */ }
   }
   // El directorio padre queda vacío tras retirar el worktree; si otro proceso
   // lo usa, `rmdir` falla y no tocamos nada.
   try { fs.rmdirSync(path.dirname(worktreePath)); } catch { /* no vacío */ }
-  // Con `ok:true` no se devuelve `error`: el fallo quedó resuelto y lo que
-  // importa es `recovered`, para que el llamador lo registre igual.
-  return { ok: true, recovered };
+  // `error` sigue reservado para `ok:false`; con `ok:true` el fallo resuelto
+  // viaja en `cause`, para que quede registrado qué pasó aunque se recupere.
+  return { ok: true, recovered, ...(cause ? { cause } : {}) };
 }
 
 /** API clásica: mismo trabajo, pero lanza si el registro no quedó limpio. */
