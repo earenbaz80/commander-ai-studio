@@ -63,12 +63,21 @@ interface ProjectContext {
   migrations: { applied: string[]; pending: string[] };
 }
 
+export interface ExampleReleaseInfo {
+  id: string | null;
+  environment: string | null;
+  /** Nombres de las credenciales cargadas; nunca sus valores. */
+  vars: string[];
+}
+
 export interface ExampleAppOptions {
   /** Raíz de datos: una carpeta por proyecto con `app.db` y `uploads/`. */
   dataDir: string;
   migrationsDir?: string;
   sessionTtlMs?: number;
   maxFileBytes?: number;
+  /** Entorno de release aplicado al arrancar; se publica por `/api/health`. */
+  release?: ExampleReleaseInfo;
 }
 
 export interface ExampleApp {
@@ -155,6 +164,7 @@ export function createExampleApp(options: ExampleAppOptions): ExampleApp {
   const migrationsDir = options.migrationsDir ?? DEFAULT_MIGRATIONS_DIR;
   const sessionTtlMs = options.sessionTtlMs ?? SESSION_TTL_MS;
   const maxFileBytes = options.maxFileBytes ?? MAX_FILE_BYTES;
+  const release = options.release ?? null;
   const contexts = new Map<string, ProjectContext>();
   let migrationList: BackendMigration[] | null = null;
 
@@ -241,6 +251,10 @@ export function createExampleApp(options: ExampleAppOptions): ExampleApp {
       project: project.id,
       provider: 'sqlite-example',
       migrations: project.migrations,
+      // Sólo nombres: el valor vive en `process.env`, no en la respuesta.
+      release: release
+        ? { id: release.id, environment: release.environment, vars: release.vars }
+        : null,
     });
   });
 

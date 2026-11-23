@@ -84,17 +84,46 @@ export async function injectBackendEnv(input: ReleaseEnvInput): Promise<ReleaseE
   return { names, file };
 }
 
-/** Lo que el runner de la app lee al arrancar para poblar su entorno. */
-export async function loadReleaseEnv(input: ReleaseEnvInput): Promise<Record<string, string>> {
-  const slug = projectSlug(input.root);
-  const raw = await fsp.readFile(
-    releaseEnvFile(publishBaseDir(input.baseDir), slug, input.releaseId, input.environment),
-    'utf8'
-  );
-  const parsed = JSON.parse(raw) as { vars?: Record<string, unknown> };
+export interface ReleaseEnvContents {
+  releaseId: string | null;
+  environment: string | null;
+  /** Nombres y valores tal como los escribió el publicador. */
+  vars: Record<string, string>;
+}
+
+/**
+ * Lee un archivo de entorno ya escrito, por ruta.
+ *
+ * Lo usan el publicador (`loadReleaseEnv`, que deriva la ruta del proyecto) y el
+ * runner de la app, que recibe la ruta directamente: es el mismo formato y la
+ * misma validación de nombres en los dos lados.
+ */
+export async function readReleaseEnv(file: string): Promise<ReleaseEnvContents> {
+  const raw = await fsp.readFile(file, 'utf8');
+  const parsed = JSON.parse(raw) as {
+    releaseId?: unknown;
+    environment?: unknown;
+    vars?: Record<string, unknown>;
+  } | null;
   const vars: Record<string, string> = {};
   for (const [name, value] of Object.entries(parsed?.vars ?? {})) {
     if (SECRET_NAME.test(name) && typeof value === 'string') vars[name] = value;
   }
-  return vars;
+  return {
+    releaseId: typeof parsed?.releaseId === 'string' ? parsed.releaseId : null,
+    environment: typeof parsed?.environment === 'string' ? parsed.environment : null,
+    vars,
+  };
+}
+
+/** Lo que el runner de la app lee al arrancar para poblar su entorno. */
+export async function loadReleaseEnv(input: ReleaseEnvInput): Promise<Record<string, string>> {
+  const slug = projectSlug(input.root);
+  const file = releaseEnvFile(
+    publishBaseDir(input.baseDir),
+    slug,
+    input.releaseId,
+    input.environment
+  );
+  return (await readReleaseEnv(file)).vars;
 }
