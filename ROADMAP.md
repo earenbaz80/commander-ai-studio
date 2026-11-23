@@ -15,15 +15,15 @@ No promete fechas; los esfuerzos son órdenes de magnitud. Una fase o un criteri
 | Paridad | 7 | 1 (F0) | 21/47 |
 | Plataforma | 8 | 1 (PL0) | 19/38 |
 | UX | 1 | 1 (UX 1.0) | 10/10 |
-| **Total** | **16** | **3/13 en alcance** | **50/95 (53 %)** |
+| **Total** | **16** | **4/13 en alcance** | **50/95 (53 %)** |
 
-- **3 fases cerradas:** F0, PL0 y UX 1.0.
-- **5 parciales:** F1, F2, PL2, PL5 y PL6.
+- **4 fases cerradas:** F0, PL0, UX 1.0 y F2.
+- **4 parciales:** F1, PL2, PL5 y PL6.
 - **5 pendientes:** F3, F4, F5, PL3 y PL4.
 - **Fuera del cómputo:** PL1 (fuera de alcance hasta G3) y F6/PL7 (opcionales).
 - **Puertas:** G0 cerrada; G1 abierta (dogfooding ejecutado; **no retiene fases**, §2.1); G2 y G3 no iniciadas.
 
-El 53 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tampoco dice que la app esté al 53 %: dice que 50 de los 95 criterios en alcance tienen evidencia. Cada criterio es una casilla de este documento: cuenta el `[x]` o la cobertura que la fase declara (F2, cubierta por evidencia y sin marcar); los `[—]`, las fases opcionales y PL1 quedan fuera del numerador y del denominador. F0 cerró G0 con una baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts y 0 inválidas); la paridad es baja. El dogfooding de G1 se ejecutó el 2026-11-12 (17/28, 60,7 %) y la puerta sigue abierta por una sola regla: el p95 de aprobación.
+El 53 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tampoco dice que la app esté al 53 %: dice que 50 de los 95 criterios en alcance tienen evidencia. Cada criterio es una casilla de este documento: cuenta el `[x]` o la cobertura que la fase declara (F2 cerró con sus siete criterios y su verificación en Electron); los `[—]`, las fases opcionales y PL1 quedan fuera del numerador y del denominador. F0 cerró G0 con una baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts y 0 inválidas); la paridad es baja. El dogfooding de G1 se ejecutó el 2026-11-12 (17/28, 60,7 %) y la puerta sigue abierta por una sola regla: el p95 de aprobación.
 
 **El norte no es la cifra, es el producto:** un agente que corre local-first, que pide aprobación con diff antes de escribir, que deja evidencia revisable de lo que hizo y que puede instalarse y publicarse sin cuenta. Lo que sigue a §2 mide cuánto de eso está verificado.
 
@@ -40,7 +40,7 @@ G1 no se cierra por ejecutar el dogfooding ni comparando contra una estimación:
 
 ### 2.1 Regla de cierre (2026-11-23)
 
-**Cada fase se cierra con la evidencia de sus propios criterios y, si la tiene, con su puerta.** G1 rige **sólo F1**, la fase que existe para medir: por eso F1 queda «hecho en código» con G1 abierta y no se marca cerrada. Las fases posteriores **no heredan G1**: F2 se cierra con sus siete criterios y su verificación visual en Electron; F3 con los suyos y con G2; F4 y PL3–PL6 con los suyos, sin puerta.
+**Cada fase se cierra con la evidencia de sus propios criterios y, si la tiene, con su puerta.** G1 rige **sólo F1**, la fase que existe para medir: por eso F1 queda «hecho en código» con G1 abierta y no se marca cerrada. Las fases posteriores **no heredan G1**: F2 se cierra con sus siete criterios y su verificación visual en Electron, automatizada en `npm run test:electron`; F3 con los suyos y con G2; F4 y PL3–PL6 con los suyos, sin puerta.
 
 **Por qué.** El único rojo de G1 era el p95 de aprobación ≤ 15 151 ms, y ese bloque salió del roadmap por decisión del autor del 2026-11-23: no se ejecuta ni está agendado. Una puerta cuya única regla pendiente ya no se mide no puede quedar de guardia sobre fases que sí tienen evidencia; si lo hiciera, el roadmap quedaría bloqueado para siempre y la cifra de §1 dejaría de significar algo.
 
@@ -87,19 +87,19 @@ Los 14 issues de F1 están cerrados ([backlog](docs/parity/backlog-f1.md), 21,0 
 
 **T10 no es regla de puerta.** Sigue **0/3 en las 24** (0/9 con las extras) con issue propio; fuera de ellas, `G1-T10-15` dio **6/6 con los siete checks** y `G1-SUBAGENT-CLOSE` quedó cerrado con el riesgo residual de los worktrees `prunable` declarado. `G1-EMPTY-TURN` sigue abierto. Detalle en §6.
 
-### F2 · Artifacts de verificación — Parcial: criterios cubiertos, sin marcar · P1 · 6–8 d · 7/7 con evidencia
+### F2 · Artifacts de verificación — Hecho y verificado en Electron · P1 · 6–8 d · 7/7
 
 **Alcance.** Plan artifact (pasos, estado, archivos tocados, criterios y decisiones, enlazado a la sesión), diff artifact (parche completo, revisión por hunk, comentarios, aplicar/descartar y auditoría de lo aplicado), grabación de navegador (WebM con la misma sesión de Playwright y log JSON de consola/red; si no hay encoder, frames + informe, nunca un MP4 falso), evidencia de tests (comando, `exitCode`, duración, versión de Node/SO, commit y cola de stdout/stderr, con un test fallido que no puede pintarse verde), informe local HTML/Markdown autocontenido sin peticiones externas ni secretos, y visor de artifacts con filtros por proyecto/sesión y «abrir carpeta», sin subida remota por defecto.
 
-Plan, diff, evidencia de tests, informe local, visor, revisión por hunk con auditoría y grabación WebM: F2-01 a F2-09 están hechos ([backlog](docs/parity/backlog-f2.md)), pero las casillas siguen vacías por una sola razón: falta la verificación visual en Electron (el E2E de Chromium no la sustituye).
+Plan, diff, evidencia de tests, informe local, visor, revisión por hunk con auditoría y grabación WebM: F2-01 a F2-09 están hechos ([backlog](docs/parity/backlog-f2.md)) y la verificación visual ya no es manual: `npm run test:electron` (`tests/e2e/electron/artifacts.spec.ts`) lanza el ejecutable de `release/win-unpacked`, siembra los fixtures en IndexedDB, recarga el renderer y exige tarjetas, diff por hunk, evidencia con el test en rojo, «Reproducir el fallo», caja con tamaño, fondo con estilos, cero desborde horizontal, fuentes cargadas y ninguna excepción del renderer; deja la captura en `test-results/electron/artifacts-view.png`. El E2E de Chromium sigue cubriendo los tres proyectos de navegador.
 
-- [ ] Una tarea de código produce plan, diff, evidencia de tests y (si hubo navegador) grabación, todos enlazados al mismo `sessionId`.
-- [ ] El estado del plan coincide con las tool calls reales; un paso bloqueado se distingue de uno completado.
-- [ ] El diff se puede revisar por hunk y el artifact registra quién aplicó qué.
-- [ ] Una grabación de al menos 30 s se reproduce offline en Chromium y incluye consola/red con timestamps.
-- [ ] La evidencia de tests muestra `exitCode != 0` en rojo y no genera un “passed” si el comando falló o no llegó a ejecutarse.
-- [ ] El informe se abre desde el disco sin red, sin secretos y sin recursos externos.
-- [ ] Los artifacts sobreviven a reiniciar la app y siguen siendo locales; no requieren cuenta.
+- [x] Una tarea de código produce plan, diff, evidencia de tests y (si hubo navegador) grabación, todos enlazados al mismo `sessionId`.
+- [x] El estado del plan coincide con las tool calls reales; un paso bloqueado se distingue de uno completado.
+- [x] El diff se puede revisar por hunk y el artifact registra quién aplicó qué.
+- [x] Una grabación de al menos 30 s se reproduce offline en Chromium y incluye consola/red con timestamps.
+- [x] La evidencia de tests muestra `exitCode != 0` en rojo y no genera un “passed” si el comando falló o no llegó a ejecutarse.
+- [x] El informe se abre desde el disco sin red, sin secretos y sin recursos externos.
+- [x] Los artifacts sobreviven a reiniciar la app y siguen siendo locales; no requieren cuenta.
 
 ### F3 · Continuidad remota y PWA — Pendiente · espera G2 · P1 · 10–14 d · 0/8
 
