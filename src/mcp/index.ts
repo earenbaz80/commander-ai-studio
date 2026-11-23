@@ -9,6 +9,7 @@ import {
   getMcpAuthStatus,
   logoutMcp,
 } from './oauth.js';
+import { redactSecrets } from '../../secretRedaction.js';
 
 /**
  * MCP Registry API endpoints (Express Router).
@@ -439,6 +440,19 @@ mcpRouter.post('/:name/call', async (req, res) => {
 });
 
 /**
+ * Prepara el stdout de un servidor MCP para el health check.
+ *
+ * Se sanea el texto completo antes de recortarlo: si se cortara primero, un
+ * secreto que empieza cerca del límite quedaría a medias en la respuesta. El
+ * resto del arranque sigue visible para diagnosticar.
+ */
+export function mcpHealthOutput(stdout: string | Buffer | null | undefined): string | null {
+  if (!stdout) return null;
+  const text = Buffer.isBuffer(stdout) ? stdout.toString('utf8') : String(stdout);
+  return redactSecrets(text).slice(0, 200);
+}
+
+/**
  * Health check: intenta ejecutar brevemente cada comando registrado.
  */
 mcpRouter.get('/health', async (_req, res) => {
@@ -461,7 +475,7 @@ mcpRouter.get('/health', async (_req, res) => {
           name,
           command: c.command,
           status: r.status === 0 ? 'healthy' : 'unreachable',
-          output: r.stdout ? r.stdout.toString().slice(0, 200) : null,
+          output: mcpHealthOutput(r.stdout),
         };
       } catch (err) {
         return {
