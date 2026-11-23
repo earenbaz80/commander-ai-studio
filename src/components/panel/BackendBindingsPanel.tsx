@@ -16,7 +16,11 @@ import {
   RefreshCw,
   ShieldCheck,
 } from 'lucide-react';
-import type { BackendBindingKind, BackendStatus } from '../../../deploy/backend/types';
+import type {
+  BackendBindingKind,
+  BackendRotationSkip,
+  BackendStatus,
+} from '../../../deploy/backend/types';
 import type { Language } from '../../i18n/translations';
 
 interface BackendBindingsPanelProps {
@@ -31,6 +35,7 @@ interface BackendManageResponse {
   configured?: boolean;
   enabled?: boolean;
   status?: BackendStatus | null;
+  rotation?: { skipped?: BackendRotationSkip[] } | null;
   error?: string;
 }
 
@@ -52,6 +57,7 @@ export function BackendBindingsPanel({ projectId, lang = 'es' }: BackendBindings
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [rotating, setRotating] = useState(false);
+  const [skipped, setSkipped] = useState<BackendRotationSkip[]>([]);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -132,6 +138,7 @@ export function BackendBindingsPanel({ projectId, lang = 'es' }: BackendBindings
     if (!projectId) return;
     setRotating(true);
     setError('');
+    setSkipped([]);
     try {
       const res = await fetch('/api/backend/manage/rotate', {
         method: 'POST',
@@ -148,6 +155,7 @@ export function BackendBindingsPanel({ projectId, lang = 'es' }: BackendBindings
       }
       // La rotación no devuelve valores: el panel relee el estado para mostrar
       // los nombres de las credenciales que el adaptador acaba de emitir.
+      setSkipped(Array.isArray(data.rotation?.skipped) ? data.rotation.skipped : []);
       await load();
     } catch (e: any) {
       setError(
@@ -256,6 +264,21 @@ export function BackendBindingsPanel({ projectId, lang = 'es' }: BackendBindings
               ? status.secretNames.join(', ')
               : t('ninguna emitida', 'none issued', 'keine ausgegeben')}
           </div>
+          {skipped.length > 0 && (
+            <div
+              data-testid="backend-rotate-skipped"
+              className="border border-[var(--nc-border-dark)] px-2 py-1 text-[9px] text-[var(--nc-text-dim)]"
+            >
+              <div className="font-bold text-[var(--nc-text)]">
+                {t('Sin rotar', 'Not rotated', 'Nicht rotiert')}
+              </div>
+              {skipped.map((entry) => (
+                <div key={entry.kind}>
+                  {entry.name}: {entry.reason}
+                </div>
+              ))}
+            </div>
+          )}
           {!configured && (
             <div className="text-[9px] text-[var(--nc-text-dim)]">
               {t(

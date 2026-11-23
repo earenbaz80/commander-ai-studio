@@ -146,6 +146,7 @@ export class FakeBackendAdapter implements BackendAdapter {
       provider: this.id,
       projectId,
       rotated,
+      skipped: [],
       createdAt: this.now().toISOString(),
     };
   }

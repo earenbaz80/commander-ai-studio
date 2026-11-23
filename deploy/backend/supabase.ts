@@ -24,9 +24,10 @@
  *  - `provision` no entrega credenciales porque el contrato no le da `sink`:
  *    crea recursos y la entrega ocurre en la rotación. La contraseña inicial de
  *    Postgres se genera y se descarta; no hay secretos en reposo.
- *  - Rotar `storage` se rechaza antes de emitir nada: las claves S3 del storage
- *    se generan en los ajustes del proyecto, no por la Management API. Fingir
- *    una rotación dejaría a la app con una credencial que no existe.
+ *  - La rotación hace lo que la API permite (`DATABASE_URL`, `AUTH_SECRET`) y
+ *    devuelve el storage en `skipped`, con su motivo, sin emitir valor: las
+ *    claves S3 se generan en los ajustes del proyecto, no por la Management
+ *    API. Fingir esa credencial dejaría a la app apuntando a algo que no existe.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { validateMigrations } from './migrations';
@@ -49,6 +50,9 @@ const MIGRATIONS_TABLE = 'schema_migrations';
 
 /** Sólo estos bindings se pueden rotar con la Management API. */
 const ROTATABLE: ReadonlyArray<BackendBindingKind> = ['database', 'auth'];
+
+const STORAGE_SKIP_REASON =
+  'Supabase no emite las claves S3 del storage por la Management API: se generan en los ajustes del proyecto.';
 
 export interface SupabaseAdapterOptions {
   token?: string;
@@ -222,24 +226,31 @@ export class SupabaseBackendAdapter implements BackendAdapter {
       throw new Error('Falta el sink de secretos');
     }
 
-    // Se valida la tanda completa antes de emitir nada: rotar la mitad y fallar
-    // por la otra dejaría a la app con credenciales de edades distintas.
-    const blocked = kinds.filter((kind) => !ROTATABLE.includes(kind));
-    if (blocked.length > 0) {
-      throw new Error(
-        `Supabase no emite por la Management API las claves S3 del storage (${blocked.join(
-          ', '
-        )}): se generan en los ajustes del proyecto. No se emitió ninguna credencial.`
-      );
-    }
+    // El storage queda fuera de la tanda pero se informa: el usuario ve que
+    // esa credencial sigue sin emitirse, en vez de un fallo que anula las otras.
+    const skipped = kinds
+      .filter((kind) => !ROTATABLE.includes(kind))
+      .map((kind) => ({
+        kind,
+        name: backendSecretName(kind),
+        reason: STORAGE_SKIP_REASON,
+      }));
 
-    const rotated: string[] = [];
+    // Primero se obtienen todos los valores y sólo después se escribe el sink:
+    // si el proveedor falla a mitad, no quedan credenciales de edades distintas.
+    const issued: { name: string; value: string }[] = [];
     for (const kind of kinds) {
+      if (!ROTATABLE.includes(kind)) continue;
       const name = backendSecretName(kind);
       const value =
         kind === 'database'
           ? await this.rotateDatabasePassword(state.ref)
           : this.newAuthSecret();
+      issued.push({ name, value });
+    }
+
+    const rotated: string[] = [];
+    for (const { name, value } of issued) {
       // El valor sale una sola vez, hacia el entorno de la app.
       input.sink.write(name, value);
       rotated.push(name);
@@ -250,6 +261,7 @@ export class SupabaseBackendAdapter implements BackendAdapter {
       provider: this.id,
       projectId,
       rotated,
+      skipped,
       createdAt: this.now().toISOString(),
     };
   }

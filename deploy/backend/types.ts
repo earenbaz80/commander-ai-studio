@@ -88,11 +88,24 @@ export interface BackendRotateInput {
   sink: BackendSecretSink;
 }
 
+export interface BackendRotationSkip {
+  kind: BackendBindingKind;
+  /** Nombre convencional de la credencial que **no** se emitió. */
+  name: string;
+  /** Motivo legible, nunca un valor; la UI lo muestra tal cual. */
+  reason: string;
+}
+
 export interface BackendRotation {
   provider: string;
   projectId: string;
   /** Nombres rotados; el valor ya se entregó al sink. */
   rotated: string[];
+  /**
+   * Bindings que el proveedor no puede rotar por API. Se informa su estado
+   * explícitamente en vez de fallar la tanda entera o fingir un valor.
+   */
+  skipped: BackendRotationSkip[];
   createdAt: string;
 }
 
