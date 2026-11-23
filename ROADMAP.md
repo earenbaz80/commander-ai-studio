@@ -31,7 +31,7 @@ El 55 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tamp
 
 ## 2. G1 en pausa: el siguiente paso es T10
 
-**Objetivo:** dejar constancia de que G1 sigue **abierta** con el bloque `CAL4H` **en pausa por decisión del 2026-11-23** —no se ejecuta, la referencia de 15 151 ms no se toca y ninguna fase se marca cerrada por la puerta— y avanzar por el paso de mayor peso que no depende de ella: T10 (F1-1).
+**Objetivo:** dejar constancia de que G1 sigue **abierta** —la referencia de 15 151 ms no se toca y ninguna fase se marca cerrada por la puerta— y avanzar por el paso de mayor peso que no depende de esa medición: T10 (F1-1).
 
 **Criterios de F0 en alcance**
 
@@ -46,13 +46,13 @@ El 55 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tamp
 
 **Estado de la medición (2026-11-11):** la baseline vigente se midió con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b`: 24/24 corridas, 8 pasan, 16 fallan, 0 timeouts y 0 inválidas. T1 y T7 pasan 3/3; T3 y T5 1/2; T2, T4, T6, T8, T9 y T10 no pasan. El id NIM válido es el doble prefijo; los ids de models.dev dieron 410/404. Los intentos previos con DeepSeek, Qwen y Gemini quedan como historial y no cuentan. **G0 queda cerrada**; G1 se mide contra esta referencia (ver «Estado de G1»).
 
-**Estado de G1 (2026-11-16): dogfooding ejecutado, puerta abierta por el p95. El bloque `CAL4H` queda en pausa desde el 2026-11-23.**
+**Estado de G1 (2026-11-16): dogfooding ejecutado, puerta abierta por el p95. El bloque de medición de aprobación sale del roadmap por decisión del 2026-11-23.**
 
 - D1–D5 se ejecutaron el 2026-11-12 con el modelo y `maxSteps` congelados: 24 corridas planificadas medidas, 28 válidas y **17 `passed` (60,7 %)** frente a 8/24 (33,3 %) de F0. Cero escrituras sin aprobación, cero tool calls duplicadas en `--resume`, cero secretos y cero fallbacks; los 2 timeouts son de operación.
 - El [recibo `G1-DOGFOOD-2026-11-12`](docs/parity/receipts/G1-DOGFOOD-2026-11-12.md) decide **NO CERRADO**: de las ocho reglas de la puerta, siete están en verde.
 - La única regla en rojo es el **p95 de aprobación ≤ 15 151 ms**: 76 982 ms (n=40, operador automatizado por PTY), 65 056 ms en la re-medición humana CAL2 (n=6) y 26 501 ms en CAL4 (n=41), que **no vale como muestra humana** porque el PTY lo condujo el agente.
-- La [hoja de decisión](docs/parity/g1-approval-gate-decision.md) deja rigiendo la **salida B** (sin firma): la referencia no se toca y la casilla sólo pasa a verde con un bloque `CAL4H` con `latencyMs`, n ≥ 40 y **como mucho 2 de 40** por encima de 15 151 ms. **En pausa por decisión del 2026-11-23:** el bloque no se ejecuta, G1 sigue abierta y ninguna fase se marca cerrada por la puerta.
-- T10 sigue **0/3** en las 24 corridas, con issue propio; es un defecto declarado, no una regla de puerta. F1 y F2 no se marcan cerradas mientras G1 siga abierta. La re-medición del 2026-11-20 con el arnés ([recibo `G1-T10-09`](docs/parity/receipts/G1-T10-09-2026-11-20.md)) dio **0/6** sobre `0d8567d`: el padre cerró 5/6 y lanzó los dos hijos 5/6, pero los hijos cerraron 0/6 (el presupuesto de salida de 4096 tokens truncó al hijo A, más dos timeouts y una fuga de worktree). La re-medición del 2026-11-21 sobre `0407784`, ya con 8 192 tokens y el worktree confinado ([recibo `G1-T10-10`](docs/parity/receipts/G1-T10-10-2026-11-21.md)), volvió a dar **0/3** (**0/15** acumuladas): el hijo A se trunca en 1 de 3 y la fuga de `hijo-b.txt` ya no aparece. La re-medición del 2026-11-21 sobre `199f393`, con timeout heredado de 240 s ([recibo `G1-T10-12`](docs/parity/receipts/G1-T10-12-2026-11-21.md)), dio **2/3**: T10-1 y T10-3 pasaron 7/7 y T10-2 falló por un cierre hueco (`Archivos: ninguno`) y un padre que no confirmó la cuenta. La tanda del 2026-11-21 sobre `360f8c2` ([recibo `G1-T10-13`](docs/parity/receipts/G1-T10-13-2026-11-21.md)) dio **1/3**: T10-2 pasó con la denegación real, mientras T10-1 y T10-3 fallaron por cierre hueco y turno vacío. Son **24 líneas T10** registradas y **3 `passed`**, pero **T10 sigue 0/3 en las 24** y la referencia no cambia: **G1 continúa abierta por la casilla del p95**, con el bloque `CAL4H` en pausa, no por esta medición.
+- La [hoja de decisión](docs/parity/g1-approval-gate-decision.md) deja rigiendo la **salida B** (sin firma): la referencia no se toca y la casilla sólo pasa a verde con un bloque con `latencyMs`, n ≥ 40 y **como mucho 2 de 40** por encima de 15 151 ms. **Ese bloque no está en el roadmap por decisión del 2026-11-23:** no se ejecuta, G1 sigue abierta y ninguna fase se marca cerrada por la puerta.
+- T10 sigue **0/3** en las 24 corridas, con issue propio; es un defecto declarado, no una regla de puerta. F1 y F2 no se marcan cerradas mientras G1 siga abierta. La re-medición del 2026-11-20 con el arnés ([recibo `G1-T10-09`](docs/parity/receipts/G1-T10-09-2026-11-20.md)) dio **0/6** sobre `0d8567d`: el padre cerró 5/6 y lanzó los dos hijos 5/6, pero los hijos cerraron 0/6 (el presupuesto de salida de 4096 tokens truncó al hijo A, más dos timeouts y una fuga de worktree). La re-medición del 2026-11-21 sobre `0407784`, ya con 8 192 tokens y el worktree confinado ([recibo `G1-T10-10`](docs/parity/receipts/G1-T10-10-2026-11-21.md)), volvió a dar **0/3** (**0/15** acumuladas): el hijo A se trunca en 1 de 3 y la fuga de `hijo-b.txt` ya no aparece. La re-medición del 2026-11-21 sobre `199f393`, con timeout heredado de 240 s ([recibo `G1-T10-12`](docs/parity/receipts/G1-T10-12-2026-11-21.md)), dio **2/3**: T10-1 y T10-3 pasaron 7/7 y T10-2 falló por un cierre hueco (`Archivos: ninguno`) y un padre que no confirmó la cuenta. La tanda del 2026-11-21 sobre `360f8c2` ([recibo `G1-T10-13`](docs/parity/receipts/G1-T10-13-2026-11-21.md)) dio **1/3**: T10-2 pasó con la denegación real, mientras T10-1 y T10-3 fallaron por cierre hueco y turno vacío. Son **24 líneas T10** registradas y **3 `passed`**, pero **T10 sigue 0/3 en las 24** y la referencia no cambia: **G1 continúa abierta por la casilla del p95**, no por esta medición.
 
 El arnés está listo:
 
@@ -69,7 +69,7 @@ Detalle y evidencia: [baseline §6](docs/parity/baseline-2026-11.md#6-línea-bas
 | Fase | Estado | Puerta | Prioridad | Esfuerzo | Criterios | Siguiente hito |
 | --- | --- | --- | --- | --- | ---: | --- |
 | **F0** Verdad y línea base | Hecho · G0 cerrada | G0 | P0 | 4–5 d | 6/6 | Mantener la referencia para G1 |
-| **F1** Núcleo de agente y CLI | Hecho en código · G1 abierto | G1 | P0 | 10–12 d | 8/8 | T10 (F1-1) primero; CAL4H en pausa (2026-11-23); T10 sigue 0/3 en las 24 (1/3 fuera de ellas, `G1-T10-13`) |
+| **F1** Núcleo de agente y CLI | Hecho en código · G1 abierto | G1 | P0 | 10–12 d | 8/8 | T10 (F1-1) primero; T10 sigue 0/3 en las 24 (1/3 fuera de ellas, `G1-T10-13`) |
 | **F2** Artifacts de verificación | Parcial · criterios cubiertos, G1 abierto | — | P1 | 6–8 d | 7/7 | Cerrar G1 y verificación visual en Electron |
 | **F3** Continuidad remota y PWA | Pendiente · espera G2 | G2 | P1 | 10–14 d | 0/8 | Modelo de amenazas |
 | **F4** Editor y ecosistema | Pendiente | — | P1 | 12–15 d | 0/11 | VSIX útil y lifecycle de hooks |
@@ -104,7 +104,7 @@ PL0 separó release de destino y funciona sin credenciales. PL1 tiene adaptador,
 | Puerta | Exige | Estado | Qué la desbloquea |
 | --- | --- | --- | --- |
 | **G0** Verdad externa | GitHub verificado + línea base de 24 corridas | **Cerrada** | Baseline NVIDIA válida: 24 corridas, 0 timeouts |
-| **G1** Dogfooding del CLI | 5 días y 24 corridas usando el CLI como superficie principal, sin retroceder frente a F0 | **Abierta** · dogfooding ejecutado; p95 en rojo | Retomar CAL4H, en pausa por decisión del 2026-11-23 (n≥40, ≤2 de 40 > 15 151 ms); T10 sigue 0/3 en las 24 (1/3 fuera de ellas, `G1-T10-13`) |
+| **G1** Dogfooding del CLI | 5 días y 24 corridas usando el CLI como superficie principal, sin retroceder frente a F0 | **Abierta** · dogfooding ejecutado; p95 en rojo | T10 sigue 0/3 en las 24 (1/3 fuera de ellas, `G1-T10-13`); el bloque de medición de aprobación no está en el roadmap (decisión del 2026-11-23) |
 | **G2** Seguridad remota | Modelo de amenazas y revisión antes de habilitar `--remote` | **No iniciada** | Aprobar el modelo de amenazas |
 | **G3** Proveedor de plataforma | Proveedor y modelo de costo decididos antes de 5A | **No iniciada** | Decisión explícita de proveedor |
 
@@ -114,7 +114,7 @@ G1 no se cierra por ejecutar el dogfooding ni comparando contra una estimación:
 
 **Ahora**
 
-1. **En pausa (2026-11-23):** el bloque `CAL4H` no se ejecuta por decisión del autor; G1 queda **abierta**, la referencia de 15 151 ms intacta y ninguna fase se marca cerrada por la puerta.
+1. **Bloque de aprobación fuera del roadmap (2026-11-23):** por decisión del autor no se agenda; G1 queda **abierta**, la referencia de 15 151 ms intacta y ninguna fase se marca cerrada por la puerta.
 2. F1-1 (T10): el defecto sigue 0/3 en las 24 con issue abierto y es el paso de mayor peso fuera de la puerta (`G1-EMPTY-TURN`, `G1-SUBAGENT-CLOSE`).
 
 **Después de G1**
