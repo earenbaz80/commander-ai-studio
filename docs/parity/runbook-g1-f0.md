@@ -328,6 +328,8 @@ Parar y no declarar nada si:
 
 En esos casos, el estado correcto es `bloqueado` o `no verificado`, nunca `hecho`.
 
+**Bloque `CAL4H` en pausa (2026-11-23).** El bloque humano que mediría el p95 de aprobación no se ejecuta por ahora: G1 sigue abierta con esa única regla en rojo, el criterio no se declara no aplicable y la referencia de 15 151 ms no se toca. La pausa no detiene el resto del trabajo: los pasos que no dependen de la puerta (T10, F2-4, F3, PL3) siguen.
+
 ## 9. Checklist final
 
 - [x] F0 local reproducible en el commit medido.

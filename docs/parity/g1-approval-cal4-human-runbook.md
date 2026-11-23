@@ -1,6 +1,6 @@
 # G1 — CAL4H: repetición de CAL4 con operador humano
 
-> **Estado:** **entorno previsto en `360f8c2`, sin operador asignado. NO EJECUTAR TODAVÍA.** El pin anterior `41358e4` ya no resuelve en el historial; su tramo quedó en el squash #35 (`ce0bba0`).
+> **Estado:** **en pausa por decisión del autor (2026-11-23); entorno previsto en `360f8c2`, sin operador asignado. NO EJECUTAR POR AHORA.** El pin anterior `41358e4` ya no resuelve en el historial; su tramo quedó en el squash #35 (`ce0bba0`).
 > **Bloque vigente:** el [plan congelado CAL4H](CAL4H-PLAN-2026-11-17.md) **sustituye §7 de este runbook** para el bloque actual, porque el commit previsto cambió a `360f8c2`. Este runbook se conserva como procedimiento general.
 > **Qué es:** el procedimiento para repetir el bloque CAL4 con una **persona real** leyendo el panel y pulsando `a`/`d` en el TTY. El agente **no envía ninguna tecla**, no conduce el PTY y no importa muestras por su cuenta.
 > **Qué no es:** no es una corrida autorizada, no reemplaza el recibo del bloque inválido y no cambia la referencia de 15 151 ms. G1 sigue **NO CERRADO**.
@@ -122,7 +122,7 @@ Verificar:
 - [ ] Los `deny` se reportan aparte; nunca se mezclan con el primario.
 - [ ] Guardar el store humano y los estados en `tests/tmp-g1/cal4-human/` y `tests/tmp-g1/cal4-repo/.commander/g1/cal4/`. No borrar el bloque inválido.
 - [ ] Emitir un recibo **nuevo** con la [plantilla CAL4H](receipts/G1-APPROVAL-CAL4H-2026-11-17.md), completando operador, fecha, commit, n, p95, exclusiones y decisión. No reutilizar el recibo del bloque conducido por el agente ni completar la plantilla con estimaciones.
-- [ ] Si el p95 vuelve a fallar, la salida B sigue vigente y el paso siguiente es producto, no otra referencia.
+- [ ] **Este bloque no se ejecuta por ahora (pausa del 2026-11-23).** Si se retoma y el p95 vuelve a fallar, la salida B sigue vigente y el paso siguiente es producto, no otra referencia.
 
 ## 5. Qué NO hacer
 
@@ -135,7 +135,7 @@ Verificar:
 
 ## 6. Estado actual
 
-**Preparado y detenido.** El entorno está listo (§7), pero no hay operador asignado, no se ejecutó ninguna corrida de `CAL4H` y el store humano está vacío. El [plan congelado](CAL4H-PLAN-2026-11-17.md) **sustituye §7** para este bloque; la [plantilla del recibo](receipts/G1-APPROVAL-CAL4H-2026-11-17.md) sigue sin valores. El bloque anterior sigue documentado como **no válido como muestra humana**; G1 sigue **NO CERRADO**.
+**En pausa por decisión del autor (2026-11-23) y preparado.** El entorno estaba listo (§7), no hay operador asignado, no se ejecutó ninguna corrida de `CAL4H` y el store humano está vacío; el bloque no está agendado y G1 sigue abierta, así que ninguna fase se marca cerrada por la puerta. El [plan congelado](CAL4H-PLAN-2026-11-17.md) **sustituye §7** para este bloque; la [plantilla del recibo](receipts/G1-APPROVAL-CAL4H-2026-11-17.md) sigue sin valores. El bloque anterior sigue documentado como **no válido como muestra humana**; G1 sigue **NO CERRADO**.
 
 ## 7. Entorno previsto (2026-11-17)
 

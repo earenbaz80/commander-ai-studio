@@ -45,7 +45,7 @@ Eso no es un detalle de redacción: el criterio mide si el hijo sabe y cuenta lo
 - Una tanda posterior de 3 corridas sobre `360f8c2`, ya con el check 5 estricto ([recibo `G1-T10-13`](../receipts/G1-T10-13-2026-11-21.md)), dio **1/3**: T10-2 pasó 7/7 con `Denegado: shell.run` real, pero T10-1 y T10-3 fallaron por cierres huecos y turnos vacíos. El defecto sigue siendo reproducible.
 - El **check 7** de esa tanda pasó por artefacto («dos tandas seguidas»). Corregido en `4afda76` con `confirmsTwoChildren` y el test `tests/unit/t10ParentCount.test.ts`, que usa la respuesta real de T10-3. El 1/3 y el 2/3 medidos no cambian.
 - **T10 sigue 0/3 en las 24** y esa referencia no se reescribe; las mediciones 2/3 y 1/3 son evidencia fuera de ellas y no mueven la tasa ni el estado de G1.
-- G1 no depende de cerrar este issue: sigue **NO CERRADO** por el p95 de aprobación y CAL4H.
+- G1 no depende de cerrar este issue: sigue **NO CERRADO** por el p95 de aprobación, con el bloque `CAL4H` en pausa desde el 2026-11-23.
 
 **Criterio de cierre de este issue:**
 

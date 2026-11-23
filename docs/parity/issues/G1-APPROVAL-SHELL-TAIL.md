@@ -2,14 +2,14 @@
 >
 > Issue de producto de G1, sin número en GitHub: no forma parte del backlog F1 y **no** cambia la referencia de 15 151 ms ni la decisión **NO CERRADO**. Documenta la cola de `shell.run` que dejó CAL4 como **evidencia descriptiva**: CAL4 no es una muestra humana válida y no decide la puerta; el arreglo hay que medirlo con un operador humano.
 
-**Estado:** Abierto — datos descriptivos medidos; causa todavía no aislada. La instrumentación P0, el aviso de aprobación pendiente con `queueDepth` y presupuesto de 250 ms, el aviso puntual de 30 s, el prompt P1 de `shell.run`, el cierre `invalid`/`retryLabel` de la expiración y el guard de repeticiones de `shell.run` ya están implementados; el P2 (CAL4H) sigue abierto.
+**Estado:** Abierto — datos descriptivos medidos; causa todavía no aislada. La instrumentación P0, el aviso de aprobación pendiente con `queueDepth` y presupuesto de 250 ms, el aviso puntual de 30 s, el prompt P1 de `shell.run`, el cierre `invalid`/`retryLabel` de la expiración y el guard de repeticiones de `shell.run` ya están implementados; el P2 (CAL4H) queda **en pausa por decisión del autor del 2026-11-23**: no se ejecuta y la validación humana no está agendada.
 
 **Cobertura rápida:**
 
 - **P0 cubierto:** ciclo de tiempos, `firstNonDecisionKeyAt`/`decisionMs`, cuarentena de teclas y aviso pendiente con `queueDepth` y medición de ≤250 ms en estado y TUI.
 - **P1 cubierto:** prompt de `shell.run` con comando completo, `cwd`, timeout y riesgo; aviso único a los 30 s restantes; caducidad marca `invalid` y deja `retryLabel`; una repetición idéntica exige confirmación explícita y nunca se auto-permite.
 - **P1 abierto:** ninguno.
-- **P2 abierto:** CAL4H, bloqueado por falta de operador humano.
+- **P2 en pausa:** CAL4H, por decisión del autor del 2026-11-23; sin operador asignado ni fecha.
 
 ## Por qué
 
@@ -88,7 +88,7 @@ Ninguna está confirmada. La instrumentación de §Arreglo ya separa cola, pinta
 
 ### P2 — Validación
 
-8. **[ ] CAL4H — abierto y bloqueado.** Requiere operador real, TTY, store aislado y ninguna tecla del agente. Medir el p95 global y el de `shell.run` por separado; no cambiar la referencia. **No hay operador humano asignado; CAL4H no se ejecutó.**
+8. **[ ] CAL4H — en pausa (2026-11-23).** Requiere operador real, TTY, store aislado y ninguna tecla del agente. Medir el p95 global y el de `shell.run` por separado; no cambiar la referencia. **No hay operador asignado, CAL4H no se ejecutó y el bloque no está agendado.**
 
 ## Criterios de aceptación
 
@@ -97,8 +97,8 @@ Ninguna está confirmada. La instrumentación de §Arreglo ya separa cola, pinta
 - [x] Una aprobación caducada marca la corrida `invalid`, persiste el motivo y el `approvalId`, y deja un `retryLabel` nuevo sin relanzar la corrida.
 - [x] El 100 % de los `shell.run` pendientes aparece en el estado y en la TUI en **≤250 ms**; el aviso sobrevive repintados/resizes y se limpia al decidir. `stateMs`/`noticeMs` y sus marcas de presupuesto viajan en `approval_result` y en el paso persistido; el escenario con dos `shell.run` verifica ambas aprobaciones, y la cola se muestra como `cola: N`.
 - [x] Un `shell.run` idéntico repetido no se auto-permite ni reutiliza `allow-session`; exige confirmación explícita y, si se deniega, no se ejecuta. Repetir tras una mutación exitosa del workspace vuelve a ser una verificación normal.
-- [ ] En CAL4H, el p95 de `shell.run` es **≤15 151 ms** y **≤2 de sus 20–21 decisiones** quedan por encima; el gate global sigue siendo el de §7.1.
-- [ ] La mejora se mide en un bloque humano válido, no en otro bloque conducido por el agente.
+- [ ] En pausa (2026-11-23): en CAL4H, el p95 de `shell.run` es **≤15 151 ms** y **≤2 de sus 20–21 decisiones** quedan por encima; el gate global sigue siendo el de §7.1.
+- [ ] En pausa (2026-11-23): la mejora se mide en un bloque humano válido, no en otro bloque conducido por el agente.
 
 ## Evidencia de implementación
 
@@ -118,7 +118,7 @@ Verificado el 2026-11-15: **73/73** tests node de aprobación, contrato de event
 
 - **No cambia la decisión:** G1 sigue **NO CERRADO**. CAL4 es descriptivo, no una muestra humana válida; este issue no pone nada verde.
 - **No cambia la referencia:** 15 151 ms sigue intacta y no se propone otra.
-- **No reemplaza CAL4H:** sólo un bloque con operador humano puede decir si la cola se corrigió.
+- **No reemplaza CAL4H:** sólo un bloque con operador humano puede decir si la cola se corrigió, y ese bloque está **en pausa desde el 2026-11-23**.
 - **No es T10:** el cierre de subagentes sigue en [`G1-SUBAGENT-CLOSE`](G1-SUBAGENT-CLOSE.md).
 
 ## Evidencia

@@ -1,7 +1,7 @@
 # G1 — Plan de cierre
 
 > **Fecha:** 2026-11-16 · **Revisado:** 2026-11-21
-> **Estado:** listo para ejecutar. El **dogfooding de 5 días ya se ejecutó** (2026-11-12). T10 está **declarado `failed`** con `G1-T10-13` (1/3) e issue abierto, fuera de la puerta. Lo que falta es el bloque `CAL4H` y el recibo de cierre. El bloque `CAL4H` y el recibo no se ejecutaron todavía.
+> **Estado:** **en pausa por decisión del autor (2026-11-23).** El **dogfooding de 5 días ya se ejecutó** (2026-11-12) y T10 está **declarado `failed`** con `G1-T10-13` (1/3) e issue abierto, fuera de la puerta. El bloque `CAL4H` y el recibo de cierre quedan **en pausa**: no se ejecutan por ahora, G1 sigue abierta y este documento se conserva como procedimiento para cuando se retome.
 > **Base:** [recibo del dogfooding](receipts/G1-DOGFOOD-2026-11-12.md) · [hoja de decisión del p95](g1-approval-gate-decision.md) · [protocolo de re-medición](g1-approval-remeasure.md) · [runbook CAL4H](g1-approval-cal4-human-runbook.md) · [plan del dogfooding](dogfooding-g1.md) §3, §5 y §7.
 > **Qué es:** el orden concreto para cerrar G1, con los comandos, los checkboxes y las tablas donde se registra cada dato.
 > **Qué no es:** no re-mide nada por sí solo, no cambia la referencia de 15 151 ms, no relaja el criterio de T10 y **no cierra G1**: eso lo decide el recibo de cierre con evidencia.
@@ -14,22 +14,22 @@
 | 5 días y 24 corridas CLI-first | Cumplido: D1–D5 del 2026-11-12, 24 planificadas medidas y 28 válidas | Nada; no se repite |
 | Tasa de éxito ≥ F0 (8/24) | **17/28 (60,7 %)** | Nada |
 | 0 escrituras sin aprobación · 0 duplicadas en `--resume` · 0 secretos · artifacts por la vía del runbook · defectos con issue | Verde en las 28 válidas | Nada |
-| **p95 de aprobación ≤ 15 151 ms** | **Rojo**: 76 982 ms (n=40, operador automatizado), 65 056 ms (CAL2, n=6), 26 501 ms (CAL4, n=41, no válido como muestra humana) | Bloque `CAL4H` humano con **≤ 2 de 40** por encima |
+| **p95 de aprobación ≤ 15 151 ms** | **Rojo**: 76 982 ms (n=40, operador automatizado), 65 056 ms (CAL2, n=6), 26 501 ms (CAL4, n=41, no válido como muestra humana) | **En pausa (2026-11-23):** lo cerraría un bloque `CAL4H` humano con **≤ 2 de 40** por encima; no se ejecuta por ahora |
 | T10 subagente | **0/3** en las 24 (`G1-D4-04`, `G1-D4-05` y `G1-D4-05R`) y **0/9** contando las seis extras (`G1-D5-05`…`G1-D5-10`). Los descartados (1 intento `blocked` de `G1-D4-04` y 2 intentos de `G1-D5-05` sin veredicto válido) no suman. Fuera de las 24, la tanda del 2026-11-21 sobre `360f8c2` ([recibo `G1-T10-13`](receipts/G1-T10-13-2026-11-21.md)) dio **1/3**: T10-2 pasó con denegación real y T10-1/T10-3 fallaron por cierre hueco y turno vacío; son 24 líneas T10 y 3 `passed` | **Declarado `failed`** con el issue [`G1-SUBAGENT-CLOSE`](issues/G1-SUBAGENT-CLOSE.md) abierto y esa evidencia; **no es regla de puerta** y no cambia el 0/3 de las 24 |
 | Decisión de la puerta | **NO CERRADO**; rige la salida **B** de la [hoja de decisión](g1-approval-gate-decision.md), sin firma | Recibo de cierre `G1-CIERRE-<fecha>` |
 
-**Consecuencia:** F1 y F2 no se marcan cerradas mientras G1 siga abierta. La tasa global ya no es el problema; el cierre depende de una sola casilla (p95/CAL4H). T10 ya está declarado aparte y **no es regla de puerta**.
+**Consecuencia:** F1 y F2 no se marcan cerradas mientras G1 siga abierta. La tasa global ya no es el problema; el cierre depende de una sola casilla (p95), cuyo bloque `CAL4H` está en pausa desde el 2026-11-23. T10 ya está declarado aparte y **no es regla de puerta**.
 
 ## 2. Orden de pasos
 
 | Paso | Qué | Tiempo | Quién | Criterio de salida |
 | --- | --- | ---: | --- | --- |
 | 0 | Congelar el árbol y el entorno | 30 min | Agente | `HEAD` anotado, árbol limpio, `/api/health` 200 |
-| 1 | Preflight de `CAL4H` | 10 min | Agente + operador | Precondiciones del §5 todas en `[x]` |
-| 2 | Bloque `CAL4H` (20 corridas, n ≥ 40 decisiones) | 45–60 min | **Operador humano** | 20 corridas cerradas o corte justificado |
-| 3 | Resumen y lectura de la puerta | 5 min | Agente | `p95` con su `n` y **≤ 2 de 40** por encima |
+| 1 | Preflight de `CAL4H` — **en pausa** | 10 min | Agente + operador | Precondiciones del §5 todas en `[x]` |
+| 2 | Bloque `CAL4H` (20 corridas, n ≥ 40 decisiones) — **en pausa (2026-11-23)** | 45–60 min | **Operador humano** | 20 corridas cerradas o corte justificado |
+| 3 | Resumen y lectura de la puerta — **en pausa** | 5 min | Agente | `p95` con su `n` y **≤ 2 de 40** por encima |
 | 4 | T10 declarado con `G1-T10-13` | **Hecho** | Agente | Issue `G1-SUBAGENT-CLOSE` abierto y declarado; 1/3, 24 líneas y 3 `passed`; no es regla de puerta |
-| 5 | Recibos y actualización de roadmaps | 30 min | Agente | `CAL4H` + `G1-CIERRE` emitidos y puertas alineadas |
+| 5 | Recibos y actualización de roadmaps — **en pausa** | 30 min | Agente | `CAL4H` + `G1-CIERRE` emitidos y puertas alineadas |
 
 Si el paso 3 falla, **se detiene el cierre**: G1 sigue NO CERRADO y el paso siguiente es producto (issue [`G1-APPROVAL-SHELL-TAIL`](issues/G1-APPROVAL-SHELL-TAIL.md)), no otra medición ni un cambio de referencia.
 
@@ -72,7 +72,7 @@ Se conserva como procedimiento para un bloque completo futuro. **No se re-ejecut
 
 **Presupuesto:** 15 min de reloj por corrida; al vencer, `Ctrl+C`, `timeout` como fallo. `invalid` sólo por causa ajena al agente (proveedor, puerto, workspace contaminado, cambio de configuración, tecla equivocada) y se repite con número nuevo sin borrar la anterior. Un fallo del agente, un timeout o un criterio incumplido son `failed` y cuentan.
 
-## 5. Paso 2 — bloque `CAL4H` (operador humano)
+## 5. Paso 2 — bloque `CAL4H` (operador humano) · **en pausa (2026-11-23)**
 
 Detalle completo en el [runbook CAL4H](g1-approval-cal4-human-runbook.md) y el [plan CAL4H](CAL4H-PLAN-2026-11-17.md). Resumen ejecutable:
 
@@ -132,6 +132,8 @@ T10 quedó **declarado `failed`** con la evidencia del [recibo `G1-T10-13`](rece
 - [x] Sin cambios en el criterio de T10, en el enunciado ni en la métrica.
 
 ## 7. Paso 5 — recibos y actualización
+
+> **En pausa (2026-11-23).** Este paso no se ejecuta hasta que se retome el bloque `CAL4H`; los checkboxes quedan como están y no se completan con estimaciones.
 
 - [ ] Completar la [plantilla CAL4H](receipts/G1-APPROVAL-CAL4H-2026-11-17.md) con operador, fecha, commit **`360f8c2`**, `n`, p95, exclusiones, decisiones `deny` y decisión de la casilla. **No** se reutiliza el recibo de CAL4 ni se declara el `6838fa1` del runbook original (hoy en el squash #27, `07fc0e1`).
 - [ ] `docs/parity/receipts/G1-CIERRE-<fecha>.md`: las ocho reglas de [§7.1](dogfooding-g1.md#71-reglas-de-decisión-criterio-de-puerta) con su evidencia, tasa global, tabla por tarea con delta frente a F0, avisos de regresión de §7.2, seguridad, fallbacks, límites y decisión **CERRADO / NO CERRADO** en ese orden.

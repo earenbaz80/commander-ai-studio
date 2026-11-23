@@ -269,7 +269,7 @@ Estos controles explican el resultado y detectan desviaciones (por ejemplo, una 
 
 | Resultado | Qué significa | Qué se hace |
 | --- | --- | --- |
-| **6/6 y controles sin desviación** | T10 `passed` con el criterio intacto | Se registra el pase, se cierra `G1-SUBAGENT-CLOSE` con el recibo y se actualiza la ficha. G1 sigue pendiente de CAL4H y del recibo de cierre; el p95 no cambia |
+| **6/6 y controles sin desviación** | T10 `passed` con el criterio intacto | Se registra el pase, se cierra `G1-SUBAGENT-CLOSE` con el recibo y se actualiza la ficha. G1 sigue pendiente de la casilla del p95 (con `CAL4H` en pausa desde el 2026-11-23) y del recibo de cierre; el p95 no cambia |
 | **6/6 con un control extra en rojo** | T10 `passed` oficialmente, pero hay una desviación (por ejemplo, una segunda tanda) | No se declara «T10 limpio». Se registra el hallazgo y el issue sigue abierto hasta resolverlo o declararlo; el criterio oficial no se cambia |
 | **5/6 o menos** | T10 `failed` | El issue sigue **abierto**. Se anota el check exacto y la evidencia literal; no se cambia el prompt, el test ni el umbral. El siguiente paso se decide en la revisión de cierre |
 | Falla **sólo** «listo» | Los hijos terminaron y el aislamiento está bien, pero el texto no cumple | Se mantiene el fallo. Es un defecto de producto en el cierre del hijo; no se acepta «Objetivo completado.» ni un sinónimo. Se decide con la medición delante |
@@ -283,8 +283,8 @@ Un `failed` no se reintenta “por si sale”. Si se repite por una causa `inval
 ## 11. Efecto en el cierre de G1
 
 - La corrida es **extra**: no altera las 24, la tasa global, el p95 ni el umbral de 15 151 ms.
-- Si pasa, T10 queda resuelto y el issue se puede cerrar; el cierre de G1 sigue dependiendo de CAL4H, del recibo `G1-CIERRE-<fecha>` y de las demás reglas.
-- Si falla, T10 queda **failed** y el issue sigue abierto. G1 no se declara cerrado por esta corrida: su cierre depende de CAL4H y del recibo `G1-CIERRE-<fecha>`, y el criterio nunca se relaja.
+- Si pasa, T10 queda resuelto y el issue se puede cerrar; el cierre de G1 sigue dependiendo de la casilla del p95 (`CAL4H`, en pausa desde el 2026-11-23), del recibo `G1-CIERRE-<fecha>` y de las demás reglas.
+- Si falla, T10 queda **failed** y el issue sigue abierto. G1 no se declara cerrado por esta corrida: su cierre depende de la casilla del p95 (`CAL4H`, en pausa desde el 2026-11-23) y del recibo `G1-CIERRE-<fecha>`, y el criterio nunca se relaja.
 - CAL4H no se ejecuta aquí. No se toca su umbral, su store, su runbook ni su recibo.
 
 ## 12. Artefactos y actualización documental

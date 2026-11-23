@@ -1358,7 +1358,27 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         await addStep({ type: 'thought', title: 'Gate de verificación', content: text, status: 'failed' });
         continue;
       }
-      const answer = thought || '(el modelo no devolvió respuesta)';
+      // Turno vacío del proveedor: sin pensamiento, sin tool calls y sin plan.
+      // No se guarda un turno `assistant` con texto sintético: la reanudación
+      // siguiente lo leería como una respuesta que el modelo nunca dio y el
+      // estado diría `completed` sobre una corrida que no cerró
+      // (docs/parity/issues/G1-EMPTY-TURN.md, punto 3).
+      if (!thought.trim()) {
+        const text =
+          'Turno vacío: el modelo no devolvió texto ni tool calls. No se guarda una respuesta ' +
+          'sintética y la corrida queda sin respuesta final.';
+        emit({ type: 'error', text });
+        await addStep({ type: 'thought', title: 'Turno vacío', content: text, status: 'failed' });
+        if (state) {
+          state.answer = text;
+          state.status = 'failed';
+          state.error = text;
+          state.updatedAt = Date.now();
+          await sync();
+        }
+        return done('', steps);
+      }
+      const answer = thought;
       addTurn({ role: 'assistant', text: answer });
       await addStep({ type: 'thought', title: 'Finalizado', content: answer, status: 'completed' });
       if (state) {
