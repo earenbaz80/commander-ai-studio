@@ -9,11 +9,14 @@
  *  2. `COMMANDER_BACKEND_PROVIDER=supabase` selecciona el adaptador real. Sin
  *     `SUPABASE_ACCESS_TOKEN`, `SUPABASE_ORG_ID` y `SUPABASE_REGION` el
  *     adaptador existe pero queda `configured: false`: la UI desactiva
- *     aprovisionar y nada llama a la red.
+ *     aprovisionar y nada llama a la red. El `ref` se persiste en
+ *     `.commander/backend` (o `COMMANDER_BACKEND_STATE_DIR`), así que el
+ *     proyecto aprovisionado se reconoce tras reiniciar.
  *  3. Sin bandera ni proveedor se devuelve `null`: la ruta responde
  *     «deshabilitado» y no se finge un backend.
  */
 import { FakeBackendAdapter } from './fakeAdapter';
+import { FileBackendProjectStore } from './projectStore';
 import { SupabaseBackendAdapter } from './supabase';
 import type { BackendAdapter } from './types';
 
@@ -44,6 +47,8 @@ export function createConfiguredBackendAdapter(
       token: env.SUPABASE_ACCESS_TOKEN,
       organizationId: env.SUPABASE_ORG_ID,
       region: env.SUPABASE_REGION,
+      // El `ref` y los bindings sobreviven a reiniciar Commander; nunca valores.
+      store: new FileBackendProjectStore(),
     });
   }
 

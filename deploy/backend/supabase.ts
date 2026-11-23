@@ -17,6 +17,11 @@
  * lo que cierra G3. Sin `SUPABASE_ACCESS_TOKEN`, `SUPABASE_ORG_ID` y
  * `SUPABASE_REGION` el adaptador queda `configured: false` y no hace red.
  *
+ * El `ref` y el resto del estado del proyecto se persisten junto al estado
+ * local (`.commander/backend`, ver `projectStore.ts`), de modo que reiniciar
+ * Commander no pierde el proyecto ya aprovisionado. Lo persistido son nombres
+ * e identificadores: ningún valor de credencial.
+ *
  * Reglas que este archivo no rompe:
  *  - No inventa credenciales: no hay ninguna clave escrita aquí. El valor sale
  *    de `randomBytes` en el momento y se entrega una sola vez al `sink`.
@@ -32,6 +37,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { validateMigrations } from './migrations';
 import { backendSecretName, isBackendBindingKind } from './types';
+import type { BackendProjectStore } from './projectStore';
 import type {
   BackendAdapter,
   BackendBindingKind,
@@ -65,6 +71,8 @@ export interface SupabaseAdapterOptions {
   passwordFactory?: () => string;
   /** Sólo para tests: valor determinista de `AUTH_SECRET`. */
   secretFactory?: (name: string) => string;
+  /** Persistencia del `ref` y los bindings; sin store, todo queda en memoria. */
+  store?: BackendProjectStore;
 }
 
 interface ProjectState {
@@ -88,6 +96,7 @@ export class SupabaseBackendAdapter implements BackendAdapter {
   private readonly now: () => Date;
   private readonly passwordFactory: () => string;
   private readonly secretFactory?: (name: string) => string;
+  private readonly store?: BackendProjectStore;
   private readonly projects = new Map<string, ProjectState>();
 
   constructor(options: SupabaseAdapterOptions = {}) {
@@ -101,6 +110,7 @@ export class SupabaseBackendAdapter implements BackendAdapter {
     this.now = options.now ?? (() => new Date());
     this.passwordFactory = options.passwordFactory ?? (() => randomBytes(24).toString('base64url'));
     this.secretFactory = options.secretFactory;
+    this.store = options.store;
   }
 
   /** Sin las tres variables no hay forma de aprovisionar: la UI no lo ofrece. */
@@ -117,7 +127,7 @@ export class SupabaseBackendAdapter implements BackendAdapter {
       if (!isBackendBindingKind(kind)) throw new Error(`Binding desconocido: ${String(kind)}`);
     }
 
-    const state = this.projects.get(projectId) ?? {
+    const state = (await this.loadProject(projectId)) ?? {
       name: projectName(projectId),
       ref: '',
       bindings: new Map<BackendBindingKind, BackendBindingRecord>(),
@@ -151,6 +161,7 @@ export class SupabaseBackendAdapter implements BackendAdapter {
       });
     }
     if (requested.includes('storage')) await this.ensureBucket(ref, bucketName(state.name));
+    await this.persist(projectId, state);
 
     return this.status(projectId);
   }
@@ -158,7 +169,7 @@ export class SupabaseBackendAdapter implements BackendAdapter {
   async migrate(input: BackendMigrateInput): Promise<BackendMigrationResult> {
     this.requireConfig();
     const projectId = requireProjectId(input.projectId);
-    const state = this.requireProject(projectId);
+    const state = await this.requireProject(projectId);
     // La misma validación que el runner de SQLite: ids únicos y SQL no vacío.
     const batch = validateMigrations(input.migrations);
     const applied = new Set(await this.readAppliedMigrations(state.ref));
@@ -183,12 +194,13 @@ export class SupabaseBackendAdapter implements BackendAdapter {
         break;
       }
     }
+    await this.persist(projectId, state);
     return result;
   }
 
   async status(projectIdInput: string): Promise<BackendStatus> {
     const projectId = requireProjectId(projectIdInput);
-    const state = this.projects.get(projectId);
+    const state = await this.loadProject(projectId);
     if (!state) {
       return {
         provider: this.id,
@@ -215,7 +227,7 @@ export class SupabaseBackendAdapter implements BackendAdapter {
   async rotateSecrets(input: BackendRotateInput): Promise<BackendRotation> {
     this.requireConfig();
     const projectId = requireProjectId(input.projectId);
-    const state = this.requireProject(projectId);
+    const state = await this.requireProject(projectId);
     const kinds = input.kinds ? [...new Set(input.kinds)] : [...state.bindings.keys()];
     if (kinds.length === 0) throw new Error('El proyecto no tiene bindings que rotar');
     for (const kind of kinds) {
@@ -256,6 +268,7 @@ export class SupabaseBackendAdapter implements BackendAdapter {
       rotated.push(name);
       if (!state.secretNames.includes(name)) state.secretNames.push(name);
     }
+    await this.persist(projectId, state);
 
     return {
       provider: this.id,
@@ -359,8 +372,42 @@ export class SupabaseBackendAdapter implements BackendAdapter {
     }
   }
 
-  private requireProject(projectId: string): ProjectState {
-    const state = this.projects.get(projectId);
+  /**
+   * Recupera el estado del proyecto: primero de la caché y, si el proceso
+   * acaba de arrancar, de la persistencia. Así el `ref` sobrevive a reiniciar.
+   */
+  private async loadProject(projectId: string): Promise<ProjectState | undefined> {
+    const cached = this.projects.get(projectId);
+    if (cached) return cached;
+    if (!this.store) return undefined;
+    const record = await this.store.read(projectId);
+    if (!record) return undefined;
+    const state: ProjectState = {
+      name: record.name,
+      ref: record.ref,
+      bindings: new Map(record.bindings.map((binding) => [binding.kind, { ...binding }])),
+      declared: [...record.declared],
+      secretNames: [...record.secretNames],
+    };
+    this.projects.set(projectId, state);
+    return state;
+  }
+
+  /** Guarda sólo identificadores y nombres; los valores no salen del sink. */
+  private async persist(projectId: string, state: ProjectState): Promise<void> {
+    if (!this.store) return;
+    await this.store.write(projectId, {
+      projectId,
+      name: state.name,
+      ref: state.ref,
+      bindings: [...state.bindings.values()].map((binding) => ({ ...binding })),
+      declared: [...state.declared],
+      secretNames: [...state.secretNames],
+    });
+  }
+
+  private async requireProject(projectId: string): Promise<ProjectState> {
+    const state = await this.loadProject(projectId);
     if (!state || !state.ref) {
       throw new Error('El proyecto no tiene un backend aprovisionado');
     }
