@@ -303,6 +303,39 @@ Corrida de **diagnóstico fuera de las 24** con el arnés (`evals/baseline.ts --
 - **Cero cierres huecos y cero turnos vacíos:** 8 de 8 hijos cerraron con `ok:true`, las dos líneas del contrato y su archivo; los 4 hijos A informaron `shell.run` denegado con la tool nombrada. No apareció «Objetivo completado.» ni «Archivos: ninguno».
 - **No es atribuible al arreglo del turno vacío:** ese arreglo está en `src/cli/agentClient.ts` y `src/agent/` no cambió desde `360f8c2`; los hijos corren por el servidor. La mejora frente al 1/3 de `G1-T10-13` es de la tanda y del modelo.
 - **Dos bordes del criterio, no del producto:** el check 6 cayó en T10-3 por un worktree sin limpiar, y el check 7 rechazó «Total de hijos que terminaron: 2» (falso negativo del regex). El criterio no se toca.
+### Cambio mínimo propuesto para el check 7 (no aplicado)
+
+El check 7 falló en `T10-4` con esta respuesta literal del padre: «…**Total de hijos que terminaron: 2**.». `confirmsTwoChildren` sólo acepta el contador al principio (`^2[.!]?$`) o delante de «hijos» (`2 hijos`); acá viene **detrás de una etiqueta** y envuelto en énfasis Markdown.
+
+**Cambio mínimo, en la función y en ningún otro lado** (`evals/scenarios.ts`): normalizar el énfasis y aceptar la etiqueta con el contador al final.
+
+```diff
+ export function confirmsTwoChildren(answer: unknown): boolean {
+-  const text = String(answer ?? '').trim();
+-  return /^2\s*[.!]?$/.test(text) || /(?:2|dos)\s+(?:hijos?|subagentes?|children)/i.test(text);
++  // El cierre puede venir en negrita o con el contador al final de la etiqueta.
++  const text = String(answer ?? '').replace(/[*_`]+/g, '').trim();
++  return (
++    /^2\s*[.!]?$/.test(text) ||
++    /(?:2|dos)\s+(?:hijos?|subagentes?|children)/i.test(text) ||
++    /(?:hijos?|subagentes?|children)[^
+]{0,80}:\s*(?:2|dos)\s*[.!]?$/i.test(text)
++  );
+ }
+```
+
+**Por qué no relaja el criterio:** sigue exigiendo que el `2` esté atado a una cuenta de hijos. Acepta tres formas y nada más: el contador solo (`2`), delante del sustantivo (`2 hijos`, `dos subagentes`, `2 children`) o detrás de una etiqueta que nombra a los hijos y termina en el número (`… terminaron: 2.`). El número tiene que cerrar la respuesta y la etiqueta no puede cruzar un salto de línea ni superar 80 caracteres.
+
+**Sigue rechazando**, y hay que dejarlo fijado en las pruebas: el cierre por racha de `G1-T10-13` («subagentes fallidos en **dos** tandas seguidas»), `2 pasos`, `Total de pasos: 2`, `1`, la respuesta vacía y `undefined`.
+
+**Pruebas que haría falta agregar** en `tests/unit/t10ParentCount.test.ts` (ya existe y cubre esta función):
+
+- Acepta el caso medido: `'El objetivo ha finalizado. **Total de hijos que terminaron: 2**.'` y también `'Total de subagentes: dos.'`.
+- Sigue rechazando `CIERRE_POR_RACHA`, `'Terminaron 2 pasos.'` y `'Total de pasos: 2'`.
+- El escenario determinista `tests/evalsScenarios.test.ts` no cambia: usa un guion que cierra con `2`, así que debe seguir en verde.
+
+**Alcance:** sólo el evaluador (`confirmsTwoChildren`). No toca el encargo de T10, `maxSteps`, el contrato de cierre, el modelo congelado, el umbral de **15 151 ms** ni el denominador de 24, y **no mueve el 0/3** de las 24: es corrección de un falso negativo del criterio, no un pase nuevo. **No se aplica en esta sesión.**
+
 - **Sin efecto en G1:** T10 sigue **0/3** en las 24 y **0/9** con las extras; esta corrida no suma como pase. CAL4H no se ejecutó y el umbral de **15 151 ms** no se tocó.
 
 ## Evidencia
