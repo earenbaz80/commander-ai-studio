@@ -180,3 +180,30 @@ describe('injectBackendEnv', () => {
     ).rejects.toThrow(/id válido/);
   });
 });
+
+describe('loadReleaseEnv', () => {
+  test('un archivo malformado falla con mensaje fijo y sin el valor', async () => {
+    // El camino del publicador: un archivo de entorno roto con la credencial
+    // dentro. `JSON.parse` repetiría un trozo del contenido en su mensaje, así
+    // que la lectura tiene que fallar con un texto fijo que no lo incluya.
+    const file = releaseEnvFile(publishDir, projectSlug(project), 'rel-1', 'preview');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `{"vars":{"DATABASE_URL":"${SECRET}"`, 'utf8');
+
+    const error = await loadReleaseEnv({
+      root: project,
+      releaseId: 'rel-1',
+      environment: 'preview',
+      baseDir: publishDir,
+    }).then(
+      () => null,
+      (reason: Error) => reason
+    );
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error?.message).toBe('El archivo de entorno de la release no es JSON válido');
+    expect(error?.message).not.toContain(SECRET);
+    // El stack también arrastra el mensaje del parser si se dejara pasar.
+    expect(String(error?.stack ?? '')).not.toContain(SECRET);
+  });
+});
