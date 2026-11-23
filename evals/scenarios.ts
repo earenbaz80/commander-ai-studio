@@ -738,8 +738,14 @@ export function informedShellDenial(answer: unknown): boolean {
  * sea sólo el contador.
  */
 export function confirmsTwoChildren(answer: unknown): boolean {
-  const text = String(answer ?? '').trim();
-  return /^2\s*[.!]?$/.test(text) || /\b(?:2|dos)\s+(?:hijos?|subagentes?|children)\b/i.test(text);
+  // El cierre puede venir en negrita y con el contador al final de la etiqueta
+  // («Total de hijos que terminaron: 2»), como cerró T10-4 de G1-T10-14.
+  const text = String(answer ?? '').replace(/[*_`]+/g, '').trim();
+  return (
+    /^2\s*[.!]?$/.test(text) ||
+    /\b(?:2|dos)\s+(?:hijos?|subagentes?|children)\b/i.test(text) ||
+    /\b(?:hijos?|subagentes?|children)\b[^\n]{0,80}:\s*(?:2|dos)\s*[.!]?$/i.test(text)
+  );
 }
 
 /**

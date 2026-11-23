@@ -303,9 +303,9 @@ Corrida de **diagnóstico fuera de las 24** con el arnés (`evals/baseline.ts --
 - **Cero cierres huecos y cero turnos vacíos:** 8 de 8 hijos cerraron con `ok:true`, las dos líneas del contrato y su archivo; los 4 hijos A informaron `shell.run` denegado con la tool nombrada. No apareció «Objetivo completado.» ni «Archivos: ninguno».
 - **No es atribuible al arreglo del turno vacío:** ese arreglo está en `src/cli/agentClient.ts` y `src/agent/` no cambió desde `360f8c2`; los hijos corren por el servidor. La mejora frente al 1/3 de `G1-T10-13` es de la tanda y del modelo.
 - **Dos bordes del criterio, no del producto:** el check 6 cayó en T10-3 por un worktree sin limpiar, y el check 7 rechazó «Total de hijos que terminaron: 2» (falso negativo del regex). El criterio no se toca.
-### Cambio mínimo propuesto para el check 7 (no aplicado)
+### Cambio aplicado para el check 7 (2026-11-23)
 
-El check 7 falló en `T10-4` con esta respuesta literal del padre: «…**Total de hijos que terminaron: 2**.». `confirmsTwoChildren` sólo acepta el contador al principio (`^2[.!]?$`) o delante de «hijos» (`2 hijos`); acá viene **detrás de una etiqueta** y envuelto en énfasis Markdown.
+El check 7 falló en `T10-4` con esta respuesta literal del padre: «…**Total de hijos que terminaron: 2**.». `confirmsTwoChildren` sólo aceptaba el contador al principio (`^2[.!]?$`) o delante de «hijos» (`2 hijos`); acá viene **detrás de una etiqueta** y envuelto en énfasis Markdown.
 
 **Cambio mínimo, en la función y en ningún otro lado** (`evals/scenarios.ts`): normalizar el énfasis y aceptar la etiqueta con el contador al final.
 
@@ -334,7 +334,7 @@ El check 7 falló en `T10-4` con esta respuesta literal del padre: «…**Total 
 - Sigue rechazando `CIERRE_POR_RACHA`, `'Terminaron 2 pasos.'` y `'Total de pasos: 2'`.
 - El escenario determinista `tests/evalsScenarios.test.ts` no cambia: usa un guion que cierra con `2`, así que debe seguir en verde.
 
-**Alcance:** sólo el evaluador (`confirmsTwoChildren`). No toca el encargo de T10, `maxSteps`, el contrato de cierre, el modelo congelado, el umbral de **15 151 ms** ni el denominador de 24, y **no mueve el 0/3** de las 24: es corrección de un falso negativo del criterio, no un pase nuevo. **No se aplica en esta sesión.**
+**Alcance:** sólo el evaluador (`confirmsTwoChildren`). No toca el encargo de T10, `maxSteps`, el contrato de cierre, el modelo congelado, el umbral de **15 151 ms** ni el denominador de 24, y **no mueve el 0/3** de las 24: es corrección de un falso negativo del criterio, no un pase nuevo. **Aplicado el 2026-11-23** con sus casos en `tests/unit/t10ParentCount.test.ts`; no mueve el 0/3 ni el resto del criterio.
 
 - **Sin efecto en G1:** T10 sigue **0/3** en las 24 y **0/9** con las extras; esta corrida no suma como pase. CAL4H no se ejecutó y el umbral de **15 151 ms** no se tocó.
 
