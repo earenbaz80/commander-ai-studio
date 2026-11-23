@@ -174,4 +174,73 @@ describe('BackendBindingsPanel', () => {
     expect(summary.textContent).not.toContain(secretValue);
     expect(document.body.textContent).not.toContain(secretValue);
   });
+
+  test('rotar credenciales llama a la ruta y refresca los nombres sin valores', async () => {
+    const secretValue = 'fake-database-url-rotada';
+    const bindings = [
+      { kind: 'database' as const, resourceId: 'res-database-1', state: 'ready' as const },
+      { kind: 'storage' as const, resourceId: 'res-storage-2', state: 'ready' as const },
+      { kind: 'auth' as const, resourceId: 'res-auth-3', state: 'ready' as const },
+    ];
+    let statusReads = 0;
+
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
+      if (String(url).includes('/api/backend/manage/rotate')) {
+        return jsonResponse({
+          success: true,
+          provider: 'fake',
+          rotation: {
+            provider: 'fake',
+            projectId,
+            rotated: ['DATABASE_URL', 'STORAGE_SECRET', 'AUTH_SECRET'],
+            createdAt: '2026-11-23T10:00:00.000Z',
+          },
+          // Aunque un adaptador devolviera valores, el panel no los pinta.
+          secrets: { DATABASE_URL: secretValue },
+        });
+      }
+      if (String(url).includes('/api/backend/manage/status')) {
+        statusReads += 1;
+        return jsonResponse({
+          success: true,
+          provider: 'fake',
+          configured: true,
+          enabled: true,
+          status: fakeStatus({
+            bindings,
+            // La rotación deja los nombres en el estado; el panel relee para
+            // mostrarlos en vez de fabricarlos con la respuesta de /rotate.
+            secretNames:
+              statusReads > 1 ? ['DATABASE_URL', 'STORAGE_SECRET', 'AUTH_SECRET'] : [],
+            ready: true,
+          }),
+        });
+      }
+      return jsonResponse({ success: true });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<BackendBindingsPanel projectId={projectId} lang="es" />);
+
+    const button = await screen.findByTestId('backend-rotate');
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url]) =>
+        String(url).includes('/api/backend/manage/rotate')
+      );
+      expect(call).toBeTruthy();
+      expect(call![1]).toMatchObject({ method: 'POST', credentials: 'include' });
+      expect(JSON.parse(String(call![1]?.body))).toEqual({ projectId });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('backend-bindings').textContent).toContain('AUTH_SECRET')
+    );
+    // Se relee el estado en vez de inventar los nombres rotados en el cliente.
+    expect(statusReads).toBe(2);
+    expect(screen.getByTestId('backend-bindings').textContent).not.toContain(secretValue);
+    expect(document.body.textContent).not.toContain(secretValue);
+  });
 });
