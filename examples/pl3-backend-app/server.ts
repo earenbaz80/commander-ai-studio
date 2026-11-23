@@ -13,12 +13,11 @@ import { createExampleApp } from './app';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 4300);
-const example = createExampleApp({
-  dataDir: process.env.PL3_EXAMPLE_DATA_DIR || path.join(here, '.data'),
-});
+const dataDir = path.resolve(process.env.PL3_EXAMPLE_DATA_DIR || path.join(here, '.data'));
+const example = createExampleApp({ dataDir });
 
 example.app.listen(port, '127.0.0.1', () => {
-  console.log(`[pl3-example] http://127.0.0.1:${port} · datos en ${path.join(here, '.data')}`);
+  console.log(`[pl3-example] http://127.0.0.1:${port} · datos en ${dataDir}`);
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
