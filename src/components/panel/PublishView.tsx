@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Language } from '../../i18n/translations';
+import { BackendBindingsPanel } from './BackendBindingsPanel';
 import {
   AlertTriangle,
   ExternalLink,
@@ -561,6 +562,7 @@ export function PublishView({ projectPath, lang = 'es' }: PublishViewProps) {
       <div className="grid grid-cols-1 gap-2">
         {envCard('preview', preview)}
         {envCard('production', production)}
+        <BackendBindingsPanel projectId={status?.project.slug || projectPath} lang={lang} />
       </div>
 
       <div className="border-2 border-[var(--nc-border-dark)] bg-[var(--nc-bg-panel)] p-2 flex flex-col gap-2">
