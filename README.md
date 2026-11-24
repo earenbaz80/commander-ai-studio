@@ -306,14 +306,24 @@ Un plugin es un módulo ESM en `.commander/plugins/<id>/index.js` (o `index.mjs`
 
 ```js
 export default {
+  sessionStart: (ctx) => console.log('arranca', ctx.sessionId),
+  beforeModel: (ctx) => console.log('turno', ctx.turn),
+  afterModel: (ctx) => console.log('respuesta', ctx.ok),
   // Puede reemplazar la entrada devolviendo { input }.
   beforeTool: (ctx) => ({ input: { ...ctx.input, path: String(ctx.input.path || '').trim() } }),
   // Puede reemplazar el resultado devolviendo { result }.
   afterTool: (ctx) => ({ result: { ...ctx.result, data: { ...ctx.result.data, plugin: ctx.toolId } } }),
+  sessionEnd: (ctx) => console.log('cierra', ctx.answer),
+  stop: (ctx) => console.log('cancelado', ctx.reason),
+  error: (ctx) => console.error('falló', ctx.error),
 };
 ```
 
-`ctx` trae `toolId`, `input` y `root`; en `afterTool` también `result`. Los hooks corren dentro del proceso del servidor con sus mismos permisos: son código de confianza, como un script de `package.json`. Un hook que lanza no rompe la tool —el fallo se adjunta a `data.pluginErrors`— y un plugin que no compila tampoco impide cargar los demás.
+Los hooks de tool reciben `toolId`, `input` y `root`; `afterTool` añade `result`. Los de sesión reciben `sessionId`, `root`, `goal` y `model`; `beforeModel`/`afterModel` añaden `phase`, `turn` y, al cerrar, `ok`/`error`. `sessionEnd` recibe `answer`, `stop` recibe `reason` y `error` recibe el mensaje.
+
+El lifecycle corre en orden alfabético por id de plugin. `sessionEnd` es el cierre normal; `stop` y `error` son cierres alternativos. Cada hook tiene un timeout de 5 s y un fallo o un cuelgue no rompe la corrida: los errores quedan en `getPluginErrors()` y los hooks de tool también se adjuntan a `data.pluginErrors`. Los hooks corren dentro del proceso del servidor con sus mismos permisos: son código de confianza, como un script de `package.json`. Un plugin que no compila tampoco impide cargar los demás.
+
+`examples/plugins/reference-plugin` es el plugin de referencia: registra todos los hooks en `.commander/reference-plugin.log` sin alterar nada.
 
 ### Catálogo de plugins (marketplaces de Claude)
 

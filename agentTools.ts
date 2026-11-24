@@ -28,6 +28,7 @@ import { uid } from './src/agent/id';
 import { invalidateIndex } from './repoIndex';
 import { getPermissions, enforceTool, enforcePath } from './permissions';
 import { decide } from './src/agent/permissionRules';
+import { decideMcpToolPolicyForTarget, mcpToolDenial, mcpToolTarget } from './src/agent/mcpToolPolicy';
 import { executeTask, getSession, reinforceClosingContract } from './agentSession';
 import { listServerTools, callServerTool } from './src/mcp/client';
 import { runBrowserAction } from './browserSession';
@@ -706,6 +707,13 @@ async function executeAgentToolCore(
   // pueden saltarlo; el CLI no tiene ninguna bandera que lo desactive.
   if (decide(toolId, input, perms.rules) === 'deny') {
     return { ok: false, error: `Denegado por regla de permisos del proyecto: ${toolId}`, status: 403 };
+  }
+  // Política MCP por servidor y tool. Se evalúa aquí, antes de que la rama MCP
+  // abra una conexión o arranque un proceso stdio: una `deny` no puede llegar
+  // al servidor ni siquiera para descubrir que la tool existía.
+  const mcpTarget = mcpToolTarget(toolId, input);
+  if (mcpTarget && decideMcpToolPolicyForTarget(mcpTarget, perms.mcpToolRules) === 'deny') {
+    return mcpToolDenial(mcpTarget);
   }
 
   if (toolId === 'fs.read') {
@@ -2178,14 +2186,15 @@ function confinementError(toolId: string, input: any): ToolResult | undefined {
 export async function executeAgentTool(
   toolId: string,
   input: any,
-  opts?: { signal?: AbortSignal; sessionId?: string },
+  opts?: { signal?: AbortSignal; sessionId?: string; pluginTimeoutMs?: number },
 ): Promise<ToolResult> {
   const pluginRoot = pluginRootFor(input);
-  const before = await runBeforeToolHooks(pluginRoot, toolId, input || {});
+  const pluginOpts = { timeoutMs: opts?.pluginTimeoutMs };
+  const before = await runBeforeToolHooks(pluginRoot, toolId, input || {}, pluginOpts);
   const confined = confinementError(toolId, before.input);
   if (confined) return withPluginErrors(confined, before.errors);
   const result = await executeAgentToolCore(toolId, before.input, opts);
-  const after = await runAfterToolHooks(pluginRoot, toolId, before.input, result);
+  const after = await runAfterToolHooks(pluginRoot, toolId, before.input, result, pluginOpts);
   return withPluginErrors(after.result as ToolResult, [...before.errors, ...after.errors]);
 }
 

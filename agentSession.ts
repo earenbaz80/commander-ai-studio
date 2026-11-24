@@ -21,6 +21,7 @@ import path from 'node:path';
 import { uid } from './src/agent/id';
 import { diffLines, toUnifiedDiff } from './src/utils/patch';
 import { decide, needsHumanApproval } from './src/agent/permissionRules';
+import { decideMcpToolPolicyForTarget, mcpToolDenial, mcpToolTarget } from './src/agent/mcpToolPolicy';
 import { enforceTool, getPermissions, type Permissions } from './permissions';
 import { createWorktree, removeWorktreeSafe, type WorktreeCleanupResult, type WorktreeResult } from './worktrees';
 import { resolveSubagentPolicy } from './src/agent/subagentTemplates';
@@ -47,6 +48,18 @@ import {
 import { applyProposalToFile, type ApplyProposalResult } from './src/agent/applyProposal';
 import { loadMCPServers, mcpListTools } from './src/agent/mcp';
 import { executeAgentTool, isReadOnlyCall } from './agentTools';
+import {
+  DEFAULT_PLUGIN_HOOK_TIMEOUT_MS,
+  MAX_PLUGIN_HOOK_TIMEOUT_MS,
+  runAfterModelHooks,
+  runBeforeModelHooks,
+  runErrorHooks,
+  runSessionEndHooks,
+  runSessionStartHooks,
+  runStopHooks,
+  type PluginError,
+  type PluginLifecycleRun,
+} from './pluginsRuntime';
 import { startSubAgent, finishSubAgent, summarizeCalls, summarizeStepTitles } from './subAgents';
 import { getServerBaseUrl } from './serverRuntime';
 import { GEMINI_DEFAULT_MODEL } from './src/config/geminiModels';
@@ -186,6 +199,9 @@ interface ToolCallResult {
   ok: boolean;
   data?: unknown;
   error?: string;
+  /** Código estable de un fallo de política, visible para el modelo. */
+  code?: string;
+  hint?: string;
   approval?: { id: string; decision: ApprovalDecision; reason?: string };
   /** Repetía una llamada idéntica: el bucle hay que cerrarlo, no seguir. */
   loopCut?: LoopCut;
@@ -386,6 +402,8 @@ export interface SessionConfig {
    * `executeTask` lo usa cuando el hijo no pide uno propio; T10 fija 240 s.
    */
   subagentTimeoutMs?: number;
+  /** Timeout de cada hook de plugin; 5 s por defecto. */
+  pluginHookTimeoutMs?: number;
   /**
    * Instrucciones que el padre dio al subagente (`task`/`spawn_agents`).
    * Viajan en el prompt del hijo: antes se aceptaban y se descartaban.
@@ -695,6 +713,16 @@ export class AgentSession {
    */
   private readonly resumedApprovals = new Map<string, ResumedApproval>();
   private readonly approvalTimeoutMs: number;
+  /** Tope de cada hook de plugin; se aplica también a los hooks de tool. */
+  private readonly pluginHookTimeoutMs: number;
+  /** Errores de lifecycle de la última corrida, para diagnóstico. */
+  private pluginErrors: PluginError[] = [];
+  /** Número de llamadas al modelo en esta corrida, para el contexto de hooks. */
+  private modelCalls = 0;
+  /** Evita disparar hooks terminales antes de que exista una corrida. */
+  private lifecycleEnded = true;
+  /** Cola de hooks de lifecycle: `sessionStart` precede a los terminales. */
+  private lifecycleTail: Promise<void> = Promise.resolve();
 
   constructor(cfg: SessionConfig, restored?: SessionStateV2) {
     this.cfg = cfg;
@@ -704,6 +732,10 @@ export class AgentSession {
     this.approvalTimeoutMs = Number.isFinite(requestedTimeout) && requestedTimeout > 0
       ? Math.min(requestedTimeout, DEFAULT_APPROVAL_TIMEOUT_MS)
       : DEFAULT_APPROVAL_TIMEOUT_MS;
+    const requestedPluginTimeout = Number(cfg.pluginHookTimeoutMs);
+    this.pluginHookTimeoutMs = Number.isFinite(requestedPluginTimeout) && requestedPluginTimeout > 0
+      ? Math.min(Math.floor(requestedPluginTimeout), MAX_PLUGIN_HOOK_TIMEOUT_MS)
+      : DEFAULT_PLUGIN_HOOK_TIMEOUT_MS;
     if (restored) {
       this.id = restored.id;
       this.createdAt = restored.createdAt || Date.now();
@@ -762,6 +794,10 @@ export class AgentSession {
   }
 
   getStatus(): SessionStatus { return this.status; }
+  /** Errores de hooks de la última corrida; un hook roto nunca la tumba. */
+  getPluginErrors(): PluginError[] { return [...this.pluginErrors]; }
+  /** Espera los hooks de lifecycle ya encolados (los tests y el cierre lo usan). */
+  whenLifecycleSettled(): Promise<void> { return this.lifecycleTail; }
   getEventBuffer(): SessionEventBuffer { return this.eventStream; }
   getSteps(): AgentStep[] { return this.steps; }
   getPlan(): AgentPlanItem[] { return this.plan; }
@@ -951,9 +987,126 @@ export class AgentSession {
     if (evt.type === 'status') {
       const reason = goneReasonForStatus(evt.status);
       if (reason) this.eventStream.markGone(reason);
+      this.queueTerminalHooks();
     } else if (evt.type === 'error') {
       this.eventStream.markGone('failed');
+      // `fail()` ya dejó `status='error'`; el hook sale de esa transición.
+      this.queueTerminalHooks();
     }
+  }
+
+  private pluginContext(): { sessionId: string; root: string; goal: string; model: string } {
+    return {
+      sessionId: this.id,
+      root: this.cfg.cwd,
+      goal: this.cfg.goal,
+      model: this.getModel(),
+    };
+  }
+
+  private notePluginErrors(result: PluginLifecycleRun): void {
+    if (result.errors.length === 0) return;
+    this.pluginErrors.push(...result.errors);
+    if (this.pluginErrors.length > 50) this.pluginErrors = this.pluginErrors.slice(-50);
+  }
+
+  /**
+   * Encola `sessionStart` y lo convierte en la cabeza de la cola de lifecycle.
+   * Así un `stop()` que llega mientras arranca no adelanta al hook de inicio.
+   */
+  private async runSessionStart(): Promise<void> {
+    try {
+      this.notePluginErrors(await runSessionStartHooks(this.cfg.cwd, this.pluginContext(), {
+        timeoutMs: this.pluginHookTimeoutMs,
+      }));
+    } catch { /* un lifecycle roto no rompe la corrida */ }
+  }
+
+  /**
+   * Envuelve una llamada al modelo con `beforeModel`/`afterModel`.
+   *
+   * Los hooks son observacionales: su fallo o timeout no altera la respuesta ni
+   * impide la llamada. `afterModel` también corre cuando el proveedor falla.
+   */
+  private async runModelCall<T>(call: () => Promise<T>): Promise<T> {
+    const turn = ++this.modelCalls;
+    const base = { ...this.pluginContext(), turn };
+    try {
+      this.notePluginErrors(await runBeforeModelHooks(this.cfg.cwd, { ...base, phase: 'before' }, {
+        timeoutMs: this.pluginHookTimeoutMs,
+      }));
+    } catch { /* sigue al modelo */ }
+    try {
+      const result = await call();
+      try {
+        this.notePluginErrors(await runAfterModelHooks(this.cfg.cwd, { ...base, phase: 'after', ok: true }, {
+          timeoutMs: this.pluginHookTimeoutMs,
+        }));
+      } catch { /* la respuesta ya está */ }
+      return result;
+    } catch (error: any) {
+      try {
+        this.notePluginErrors(await runAfterModelHooks(this.cfg.cwd, {
+          ...base,
+          phase: 'after',
+          ok: false,
+          error: String(error?.message || error),
+        }, {
+          timeoutMs: this.pluginHookTimeoutMs,
+        }));
+      } catch { /* el error original manda */ }
+      throw error;
+    }
+  }
+
+  /**
+   * Dispara el hook terminal una sola vez por corrida.
+   *
+   * `sessionEnd` es el cierre normal; `stop` y `error` son las causas
+   * alternativas. La instantánea se toma al encolar para que un reinicio
+   * posterior de la sesión no cambie el hook que se estaba ejecutando.
+   */
+  private queueTerminalHooks(): void {
+    if (this.lifecycleEnded) return;
+    if (this.status !== 'done' && this.status !== 'stopped' && this.status !== 'error') return;
+    this.lifecycleEnded = true;
+    const snapshot = {
+      status: this.status,
+      answer: this.answer,
+      error: this.lastError,
+      stopReason: this.stopReason,
+    } as const;
+    this.lifecycleTail = this.lifecycleTail
+      .then(() => this.runTerminalHooks(snapshot))
+      .catch(() => { /* la cola nunca debe romper la sesión */ });
+  }
+
+  private async runTerminalHooks(snapshot: {
+    status: 'done' | 'stopped' | 'error';
+    answer: string;
+    error: string;
+    stopReason: 'user' | 'timeout' | null;
+  }): Promise<void> {
+    const base = this.pluginContext();
+    const opts = { timeoutMs: this.pluginHookTimeoutMs };
+    if (snapshot.status === 'done') {
+      this.notePluginErrors(await runSessionEndHooks(this.cfg.cwd, {
+        ...base,
+        answer: snapshot.answer,
+      }, opts));
+      return;
+    }
+    if (snapshot.status === 'stopped') {
+      this.notePluginErrors(await runStopHooks(this.cfg.cwd, {
+        ...base,
+        reason: snapshot.stopReason ?? 'user',
+      }, opts));
+      return;
+    }
+    this.notePluginErrors(await runErrorHooks(this.cfg.cwd, {
+      ...base,
+      error: snapshot.error || 'error',
+    }, opts));
   }
 
   private addStep(step: Omit<AgentStep, 'id' | 'ts'>): AgentStep {
@@ -1002,12 +1155,18 @@ export class AgentSession {
     this.stopReason = null;
     this.lastError = '';
     this.loopCut = null;
+    this.pluginErrors = [];
+    this.modelCalls = 0;
+    this.lifecycleEnded = false;
     // Cada corrida verifica lo suyo: la evidencia de una no cubre la siguiente.
     this.verifyGate = new VerifyGate();
     if (this.turns.length === 0) {
       this.turns.push({ role: 'user', text: this.cfg.goal, ts: Date.now() });
     }
     this.emit({ type: 'status', status: 'running' });
+    const startHooks = this.lifecycleTail.then(() => this.runSessionStart());
+    this.lifecycleTail = startHooks.catch(() => { /* aislado */ });
+    await startHooks;
     try {
       await this.loadContext();
       this.addStep({ type: 'thought', title: 'Inicio', content: `Objetivo: ${this.cfg.goal}\nCWD: ${this.cfg.cwd}`, status: 'completed' });
@@ -1353,8 +1512,21 @@ export class AgentSession {
     let approval: ToolCallResult['approval'];
     // Reglas del escritorio (F1-07): `deny` corta aquí y en el motor de tools;
     // `allow` evita el prompt y `ask` lo fuerza aunque la tool no sea peligrosa.
-    const rule = decide(call.tool, call.input, getPermissions(this.cfg.cwd).rules);
+    const projectPermissions = getPermissions(this.cfg.cwd);
+    const projectRule = decide(call.tool, call.input, projectPermissions.rules);
+    // La política MCP es más específica (servidor + tool), pero nunca puede
+    // rebajar un `deny` de la regla general: la denegación gana siempre.
+    const mcpTarget = mcpToolTarget(call.tool, call.input);
+    const mcpRule = mcpTarget
+      ? decideMcpToolPolicyForTarget(mcpTarget, projectPermissions.mcpToolRules)
+      : null;
+    const rule = projectRule === 'deny' || mcpRule === 'deny'
+      ? 'deny'
+      : (mcpRule ?? projectRule);
     if (rule === 'deny') {
+      if (mcpRule === 'deny' && mcpTarget) {
+        return { tool: call.tool, ...mcpToolDenial(mcpTarget) };
+      }
       return {
         tool: call.tool,
         ok: false,
@@ -1425,7 +1597,11 @@ export class AgentSession {
       const result = await executeAgentTool(
         call.tool,
         toolInput,
-        { signal: this.abortCtrl.signal, sessionId: this.id }
+        {
+          signal: this.abortCtrl.signal,
+          sessionId: this.id,
+          pluginTimeoutMs: this.pluginHookTimeoutMs,
+        }
       );
       // Sólo un resultado bueno marca el input: una edición fallida se puede
       // reintentar con el mismo texto sin que eso sea un bucle.
@@ -1435,6 +1611,8 @@ export class AgentSession {
         ok: result.ok,
         data: result.data,
         error: result.error,
+        ...(result.code ? { code: result.code } : {}),
+        ...(result.hint ? { hint: result.hint } : {}),
         ...(approval ? { approval } : {}),
       };
     } catch (error: any) {
@@ -1517,19 +1695,19 @@ export class AgentSession {
   private async finalizeChild(recentSteps: any[]) {
     let answer: string;
     if (toolDialectForModel(this.cfg.model) === 'json-text') {
-      const final = await callLlmJson(this.cfg, {
+      const final = await this.runModelCall(() => callLlmJson(this.cfg, {
         goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
         toolSchema: this.toolSchema(),
         visibleTools: this.visibleToolIds(), agentsMd: this.agentsMd,
         history: this.turns.map((turn) => ({ role: turn.role, content: turn.text })),
-      }, this.abortCtrl.signal, { finalTurn: true });
+      }, this.abortCtrl.signal, { finalTurn: true }));
       answer = String(final.answer ?? final.thought ?? '').trim();
     } else {
-      const final = await callLlmNative(this.cfg, {
+      const final = await this.runModelCall(() => callLlmNative(this.cfg, {
         goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
         toolSchema: this.toolSchema(),
         visibleTools: this.visibleToolIds(), agentsMd: this.agentsMd, turns: this.turns,
-      }, this.abortCtrl.signal, { finalTurn: true });
+      }, this.abortCtrl.signal, { finalTurn: true }));
       answer = String(final.thought || '').trim();
     }
     if (!answer) {
@@ -1558,11 +1736,11 @@ export class AgentSession {
 
     let native;
     try {
-      native = await callLlmNative(this.cfg, {
+      native = await this.runModelCall(() => callLlmNative(this.cfg, {
         goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
         toolSchema: this.toolSchema(),
         visibleTools: this.visibleToolIds(), agentsMd: this.agentsMd, turns: this.turns,
-      }, this.abortCtrl.signal);
+      }, this.abortCtrl.signal));
     } catch (e: any) {
       // Abortado: reintentar en modo JSON volvería a pedirle al proveedor justo
       // lo que el usuario acaba de cancelar.
@@ -1751,14 +1929,14 @@ export class AgentSession {
   }
 
   private async stepJson(recentSteps: any[]) {
-    const llmRes = await callLlmJson(this.cfg, {
+    const llmRes = await this.runModelCall(() => callLlmJson(this.cfg, {
       goal: this.cfg.goal, cwd: this.cfg.cwd, plan: this.plan, recentSteps,
       toolSchema: this.toolSchema(),
       visibleTools: this.visibleToolIds(), agentsMd: this.agentsMd,
       // Los resultados de tools viven en `turns`; el resumen de `recentSteps`
       // no lleva su contenido y el modelo acababa releyendo los archivos.
       history: this.turns.map((turn) => ({ role: turn.role, content: turn.text })),
-    }, this.abortCtrl.signal);
+    }, this.abortCtrl.signal));
 
     if (llmRes.plan && llmRes.plan.length > 0) {
       const p = normalizePlan(llmRes.plan, this.plan);

@@ -1114,6 +1114,9 @@ app.put('/api/permissions', (req, res) => {
       },
       // Las reglas por patrón tienen su propio endpoint; el panel no las pisa.
       rules: current.rules,
+      // La política MCP se puede editar por la misma API de permisos y tampoco
+      // se pierde cuando el panel guarda sólo el modo o los globs.
+      mcpToolRules: "mcpToolRules" in patch ? patch.mcpToolRules : current.mcpToolRules,
       ...(current.rulesImportedAt ? { rulesImportedAt: current.rulesImportedAt } : {}),
     };
     res.json({ success: true, root, permissions: setPermissions(root, next) });

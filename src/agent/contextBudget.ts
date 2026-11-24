@@ -106,6 +106,9 @@ export interface ToolResultLike {
   ok: boolean;
   data?: unknown;
   error?: unknown;
+  /** Código estable de error; el modelo lo recibe sin parsear el mensaje. */
+  code?: unknown;
+  hint?: unknown;
 }
 
 /**
@@ -118,6 +121,12 @@ export function forContext(result: ToolResultLike, maxChars: number = limitForTo
   const out: Record<string, unknown> = { tool: result.tool, ok: result.ok };
   if (result.error !== undefined && result.error !== null && result.error !== '') {
     out.error = clipMiddle(String(result.error), Math.min(maxChars, 2000));
+  }
+  if (result.code !== undefined && result.code !== null && result.code !== '') {
+    out.code = clipMiddle(String(result.code), 120);
+  }
+  if (result.hint !== undefined && result.hint !== null && result.hint !== '') {
+    out.hint = clipMiddle(String(result.hint), 500);
   }
   out.data = data;
   return out;

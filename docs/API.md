@@ -419,7 +419,11 @@ Lista los manifiestos instalados: `{success, plugins: [{id, name, version, entr}
 Borra el manifiesto y el `.zip` del plugin, con el mismo filtro de `id`.
 
 ### Hooks del runtime
-`beforeTool(ctx)` y `afterTool(ctx)` en `.commander/plugins/<id>/index.js` (ESM). `beforeTool` devuelve `{input}` para reemplazar la entrada; `afterTool` devuelve `{result}`. `ctx` incluye `toolId`, `input`, `root` y, en `afterTool`, `result`. Si un hook lanza, la tool se ejecuta igual y el fallo aparece en `data.pluginErrors`.
+Los hooks viven en `.commander/plugins/<id>/index.js` (ESM) y corren en orden alfabético por id, cada uno con un timeout de 5 s. El lifecycle es `sessionStart`, `beforeModel`, `afterModel`, `beforeTool`, `afterTool`, `sessionEnd`, `stop` y `error`.
+
+`beforeTool` devuelve `{input}` para reemplazar la entrada; `afterTool` devuelve `{result}`. Sus `ctx` incluyen `toolId`, `input`, `root` y, en `afterTool`, `result`. Los hooks de sesión reciben `sessionId`, `root`, `goal` y `model`; los de modelo añaden `phase`, `turn` y `ok`/`error` al volver. `sessionEnd` recibe `answer`, `stop` recibe `reason` y `error` recibe el mensaje. `sessionEnd` es el cierre normal; `stop` y `error` son alternativos.
+
+Si un hook lanza o se cuelga, la corrida sigue: el fallo queda en `getPluginErrors()` y los hooks de tool también lo adjuntan a `data.pluginErrors`. `examples/plugins/reference-plugin` registra el lifecycle completo en `.commander/reference-plugin.log`.
 
 ---
 

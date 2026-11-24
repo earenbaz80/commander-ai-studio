@@ -136,7 +136,7 @@ Llevar el agente al editor dominante y convertir la extensibilidad en una API es
 
 #### 4B · Hooks, plugins y política MCP (6)
 
-- [ ] Un plugin de referencia ejecuta los hooks en orden y un hook que lanza no rompe la corrida.
+- [x] Un plugin de referencia ejecuta los hooks en orden y un hook que lanza no rompe la corrida (`tests/unit/pluginsRuntime.test.ts`, `tests/unit/pluginLifecycle.test.ts`).
 - [ ] Un plugin no puede saltarse una regla `deny` del motor de permisos.
 - [ ] Una tool MCP denegada no se ejecuta y el modelo recibe un error estructurado.
 - [ ] Se importan skills de tres formatos soportados y una skill inválida no se carga.
@@ -359,7 +359,7 @@ Foto del árbol en esa fecha; el estado actual está en §1 y §3.
 | GitHub Actions | **V** | `.github/workflows/commander-agent.yml`, `scripts/github-agent.ts` | Corrida real en el repo de prueba con PR y comentario (recibo `F0-LOCAL-2026-11-10` §11) |
 | CLI | **P** | `bin/commander.ts`, `src/cli/repl.ts`, `src/cli/agentClient.ts`, `src/cli/tui.ts` | REPL multi-turno, `ask_user`, `--resume`/`--fork`, diff por hunk y paridad de permisos del escritorio operativos |
 | Extensión de VS Code | **P** | `vscode-extension/` | Scaffold: webview que lanza `npx commander agent`; no es un IDE integrado |
-| Skills/plugins/MCP | **V/P** | `skills/`, `pluginsRuntime.ts`, `src/agent/mcp.ts` | Hooks sólo `beforeTool`/`afterTool`; sin lifecycle completo ni marketplace propio |
+| Skills/plugins/MCP | **V/P** | `skills/`, `pluginsRuntime.ts`, `src/agent/mcp.ts` | Lifecycle completo con timeout, orden y aislamiento; plugin de referencia; política MCP por tool; sin marketplace propio |
 
 ### 8.4 Superficies y continuidad
 
@@ -402,7 +402,7 @@ Foto del árbol en esa fecha; el estado actual está en §1 y §3.
 | --- | --- | --- | --- | --- |
 | MCP | **V** | **V** | **V** | **V** |
 | Skills | **V** local | **V** | **V** (`SKILL.md`) | **V** (`AGENTS.md`/skills) |
-| Plugins / hooks | **P** (sólo `beforeTool`/`afterTool`) | **V** | **V** (hooks/plugins) | **P** (MCP/skills; sin hooks documentados) |
+| Plugins / hooks | **P** (lifecycle completo; sin manifiesto versionado) | **V** | **V** (hooks/plugins) | **P** (MCP/skills; sin hooks documentados) |
 | Agentes y comandos custom | **V** | **V** | **V** | **V** |
 | Marketplace / ecosistema | **P** (catálogo de plugins de Claude) | **P** (comunidad) | **V** (plugins) | **—** |
 | Integraciones nativas | **V** (GitHub con OAuth real; Linear fuera de alcance) | **P** (MCP/GitHub) | **V** (bundles de Google + MCP) | **P** (GitHub/repos; sin catálogo amplio documentado) |

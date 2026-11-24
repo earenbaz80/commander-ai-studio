@@ -5,8 +5,14 @@ import path from 'path';
 import {
   clearPluginCache,
   listPluginFiles,
+  runAfterModelHooks,
   runAfterToolHooks,
+  runBeforeModelHooks,
   runBeforeToolHooks,
+  runErrorHooks,
+  runSessionEndHooks,
+  runSessionStartHooks,
+  runStopHooks,
   PLUGINS_DIR,
 } from '../../pluginsRuntime';
 
@@ -125,5 +131,118 @@ describe('fallos que no rompen la tool', () => {
     expect(res.input).toEqual({ ok: true });
     expect(res.errors.map((e) => e.plugin)).toEqual(['roto']);
     expect(res.errors[0].hook).toBe('load');
+  });
+});
+
+/** Plugin que agrega su id y el hook a un log común, sin tocar la corrida. */
+function writeRecorder(id: string): void {
+  writePlugin(
+    id,
+    `import fs from 'node:fs';
+import path from 'node:path';
+const ID = ${JSON.stringify(id)};
+const record = (ctx, hook) => {
+  const file = path.join(ctx.root, '.commander', 'lifecycle.log');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.appendFileSync(file, ID + ':' + hook + '\\n', 'utf8');
+};
+export default {
+  sessionStart: (c) => record(c, 'sessionStart'),
+  beforeModel: (c) => record(c, 'beforeModel'),
+  afterModel: (c) => record(c, 'afterModel'),
+  beforeTool: (c) => record(c, 'beforeTool'),
+  afterTool: (c) => record(c, 'afterTool'),
+  sessionEnd: (c) => record(c, 'sessionEnd'),
+  stop: (c) => record(c, 'stop'),
+  error: (c) => record(c, 'error'),
+};`,
+  );
+}
+
+function lifecycleLog(): string[] {
+  try {
+    return fs.readFileSync(path.join(root, '.commander', 'lifecycle.log'), 'utf8')
+      .split('\n')
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+describe('lifecycle', () => {
+  const base = {
+    sessionId: 'sess_test',
+    goal: 'probar hooks',
+    model: 'gemini-2.5-flash',
+  };
+
+  it('ejecuta todos los hooks en orden alfabético por plugin', async () => {
+    writeRecorder('b');
+    writeRecorder('a');
+    const ctx = { ...base, root };
+
+    await runSessionStartHooks(root, ctx);
+    await runBeforeModelHooks(root, { ...ctx, phase: 'before', turn: 1 });
+    await runAfterModelHooks(root, { ...ctx, phase: 'after', turn: 1, ok: true });
+    await runBeforeToolHooks(root, 'fs.read', {});
+    await runAfterToolHooks(root, 'fs.read', {}, { ok: true });
+    await runSessionEndHooks(root, { ...ctx, answer: 'listo' });
+    await runStopHooks(root, { ...ctx, reason: 'user' });
+    await runErrorHooks(root, { ...ctx, error: 'boom' });
+
+    expect(lifecycleLog()).toEqual([
+      'a:sessionStart', 'b:sessionStart',
+      'a:beforeModel', 'b:beforeModel',
+      'a:afterModel', 'b:afterModel',
+      'a:beforeTool', 'b:beforeTool',
+      'a:afterTool', 'b:afterTool',
+      'a:sessionEnd', 'b:sessionEnd',
+      'a:stop', 'b:stop',
+      'a:error', 'b:error',
+    ]);
+  });
+
+  it('un hook que lanza no impide los demás ni rompe la corrida', async () => {
+    writePlugin('a-rompe', 'export default { afterModel: () => { throw new Error("boom"); } };');
+    writePlugin('b-sigue', 'export default { afterModel: () => undefined };');
+
+    const res = await runAfterModelHooks(root, {
+      ...base,
+      root,
+      phase: 'after',
+      turn: 1,
+      ok: true,
+    });
+
+    expect(res.ran).toEqual(['b-sigue']);
+    expect(res.errors).toEqual([{ plugin: 'a-rompe', hook: 'afterModel', error: 'boom' }]);
+  });
+
+  it('un hook que nunca resuelve se corta por timeout y no rompe la sesión', async () => {
+    writePlugin('lento', 'export default { beforeModel: () => new Promise(() => {}) };');
+
+    const res = await runBeforeModelHooks(root, {
+      ...base,
+      root,
+      phase: 'before',
+      turn: 1,
+    }, { timeoutMs: 25 });
+
+    expect(res.ran).toEqual([]);
+    expect(res.errors).toHaveLength(1);
+    expect(res.errors[0].plugin).toBe('lento');
+    expect(res.errors[0].hook).toBe('beforeModel');
+    expect(res.errors[0].error).toMatch(/timeout/);
+  });
+
+  it('el timeout también cubre beforeTool y deja la entrada intacta', async () => {
+    writePlugin('lento', 'export default { beforeTool: () => new Promise(() => {}) };');
+
+    const res = await runBeforeToolHooks(root, 'fs.read', { path: 'x.txt' }, { timeoutMs: 20 });
+
+    expect(res.input).toEqual({ path: 'x.txt' });
+    expect(res.ran).toEqual([]);
+    expect(res.errors[0]).toMatchObject({ plugin: 'lento', hook: 'beforeTool' });
+    expect(res.errors[0].error).toMatch(/timeout/);
   });
 });
