@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
-import { spawn, type ChildProcess } from 'child_process';
+import type { ChildProcess } from 'child_process';
+import { spawnAgent } from './cli';
+import { ensureServer, serverUrl, workspaceCwd } from './server';
 
 /**
  * Panel de chat (webview) de la extensión VS Code.
@@ -22,23 +24,6 @@ interface CliAgentEvent {
   steps?: number;
 }
 
-function serverUrl(): string {
-  return (
-    vscode.workspace.getConfiguration('commander').get<string>('serverUrl') ||
-    'http://127.0.0.1:3280'
-  );
-}
-
-function cliCommand(): string {
-  return (
-    vscode.workspace.getConfiguration('commander').get<string>('cliCommand') || 'npx commander'
-  );
-}
-
-function workspaceCwd(): string {
-  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
-}
-
 function makeNonce(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let s = '';
@@ -51,6 +36,7 @@ export class CommanderChatPanel {
   public static readonly viewType = 'commander.chat';
 
   private readonly panel: vscode.WebviewPanel;
+  private readonly context: vscode.ExtensionContext;
   private readonly disposables: vscode.Disposable[] = [];
   private child: ChildProcess | undefined;
 
@@ -71,6 +57,7 @@ export class CommanderChatPanel {
 
   private constructor(panel: vscode.WebviewPanel, context: vscode.ExtensionContext) {
     this.panel = panel;
+    this.context = context;
     this.panel.webview.html = this.render(this.panel.webview);
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
     this.panel.webview.onDidReceiveMessage((msg) => this.onMessage(msg), null, this.disposables);
@@ -108,12 +95,26 @@ export class CommanderChatPanel {
     }
     this.post({ type: 'busy', value: true });
 
-    const command = `${cliCommand()} agent ${JSON.stringify(task)} --json`;
-    const child = spawn(command, {
-      cwd: workspaceCwd(),
-      env: { ...process.env },
-      shell: true,
-    });
+    try {
+      await ensureServer(this.context);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.post({ type: 'event', event: { type: 'error', text: message } });
+      this.post({ type: 'busy', value: false });
+      return;
+    }
+
+    const child = spawnAgent(
+      {
+        extensionPath: this.context.extensionPath,
+        configuredCli: vscode.workspace.getConfiguration('commander').get<string>('cliCommand') ?? '',
+        serverUrl: serverUrl(),
+        model: vscode.workspace.getConfiguration('commander').get<string>('model') ?? '',
+        task,
+        cwd: workspaceCwd(),
+      },
+      true
+    );
     this.child = child;
 
     let buffer = '';
@@ -152,7 +153,7 @@ export class CommanderChatPanel {
     });
   }
 
-  private dispose(): void {
+  dispose(): void {
     CommanderChatPanel.current = undefined;
     this.killChild();
     this.panel.dispose();

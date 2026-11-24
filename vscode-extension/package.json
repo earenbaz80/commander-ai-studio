@@ -2,20 +2,34 @@
   "name": "commander-ai-studio",
   "displayName": "Commander AI Studio",
   "description": "Agente de código y colaboración de Commander AI Studio dentro de VS Code.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "commander-ai-studio",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/earenbaz80/commander-ai-studio.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": ["Other", "Machine Learning"],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:commander.openChat",
+    "onCommand:commander.openStudio",
+    "onCommand:commander.runAgent",
+    "onCommand:commander.task.read",
+    "onCommand:commander.task.edit",
+    "onCommand:commander.task.review",
+    "onCommand:commander.setApiKey",
+    "onCommand:commander.clearApiKey"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "commander.openChat",
-        "title": "Commander: Abrir chat del agente"
+        "title": "Commander: Abrir chat del agente",
+        "category": "Commander"
       },
       {
         "command": "commander.openStudio",
@@ -26,32 +40,101 @@
         "command": "commander.runAgent",
         "title": "Commander: Ejecutar agente sobre una tarea",
         "category": "Commander"
+      },
+      {
+        "command": "commander.task.read",
+        "title": "Commander: Leer y explicar el archivo",
+        "category": "Commander",
+        "enablement": "editorIsOpen"
+      },
+      {
+        "command": "commander.task.edit",
+        "title": "Commander: Editar el archivo…",
+        "category": "Commander",
+        "enablement": "editorIsOpen"
+      },
+      {
+        "command": "commander.task.review",
+        "title": "Commander: Revisar los cambios sin commitear",
+        "category": "Commander"
+      },
+      {
+        "command": "commander.setApiKey",
+        "title": "Commander: Configurar clave de modelo",
+        "category": "Commander"
+      },
+      {
+        "command": "commander.clearApiKey",
+        "title": "Commander: Borrar clave de modelo",
+        "category": "Commander"
       }
     ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "commander.task.read",
+          "group": "commander@1",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "commander.task.edit",
+          "group": "commander@2",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "commander.task.review",
+          "group": "commander@3"
+        }
+      ]
+    },
     "configuration": {
       "title": "Commander AI Studio",
       "properties": {
         "commander.serverUrl": {
           "type": "string",
           "default": "http://127.0.0.1:3280",
-          "description": "URL del servidor embebido de Commander AI Studio."
+          "description": "URL del servidor de Commander. Se reutiliza si ya responde; si no, la extensión arranca el servidor empaquetado en loopback."
+        },
+        "commander.autoStartServer": {
+          "type": "boolean",
+          "default": true,
+          "description": "Arrancar el servidor empaquetado cuando no haya uno respondiendo en commander.serverUrl."
+        },
+        "commander.model": {
+          "type": "string",
+          "default": "",
+          "description": "Modelo para las corridas del agente (vacío = el modelo por defecto del CLI)."
+        },
+        "commander.apiKeyName": {
+          "type": "string",
+          "enum": [
+            "GEMINI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "OPENROUTER_API_KEY",
+            "CUSTOM_API_KEY"
+          ],
+          "default": "GEMINI_API_KEY",
+          "description": "Variable de entorno que recibe la clave guardada con «Commander: Configurar clave de modelo»."
         },
         "commander.cliCommand": {
           "type": "string",
-          "default": "npx commander",
-          "description": "Comando del CLI para lanzar el agente headless."
+          "default": "",
+          "description": "Comando del CLI para desarrollo (p. ej. «npx commander»). Vacío = usar el CLI que viaja en el VSIX."
         }
       }
     }
   },
   "scripts": {
+    "vscode:prepublish": "npm run compile && npm run bundle:cli",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "vsce package"
+    "bundle:cli": "node scripts/bundle-cli.mjs",
+    "package": "vsce package --no-dependencies"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
     "typescript": "^5.4.0"
   }
 }
