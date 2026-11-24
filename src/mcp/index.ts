@@ -468,6 +468,18 @@ export function mcpHealthError(err: unknown): string {
 }
 
 /**
+ * Detalle del 500 de `/health`.
+ *
+ * Hoy sólo puede llegar aquí la validación de la config, y el mensaje de Zod
+ * lleva rutas, tipos y valores permitidos, nunca el valor recibido. Se sanea
+ * igual que el resto de errores de proveedor: si un mensaje futuro repite una
+ * credencial, no viaja en la respuesta.
+ */
+export function mcpHealthDetails(err: unknown): string {
+  return redactSecrets(String(err));
+}
+
+/**
  * Health check: intenta ejecutar brevemente cada comando registrado.
  */
 mcpRouter.get('/health', async (_req, res) => {
@@ -510,7 +522,7 @@ mcpRouter.get('/health', async (_req, res) => {
     res.json({ status: 'ready', total: results.length, summary, servers: results });
   } catch (err) {
     console.error('[MCP] health failed:', err);
-    res.status(500).json({ error: 'Health check failed', details: String(err) });
+    res.status(500).json({ error: 'Health check failed', details: mcpHealthDetails(err) });
   }
 });
 
