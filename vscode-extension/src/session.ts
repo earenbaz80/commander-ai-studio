@@ -139,6 +139,7 @@ export class AgentSession {
   private seq = 0;
   private disposed = false;
   private gone = false;
+  private streaming = false;
 
   constructor(baseUrl: string, handlers: SessionHandlers) {
     this.baseUrl = baseUrl;
@@ -164,6 +165,26 @@ export class AgentSession {
     return id;
   }
 
+  /**
+   * Se engancha a una sesión que ya existe (panel reabierto, VS Code
+   * reiniciado): recupera el estado y reabre el SSE sólo si sigue corriendo.
+   */
+  async attach(id: string): Promise<SessionState> {
+    const result = await requestJson(
+      this.baseUrl,
+      'GET',
+      `/api/agent/sessions/${encodeURIComponent(id)}`
+    );
+    if (!result.ok) {
+      throw new Error(result.error || `la sesión no existe (HTTP ${result.status})`);
+    }
+    this.sessionId = id;
+    const state = (result.json.state ?? { id }) as SessionState;
+    this.handlers.onResync?.(state);
+    if (result.json.running || state.status === 'running') this.follow();
+    return state;
+  }
+
   /** Añade un turno a la sesión existente y la arranca. */
   async message(text: string): Promise<void> {
     if (!this.sessionId) throw new Error('la sesión no existe');
@@ -176,6 +197,9 @@ export class AgentSession {
     if (!result.ok) {
       throw new Error(result.error || `la sesión no aceptó el turno (HTTP ${result.status})`);
     }
+    // La corrida anterior cerró su SSE: hay que abrir uno nuevo para ver este
+    // turno (mismo id, el servidor reabre el buffer sin reiniciar el `seq`).
+    this.reconnectStream();
   }
 
   /** Resuelve una aprobación pendiente. Devuelve el error del servidor, si lo hay. */
@@ -201,7 +225,7 @@ export class AgentSession {
 
   /** Abre el SSE desde el último `seq` conocido (el servidor reemite el buffer). */
   follow(): void {
-    if (!this.sessionId || this.disposed) return;
+    if (!this.sessionId || this.disposed || this.streaming) return;
     const url = new URL(
       `/api/agent/sessions/${encodeURIComponent(this.sessionId)}/stream?after=${this.seq}`,
       this.baseUrl
@@ -210,28 +234,49 @@ export class AgentSession {
       url,
       { method: 'GET', headers: { Accept: 'text/event-stream', Connection: 'keep-alive' } },
       (res) => {
+        // Un stream que ya fue reemplazado no debe reportar ni entregar nada.
+        if (this.streamRequest !== req) {
+          res.resume();
+          return;
+        }
         if (res.statusCode !== 200) {
           res.resume();
+          this.streaming = false;
           this.handlers.onError?.(`el stream respondió HTTP ${res.statusCode ?? 0}`);
           return;
         }
         res.setEncoding('utf8');
         res.on('data', (chunk: string) => this.consume(chunk));
         res.on('end', () => {
+          if (this.streamRequest !== req) return;
+          this.streaming = false;
           if (!this.disposed && !this.gone) this.handlers.onError?.('el stream se cerró');
         });
       }
     );
     req.on('error', (error) => {
+      if (this.streamRequest !== req) return;
+      this.streaming = false;
       if (!this.disposed) this.handlers.onError?.(error.message);
     });
+    this.streamRequest = req;
+    this.streaming = true;
     // `http.request` no envía nada hasta `end()`: sin esto el SSE nunca abre.
     req.end();
-    this.streamRequest = req;
+  }
+
+  /** Reemplaza el SSE actual por uno nuevo (turno posterior a un `gone`). */
+  private reconnectStream(): void {
+    this.streamRequest?.destroy();
+    this.streamRequest = undefined;
+    this.streaming = false;
+    this.buffer = '';
+    this.follow();
   }
 
   dispose(): void {
     this.disposed = true;
+    this.streaming = false;
     this.streamRequest?.destroy();
     this.streamRequest = undefined;
   }

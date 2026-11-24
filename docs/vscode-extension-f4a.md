@@ -77,6 +77,25 @@ en `bin/commander.ts`, `server.ts` y `src/cli/`.
   sesión terminó `completed`. Falta el click en un VS Code real, que requiere
   que lo ejecute el usuario.
 
+## Implementado en este paso (criterio 4)
+
+- El panel guarda el id en `context.workspaceState` (`commander.sessionId`), no
+  en memoria: sobrevive a cerrar el panel y a reiniciar VS Code.
+- `AgentSession.attach(id)` recupera el estado de `GET /api/agent/sessions/:id`
+  y reabre el SSE sólo si la sesión sigue corriendo. Si el id ya no existe, se
+  olvida y la próxima tarea crea una sesión nueva.
+- Al reabrir, la cabecera muestra ese id y el panel avisa del estado recuperado;
+  la sesión es la misma que lista el escritorio (`GET /api/agent/sessions`),
+  porque no se crea otra.
+- Un turno enviado después de reabrir abre un SSE nuevo sobre el mismo id
+  (el servidor reabre el buffer sin reiniciar el `seq`); antes, tras `gone`,
+  el panel se quedaba sin stream para el turno siguiente.
+- Verificación: `tests/agentSessionReattach.test.ts` contra el server real y el
+  cliente de la extensión. Cubre id mostrado = id listado, cierre/reopen sin
+  duplicar la sesión, turno nuevo tras reabrir recibido por SSE, y olvido de un
+  id que ya no existe. Falta el click real de cerrar/reabrir el panel en VS
+  Code, que requiere que lo ejecute el usuario.
+
 ## Evidencia que falta para cerrar los criterios 1 y 2
 
 1. Instalar el `.vsix` en un VS Code limpio (sin `commander` global ni `npx`).
@@ -90,10 +109,17 @@ En esta máquina se construyó y verificó el contenido del VSIX (win32-x64) y e
 servidor empaquetado (health/UI 200), pero **no** se ejecutaron las tres tareas
 ni una aprobación real: no hay clave de proveedor disponible en esta sesión.
 
+### Comprobación manual de C4
+
+1. Abrir el panel, correr una tarea y apuntar el id de la cabecera.
+2. En otra terminal, `GET /api/agent/sessions` (o el escritorio): ese id aparece
+   una sola vez.
+3. Cerrar el panel y reabrirlo: la cabecera muestra el mismo id y el panel avisa
+   del estado recuperado; la sesión sigue en el listado.
+4. Enviar otro turno: responde sobre la misma sesión, sin crear otra.
+
 ## Lo que queda después
 
-- **C4:** verificar en el escritorio el id de sesión que muestra la extensión
-  (medio día; el id ya se crea y se muestra en el panel).
 - **C5:** revisión final de que no quedó lógica de agente en la extensión
   (el lanzamiento por terminal se retiró en C2).
 - Fuera del mínimo: marketplace, LSP propio, JetBrains/Zed/Xcode, VSIX

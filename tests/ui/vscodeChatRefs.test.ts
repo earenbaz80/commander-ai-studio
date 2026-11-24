@@ -48,6 +48,11 @@ describe('webview: resultados navegables', () => {
     expect(posted).toContainEqual({ type: 'openLocation', path: 'src/a.ts', line: 12, column: 3 });
   });
 
+  it('la cabecera muestra el id de sesión que envía el panel', () => {
+    send({ type: 'session', id: 'sess_b64936f2' });
+    expect(document.getElementById('meta')?.textContent).toBe('sess_b64936f2');
+  });
+
   it('un resultado sin refs no pinta enlaces', () => {
     send({
       type: 'event',

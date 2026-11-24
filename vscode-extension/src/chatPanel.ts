@@ -13,6 +13,9 @@ import { AgentSession, type SessionEvent, type SessionState } from './session';
  * escritorio. Los resultados que traen `refs` abren el archivo en su línea.
  */
 
+/** Clave del id en `workspaceState`: sobrevive a cerrar el panel y al reinicio. */
+const SESSION_KEY = 'commander.sessionId';
+
 function makeNonce(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let s = '';
@@ -25,10 +28,14 @@ export class CommanderChatPanel {
   public static readonly viewType = 'commander.chat';
 
   private readonly panel: vscode.WebviewPanel;
+  private readonly context: vscode.ExtensionContext;
   private readonly disposables: vscode.Disposable[] = [];
   private readonly session: AgentSession;
+  /** Restauración del id guardado; `run` la espera antes de decidir. */
+  private readonly restored: Promise<void>;
 
   private running = false;
+  private disposed = false;
   private pendingPath: string | undefined;
 
   static createOrShow(context: vscode.ExtensionContext): CommanderChatPanel {
@@ -54,6 +61,7 @@ export class CommanderChatPanel {
 
   private constructor(panel: vscode.WebviewPanel, context: vscode.ExtensionContext) {
     this.panel = panel;
+    this.context = context;
     this.panel.webview.html = chatHtml(makeNonce(), this.panel.webview.cspSource);
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
     this.panel.webview.onDidReceiveMessage((msg) => this.onMessage(msg), null, this.disposables);
@@ -65,10 +73,29 @@ export class CommanderChatPanel {
       onError: (message) => this.post({ type: 'stream.error', message }),
     });
 
+    this.restored = this.restoreSession();
     context.subscriptions.push(this);
   }
 
+  /**
+   * Reabre la sesión que quedó guardada al cerrar el panel. El servidor es el
+   * dueño del estado: `attach` lo recupera y, si sigue corriendo, reengancha
+   * el SSE. Si ya no existe se olvida y la próxima tarea crea otra.
+   */
+  private async restoreSession(): Promise<void> {
+    const id = this.context.workspaceState.get<string>(SESSION_KEY);
+    if (!id) return;
+    try {
+      await this.session.attach(id);
+      this.post({ type: 'session', id });
+    } catch {
+      await this.context.workspaceState.update(SESSION_KEY, undefined);
+      this.post({ type: 'note', text: 'la sesión anterior ya no está; la próxima tarea crea una nueva' });
+    }
+  }
+
   private post(message: unknown): void {
+    if (this.disposed) return;
     void this.panel.webview.postMessage(message);
   }
 
@@ -114,12 +141,16 @@ export class CommanderChatPanel {
 
   private async run(task: string): Promise<void> {
     try {
+      await this.restored;
       if (this.session.sessionId) {
         await this.session.message(task);
         return;
       }
       const model = vscode.workspace.getConfiguration('commander').get<string>('model') ?? '';
       const id = await this.session.create(task, { cwd: workspaceCwd(), model });
+      try {
+        await this.context.workspaceState.update(SESSION_KEY, id);
+      } catch { /* sin almacenamiento: la sesión vive igual en el servidor */ }
       this.post({ type: 'session', id });
     } catch (error) {
       this.running = false;
@@ -197,6 +228,7 @@ export class CommanderChatPanel {
   }
 
   dispose(): void {
+    this.disposed = true;
     CommanderChatPanel.current = undefined;
     this.session.dispose();
     this.panel.dispose();
