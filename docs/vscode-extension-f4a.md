@@ -130,9 +130,10 @@ Lo que **no** existe en la extensión (verificado con los comandos de abajo):
 
 Automatizado: `tests/vscodeExtensionBoundary.test.ts` recorre el AST de
 `vscode-extension/src` y falla si hay un import del agente, un símbolo de
-tools/permisos, `child_process` fuera de `server.ts` o un spawn que no sea el
-CLI empaquetado con `serve`. Corre en `npm run test:node`, que ya forma parte
-del pre-push y de CI.
+tools/permisos, `child_process` fuera de `server.ts` (incluidos `require` e
+`import()` dinámico) o un spawn que no sea el CLI empaquetado con `serve` como
+primer argumento. Corre en `npm run test:node`, que ya forma parte del pre-push
+y de CI.
 
 Comprobación reproducible manual (desde la raíz):
 

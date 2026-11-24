@@ -172,30 +172,83 @@ interface ProcessCall {
   method: string;
 }
 
+/** ¿Es `require('child_process')` / `import('child_process')` (o `node:`)? */
+function isChildProcessModuleCall(node: ts.CallExpression): boolean {
+  if (node.arguments.length !== 1) return false;
+  const callee = node.expression;
+  const dynamicImport = callee.kind === ts.SyntaxKind.ImportKeyword;
+  const commonJs = ts.isIdentifier(callee) && callee.text === 'require';
+  if (!dynamicImport && !commonJs) return false;
+  const specifier = stringLiteral(node.arguments[0]);
+  return specifier === 'child_process' || specifier === 'node:child_process';
+}
+
 function checkProcesses(file: string, source: ts.SourceFile, findings: Finding[]): ProcessCall[] {
   const named = new Map<string, string>();
   const namespaces = new Set<string>();
+  const direct: ProcessCall[] = [];
+
+  const addNamed = (local: string, imported: string, node: ts.Node): void => {
+    named.set(local, imported);
+    if (!PROCESS_FUNCTIONS.has(imported)) {
+      findings.push(finding(source, file, node, 'proceso', `importa ${imported} de child_process`));
+    }
+  };
 
   walk(source, (node) => {
-    if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) return;
-    if (!['child_process', 'node:child_process'].includes(node.moduleSpecifier.text)) return;
-    const clause = node.importClause;
-    if (!clause || clause.isTypeOnly) return;
-    if (path.resolve(file) !== SERVER_FILE) {
-      findings.push(finding(source, file, node, 'proceso', 'sólo server.ts puede importar child_process'));
-    }
-    if (clause.name) namespaces.add(clause.name.text);
-    if (!clause.namedBindings) return;
-    if (ts.isNamespaceImport(clause.namedBindings)) {
-      namespaces.add(clause.namedBindings.name.text);
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      if (!['child_process', 'node:child_process'].includes(node.moduleSpecifier.text)) return;
+      const clause = node.importClause;
+      if (!clause || clause.isTypeOnly) return;
+      if (path.resolve(file) !== SERVER_FILE) {
+        findings.push(finding(source, file, node, 'proceso', 'sólo server.ts puede importar child_process'));
+      }
+      if (clause.name) namespaces.add(clause.name.text);
+      if (!clause.namedBindings) return;
+      if (ts.isNamespaceImport(clause.namedBindings)) {
+        namespaces.add(clause.namedBindings.name.text);
+        return;
+      }
+      for (const element of clause.namedBindings.elements) {
+        if (element.isTypeOnly) continue;
+        addNamed(element.name.text, element.propertyName?.text ?? element.name.text, element);
+      }
       return;
     }
-    for (const element of clause.namedBindings.elements) {
-      if (element.isTypeOnly) continue;
-      const imported = element.propertyName?.text ?? element.name.text;
-      named.set(element.name.text, imported);
-      if (!PROCESS_FUNCTIONS.has(imported)) {
-        findings.push(finding(source, file, element, 'proceso', `importa ${imported} de child_process`));
+
+    // CommonJS (`const cp = require(...)`) e import dinámico (`await import(...)`).
+    if (!ts.isCallExpression(node) || !isChildProcessModuleCall(node)) return;
+    if (path.resolve(file) !== SERVER_FILE) {
+      findings.push(finding(source, file, node, 'proceso', 'sólo server.ts puede usar require/import de child_process'));
+    }
+
+    // `require(...).spawn(...)` directo, o `const spawn = require(...).spawn`.
+    if (ts.isPropertyAccessExpression(node.parent)) {
+      const property = node.parent;
+      const method = property.name.text;
+      if (ts.isCallExpression(property.parent) && property.parent.expression === property) {
+        direct.push({ file, source, node: property.parent, method });
+      } else if (ts.isVariableDeclaration(property.parent) && ts.isIdentifier(property.parent.name)) {
+        addNamed(property.parent.name.text, method, property);
+      }
+      return;
+    }
+
+    // `const cp = require(...)`, `const { spawn } = require(...)`, con await/parens.
+    let host: ts.Node = node;
+    while (ts.isParenthesizedExpression(host.parent) || ts.isAwaitExpression(host.parent)) host = host.parent;
+    const parent = host.parent;
+    if (ts.isVariableDeclaration(parent) && parent.initializer === host) {
+      if (ts.isIdentifier(parent.name)) {
+        namespaces.add(parent.name.text);
+      } else if (ts.isObjectBindingPattern(parent.name)) {
+        for (const element of parent.name.elements) {
+          if (element.dotDotDotToken || !ts.isIdentifier(element.name)) continue;
+          const imported = element.propertyName && ts.isIdentifier(element.propertyName)
+            ? element.propertyName.text
+            : element.name.text;
+          addNamed(element.name.text, imported, element);
+        }
       }
     }
   });
@@ -220,7 +273,7 @@ function checkProcesses(file: string, source: ts.SourceFile, findings: Finding[]
     }
   });
 
-  return calls;
+  return [...direct, ...calls];
 }
 
 /** La única llamada permitida: `spawn(process.execPath, [cli, 'serve', …])`. */
@@ -271,8 +324,12 @@ function checkServeSpawn(call: ProcessCall, findings: Finding[]): void {
     }
   }
   const strings = args.elements.map((element) => stringLiteral(element));
-  if (!strings.includes('serve')) {
-    findings.push(finding(source, file, node, 'proceso', 'el proceso debe ser "commander serve"'));
+  const second = args.elements[1];
+  if (!second || stringLiteral(second) !== 'serve') {
+    findings.push(finding(source, file, node, 'proceso', '"serve" debe ser el primer argumento después del CLI'));
+  }
+  if (strings.filter((value) => value === 'serve').length !== 1) {
+    findings.push(finding(source, file, node, 'proceso', 'el proceso debe ser exactamente "commander serve"'));
   }
 }
 
