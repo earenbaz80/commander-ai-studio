@@ -5158,9 +5158,9 @@ app.post('/api/ollama/pull', async (req, res) => {
     res.end();
   } catch (error: any) {
     if (!res.headersSent) {
-      return res.json({ ok: false, error: error.message || 'Pull failed' });
+      return res.json({ ok: false, error: redactSecrets(error.message || 'Pull failed') });
     } else {
-      res.write(`data: ${JSON.stringify({ ok: false, error: error.message })}\n\n`);
+      res.write(`data: ${JSON.stringify({ ok: false, error: redactSecrets(error.message) })}\n\n`);
       res.end();
     }
   }
@@ -5186,7 +5186,7 @@ app.post('/api/ollama/delete', async (req, res) => {
 
     return res.json({ ok: true, success: true });
   } catch (error: any) {
-    return res.json({ ok: false, error: error.message || 'Delete failed' });
+    return res.json({ ok: false, error: redactSecrets(error.message || 'Delete failed') });
   }
 });
 
@@ -5515,7 +5515,7 @@ app.get('/api/ollama/library', async (req, res) => {
     // Also try to get library models (Ollama doesn't have a public library API, so we return local)
     return res.json({ success: true, models: data.models || [] });
   } catch (error: any) {
-    return res.json({ ok: false, error: error.message || 'Ollama no disponible' });
+    return res.json({ ok: false, error: redactSecrets(error.message || 'Ollama no disponible') });
   }
 });
 
@@ -5557,7 +5557,7 @@ app.post('/api/ollama/generate', async (req, res) => {
       },
     });
   } catch (error: any) {
-    return res.json({ ok: false, error: error.message || 'Ollama generate falló' });
+    return res.json({ ok: false, error: redactSecrets(error.message || 'Ollama generate falló') });
   }
 });
 
