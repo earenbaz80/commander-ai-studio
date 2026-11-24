@@ -28,7 +28,7 @@ import net from 'node:net';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 /** Ruta del repo, calculada desde este archivo: los tests corren desde cualquier cwd. */
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -367,8 +367,29 @@ export async function createServerBroker(onBoot?: (srv: ServerHarness) => void):
   };
 }
 
+export interface SpawnServerOptions {
+  /**
+   * cwd del hijo; por defecto, el repo. `commander.json` se busca desde el cwd
+   * hacia arriba, así que un cwd temporal da al server una config aislada: lo
+   * necesita un endpoint que ejecuta lo que la config tenga dentro (p. ej. los
+   * comandos de `/api/mcp/health`, que si no serían los del operador).
+   */
+  cwd?: string;
+  /** Variables extra del hijo. Las del arnés (PORT, base, NODE_ENV) mandan. */
+  env?: Record<string, string>;
+}
+
 /** Arranca un server propio. Lo usa el padre del runner y el modo sin compartir. */
-export async function spawnServer(): Promise<ServerHarness> {
+export async function spawnServer(options: SpawnServerOptions = {}): Promise<ServerHarness> {
+  const serverCwd = options.cwd ?? repoRoot;
+  // `--import tsx` se resuelve desde el cwd: con otro cwd hay que darle la ruta.
+  const [tsxLoader, serverEntry] =
+    serverCwd === repoRoot
+      ? ['tsx', 'server.ts']
+      : [
+          pathToFileURL(path.join(repoRoot, 'node_modules/tsx/dist/loader.mjs')).href,
+          path.join(repoRoot, 'server.ts'),
+        ];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-http-'));
   const dbPath = path.join(dir, 'studio.db');
   const publishDir = path.join(dir, 'publish');
@@ -380,10 +401,11 @@ export async function spawnServer(): Promise<ServerHarness> {
   // Vite dentro, el primer re-optimizado de dependencias bloqueaba el proceso
   // decenas de segundos y una petición de test moría por timeout en mitad de
   // la suite; la superficie `/api/*` es la misma en los dos modos.
-  const child = spawn(process.execPath, ['--import', 'tsx', 'server.ts'], {
-    cwd: repoRoot,
+  const child = spawn(process.execPath, ['--import', tsxLoader, serverEntry], {
+    cwd: serverCwd,
     env: {
       ...process.env,
+      ...(options.env || {}),
       PORT: '0',
       NODE_ENV: 'production',
       COMMANDER_DB_PATH: dbPath,
