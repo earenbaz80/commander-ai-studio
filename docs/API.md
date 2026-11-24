@@ -407,10 +407,10 @@ Ejecuta una tool del agente en el servidor.
 
 ## 🔌 Endpoints de Plugins
 
-Un plugin instalado desde la UI vive como manifiesto en `.commander/plugins/<id>.manifest.json`; el runtime ejecuta además `.commander/plugins/<id>/index.js`.
+Un plugin instalado desde la UI vive como manifiesto en `.commander/plugins/<id>.manifest.json`; el runtime ejecuta además `.commander/plugins/<id>/index.js`. El manifiesto de instalación guarda el `checksum` sha256 de los archivos descargados.
 
 ### `GET /api/plugins?root=`
-Lista los manifiestos instalados: `{success, plugins: [{id, name, version, entr}]}`.
+Lista los manifiestos instalados: `{success, plugins: [{id, name, version, checksum, marketplace, components}]}`; `checksum` es el sha256 de los archivos descargados al instalar.
 
 ### `POST /api/plugins`
 **Body:** `{id, name?, version?, entrypoint?, root?}`. El `id` es un nombre de archivo (`[A-Za-z0-9._-]`, sin `..`); cualquier otra cosa responde 400.
@@ -419,7 +419,7 @@ Lista los manifiestos instalados: `{success, plugins: [{id, name, version, entr}
 Borra el manifiesto y el `.zip` del plugin, con el mismo filtro de `id`.
 
 ### Hooks del runtime
-Los hooks viven en `.commander/plugins/<id>/index.js` (ESM) y corren en orden alfabético por id, cada uno con un timeout de 5 s. El lifecycle es `sessionStart`, `beforeModel`, `afterModel`, `beforeTool`, `afterTool`, `sessionEnd`, `stop` y `error`.
+Los hooks viven en `.commander/plugins/<id>/index.js` (ESM) y corren en orden alfabético por id, cada uno con un timeout de 5 s. `plugin.json`, junto al módulo, declara `apiVersion` y `permissions` (`lifecycle`, `tools`): se valida antes de importar, una mayor distinta de 1 se rechaza sin ejecutar código y un hook sin permiso no se despacha; sin manifiesto el plugin se carga como legado. El lifecycle es `sessionStart`, `beforeModel`, `afterModel`, `beforeTool`, `afterTool`, `sessionEnd`, `stop` y `error`.
 
 `beforeTool` devuelve `{input}` para reemplazar la entrada; `afterTool` devuelve `{result}`. Sus `ctx` incluyen `toolId`, `input`, `root` y, en `afterTool`, `result`. Los hooks de sesión reciben `sessionId`, `root`, `goal` y `model`; los de modelo añaden `phase`, `turn` y `ok`/`error` al volver. `sessionEnd` recibe `answer`, `stop` recibe `reason` y `error` recibe el mensaje. `sessionEnd` es el cierre normal; `stop` y `error` son alternativos.
 

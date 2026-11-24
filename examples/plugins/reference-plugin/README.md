@@ -6,6 +6,7 @@ línea JSON a `.commander/reference-plugin.log`:
 ```bash
 mkdir -p .commander/plugins/reference-plugin
 cp examples/plugins/reference-plugin/index.js .commander/plugins/reference-plugin/index.js
+cp examples/plugins/reference-plugin/plugin.json .commander/plugins/reference-plugin/plugin.json
 ```
 
 Después, ejecuta una sesión del agente. El orden esperado en una corrida normal
@@ -21,6 +22,7 @@ alternativos: no se suman a `sessionEnd`.
 
 ## Contrato
 
+- `plugin.json` declara `apiVersion: 1` y los permisos `lifecycle` y `tools`. El runtime valida el manifiesto antes de importar el módulo; sin él el plugin se trataría como legado.
 - Los plugins corren en orden alfabético por id.
 - Cada hook tiene un timeout de 5 s por defecto; un hook colgado no bloquea la
   corrida más allá de ese tope.

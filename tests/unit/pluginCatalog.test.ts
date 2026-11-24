@@ -5,6 +5,7 @@ import {
   normalizeMarketplacePlugins,
   normalizePluginSource,
 } from '../../src/plugins/catalog';
+import { checkPluginChecksum, pluginFilesChecksum } from '../../src/plugins/checksum';
 
 const marketplace = {
   name: 'claude-plugins-official',
@@ -105,5 +106,55 @@ describe('catálogo de plugins', () => {
     expect(filterPlugins(entries, '', 2)).toHaveLength(2);
     expect(filterPlugins(entries, 'subdir', 10).map((entry) => entry.name)).toEqual(['subdir-tool']);
     expect(filterPlugins(entries, 'nada-que-ver', 10)).toEqual([]);
+  });
+});
+
+describe('checksum del catálogo', () => {
+  const files = [
+    { path: 'commands/commit.md', text: '# commit\n' },
+    { path: 'agents/reviewer.md', text: '# reviewer\n' },
+  ];
+
+  test('es determinista y no depende del orden de los archivos', () => {
+    const directo = pluginFilesChecksum(files);
+    const alReves = pluginFilesChecksum([...files].reverse());
+
+    expect(directo).toBe(alReves);
+    expect(directo).toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+
+  test('cambia con el contenido o con la ruta del archivo', () => {
+    const base = pluginFilesChecksum([{ path: 'commands/commit.md', text: 'uno' }]);
+
+    expect(pluginFilesChecksum([{ path: 'commands/commit.md', text: 'dos' }])).not.toBe(base);
+    expect(pluginFilesChecksum([{ path: 'commands/otro.md', text: 'uno' }])).not.toBe(base);
+    // Las rutas de Windows se normalizan a `/`.
+    expect(pluginFilesChecksum([{ path: 'commands\\commit.md', text: 'uno' }])).toBe(base);
+  });
+
+  test('verifica el checksum publicado por el catálogo', () => {
+    const checksum = pluginFilesChecksum(files);
+
+    expect(checkPluginChecksum(checksum, files)).toEqual({ checksum, ok: true });
+    expect(checkPluginChecksum(undefined, files)).toEqual({ checksum, ok: true });
+    expect(checkPluginChecksum(`sha256:${'0'.repeat(64)}`, files)).toEqual({ checksum, ok: false });
+    expect(checkPluginChecksum('no-es-un-checksum', files).ok).toBe(false);
+  });
+
+  test('el catálogo conserva un checksum válido y no ofrece uno mal formado', () => {
+    const checksum = `sha256:${'a'.repeat(64)}`;
+    const entries = normalizeMarketplacePlugins('owner/repo', {
+      name: 'market',
+      plugins: [
+        { name: 'con-checksum', source: './plugins/con', checksum },
+        { name: 'checksum-roto', source: './plugins/roto', checksum: 'sha256:abc' },
+      ],
+    });
+
+    expect(entries[0].checksum).toBe(checksum);
+    expect(entries[0].installable).toBe(true);
+    expect(entries[1].checksum).toBeUndefined();
+    expect(entries[1].installable).toBe(false);
+    expect(entries[1].reason).toMatch(/checksum/);
   });
 });

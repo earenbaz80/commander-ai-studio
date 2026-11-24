@@ -118,7 +118,7 @@ Continuar la misma sesión desde el móvil o el navegador con la misma política
 
 **G2** exige la revisión de seguridad antes de habilitar `--remote` en builds de release; si no pasa, queda sólo el cliente local en loopback.
 
-### F4 · Editor y ecosistema — Pendiente · P1 · 12–15 d · 0/11
+### F4 · Editor y ecosistema — Pendiente · P1 · 12–15 d · 2/11
 
 **Alcance 4A (extensión VS Code).** Compilar e instalar el `.vsix`, arrancar/reutilizar el servidor embebido sin exigir `npx` en producción, webview de chat con streaming, modelo/modo, selección de código como contexto, plan y approvals con diff; abrir archivo/línea desde un resultado de tool, mostrar diagnósticos del editor y conservar la misma sesión del escritorio, sin duplicar el bucle del agente.
 
@@ -140,7 +140,7 @@ Llevar el agente al editor dominante y convertir la extensibilidad en una API es
 - [ ] Un plugin no puede saltarse una regla `deny` del motor de permisos.
 - [ ] Una tool MCP denegada no se ejecuta y el modelo recibe un error estructurado.
 - [ ] Se importan skills de tres formatos soportados y una skill inválida no se carga.
-- [ ] Un plugin con versión de API incompatible se rechaza sin ejecutar código.
+- [x] Un plugin con versión de API incompatible se rechaza sin ejecutar código (`tests/unit/pluginsRuntime.test.ts`).
 - [ ] La instalación y desinstalación no dejan servidores MCP huérfanos ni archivos fuera de `.commander/`.
 
 ### F5 · SSR, backend y realtime — Pendiente · espera G3 · P1 · 18–25 d · 0/7
@@ -402,7 +402,7 @@ Foto del árbol en esa fecha; el estado actual está en §1 y §3.
 | --- | --- | --- | --- | --- |
 | MCP | **V** | **V** | **V** | **V** |
 | Skills | **V** local | **V** | **V** (`SKILL.md`) | **V** (`AGENTS.md`/skills) |
-| Plugins / hooks | **P** (lifecycle completo; sin manifiesto versionado) | **V** | **V** (hooks/plugins) | **P** (MCP/skills; sin hooks documentados) |
+| Plugins / hooks | **V** (lifecycle y manifiesto versionado) | **V** | **V** (hooks/plugins) | **P** (MCP/skills; sin hooks documentados) |
 | Agentes y comandos custom | **V** | **V** | **V** | **V** |
 | Marketplace / ecosistema | **P** (catálogo de plugins de Claude) | **P** (comunidad) | **V** (plugins) | **—** |
 | Integraciones nativas | **V** (GitHub con OAuth real; Linear fuera de alcance) | **P** (MCP/GitHub) | **V** (bundles de Google + MCP) | **P** (GitHub/repos; sin catálogo amplio documentado) |

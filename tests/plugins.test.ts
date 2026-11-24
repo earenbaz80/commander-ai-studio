@@ -28,6 +28,7 @@ const pluginsDir = () => path.join(root, PLUGINS_DIR);
 const manifestDe = (id: string) => path.join(pluginsDir(), `${id}.manifest.json`);
 const zipDe = (id: string) => path.join(pluginsDir(), `${id}.zip`);
 const rootQuery = () => `?root=${encodeURIComponent(root)}`;
+const CHECKSUM = `sha256:${'a'.repeat(64)}`;
 
 before(async () => {
   srv = await startServer();
@@ -130,6 +131,7 @@ test('GET /api/plugins lista los plugins instalados desde un marketplace', async
       id,
       name: 'Market Demo',
       version: '1.2.3',
+      checksum: CHECKSUM,
       marketplace: 'anthropics/claude-plugins-official',
       components: { commands: ['commit'], agents: ['helper'], skills: [], mcp: ['demo'] },
       written: [],
@@ -147,6 +149,7 @@ test('GET /api/plugins lista los plugins instalados desde un marketplace', async
   assert.ok(found, `el plugin ${id} debía aparecer en la lista`);
   assert.equal(found.name, 'Market Demo');
   assert.equal(found.version, '1.2.3');
+  assert.equal(found.checksum, CHECKSUM, 'el checksum de la instalación se lista');
   assert.equal(found.marketplace, 'anthropics/claude-plugins-official');
   assert.deepEqual(found.components.commands, ['commit']);
 });

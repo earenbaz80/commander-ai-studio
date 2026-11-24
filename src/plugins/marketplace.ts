@@ -20,6 +20,7 @@ import {
   normalizeMarketplacePlugins,
   type PluginEntry,
 } from './catalog.js';
+import { checkPluginChecksum } from './checksum.js';
 
 export const pluginMarketRouter = Router();
 
@@ -280,6 +281,21 @@ pluginMarketRouter.post('/install-from-marketplace', async (req, res) => {
       return res.status(502).json({ success: false, error: 'No se pudo descargar ningún archivo del plugin' });
     }
 
+    // Huella de lo descargado: queda en el manifiesto y se compara con la que
+    // publique el catálogo antes de escribir nada en el proyecto.
+    const check = checkPluginChecksum(
+      entry.checksum,
+      downloaded.map((file) => ({ path: file.rel, text: file.text }))
+    );
+    if (!check.ok) {
+      return res.status(409).json({
+        success: false,
+        error: `checksum no coincide para ${name}: el catálogo declara ${entry.checksum} y la descarga da ${check.checksum}`,
+        expected: entry.checksum,
+        actual: check.checksum,
+      });
+    }
+
     // Copia fiel del plugin dentro del proyecto (referencia para el usuario).
     const pluginDir = path.join(dir, name);
     for (const file of downloaded) {
@@ -375,6 +391,7 @@ pluginMarketRouter.post('/install-from-marketplace', async (req, res) => {
           id: name,
           name: entry.name,
           version: entry.version ?? null,
+          checksum: check.checksum,
           marketplace,
           source: entry.sourcePath,
           ...(entry.repo ? { repo: entry.repo } : {}),
@@ -396,6 +413,7 @@ pluginMarketRouter.post('/install-from-marketplace', async (req, res) => {
       id: name,
       marketplace,
       components,
+      checksum: check.checksum,
       files: downloaded.length,
     });
   } catch (error) {

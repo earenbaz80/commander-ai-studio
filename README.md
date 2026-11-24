@@ -304,6 +304,14 @@ Las listas blancas de `allowedTools` escritas antes de estas tools no las incluy
 
 Un plugin es un módulo ESM en `.commander/plugins/<id>/index.js` (o `index.mjs`) con ganchos opcionales. Se carga desde el proyecto que estás trabajando, se recarga solo cuando cambia el fichero y no hace falta reiniciar el servidor.
 
+Junto al módulo, `plugin.json` declara la API y los permisos:
+
+```json
+{ "apiVersion": 1, "permissions": ["lifecycle", "tools"] }
+```
+
+Con manifiesto, el runtime lo valida **antes de importar** el módulo: una `apiVersion` mayor distinta de la soportada rechaza el plugin sin ejecutar una línea, y sólo se despachan los hooks cuyo permiso está declarado (`lifecycle` para sesión/modelo, `tools` para `beforeTool`/`afterTool`). Sin `plugin.json` el plugin se carga como legado con todos sus hooks.
+
 ```js
 export default {
   sessionStart: (ctx) => console.log('arranca', ctx.sessionId),
@@ -323,11 +331,11 @@ Los hooks de tool reciben `toolId`, `input` y `root`; `afterTool` añade `result
 
 El lifecycle corre en orden alfabético por id de plugin. `sessionEnd` es el cierre normal; `stop` y `error` son cierres alternativos. Cada hook tiene un timeout de 5 s y un fallo o un cuelgue no rompe la corrida: los errores quedan en `getPluginErrors()` y los hooks de tool también se adjuntan a `data.pluginErrors`. Los hooks corren dentro del proceso del servidor con sus mismos permisos: son código de confianza, como un script de `package.json`. Un plugin que no compila tampoco impide cargar los demás.
 
-`examples/plugins/reference-plugin` es el plugin de referencia: registra todos los hooks en `.commander/reference-plugin.log` sin alterar nada.
+`examples/plugins/reference-plugin` es el plugin de referencia: registra todos los hooks en `.commander/reference-plugin.log` sin alterar nada. Incluye `plugin.json` con la API 1 y ambos permisos.
 
 ### Catálogo de plugins (marketplaces de Claude)
 
-Configuración → Extensiones → Plugins lista los plugins publicados en `.claude-plugin/marketplace.json` de `anthropics/claude-plugins-official` y `anthropics/claude-code` (se puede cambiar con `COMMANDER_PLUGIN_MARKETPLACES=owner/repo,...`). El catálogo se lee por `raw.githubusercontent.com`, así que abre aunque la API de GitHub esté limitada; se cachea 10 minutos.
+Configuración → Extensiones → Plugins lista los plugins publicados en `.claude-plugin/marketplace.json` de `anthropics/claude-plugins-official` y `anthropics/claude-code` (se puede cambiar con `COMMANDER_PLUGIN_MARKETPLACES=owner/repo,...`). El catálogo se lee por `raw.githubusercontent.com`, así que abre aunque la API de GitHub esté limitada; se cachea 10 minutos. Si una entrada publica `checksum` (`sha256:…`), la instalación lo compara con la descarga antes de escribir nada y responde 409 si no coincide; el valor queda en el manifiesto y `GET /api/plugins` lo devuelve.
 
 Instalar no guarda un zip opaco: trae los archivos del plugin y los convierte en piezas nativas —`.md` de `commands/` y `agents/` a `skills/plugins/<id>/commands` y `skills/plugins/<id>/agents` con front matter, y `.mcp.json` a los servidores de la config—, deja una copia en `.commander/plugins/<id>/files/` y apunta lo escrito en `.commander/plugins/<id>.manifest.json`. Cada plugin va en su propia carpeta para que `skills/plugins/` pueda ignorarse en bloque sin ocultar las skills del proyecto. Desinstalar borra exactamente esas rutas, la copia y el manifiesto; los servidores MCP que añadió salen de la config.
 

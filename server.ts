@@ -2473,6 +2473,7 @@ app.get('/api/plugins', (req, res) => {
           id: manifest.id || fallbackId,
           name: manifest.name || fallbackId,
           version: manifest.version ?? null,
+          checksum: manifest.checksum || null,
           source: manifest.source || 'marketplace',
           marketplace: manifest.marketplace || null,
           components: manifest.components || null,

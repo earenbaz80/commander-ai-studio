@@ -14,7 +14,11 @@
  *   • Un hook que lanza NUNCA rompe la corrida: se anota en `errors` y se sigue.
  *   • Ningún hook puede colgar la corrida: cada uno tiene un timeout.
  *   • Los plugins corren en orden alfabético por id.
- *   • El módulo se recarga solo cuando cambia su mtime, sin reiniciar el server.
+ *   • `plugin.json` declara la versión de API y los permisos. Si existe, el
+ *     manifiesto se valida ANTES de importar el módulo: una API incompatible se
+ *     rechaza sin ejecutar una línea y los hooks sin permiso no se despachan.
+ *   • Sin `plugin.json` el plugin se carga como legado (todos los hooks).
+ *   • El módulo se recarga solo cuando cambia su mtime o el del manifiesto.
  */
 import fs from 'fs';
 import path from 'path';
@@ -22,6 +26,22 @@ import { pathToFileURL } from 'url';
 
 /** Directorio de plugins, relativo a la raíz del proyecto. */
 export const PLUGINS_DIR = path.join('.commander', 'plugins');
+
+/** Manifiesto opcional dentro de la carpeta del plugin. */
+export const PLUGIN_MANIFEST_FILE = 'plugin.json';
+
+/**
+ * Versión de API que implementa este runtime.
+ *
+ * El manifiesto declara la mayor (`1`, `"1"` o `"1.2.0"`). Una mayor distinta
+ * se rechaza sin importar el módulo: los hooks de esa API pueden no existir.
+ */
+export const PLUGIN_API_VERSION = 1;
+
+/** Permisos que puede declarar un manifiesto. */
+export const PLUGIN_PERMISSIONS = ['tools', 'lifecycle'] as const;
+
+export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number];
 
 /** Tope por defecto de cada hook. Un plugin lento no puede colgar la sesión. */
 export const DEFAULT_PLUGIN_HOOK_TIMEOUT_MS = 5_000;
@@ -107,10 +127,34 @@ export interface PluginHooks {
   error?: (ctx: PluginErrorContext) => unknown | Promise<unknown>;
 }
 
+/** Qué permiso necesita cada hook; un hook sin permiso no se despacha. */
+const HOOK_PERMISSION: Record<keyof PluginHooks, PluginPermission> = {
+  beforeTool: 'tools',
+  afterTool: 'tools',
+  sessionStart: 'lifecycle',
+  beforeModel: 'lifecycle',
+  afterModel: 'lifecycle',
+  sessionEnd: 'lifecycle',
+  stop: 'lifecycle',
+  error: 'lifecycle',
+};
+
+/** Manifiesto validado de un plugin con `plugin.json`. */
+export interface PluginManifest {
+  /** Mayor de la API que declara el plugin. */
+  apiVersion: number;
+  /** Hooks que el plugin puede usar. */
+  permissions: PluginPermission[];
+  name?: string;
+  version?: string;
+}
+
 export interface LoadedPlugin {
   id: string;
   file: string;
   hooks: PluginHooks;
+  /** Ausente en plugins legados, escritos antes del manifiesto. */
+  manifest?: PluginManifest;
 }
 
 interface CacheEntry {
@@ -171,22 +215,153 @@ function pickHooks(mod: any): PluginHooks {
   };
 }
 
+/** Mayor de `apiVersion`: acepta `1`, `"1"` o `"1.2.0"`; `null` si no sirve. */
+export function parsePluginApiVersion(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value >= 0 ? value : null;
+  }
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^(\d{1,4})(?:\.\d{1,4}){0,2}$/);
+  return match ? Number(match[1]) : null;
+}
+
+/** Ruta del manifiesto de un plugin, junto a su fichero de entrada. */
+export function pluginManifestPath(file: string): string {
+  return path.join(path.dirname(file), PLUGIN_MANIFEST_FILE);
+}
+
 /**
- * Plugins del proyecto, con caché invalidada por mtime.
- * Un plugin que no compila queda en `errors` y no impide cargar los demás.
+ * Lee y valida `plugin.json` sin ejecutar el plugin.
+ *
+ * Devuelve `error` cuando el manifiesto existe pero no es válido o declara una
+ * API que este runtime no entiende: en ese caso el módulo no se importa. Sin
+ * manifiesto devuelve `{}` y el plugin se carga como legado.
+ */
+function readPluginManifest(file: string): { manifest?: PluginManifest; error?: string } {
+  const manifestPath = pluginManifestPath(file);
+  if (!fs.existsSync(manifestPath)) return {};
+
+  let raw: string;
+  try {
+    raw = fs.readFileSync(manifestPath, 'utf8');
+  } catch (error: any) {
+    return { error: `no se pudo leer ${PLUGIN_MANIFEST_FILE}: ${String(error?.message || error)}` };
+  }
+
+  let data: any;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return { error: `${PLUGIN_MANIFEST_FILE} no es JSON válido` };
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { error: `${PLUGIN_MANIFEST_FILE} debe ser un objeto` };
+  }
+  if (data.apiVersion === undefined || data.apiVersion === null || data.apiVersion === '') {
+    return { error: `${PLUGIN_MANIFEST_FILE} sin apiVersion` };
+  }
+
+  const apiVersion = parsePluginApiVersion(data.apiVersion);
+  if (apiVersion === null) {
+    return { error: `apiVersion inválida: ${JSON.stringify(data.apiVersion)}` };
+  }
+  if (apiVersion !== PLUGIN_API_VERSION) {
+    return {
+      error:
+        `apiVersion ${JSON.stringify(data.apiVersion)} incompatible: ` +
+        `este runtime implementa la API ${PLUGIN_API_VERSION}.x`,
+    };
+  }
+
+  if (!Array.isArray(data.permissions)) {
+    return { error: `${PLUGIN_MANIFEST_FILE} sin permissions (usa [] si no necesita hooks)` };
+  }
+  const permissions: PluginPermission[] = [];
+  for (const value of data.permissions) {
+    const permission = typeof value === 'string' ? value.trim() : '';
+    if (!PLUGIN_PERMISSIONS.includes(permission as PluginPermission)) {
+      return {
+        error:
+          `permiso desconocido: ${JSON.stringify(value)}; ` +
+          `válidos: ${PLUGIN_PERMISSIONS.join(', ')}`,
+      };
+    }
+    if (!permissions.includes(permission as PluginPermission)) {
+      permissions.push(permission as PluginPermission);
+    }
+  }
+
+  return {
+    manifest: {
+      apiVersion,
+      permissions,
+      ...(typeof data.name === 'string' && data.name.trim() ? { name: data.name.trim() } : {}),
+      ...(typeof data.version === 'string' && data.version.trim()
+        ? { version: data.version.trim() }
+        : {}),
+    },
+  };
+}
+
+/**
+ * Deja sólo los hooks que el manifiesto permite.
+ *
+ * Un hook exportado sin su permiso se anota y no se despacha: el plugin no gana
+ * un punto de extensión por olvidar declararlo. Los plugins legados conservan
+ * todos sus hooks.
+ */
+function restrictHooks(
+  id: string,
+  hooks: PluginHooks,
+  manifest: PluginManifest | undefined,
+  errors: PluginError[],
+): PluginHooks {
+  if (!manifest) return hooks;
+  const allowed = new Set<PluginPermission>(manifest.permissions);
+  const restricted: PluginHooks = {};
+  for (const name of Object.keys(hooks) as Array<keyof PluginHooks>) {
+    if (typeof hooks[name] !== 'function') continue;
+    const permitted = HOOK_PERMISSION[name];
+    if (allowed.has(permitted)) {
+      (restricted as Record<string, unknown>)[name] = hooks[name];
+    } else {
+      errors.push({
+        plugin: id,
+        hook: name,
+        error: `el hook necesita el permiso "${permitted}" y ${PLUGIN_MANIFEST_FILE} no lo declara`,
+      });
+    }
+  }
+  return restricted;
+}
+
+/**
+ * Plugins del proyecto, con caché invalidada por mtime del módulo y del
+ * manifiesto. Un plugin que no compila o no pasa el manifiesto queda en
+ * `errors` y no impide cargar los demás.
  */
 async function loadPlugins(root: string): Promise<{ plugins: LoadedPlugin[]; errors: PluginError[] }> {
   const files = listPluginFiles(root);
-  const key = files.map((f) => `${f.id}:${mtimeOf(f.file)}`).join('|');
+  const key = files
+    .map((f) => `${f.id}:${mtimeOf(f.file)}:${mtimeOf(pluginManifestPath(f.file))}`)
+    .join('|');
   const cached = CACHE.get(root);
   if (cached && cached.key === key) return cached;
 
   const plugins: LoadedPlugin[] = [];
   const errors: PluginError[] = [];
   for (const { id, file } of files) {
+    // El manifiesto se valida antes de importar: un plugin con API incompatible
+    // no llega a ejecutar ni su código de nivel superior.
+    const read = readPluginManifest(file);
+    if (read.error) {
+      errors.push({ plugin: id, hook: 'manifest', error: read.error });
+      continue;
+    }
     try {
       const mod = await import(`${pathToFileURL(file).href}?v=${mtimeOf(file)}`);
-      plugins.push({ id, file, hooks: pickHooks(mod) });
+      const hooks = restrictHooks(id, pickHooks(mod), read.manifest, errors);
+      plugins.push({ id, file, hooks, ...(read.manifest ? { manifest: read.manifest } : {}) });
     } catch (error: any) {
       errors.push({ plugin: id, hook: 'load', error: String(error?.message || 'no se pudo cargar') });
     }

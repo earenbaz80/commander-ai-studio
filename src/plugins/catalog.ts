@@ -6,6 +6,7 @@
  * Aquí sólo se normaliza esa información: sin red ni express, para poder
  * probarla con fixtures. La descarga vive en `marketplace.ts`.
  */
+import { isPluginChecksum } from './checksum.js';
 
 export type PluginSourceKind = 'path' | 'git-subdir' | 'github' | 'git' | 'url' | 'unknown';
 
@@ -16,6 +17,8 @@ export interface PluginEntry {
   description?: string;
   category?: string;
   version?: string;
+  /** `sha256:…` publicado por el catálogo; si viene, la instalación lo verifica. */
+  checksum?: string;
   author?: string;
   /** Repo del catálogo (`owner/repo`). */
   marketplace: string;
@@ -101,8 +104,14 @@ export function normalizeMarketplacePlugins(repo: string, data: any): PluginEntr
     if (!PLUGIN_NAME_RE.test(name)) continue;
 
     const source = normalizePluginSource(raw?.source);
+    const checksum = typeof raw?.checksum === 'string' ? raw.checksum.trim() : '';
+    // Un checksum mal formado no se ignora: instalar sin poder verificar lo que
+    // el catálogo promete sería peor que no ofrecer la instalación.
+    const invalidChecksum = Boolean(checksum) && !isPluginChecksum(checksum);
     const installable =
-      Boolean(source.sourcePath) && (source.kind === 'path' || source.kind === 'git-subdir');
+      !invalidChecksum &&
+      Boolean(source.sourcePath) &&
+      (source.kind === 'path' || source.kind === 'git-subdir');
     const authorName =
       typeof raw?.author === 'string'
         ? raw.author
@@ -116,6 +125,7 @@ export function normalizeMarketplacePlugins(repo: string, data: any): PluginEntr
       ...(typeof raw?.description === 'string' ? { description: raw.description } : {}),
       ...(typeof raw?.category === 'string' ? { category: raw.category } : {}),
       ...(typeof raw?.version === 'string' ? { version: raw.version } : {}),
+      ...(isPluginChecksum(checksum) ? { checksum } : {}),
       ...(authorName ? { author: authorName } : {}),
       marketplace: repo,
       sourceKind: source.kind,
@@ -126,8 +136,9 @@ export function normalizeMarketplacePlugins(repo: string, data: any): PluginEntr
       ...(installable
         ? {}
         : {
-            reason:
-              source.kind === 'path'
+            reason: invalidChecksum
+              ? 'el checksum declarado no es sha256 válido'
+              : source.kind === 'path'
                 ? 'la entrada no apunta a ninguna carpeta'
                 : source.kind === 'url'
                   ? 'la fuente es un repo sin carpeta concreta'

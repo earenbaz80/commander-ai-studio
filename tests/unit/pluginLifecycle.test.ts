@@ -10,6 +10,9 @@ import { setServerBaseUrl } from '../../serverRuntime';
 const REFERENCE_PLUGIN = fileURLToPath(
   new URL('../../examples/plugins/reference-plugin/index.js', import.meta.url),
 );
+const REFERENCE_MANIFEST = fileURLToPath(
+  new URL('../../examples/plugins/reference-plugin/plugin.json', import.meta.url),
+);
 
 let root = '';
 
@@ -18,6 +21,7 @@ beforeEach(() => {
   const dir = path.join(root, '.commander', 'plugins', 'reference-plugin');
   fs.mkdirSync(dir, { recursive: true });
   fs.copyFileSync(REFERENCE_PLUGIN, path.join(dir, 'index.js'));
+  fs.copyFileSync(REFERENCE_MANIFEST, path.join(dir, 'plugin.json'));
   clearPluginCache(root);
   setServerBaseUrl('http://127.0.0.1:1');
 });
