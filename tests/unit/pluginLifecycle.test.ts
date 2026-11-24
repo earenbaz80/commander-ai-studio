@@ -1,11 +1,26 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { AgentSession } from '../../agentSession';
-import { clearPluginCache } from '../../pluginsRuntime';
-import { setServerBaseUrl } from '../../serverRuntime';
+import { RunPluginLifecycle, type PluginLifecycleHook } from '../../src/agent/pluginLifecycle';
+import {
+  clearPluginCache,
+  runAfterToolHooks,
+  runBeforeToolHooks,
+  runPluginHook,
+} from '../../pluginsRuntime';
+
+/**
+ * Lifecycle de plugins contra el runtime real.
+ *
+ * Antes el test montaba un `AgentSession`, y como `agentSession.ts` importa
+ * `agentTools.ts` (que importa `browserSession`), el grafo metía el DOM en el
+ * proyecto `node` de Vitest. Acá se prueba la misma cadena sin la sesión del
+ * servidor: `RunPluginLifecycle` encola los hooks y el transporte llama a
+ * `runPluginHook`, que es lo que ejecuta el endpoint en producción. El plugin
+ * de referencia deja una línea JSON por hook.
+ */
 
 const REFERENCE_PLUGIN = fileURLToPath(
   new URL('../../examples/plugins/reference-plugin/index.js', import.meta.url),
@@ -23,11 +38,9 @@ beforeEach(() => {
   fs.copyFileSync(REFERENCE_PLUGIN, path.join(dir, 'index.js'));
   fs.copyFileSync(REFERENCE_MANIFEST, path.join(dir, 'plugin.json'));
   clearPluginCache(root);
-  setServerBaseUrl('http://127.0.0.1:1');
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
   clearPluginCache(root);
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -54,94 +67,88 @@ function loggedHooks(): LoggedHook[] {
   }
 }
 
-function session(): AgentSession {
-  return new AgentSession({
-    goal: 'probar el lifecycle',
-    cwd: root,
-    model: 'gemini-2.5-flash',
-    pluginHookTimeoutMs: 200,
-  });
+function lifecycle(): RunPluginLifecycle {
+  const context = { sessionId: 'sess_1', root, goal: 'probar el lifecycle', model: 'gemini-2.5-flash' };
+  return new RunPluginLifecycle(
+    (hook: PluginLifecycleHook, ctx: Record<string, unknown>) =>
+      runPluginHook(root, hook, ctx as any, { timeoutMs: 200 }),
+    context,
+  );
 }
 
-function modelOk(text = 'Listo'): any {
-  return {
-    ok: true,
-    status: 200,
-    json: async () => ({ text, functionCalls: [] }),
-  };
-}
-
-describe('lifecycle de plugins en AgentSession', () => {
+describe('lifecycle de plugins contra el runtime', () => {
   it('ejecuta sessionStart, modelo y sessionEnd en una corrida normal', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => modelOk()));
+    const run = lifecycle();
 
-    const agent = session();
-    await agent.start();
-    await agent.whenLifecycleSettled();
-
-    const entries = loggedHooks();
-    const hooks = entries.map((entry) => entry.hook);
-    expect(agent.getStatus()).toBe('done');
-    expect(hooks[0]).toBe('sessionStart');
-    expect(hooks).toContain('beforeTool');
-    expect(hooks).toContain('afterTool');
-    expect(hooks).toContain('beforeModel');
-    expect(hooks).toContain('afterModel');
-    expect(hooks.at(-1)).toBe('sessionEnd');
-    expect(hooks).not.toContain('stop');
-    expect(hooks).not.toContain('error');
-
-    const before = hooks.indexOf('beforeModel');
-    const after = hooks.indexOf('afterModel');
-    expect(before).toBeGreaterThan(0);
-    expect(after).toBeGreaterThan(before);
-    const end = entries.find((entry) => entry.hook === 'sessionEnd');
-    expect(end?.sessionId).toBe(agent.id);
-    expect(agent.getPluginErrors()).toEqual([]);
-  });
-
-  it('un fallo del modelo dispara afterModel con ok:false y error', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: false,
-      status: 500,
-      json: async () => ({}),
-    })));
-
-    const agent = session();
-    await agent.start();
-    await agent.whenLifecycleSettled();
+    await run.start();
+    await run.beforeModel(1);
+    await run.afterModel(1, true);
+    await run.close({ kind: 'done', answer: 'Listo' });
 
     const entries = loggedHooks();
-    const hooks = entries.map((entry) => entry.hook);
-    expect(agent.getStatus()).toBe('error');
-    expect(hooks).toContain('beforeModel');
-    expect(hooks.at(-1)).toBe('error');
-    expect(hooks).not.toContain('sessionEnd');
-    expect(entries.filter((entry) => entry.hook === 'afterModel').every((entry) => entry.ok === false)).toBe(true);
-    expect(entries.find((entry) => entry.hook === 'error')?.error).toMatch(/LLM HTTP 500/);
+    expect(entries.map((entry) => entry.hook)).toEqual([
+      'sessionStart',
+      'beforeModel',
+      'afterModel',
+      'sessionEnd',
+    ]);
+    expect(entries[0].sessionId).toBe('sess_1');
+    expect(entries[2]).toMatchObject({ phase: 'after', turn: 1, ok: true });
   });
 
-  it('stop durante la llamada al modelo aborta y registra stop, no error', async () => {
-    const fetchMock = vi.fn((_url: string, init?: RequestInit) => new Promise((_resolve, reject) => {
-      init?.signal?.addEventListener('abort', () => reject(new Error('abortado')));
-    }));
-    vi.stubGlobal('fetch', fetchMock);
+  it('un fallo del modelo deja afterModel con ok:false y error como terminal', async () => {
+    const run = lifecycle();
 
-    const agent = session();
-    const running = agent.start();
-    for (let i = 0; i < 200 && fetchMock.mock.calls.length === 0; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
-    expect(fetchMock).toHaveBeenCalled();
+    await run.start();
+    await run.beforeModel(1);
+    await run.afterModel(1, false, 'LLM HTTP 500');
+    await run.close({ kind: 'error', error: 'LLM HTTP 500' });
 
-    agent.stop('user');
-    await running;
-    await agent.whenLifecycleSettled();
+    const entries = loggedHooks();
+    expect(entries.map((entry) => entry.hook)).toEqual([
+      'sessionStart',
+      'beforeModel',
+      'afterModel',
+      'error',
+    ]);
+    expect(entries[2].ok).toBe(false);
+    expect(entries[3].error).toMatch(/LLM HTTP 500/);
+  });
 
-    const hooks = loggedHooks().map((entry) => entry.hook);
-    expect(agent.getStatus()).toBe('stopped');
-    expect(hooks).toContain('stop');
-    expect(hooks).not.toContain('error');
-    expect(hooks).not.toContain('sessionEnd');
+  it('corre beforeTool y afterTool entre el modelo y el cierre', async () => {
+    const run = lifecycle();
+
+    await run.start();
+    await run.beforeModel(1);
+    await run.afterModel(1, true);
+    await runBeforeToolHooks(root, 'fs.read', { path: 'package.json' }, { timeoutMs: 200 });
+    await runAfterToolHooks(
+      root,
+      'fs.read',
+      { path: 'package.json' },
+      { ok: true, output: 'listo' } as any,
+      { timeoutMs: 200 },
+    );
+    await run.close({ kind: 'done', answer: 'Listo' });
+
+    expect(loggedHooks().map((entry) => entry.hook)).toEqual([
+      'sessionStart',
+      'beforeModel',
+      'afterModel',
+      'beforeTool',
+      'afterTool',
+      'sessionEnd',
+    ]);
+  });
+
+  it('un stop cierra con stop y no emite sessionEnd ni error', async () => {
+    const run = lifecycle();
+
+    await run.start();
+    await run.close({ kind: 'stopped', reason: 'user' });
+
+    const entries = loggedHooks();
+    expect(entries.map((entry) => entry.hook)).toEqual(['sessionStart', 'stop']);
+    expect(entries[1].reason).toBe('user');
   });
 });

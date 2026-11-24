@@ -12,10 +12,10 @@ No promete fechas; los esfuerzos son órdenes de magnitud. Una fase o un criteri
 
 | Frente | Fases | Cerradas | Criterios en alcance |
 | --- | ---: | ---: | ---: |
-| Paridad | 7 | 1 (F0) | 21/47 |
+| Paridad | 7 | 1 (F0) | 23/47 |
 | Plataforma | 8 | 1 (PL0) | 24/38 |
 | UX | 1 | 1 (UX 1.0) | 10/10 |
-| **Total** | **16** | **4/13 en alcance** | **55/95 (58 %)** |
+| **Total** | **16** | **4/13 en alcance** | **57/95 (60 %)** |
 
 - **4 fases cerradas:** F0, PL0, UX 1.0 y F2.
 - **5 parciales:** F1, PL2, PL3, PL5 y PL6.
@@ -23,7 +23,7 @@ No promete fechas; los esfuerzos son órdenes de magnitud. Una fase o un criteri
 - **Fuera del cómputo:** PL1 (fuera de alcance hasta G3) y F6/PL7 (opcionales).
 - **Puertas:** G0 cerrada; G1 abierta (dogfooding ejecutado; **no retiene fases**, §2.1); G2 y G3 no iniciadas.
 
-El 58 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tampoco dice que la app esté al 58 %: dice que 55 de los 95 criterios en alcance tienen evidencia. Cada criterio es una casilla de este documento: cuenta el `[x]` o la cobertura que la fase declara (F2 cerró con sus siete criterios y su verificación en Electron); los `[—]`, las fases opcionales y PL1 quedan fuera del numerador y del denominador. F0 cerró G0 con una baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts y 0 inválidas); la paridad es baja. El dogfooding de G1 se ejecutó el 2026-11-12 (17/28, 60,7 %) y la puerta sigue abierta por una sola regla: el p95 de aprobación.
+El 60 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tampoco dice que la app esté al 60 %: dice que 57 de los 95 criterios en alcance tienen evidencia. Cada criterio es una casilla de este documento: cuenta el `[x]` o la cobertura que la fase declara (F2 cerró con sus siete criterios y su verificación en Electron); los `[—]`, las fases opcionales y PL1 quedan fuera del numerador y del denominador. F0 cerró G0 con una baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts y 0 inválidas); la paridad es baja. El dogfooding de G1 se ejecutó el 2026-11-12 (17/28, 60,7 %) y la puerta sigue abierta por una sola regla: el p95 de aprobación.
 
 **El norte no es la cifra, es el producto:** un agente que corre local-first, que pide aprobación con diff antes de escribir, que deja evidencia revisable de lo que hizo y que puede instalarse y publicarse sin cuenta. Lo que sigue a §2 mide cuánto de eso está verificado.
 
