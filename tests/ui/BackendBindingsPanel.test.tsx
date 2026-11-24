@@ -177,14 +177,14 @@ describe('BackendBindingsPanel', () => {
 
   test('muestra explícito lo que el proveedor no puede rotar, sin inventar la credencial', async () => {
     const reason =
-      'Supabase no emite las claves S3 del storage por la Management API: se generan en los ajustes del proyecto.';
+      'El proveedor no emite la credencial de storage por su API de gestión: se genera en los ajustes del proyecto.';
     const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
       if (String(url).includes('/api/backend/manage/rotate')) {
         return jsonResponse({
           success: true,
-          provider: 'supabase',
+          provider: 'fake',
           rotation: {
-            provider: 'supabase',
+            provider: 'fake',
             projectId,
             rotated: ['DATABASE_URL', 'AUTH_SECRET'],
             skipped: [{ kind: 'storage', name: 'STORAGE_SECRET', reason }],
@@ -194,11 +194,10 @@ describe('BackendBindingsPanel', () => {
       }
       return jsonResponse({
         success: true,
-        provider: 'supabase',
+        provider: 'fake',
         configured: true,
         enabled: true,
         status: fakeStatus({
-          provider: 'supabase',
           bindings: [
             { kind: 'database', resourceId: 'ref', state: 'ready' },
             { kind: 'storage', resourceId: 'ref-files', state: 'ready' },
@@ -220,7 +219,7 @@ describe('BackendBindingsPanel', () => {
     // El binding omitido se ve con su motivo y su nombre, no con un valor.
     const note = await screen.findByTestId('backend-rotate-skipped');
     expect(note.textContent).toContain('STORAGE_SECRET');
-    expect(note.textContent).toContain('Management API');
+    expect(note.textContent).toContain('API de gestión');
 
     // Las credenciales emitidas son sólo las que sí se rotaron: el storage
     // aparece en el aviso, no en la lista de credenciales del estado.

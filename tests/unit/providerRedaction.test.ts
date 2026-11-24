@@ -1,7 +1,8 @@
 /**
  * Detalles de proveedor que salen por `/api/deploy/*` y
  * `/api/backend/manage/*`: se prueban los routers en proceso para inyectar
- * respuestas de Vercel/Supabase con secretos sin depender de una cuenta real.
+ * respuestas de Vercel y del backend gestionado con secretos sin depender de
+ * una cuenta real.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createDeployRouter } from '../../deploy/routes';
@@ -15,23 +16,23 @@ import type {
 import type { BackendAdapter, BackendStatus } from '../../deploy/backend/types';
 
 const VERCEL_TOKEN = 'vercel-token-de-prueba-123456';
-const SUPABASE_TOKEN = 'supabase-token-de-prueba-123456';
+const BACKEND_TOKEN = 'backend-token-de-prueba-123456';
 
 let previousVercelToken: string | undefined;
-let previousSupabaseToken: string | undefined;
+let previousBackendToken: string | undefined;
 
 beforeEach(() => {
   previousVercelToken = process.env.VERCEL_TOKEN;
-  previousSupabaseToken = process.env.SUPABASE_ACCESS_TOKEN;
+  previousBackendToken = process.env.COMMANDER_BACKEND_TOKEN;
   process.env.VERCEL_TOKEN = VERCEL_TOKEN;
-  process.env.SUPABASE_ACCESS_TOKEN = SUPABASE_TOKEN;
+  process.env.COMMANDER_BACKEND_TOKEN = BACKEND_TOKEN;
 });
 
 afterEach(() => {
   if (previousVercelToken === undefined) delete process.env.VERCEL_TOKEN;
   else process.env.VERCEL_TOKEN = previousVercelToken;
-  if (previousSupabaseToken === undefined) delete process.env.SUPABASE_ACCESS_TOKEN;
-  else process.env.SUPABASE_ACCESS_TOKEN = previousSupabaseToken;
+  if (previousBackendToken === undefined) delete process.env.COMMANDER_BACKEND_TOKEN;
+  else process.env.COMMANDER_BACKEND_TOKEN = previousBackendToken;
 });
 
 interface RouteResult {
@@ -160,7 +161,7 @@ function vercelAdapter(overrides: Partial<DeploymentAdapter> = {}): DeploymentAd
 
 function backendStatus(): BackendStatus {
   return {
-    provider: 'supabase',
+    provider: 'fake',
     projectId: 'proj-1',
     bindings: [],
     migrations: { applied: [], pending: [] },
@@ -171,13 +172,13 @@ function backendStatus(): BackendStatus {
 
 function backendAdapter(overrides: Partial<BackendAdapter> = {}): BackendAdapter {
   return {
-    id: 'supabase',
+    id: 'fake',
     configured: true,
     provision: async () => backendStatus(),
     migrate: async () => ({ applied: [], skipped: [], failed: [] }),
     status: async () => backendStatus(),
     rotateSecrets: async () => ({
-      provider: 'supabase',
+      provider: 'fake',
       projectId: 'proj-1',
       rotated: [],
       skipped: [],
@@ -213,7 +214,7 @@ describe('redacción de detalles de proveedor', () => {
   it('sanea el log de Vercel antes de devolverlo', async () => {
     const adapter = vercelAdapter({
       logs: async () =>
-        `build ok\n${VERCEL_TOKEN}\npostgresql://postgres:clave@db.ref.supabase.co\nBearer abcdef1234567890`,
+        `build ok\n${VERCEL_TOKEN}\npostgresql://postgres:clave@db.ref.example:5432/postgres\nBearer abcdef1234567890`,
     });
 
     const res = await callRoute(
@@ -226,14 +227,14 @@ describe('redacción de detalles de proveedor', () => {
     expect(String(res.body.log)).toContain('build ok');
     expect(String(res.body.log)).toContain('[redactado]');
     expect(String(res.body.log)).not.toContain(VERCEL_TOKEN);
-    expect(String(res.body.log)).not.toContain('clave@db.ref.supabase.co');
+    expect(String(res.body.log)).not.toContain('clave@db.ref.example');
     expect(String(res.body.log)).not.toContain('abcdef1234567890');
   });
 
-  it('sanea el error de Supabase en /api/backend/manage/*', async () => {
+  it('sanea el error del backend en /api/backend/manage/*', async () => {
     const adapter = backendAdapter({
       status: async () => {
-        throw new Error(`Supabase respondió 403: {"message":"token ${SUPABASE_TOKEN}"}`);
+        throw new Error(`El backend respondió 403: {"message":"token ${BACKEND_TOKEN}"}`);
       },
     });
 
@@ -244,12 +245,12 @@ describe('redacción de detalles de proveedor', () => {
     );
 
     expect(res.status).toBe(400);
-    expect(res.raw).toContain('Supabase respondió 403');
+    expect(res.raw).toContain('El backend respondió 403');
     expect(res.raw).toContain('[redactado]');
-    expect(res.raw).not.toContain(SUPABASE_TOKEN);
+    expect(res.raw).not.toContain(BACKEND_TOKEN);
   });
 
-  it('sanea el mensaje de una migración fallida de Supabase', async () => {
+  it('sanea el mensaje de una migración fallida', async () => {
     const adapter = backendAdapter({
       migrate: async () => ({
         applied: [],
@@ -257,7 +258,7 @@ describe('redacción de detalles de proveedor', () => {
         failed: [
           {
             id: '001_init',
-            message: `Supabase respondió 400: password=${SUPABASE_TOKEN} postgresql://postgres:clave@db.ref.supabase.co`,
+            message: `El backend respondió 400: password=${BACKEND_TOKEN} postgresql://postgres:clave@db.ref.example:5432/postgres`,
           },
         ],
       }),
@@ -276,7 +277,7 @@ describe('redacción de detalles de proveedor', () => {
     expect(res.status).toBe(200);
     expect(res.body.result.failed[0].id).toBe('001_init');
     expect(res.body.result.failed[0].message).toContain('[redactado]');
-    expect(res.raw).not.toContain(SUPABASE_TOKEN);
-    expect(res.raw).not.toContain('clave@db.ref.supabase.co');
+    expect(res.raw).not.toContain(BACKEND_TOKEN);
+    expect(res.raw).not.toContain('clave@db.ref.example');
   });
 });

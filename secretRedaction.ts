@@ -2,9 +2,9 @@
  * Redacción de secretos para textos que salen del servidor.
  *
  * La usan el log de una build y los detalles que devuelven los proveedores
- * (Vercel, Supabase). Se ocultan los valores de variables sensibles del
- * entorno y los formatos de token conocidos; el resto del texto queda legible
- * para diagnosticar.
+ * externos. Se ocultan los valores de variables sensibles del entorno y los
+ * formatos de token conocidos; el resto del texto queda legible para
+ * diagnosticar.
  */
 
 /** Variables cuyo valor no debe aparecer en un texto que viaja al cliente. */

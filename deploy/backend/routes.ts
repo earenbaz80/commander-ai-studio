@@ -13,12 +13,7 @@
  * propio catch-all.
  */
 import express, { type Request, type Response } from 'express';
-import {
-  BACKEND_PROVIDER,
-  BACKEND_PROVIDER_ENV,
-  BACKEND_PROVIDER_ENV_VARS,
-  BACKEND_FAKE_FLAG,
-} from './configuredAdapter';
+import { BACKEND_FAKE_FLAG } from './configuredAdapter';
 import { createPendingDeploymentSink } from './secretSink';
 import { redactSecrets } from '../../secretRedaction';
 import { isBackendBindingKind } from './types';
@@ -50,10 +45,7 @@ function notConfigured(res: Response) {
     configured: false,
     enabled: false,
     status: null,
-    missingConfig: [
-      `${BACKEND_PROVIDER_ENV}=${BACKEND_PROVIDER}`,
-      ...BACKEND_PROVIDER_ENV_VARS,
-    ],
+    missingConfig: [`${BACKEND_FAKE_FLAG}=1`],
   });
 }
 
@@ -62,9 +54,8 @@ function notEnabled(res: Response) {
   return res.status(503).json({
     success: false,
     error:
-      'El backend gestionado no está habilitado. Define COMMANDER_BACKEND_PROVIDER=supabase ' +
-      'con SUPABASE_ACCESS_TOKEN, SUPABASE_ORG_ID y SUPABASE_REGION, o ' +
-      `${BACKEND_FAKE_FLAG}=1 para probar el contrato.`
+      'El backend gestionado no está habilitado: todavía no hay proveedor elegido (G3). ' +
+      `Enciende el doble con ${BACKEND_FAKE_FLAG}=1 para probar el contrato.`
   });
 }
 
