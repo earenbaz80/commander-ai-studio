@@ -128,7 +128,13 @@ Lo que **no** existe en la extensión (verificado con los comandos de abajo):
   únicos `while` son el vaciado de `disposables`, la espera de `/api/health` y
   el parseo de frames SSE.
 
-Comprobación reproducible (desde la raíz):
+Automatizado: `tests/vscodeExtensionBoundary.test.ts` recorre el AST de
+`vscode-extension/src` y falla si hay un import del agente, un símbolo de
+tools/permisos, `child_process` fuera de `server.ts` o un spawn que no sea el
+CLI empaquetado con `serve`. Corre en `npm run test:node`, que ya forma parte
+del pre-push y de CI.
+
+Comprobación reproducible manual (desde la raíz):
 
 ```bash
 cd vscode-extension/src

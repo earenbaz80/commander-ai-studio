@@ -42,7 +42,8 @@ VS Code ──(POST /api/agent/sessions)──▶  cli/server.mjs (127.0.0.1:328
   el panel se restaura ese id y, si la corrida sigue, el SSE se reengancha.
 - **Invariante:** la extensión no tiene bucle ni motor de permisos. No importa
   `src/agent`, no ejecuta tools y no decide aprobaciones: sólo reenvía la
-  decisión por HTTP. El único proceso que arranca es `commander serve`.
+  decisión por HTTP. El único proceso que arranca es `commander serve`. Lo
+  verifica `tests/vscodeExtensionBoundary.test.ts` en `npm run test:node`.
 
 ## Desarrollo
 
