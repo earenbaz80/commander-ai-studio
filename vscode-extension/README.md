@@ -8,10 +8,10 @@ permisos son los mismos del escritorio (`bin/commander.ts` + `server.ts`).
 
 | Comando | Qué hace |
 |---------|----------|
-| `Commander: Leer y explicar el archivo` | Corre el agente sobre el archivo/rango activo y explica qué hace, sin modificar nada. |
-| `Commander: Editar el archivo…` | Pide el cambio y lo corre en una terminal con TTY; el diff se aprueba ahí mismo. |
+| `Commander: Leer y explicar el archivo` | Sesión del servidor sobre el archivo/rango activo; explica qué hace sin modificar nada. |
+| `Commander: Editar el archivo…` | Pide el cambio; el diff de la aprobación se ve en el panel y se permite o deniega ahí. |
 | `Commander: Revisar los cambios sin commitear` | Revisa `git diff` (staged incluido) y señala errores, riesgos y pruebas faltantes. |
-| `Commander: Abrir chat del agente` | Webview con streaming NDJSON (sólo lectura: con `--json` no hay aprobaciones). |
+| `Commander: Abrir chat del agente` | Panel de chat con streaming SSE y aprobaciones con diff. |
 | `Commander: Abrir Studio` | Abre el Studio en el Simple Browser sobre el servidor embebido. |
 | `Commander: Ejecutar agente sobre una tarea` | Pide una tarea libre y la corre en una terminal. |
 | `Commander: Configurar clave de modelo` | Guarda la clave en el almacén seguro de VS Code (nunca en settings). |
@@ -24,7 +24,9 @@ Las tres tareas también están en el menú contextual del editor.
 El VSIX viaja con el CLI y el servidor ya construidos en `cli/`:
 
 ```
-VS Code ──(terminal, TTY)──▶  cli/commander.mjs agent "…"  ──HTTP→  cli/server.mjs (127.0.0.1:3280)
+VS Code ──(POST /api/agent/sessions)──▶  cli/server.mjs (127.0.0.1:3280)
+        ◀──(SSE: eventos, diff)─────────
+        ──(POST …/approvals/:id)───────▶  aplica fs.write / fs.edit
 ```
 
 - Si ya hay un servidor respondiendo en `commander.serverUrl`, se reutiliza.
@@ -32,8 +34,11 @@ VS Code ──(terminal, TTY)──▶  cli/commander.mjs agent "…"  ──HTT
   host (`ELECTRON_RUN_AS_NODE=1`), sin `npx` ni instalación global.
 - La clave de modelo se guarda con `SecretStorage` y se pasa al servidor como
   variable de entorno; el valor no se escribe en disco ni se muestra.
-- La corrida va en una terminal real, así el prompt de aprobación del motor de
-  permisos funciona (con `--json` y sin TTY la escritura se deniega).
+- La tarea corre en el bucle del servidor (el mismo del escritorio). El panel
+  pinta el `approval_request` con su `diff`; al permitir, el servidor aplica la
+  tool y el editor abre el archivo para mostrar el cambio.
+- El id de la sesión se muestra en la cabecera y queda en
+  `GET /api/agent/sessions`, igual que las del escritorio.
 
 ## Desarrollo
 
@@ -68,11 +73,12 @@ El prebuild de `node-pty` que viaja es el de la plataforma que empaqueta.
 | `commander.autoStartServer` | `true` | Arrancar el servidor empaquetado si no responde. |
 | `commander.model` | `""` | Modelo de las corridas (vacío = el del CLI). |
 | `commander.apiKeyName` | `GEMINI_API_KEY` | Variable que recibe la clave guardada. |
-| `commander.cliCommand` | `""` | Comando alternativo para desarrollo (`npx commander`). Vacío = CLI del VSIX. |
 
 ## Estado F4A
 
-- ✅ Criterio 1 implementado: VSIX con CLI/servidor embebidos, tres tareas con
-  TTY y clave en almacén seguro.
+- ✅ Criterio 1 implementado: VSIX con CLI/servidor embebidos, tres tareas y
+  clave en almacén seguro.
+- ✅ Criterio 2 implementado: sesiones del servidor + SSE, diff del approval en
+  el panel y allow/deny que aplica el cambio al workspace.
 - ⏳ Falta la evidencia en un VS Code limpio con clave real (tres corridas).
-- ⏳ Criterios 2–5: alcance mínimo y orden en `docs/vscode-extension-f4a.md` (repo).
+- ⏳ Criterios 3–5: alcance mínimo y orden en `docs/vscode-extension-f4a.md` (repo).

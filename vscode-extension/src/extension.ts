@@ -1,36 +1,23 @@
 import * as vscode from 'vscode';
 import { CommanderChatPanel } from './chatPanel';
-import { shellCommand, terminalInvocation, type AgentRun } from './cli';
-import {
-  clearApiKey,
-  configureApiKey,
-  ensureServer,
-  serverUrl,
-  stopServer,
-  workspaceCwd,
-} from './server';
-import { buildTask, taskTitle, type EditorContext, type TaskKind } from './tasks';
+import { clearApiKey, configureApiKey, ensureServer, serverUrl, stopServer } from './server';
+import { buildTask, type EditorContext, type TaskKind } from './tasks';
 
 /**
- * Extensión de VS Code para Commander AI Studio (F4A-1).
+ * Extensión de VS Code para Commander AI Studio (F4A).
  *
  * La extensión es un cliente fino: no reimplementa el agente ni los permisos.
- *   • Las tareas (leer/editar/revisar) corren el CLI real en una terminal con
- *     TTY, así las aprobaciones del motor de permisos funcionan igual que en
- *     el escritorio.
+ *   • Las tareas (leer/editar/revisar) abren el panel de chat, que crea una
+ *     sesión en el servidor y la sigue por SSE. El diff de una aprobación se
+ *     ve en el webview y se decide ahí mismo.
  *   • El servidor embebido se arranca desde el `cli/` que viaja en el VSIX y
  *     se reutiliza si ya responde.
- *   • `commander.openChat` abre un webview que consume los eventos NDJSON.
  *
- * El CLI y el servidor son los mismos del escritorio: hay una sola
- * implementación del bucle y del motor de permisos (criterio F4A-5).
+ * El CLI y el servidor son los mismos del escritorio: una sola implementación
+ * del bucle y del motor de permisos (criterio F4A-5).
  */
 
 let extensionContext: vscode.ExtensionContext | undefined;
-
-function configuration() {
-  return vscode.workspace.getConfiguration('commander');
-}
 
 function activeContext(): EditorContext {
   const editor = vscode.window.activeTextEditor;
@@ -45,19 +32,7 @@ function activeContext(): EditorContext {
   return ctx;
 }
 
-function runOptions(task: string): AgentRun {
-  return {
-    extensionPath: extensionContext!.extensionPath,
-    configuredCli: configuration().get<string>('cliCommand') ?? '',
-    serverUrl: serverUrl(),
-    model: configuration().get<string>('model') ?? '',
-    task,
-    cwd: workspaceCwd(),
-  };
-}
-
-/** Abre una terminal con TTY y el CLI real; sin comillas de shell si es el bundle. */
-async function launchTask(task: string, title: string): Promise<void> {
+async function launchTask(task: string): Promise<void> {
   const context = extensionContext!;
   try {
     await vscode.window.withProgress(
@@ -69,24 +44,7 @@ async function launchTask(task: string, title: string): Promise<void> {
     void vscode.window.showErrorMessage(`Commander: ${message}`);
     return;
   }
-
-  const run = runOptions(task);
-  const invocation = terminalInvocation(run);
-  if (invocation) {
-    const terminal = vscode.window.createTerminal({
-      name: `Commander · ${title}`,
-      cwd: invocation.cwd,
-      shellPath: invocation.shellPath,
-      shellArgs: invocation.args,
-      env: invocation.env,
-    });
-    terminal.show();
-    return;
-  }
-
-  const terminal = vscode.window.createTerminal({ name: `Commander · ${title}`, cwd: run.cwd });
-  terminal.show();
-  terminal.sendText(shellCommand(run));
+  CommanderChatPanel.runTask(context, task);
 }
 
 async function runPreset(kind: TaskKind): Promise<void> {
@@ -108,7 +66,7 @@ async function runPreset(kind: TaskKind): Promise<void> {
     return;
   }
 
-  await launchTask(buildTask(kind, instruction, editorContext), taskTitle(kind));
+  await launchTask(buildTask(kind, instruction, editorContext));
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -158,7 +116,7 @@ export function activate(context: vscode.ExtensionContext): void {
         ignoreFocusOut: true,
       });
       if (!task) return;
-      await launchTask(task, 'Agente');
+      await launchTask(task);
     })
   );
 

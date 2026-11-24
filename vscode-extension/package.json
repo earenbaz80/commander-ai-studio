@@ -115,11 +115,6 @@
           ],
           "default": "GEMINI_API_KEY",
           "description": "Variable de entorno que recibe la clave guardada con «Commander: Configurar clave de modelo»."
-        },
-        "commander.cliCommand": {
-          "type": "string",
-          "default": "",
-          "description": "Comando del CLI para desarrollo (p. ej. «npx commander»). Vacío = usar el CLI que viaja en el VSIX."
         }
       }
     }

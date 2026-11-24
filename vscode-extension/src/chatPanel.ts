@@ -1,34 +1,26 @@
 import * as vscode from 'vscode';
-import type { ChildProcess } from 'child_process';
-import { spawnAgent } from './cli';
-import { ensureServer, serverUrl, workspaceCwd } from './server';
+import * as path from 'path';
+import { serverUrl, workspaceCwd } from './server';
+import { AgentSession, type SessionEvent, type SessionState } from './session';
 
 /**
- * Panel de chat (webview) de la extensión VS Code.
+ * Panel de chat de la extensión.
  *
- * La extensión es un cliente fino: al enviar una tarea lanza el CLI headless en
- * modo máquina (`commander agent "<tarea>" --json`), que emite NDJSON de
- * eventos, y los reenvía al webview para pintarlos como conversación. Así el
- * bucle del agente vive en un único sitio (el CLI/servidor).
+ * Las tareas corren en una sesión **del servidor** (`POST
+ * /api/agent/sessions` con `run: true`), se siguen por SSE y las aprobaciones
+ * se resuelven por HTTP: un solo bucle y un solo motor de permisos, los del
+ * escritorio. El webview sólo pinta eventos y decide.
  */
-
-/** Evento NDJSON emitido por `commander agent --json`. */
-interface CliAgentEvent {
-  type: 'status' | 'chunk' | 'thought' | 'tool_call' | 'tool_result' | 'answer' | 'error' | 'done';
-  text?: string;
-  tool?: string;
-  input?: unknown;
-  ok?: boolean;
-  summary?: string;
-  answer?: string;
-  steps?: number;
-}
 
 function makeNonce(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let s = '';
   for (let i = 0; i < 32; i++) s += chars.charAt(Math.floor(Math.random() * chars.length));
   return s;
+}
+
+function command(): string {
+  return 'Commander AI Studio — Chat';
 }
 
 export class CommanderChatPanel {
@@ -38,21 +30,30 @@ export class CommanderChatPanel {
   private readonly panel: vscode.WebviewPanel;
   private readonly context: vscode.ExtensionContext;
   private readonly disposables: vscode.Disposable[] = [];
-  private child: ChildProcess | undefined;
+  private readonly session: AgentSession;
 
-  static createOrShow(context: vscode.ExtensionContext): void {
+  private running = false;
+  private pendingPath: string | undefined;
+
+  static createOrShow(context: vscode.ExtensionContext): CommanderChatPanel {
     const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
     if (CommanderChatPanel.current) {
       CommanderChatPanel.current.panel.reveal(column);
-      return;
+      return CommanderChatPanel.current;
     }
     const panel = vscode.window.createWebviewPanel(
       CommanderChatPanel.viewType,
-      'Commander AI Studio — Chat',
+      command(),
       column,
       { enableScripts: true, retainContextWhenHidden: true }
     );
     CommanderChatPanel.current = new CommanderChatPanel(panel, context);
+    return CommanderChatPanel.current;
+  }
+
+  /** Abre (o reutiliza) el panel y arranca una tarea de las de F4A. */
+  static runTask(context: vscode.ExtensionContext, task: string): void {
+    CommanderChatPanel.createOrShow(context).startTask(task);
   }
 
   private constructor(panel: vscode.WebviewPanel, context: vscode.ExtensionContext) {
@@ -61,6 +62,14 @@ export class CommanderChatPanel {
     this.panel.webview.html = this.render(this.panel.webview);
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
     this.panel.webview.onDidReceiveMessage((msg) => this.onMessage(msg), null, this.disposables);
+
+    this.session = new AgentSession(serverUrl(), {
+      onEvent: (event) => this.onEvent(event),
+      onResync: (state) => this.onResync(state),
+      onGone: (reason) => this.onGone(reason),
+      onError: (message) => this.post({ type: 'stream.error', message }),
+    });
+
     context.subscriptions.push(this);
   }
 
@@ -68,94 +77,108 @@ export class CommanderChatPanel {
     void this.panel.webview.postMessage(message);
   }
 
-  private onMessage(msg: { type?: string; task?: string } | undefined): void {
+  private onMessage(msg: { type?: string; task?: string; approvalId?: string; decision?: 'allow' | 'deny' } | undefined): void {
     switch (msg?.type) {
       case 'ready':
         this.post({ type: 'config', serverUrl: serverUrl(), cwd: workspaceCwd() });
+        if (this.session.sessionId) this.post({ type: 'session', id: this.session.sessionId });
         break;
       case 'submit':
-        if (msg.task) void this.run(msg.task);
+        if (msg.task) this.startTask(msg.task);
         break;
       case 'cancel':
-        this.killChild();
-        this.post({ type: 'busy', value: false });
+        void this.session.cancel();
+        break;
+      case 'decision':
+        if (msg.approvalId && msg.decision) void this.decide(msg.approvalId, msg.decision);
         break;
     }
   }
 
-  private killChild(): void {
-    if (this.child && !this.child.killed) this.child.kill();
-    this.child = undefined;
-  }
-
-  private async run(task: string): Promise<void> {
-    if (this.child) {
+  private startTask(task: string): void {
+    this.panel.reveal(this.panel.viewColumn ?? vscode.ViewColumn.One);
+    this.post({ type: 'user', text: task });
+    if (this.running) {
       this.post({ type: 'event', event: { type: 'error', text: 'Ya hay una tarea en curso.' } });
       return;
     }
+    this.running = true;
     this.post({ type: 'busy', value: true });
+    void this.run(task);
+  }
 
+  private async run(task: string): Promise<void> {
     try {
-      await ensureServer(this.context);
+      if (this.session.sessionId) {
+        await this.session.message(task);
+        return;
+      }
+      const model = vscode.workspace.getConfiguration('commander').get<string>('model') ?? '';
+      const id = await this.session.create(task, { cwd: workspaceCwd(), model });
+      this.post({ type: 'session', id });
     } catch (error) {
+      this.running = false;
+      this.post({ type: 'busy', value: false });
       const message = error instanceof Error ? error.message : String(error);
       this.post({ type: 'event', event: { type: 'error', text: message } });
-      this.post({ type: 'busy', value: false });
+    }
+  }
+
+  private async decide(approvalId: string, decision: 'allow' | 'deny'): Promise<void> {
+    const error = await this.session.decide(approvalId, decision);
+    if (error) {
+      this.post({ type: 'event', event: { type: 'error', text: error } });
       return;
     }
+    this.post({ type: 'approval.answered', approvalId, decision });
+  }
 
-    const child = spawnAgent(
-      {
-        extensionPath: this.context.extensionPath,
-        configuredCli: vscode.workspace.getConfiguration('commander').get<string>('cliCommand') ?? '',
-        serverUrl: serverUrl(),
-        model: vscode.workspace.getConfiguration('commander').get<string>('model') ?? '',
-        task,
-        cwd: workspaceCwd(),
-      },
-      true
-    );
-    this.child = child;
-
-    let buffer = '';
-    const handleLine = (line: string) => {
-      const trimmed = line.trim();
-      if (!trimmed) return;
-      try {
-        const event = JSON.parse(trimmed) as CliAgentEvent;
-        this.post({ type: 'event', event });
-      } catch {
-        // Salida no-JSON (avisos del CLI, logs): la mostramos como nota.
-        this.post({ type: 'event', event: { type: 'thought', text: trimmed } });
-      }
-    };
-
-    child.stdout?.on('data', (data: Buffer) => {
-      buffer += data.toString();
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop() ?? '';
-      for (const line of lines) handleLine(line);
-    });
-    child.stderr?.on('data', (data: Buffer) => {
-      const text = data.toString().trim();
-      if (text) this.post({ type: 'event', event: { type: 'error', text } });
-    });
-    child.on('close', () => {
-      if (buffer.trim()) handleLine(buffer);
-      buffer = '';
-      this.child = undefined;
+  private onEvent(event: SessionEvent): void {
+    if (event.type === 'approval_request' && event.approval) {
+      this.pendingPath = event.approval.input?.path;
+      this.running = true;
+      this.post({ type: 'busy', value: true });
+    }
+    if (event.type === 'approval_result') {
+      if (event.decision === 'allow' && this.pendingPath) void this.reveal(this.pendingPath);
+      this.pendingPath = undefined;
+    }
+    if (event.type === 'done' || event.type === 'error') {
+      this.running = false;
       this.post({ type: 'busy', value: false });
-    });
-    child.on('error', (err) => {
-      this.post({ type: 'event', event: { type: 'error', text: err.message } });
-      this.child = undefined;
-      this.post({ type: 'busy', value: false });
-    });
+    }
+    this.post({ type: 'event', event });
+  }
+
+  private onResync(state: SessionState): void {
+    this.running = state.status === 'running';
+    this.post({ type: 'busy', value: this.running });
+    this.post({ type: 'resync', state });
+    if (state.pendingApproval) this.pendingPath = state.pendingApproval.input?.path;
+  }
+
+  private onGone(reason: string): void {
+    this.running = false;
+    this.post({ type: 'busy', value: false });
+    this.post({ type: 'note', text: `sesión terminada (${reason})` });
+  }
+
+  /** Abre el archivo tocado para que se vea el cambio aplicado por el servidor. */
+  private async reveal(file: string): Promise<void> {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) return;
+    const uri = path.isAbsolute(file) ? vscode.Uri.file(file) : vscode.Uri.joinPath(folder.uri, file);
+    try {
+      await vscode.window.showTextDocument(uri, { preview: false });
+    } catch {
+      // El archivo puede haberse borrado o quedar fuera del workspace: el
+      // resultado de la tool ya se ve en el panel.
+    }
   }
 
   dispose(): void {
     CommanderChatPanel.current = undefined;
-    this.killChild();
+    this.session.dispose();
     this.panel.dispose();
     while (this.disposables.length) this.disposables.pop()?.dispose();
   }
@@ -168,7 +191,7 @@ export class CommanderChatPanel {
       `script-src 'nonce-${nonce}'`,
     ].join('; ');
 
-    // Nota: el JS del webview evita plantillas `${}` para no chocar con este
+    // El JS del webview evita plantillas `${}` para no chocar con este
     // template literal de TypeScript (usa concatenación).
     return `<!DOCTYPE html>
 <html lang="es">
@@ -205,6 +228,18 @@ export class CommanderChatPanel {
     .err { color:var(--red); }
     .status { color:#6fb7d6; font-style:italic; padding-left:12px; }
     .note { color:#6fb7d6; padding-left:24px; font-style:italic; }
+    .approval { border:1px solid var(--yellow); background:#0a0a00; margin:8px 0; padding:8px; }
+    .approval-head { color:var(--yellow); font-weight:bold; margin-bottom:4px; }
+    .approval pre {
+      max-height:260px; overflow:auto; background:#000; border:1px solid #334455;
+      padding:6px; margin:6px 0; white-space:pre;
+    }
+    .approval .dline { white-space:pre; }
+    .approval .add { color:var(--green); }
+    .approval .del { color:#ff9d9d; }
+    .approval .hunk { color:var(--cyan); }
+    .approval-actions { display:flex; gap:8px; align-items:center; }
+    .approval-actions .state { color:#6fb7d6; font-style:italic; }
     footer { border-top:2px solid #004466; padding:8px 10px; display:flex; gap:8px; background:#000812; }
     textarea {
       flex:1; resize:none; height:54px; padding:6px;
@@ -216,6 +251,7 @@ export class CommanderChatPanel {
       padding:0 12px; cursor:pointer; font-family:inherit; font-size:12px;
     }
     button:disabled { opacity:.45; cursor:not-allowed; }
+    button.deny { border-color:var(--red); color:var(--red); background:transparent; }
     button.cancel { border-color:var(--red); color:var(--red); background:transparent; }
   </style>
 </head>
@@ -241,6 +277,7 @@ export class CommanderChatPanel {
 
     let assistantBody = null;
     let assistantText = '';
+    const approvalCards = {};
 
     function scroll() { log.scrollTop = log.scrollHeight; }
 
@@ -276,22 +313,97 @@ export class CommanderChatPanel {
       return assistantBody;
     }
 
-    function finalizeAssistant() {
-      assistantBody = null;
-      assistantText = '';
-    }
-
     function setBusy(busy) {
       sendBtn.disabled = busy;
       cancelBtn.disabled = !busy;
       input.disabled = busy;
     }
 
+    function renderDiff(pre, diff) {
+      if (!diff) {
+        pre.textContent = '(sin diff: la tool no escribe un archivo)';
+        return;
+      }
+      const lines = String(diff).split('\\n');
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const row = document.createElement('div');
+        row.className = 'dline' + (
+          line.indexOf('+') === 0 ? ' add' :
+          line.indexOf('-') === 0 ? ' del' :
+          line.indexOf('@@') === 0 ? ' hunk' : ''
+        );
+        row.textContent = line || ' ';
+        pre.appendChild(row);
+      }
+    }
+
+    function markDecision(approvalId, decision, reason) {
+      const card = approvalCards[approvalId];
+      if (!card) return;
+      card.disabled = true;
+      const buttons = card.querySelectorAll('button');
+      for (let i = 0; i < buttons.length; i++) buttons[i].disabled = true;
+      const state = card.querySelector('.approval-actions .state');
+      if (state) {
+        state.textContent = decision === 'allow'
+          ? 'permitido: el servidor aplica el cambio'
+          : 'denegado' + (reason ? ' (' + reason + ')' : '');
+      }
+    }
+
+    function renderApproval(approval) {
+      if (!approval || !approval.id) return;
+      if (approvalCards[approval.id]) return;
+      const card = document.createElement('div');
+      card.className = 'approval';
+
+      const head = document.createElement('div');
+      head.className = 'approval-head';
+      const where = approval.input && approval.input.path ? ' · ' + approval.input.path : '';
+      head.textContent = '⚠ Aprobación: ' + approval.tool + where;
+      card.appendChild(head);
+
+      const pre = document.createElement('pre');
+      renderDiff(pre, approval.diff);
+      card.appendChild(pre);
+
+      const actions = document.createElement('div');
+      actions.className = 'approval-actions';
+
+      const allow = document.createElement('button');
+      allow.textContent = 'Permitir';
+      allow.addEventListener('click', function () {
+        vscode.postMessage({ type: 'decision', approvalId: approval.id, decision: 'allow' });
+        markDecision(approval.id, 'allow');
+      });
+
+      const deny = document.createElement('button');
+      deny.className = 'deny';
+      deny.textContent = 'Denegar';
+      deny.addEventListener('click', function () {
+        vscode.postMessage({ type: 'decision', approvalId: approval.id, decision: 'deny' });
+        markDecision(approval.id, 'deny');
+      });
+
+      const state = document.createElement('span');
+      state.className = 'state';
+
+      actions.appendChild(allow);
+      actions.appendChild(deny);
+      actions.appendChild(state);
+      card.appendChild(actions);
+
+      approvalCards[approval.id] = card;
+      log.appendChild(card);
+      scroll();
+    }
+
     function handleEvent(ev) {
       if (!ev || !ev.type) return;
       switch (ev.type) {
         case 'status':
-          appendLine('status', '· ' + (ev.text || ''));
+          appendLine('status', '· ' + (ev.status || ev.text || ''));
           break;
         case 'chunk':
           assistantText += ev.text || '';
@@ -299,14 +411,20 @@ export class CommanderChatPanel {
           scroll();
           break;
         case 'thought':
-          if (!assistantText) appendLine('note', ev.text);
+          if (!assistantText) appendLine('note', ev.content || ev.text || '');
           break;
         case 'tool_call':
           if (assistantBody) { assistantBody = null; assistantText = ''; }
           appendLine('tool', '→ ' + ev.tool + ' ' + (ev.input ? JSON.stringify(ev.input) : ''));
           break;
         case 'tool_result':
-          appendLine('result ' + (ev.ok ? 'ok' : 'err'), (ev.ok ? '✓ ' : '✗ ') + ev.summary);
+          appendLine('result ' + (ev.ok ? 'ok' : 'err'), (ev.ok ? '✓ ' : '✗ ') + (ev.summary || ''));
+          break;
+        case 'approval_request':
+          renderApproval(ev.approval);
+          break;
+        case 'approval_result':
+          markDecision(ev.approvalId, ev.decision, ev.reason);
           break;
         case 'answer':
           if (assistantBody && assistantText.trim()) { assistantBody = null; assistantText = ''; }
@@ -314,7 +432,7 @@ export class CommanderChatPanel {
           break;
         case 'error':
           assistantBody = null; assistantText = '';
-          appendLine('err', '✗ ' + ev.text);
+          appendLine('err', '✗ ' + (ev.text || ev.error || 'error'));
           break;
         case 'done':
           assistantBody = null; assistantText = '';
@@ -328,7 +446,6 @@ export class CommanderChatPanel {
     function submit() {
       const task = input.value.trim();
       if (!task) return;
-      addMessage('user', task);
       vscode.postMessage({ type: 'submit', task: task });
       input.value = '';
       input.focus();
@@ -344,10 +461,16 @@ export class CommanderChatPanel {
       const msg = e.data;
       if (!msg) return;
       if (msg.type === 'event') { handleEvent(msg.event); }
-      else if (msg.type === 'busy') {
-        sendBtn.disabled = !!msg.value;
-        cancelBtn.disabled = !msg.value;
-        input.disabled = !!msg.value;
+      else if (msg.type === 'user') { addMessage('user', msg.text); }
+      else if (msg.type === 'busy') { setBusy(!!msg.value); }
+      else if (msg.type === 'session') { meta.textContent = msg.id; }
+      else if (msg.type === 'approval.answered') { markDecision(msg.approvalId, msg.decision); }
+      else if (msg.type === 'stream.error') { appendLine('err', '✗ ' + msg.message); }
+      else if (msg.type === 'note') { appendLine('note', '— ' + msg.text + ' —'); }
+      else if (msg.type === 'resync') {
+        const state = msg.state || {};
+        appendLine('note', 'sesión ' + (state.id || '') + ' · ' + (state.status || ''));
+        if (state.pendingApproval) renderApproval(state.pendingApproval);
       }
       else if (msg.type === 'config') {
         meta.textContent = msg.serverUrl + '  ·  ' + msg.cwd;
