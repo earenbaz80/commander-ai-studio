@@ -303,6 +303,11 @@ function readPluginManifest(file: string): { manifest?: PluginManifest; error?: 
   };
 }
 
+/** Manifiesto validado de un plugin local, sin importar su módulo. */
+export function readPluginManifestSummary(file: string): PluginManifest | null {
+  return readPluginManifest(file).manifest ?? null;
+}
+
 /**
  * Deja sólo los hooks que el manifiesto permite.
  *

@@ -410,7 +410,7 @@ Ejecuta una tool del agente en el servidor.
 Un plugin instalado desde la UI vive como manifiesto en `.commander/plugins/<id>.manifest.json`; el runtime ejecuta además `.commander/plugins/<id>/index.js`. El manifiesto de instalación guarda el `checksum` sha256 de los archivos descargados.
 
 ### `GET /api/plugins?root=`
-Lista los manifiestos instalados: `{success, plugins: [{id, name, version, checksum, marketplace, components}]}`; `checksum` es el sha256 de los archivos descargados al instalar.
+Lista los manifiestos instalados y los plugins locales con `index.js`/`plugin.json`: `{success, plugins: [{id, name, version, apiVersion, permissions, checksum, source, marketplace, components}]}`. `checksum` es el sha256 de los archivos descargados al instalar (null en un plugin local); `apiVersion` y `permissions` salen de `plugin.json` cuando existe.
 
 ### `POST /api/plugins`
 **Body:** `{id, name?, version?, entrypoint?, root?}`. El `id` es un nombre de archivo (`[A-Za-z0-9._-]`, sin `..`); cualquier otra cosa responde 400.

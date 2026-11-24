@@ -131,6 +131,8 @@ test('GET /api/plugins lista los plugins instalados desde un marketplace', async
       id,
       name: 'Market Demo',
       version: '1.2.3',
+      apiVersion: 1,
+      permissions: ['lifecycle', 'tools'],
       checksum: CHECKSUM,
       marketplace: 'anthropics/claude-plugins-official',
       components: { commands: ['commit'], agents: ['helper'], skills: [], mcp: ['demo'] },
@@ -149,9 +151,42 @@ test('GET /api/plugins lista los plugins instalados desde un marketplace', async
   assert.ok(found, `el plugin ${id} debía aparecer en la lista`);
   assert.equal(found.name, 'Market Demo');
   assert.equal(found.version, '1.2.3');
+  assert.equal(found.apiVersion, 1, 'la versión de API del manifiesto se lista');
+  assert.deepEqual(found.permissions, ['lifecycle', 'tools'], 'los permisos se listan');
   assert.equal(found.checksum, CHECKSUM, 'el checksum de la instalación se lista');
   assert.equal(found.marketplace, 'anthropics/claude-plugins-official');
   assert.deepEqual(found.components.commands, ['commit']);
+});
+
+test('GET /api/plugins lista un plugin local con su manifiesto', async () => {
+  // Los plugins locales viven en `.commander/plugins/<id>/` y los carga el
+  // runtime; antes no aparecían en la lista y su API/permisos no se podían
+  // revisar desde Configuración → Extensiones.
+  const id = `local-${Date.now()}`;
+  const dir = path.join(pluginsDir(), id);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'plugin.json'),
+    JSON.stringify({
+      apiVersion: 1,
+      permissions: ['lifecycle'],
+      name: 'Local Demo',
+      version: '0.4.0',
+    }),
+    'utf8'
+  );
+  fs.writeFileSync(path.join(dir, 'index.js'), 'export default {};', 'utf8');
+
+  const res = await srv.request('GET', `/api/plugins${rootQuery()}`);
+  assert.equal(res.status, 200, res.raw);
+  const found = (res.body.plugins || []).find((plugin: any) => plugin.id === id);
+  assert.ok(found, `el plugin local ${id} debía aparecer en la lista`);
+  assert.equal(found.name, 'Local Demo');
+  assert.equal(found.version, '0.4.0');
+  assert.equal(found.apiVersion, 1);
+  assert.deepEqual(found.permissions, ['lifecycle']);
+  assert.equal(found.checksum, null, 'un plugin local no tiene checksum de catálogo');
+  assert.equal(found.source, 'local');
 });
 
 test('DELETE /api/plugins/:id borra las skills y agentes que copió el plugin', async () => {

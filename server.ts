@@ -2430,6 +2430,7 @@ app.delete('/api/providers/:id', (req, res) => {
 import { mcpRouter } from './src/mcp/index.js';
 import { pluginMarketRouter } from './src/plugins/marketplace.js';
 import { pluginLifecycleRouter } from './src/plugins/lifecycleApi.js';
+import { listPluginFiles, parsePluginApiVersion, readPluginManifestSummary } from './pluginsRuntime.js';
 import { uninstallInstalledPlugin } from './src/plugins/uninstall.js';
 app.use('/api/mcp', mcpRouter);
 // Catálogo de plugins (marketplace.json) bajo el mismo prefijo: sus rutas
@@ -2467,24 +2468,50 @@ app.get('/api/plugins', (req, res) => {
     if (!fs.existsSync(p)) return res.json({ success: true, plugins: [] });
 
     const files = fs.readdirSync(p);
+    // Plugins locales (carpeta con `index.js` y `plugin.json`): el runtime los
+    // ejecuta, así que también son instalaciones que la UI debe poder revisar.
+    // `listPluginFiles` sólo localiza la entrada; no importa el módulo.
+    const local = new Map(listPluginFiles(root).map((plugin) => [plugin.id, plugin.file]));
+    const localManifest = (id: string) => {
+      const file = local.get(id);
+      return file ? readPluginManifestSummary(file) : null;
+    };
+    const asPermissions = (value: unknown): string[] | null =>
+      Array.isArray(value)
+        ? value.filter((permission): permission is string => typeof permission === 'string')
+        : null;
+
     const plugins: any[] = [];
     for (const file of files) {
       if (!file.endsWith('.manifest.json')) continue;
       const fallbackId = file.replace(/\.manifest\.json$/, '');
       try {
         const manifest = JSON.parse(fs.readFileSync(path.join(p, file), 'utf8'));
+        const id = manifest.id || fallbackId;
+        const localMeta = localManifest(id);
         plugins.push({
-          id: manifest.id || fallbackId,
-          name: manifest.name || fallbackId,
-          version: manifest.version ?? null,
-          checksum: manifest.checksum || null,
+          id,
+          name: localMeta?.name || manifest.name || fallbackId,
+          version: localMeta?.version ?? manifest.version ?? null,
+          apiVersion: localMeta?.apiVersion ?? parsePluginApiVersion(manifest.apiVersion),
+          permissions: localMeta?.permissions ?? asPermissions(manifest.permissions),
+          checksum: typeof manifest.checksum === 'string' ? manifest.checksum : null,
           source: manifest.source || 'marketplace',
           marketplace: manifest.marketplace || null,
           components: manifest.components || null,
           installedAt: manifest.installedAt || null,
         });
       } catch {
-        plugins.push({ id: fallbackId, name: fallbackId, version: null, source: 'manifest' });
+        const localMeta = localManifest(fallbackId);
+        plugins.push({
+          id: fallbackId,
+          name: localMeta?.name || fallbackId,
+          version: localMeta?.version ?? null,
+          apiVersion: localMeta?.apiVersion ?? null,
+          permissions: localMeta?.permissions ?? null,
+          checksum: null,
+          source: 'manifest',
+        });
       }
     }
 
@@ -2493,7 +2520,36 @@ app.get('/api/plugins', (req, res) => {
       if (!file.endsWith('.zip')) continue;
       const id = file.replace(/\.zip$/, '');
       if (listed.has(id)) continue;
-      plugins.push({ id, name: id, version: null, source: 'zip' });
+      const localMeta = localManifest(id);
+      plugins.push({
+        id,
+        name: localMeta?.name || id,
+        version: localMeta?.version ?? null,
+        apiVersion: localMeta?.apiVersion ?? null,
+        permissions: localMeta?.permissions ?? null,
+        checksum: null,
+        source: 'zip',
+      });
+      listed.add(id);
+    }
+
+    // Un plugin local sin manifiesto de instalación (p. ej. el de referencia)
+    // también se puede revisar y desinstalar desde Configuración → Extensiones.
+    for (const [id] of local) {
+      if (listed.has(id)) continue;
+      const manifest = localManifest(id);
+      plugins.push({
+        id,
+        name: manifest?.name || id,
+        version: manifest?.version ?? null,
+        apiVersion: manifest?.apiVersion ?? null,
+        permissions: manifest?.permissions ?? null,
+        checksum: null,
+        source: 'local',
+        marketplace: null,
+        components: null,
+        installedAt: null,
+      });
     }
 
     plugins.sort((a, b) => String(a.name).localeCompare(String(b.name)));
