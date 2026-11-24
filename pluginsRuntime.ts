@@ -417,7 +417,7 @@ function runWithTimeout<T>(fn: () => T | Promise<T>, timeoutMs: number): Promise
   });
 }
 
-type LifecycleHookName =
+export type PluginLifecycleHookName =
   | 'sessionStart'
   | 'beforeModel'
   | 'afterModel'
@@ -428,7 +428,7 @@ type LifecycleHookName =
 /** Corre un hook de lifecycle en todos los plugins, en orden, sin cortar por fallos. */
 async function runLifecycleHook(
   root: string,
-  hook: LifecycleHookName,
+  hook: PluginLifecycleHookName,
   ctx: PluginSessionContext | PluginModelContext | PluginSessionEndContext | PluginStopContext | PluginErrorContext,
   opts?: PluginRunOptions,
 ): Promise<PluginLifecycleRun> {
@@ -487,6 +487,19 @@ export function runStopHooks(
   opts?: PluginRunOptions,
 ): Promise<PluginLifecycleRun> {
   return runLifecycleHook(root, 'stop', ctx, opts);
+}
+
+/**
+ * Ejecuta un hook por nombre. Lo usa el endpoint que atiende a los bucles que
+ * corren fuera del servidor (CLI y navegador), sin duplicar el runtime.
+ */
+export function runPluginHook(
+  root: string,
+  hook: PluginLifecycleHookName,
+  ctx: PluginSessionContext | PluginModelContext | PluginSessionEndContext | PluginStopContext | PluginErrorContext,
+  opts?: PluginRunOptions,
+): Promise<PluginLifecycleRun> {
+  return runLifecycleHook(root, hook, ctx, opts);
 }
 
 export function runErrorHooks(

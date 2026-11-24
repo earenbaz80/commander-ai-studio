@@ -211,3 +211,65 @@ test('DELETE /api/plugins/:id borra las skills y agentes que copió el plugin', 
   assert.equal(fs.existsSync(manifestDe(id)), false, 'el manifiesto se borra');
   assert.ok((res.body.removed || []).length >= 4, 'la respuesta detalla lo borrado');
 });
+
+test('POST /api/plugins/lifecycle ejecuta los hooks del proyecto', async () => {
+  // El bucle del navegador y el del CLI no cargan plugins: mandan el hook a
+  // esta ruta, que reutiliza el mismo runtime que `AgentSession`.
+  const id = `lifecycle-${Date.now()}`;
+  const dir = path.join(pluginsDir(), id);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'plugin.json'),
+    JSON.stringify({ apiVersion: 1, permissions: ['lifecycle'] }),
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(dir, 'index.js'),
+    [
+      "import fs from 'node:fs';",
+      "import path from 'node:path';",
+      `const LOG = path.join(${JSON.stringify(root)}, 'lifecycle-hooks.log');`,
+      'const record = (hook, ctx) => fs.appendFileSync(LOG, `${hook}:${ctx.sessionId}\\n`, "utf8");',
+      'export default {',
+      "  sessionStart: (ctx) => record('sessionStart', ctx),",
+      "  beforeModel: (ctx) => record('beforeModel', ctx),",
+      "  afterModel: (ctx) => record('afterModel', ctx),",
+      "  sessionEnd: (ctx) => record('sessionEnd', ctx),",
+      "  stop: (ctx) => record('stop', ctx),",
+      "  error: (ctx) => record('error', ctx),",
+      '};',
+    ].join('\n'),
+    'utf8'
+  );
+
+  const context = { sessionId: 'sess_http', root, goal: 'lifecycle', model: 'gemini-2.5-flash' };
+  const calls: Array<[string, Record<string, unknown>]> = [
+    ['sessionStart', {}],
+    ['beforeModel', { phase: 'before', turn: 1 }],
+    ['afterModel', { phase: 'after', turn: 1, ok: false, error: 'boom' }],
+    ['sessionEnd', { answer: 'listo' }],
+    ['stop', { reason: 'user' }],
+    ['error', { error: 'boom' }],
+  ];
+
+  for (const [hook, extra] of calls) {
+    const res = await srv.request('POST', '/api/plugins/lifecycle', {
+      hook,
+      context: { ...context, ...extra },
+    });
+    assert.equal(res.status, 200, res.raw);
+    assert.equal(res.body.success, true);
+    assert.deepEqual(res.body.ran, [id], `el hook ${hook} debía ejecutar el plugin`);
+    assert.deepEqual(res.body.errors, []);
+  }
+
+  const lines = fs
+    .readFileSync(path.join(root, 'lifecycle-hooks.log'), 'utf8')
+    .trim()
+    .split('\n');
+  assert.deepEqual(
+    lines,
+    calls.map(([hook]) => `${hook}:sess_http`),
+    'los hooks salen en el orden en que el bucle los emite'
+  );
+});

@@ -8,6 +8,7 @@ import { AgentOrchestrator } from '../src/agent/orchestrator.js';
 import type { AgentTask, AgentStep, AgentState } from '../src/agent/types.js';
 import { AGENT_FUNCTION_DECLARATIONS, mapFunctionCall } from '../src/agent/fnTools.js';
 import { PLAN_TOOL, normalizePlan } from '../src/agent/plan.js';
+import { RunPluginLifecycle } from '../src/agent/pluginLifecycle.js';
 
 /**
  * LLM fake determinista: alterna toolCalls (fs.read) y finish.
@@ -650,6 +651,51 @@ test('el gate de verificación bloquea el cierre sin verificar (escritorio)', as
     loop.stop();
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('AgentLoop emite el lifecycle del navegador', async () => {
+  const { orchestrator } = createMockOrchestrator();
+  const events: string[] = [];
+  const lifecycle = new RunPluginLifecycle(
+    async (hook) => { events.push(hook); },
+    { sessionId: 'life-browser', root: '.', goal: 'Test goal', model: 'gemini-2.0-flash' }
+  );
+  const client: AgentLLMClient = {
+    callJson: async () => ({ thought: 'listo', finish: true, answer: 'listo' }),
+    callTools: async () => ({ thought: 'listo', calls: [] }),
+  };
+  const loop = new AgentLoop(orchestrator, 'gemini-2.0-flash', client, () => lifecycle);
+
+  await loop.start({ id: 'life-browser', goal: 'Test goal', cwd: '.', maxSteps: 5 });
+  await loop.whenLifecycleSettled();
+
+  assert.deepEqual(events, ['sessionStart', 'beforeModel', 'afterModel', 'sessionEnd']);
+});
+
+test('AgentLoop cierra con stop cuando se detiene la corrida', async () => {
+  const { orchestrator } = createMockOrchestrator();
+  const events: string[] = [];
+  let markCalled: (() => void) | null = null;
+  const called = new Promise<void>((resolve) => { markCalled = resolve; });
+  const client: AgentLLMClient = {
+    callJson: async () => ({}),
+    callTools: async () => {
+      markCalled?.();
+      return new Promise(() => {});
+    },
+  };
+  const lifecycle = new RunPluginLifecycle(
+    async (hook) => { events.push(hook); },
+    { sessionId: 'life-stop', root: '.', goal: 'Test goal', model: 'gemini-2.0-flash' }
+  );
+  const loop = new AgentLoop(orchestrator, 'gemini-2.0-flash', client, () => lifecycle);
+
+  void loop.start({ id: 'life-stop', goal: 'Test goal', cwd: '.', maxSteps: 5 });
+  await called;
+  loop.stop();
+  await loop.whenLifecycleSettled();
+
+  assert.deepEqual(events, ['sessionStart', 'beforeModel', 'stop']);
 });
 
 test('el gate de verificación deja cerrar con un verde posterior (escritorio)', async () => {

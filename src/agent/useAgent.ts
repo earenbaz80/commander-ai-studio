@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { AgentOrchestrator } from './orchestrator';
 import { AgentLoop } from './loop';
+import { createPluginLifecycle } from './pluginLifecycle';
 import { uid } from './id';
 import { saveSession, saveSessionThrottled, type AgentSession } from './sessions';
 import { clearActiveSession, rememberTask } from './activeSession';
@@ -103,7 +104,15 @@ export function useAgent(cwd: string, model?: string) {
 
   const orchestrator = orchestratorRef.current!;
 
-  const loop = useMemo(() => new AgentLoop(orchestrator, model), [orchestrator, model]);
+  // El bucle del navegador no puede leer `.commander/plugins`: el emisor manda
+  // cada hook al servidor, que ejecuta el mismo runtime que `AgentSession`.
+  const loop = useMemo(
+    () =>
+      new AgentLoop(orchestrator, model, undefined, (context) =>
+        createPluginLifecycle({ context }),
+      ),
+    [orchestrator, model],
+  );
 
   /** Arranca una corrida y devuelve el id de la tarea (para seguirla desde la UI). */
   const startTask = (

@@ -1,4 +1,5 @@
 import { uid } from './id';
+import { RunPluginLifecycle, type PluginCloseOutcome, type PluginLifecycleContext } from './pluginLifecycle';
 import type { AgentOrchestrator } from './orchestrator';
 import type { AgentTask } from './types';
 import { callAgentLLM, callAgentLLMTools } from './llm';
@@ -91,6 +92,9 @@ export interface AgentLLMClient {
   callTools: typeof callAgentLLMTools;
 }
 
+/** Construye el lifecycle de una corrida; la app pasa el emisor HTTP. */
+export type AgentLifecycleFactory = (context: PluginLifecycleContext) => RunPluginLifecycle;
+
 export const defaultAgentLLMClient: AgentLLMClient = {
   callJson: callAgentLLM,
   callTools: callAgentLLMTools,
@@ -117,11 +121,22 @@ export class AgentLoop {
    * bucle del CLI: acá se podía cerrar «listo» sin correr nada tras editar.
    */
   private verifyGate = new VerifyGate();
+  private lifecycleFactory?: AgentLifecycleFactory;
+  private lifecycle: RunPluginLifecycle | null = null;
+  private lifecycleTail: Promise<void> = Promise.resolve();
+  private lifecycleClosing: PluginCloseOutcome | null = null;
+  private modelTurns = 0;
 
-  constructor(orchestrator: AgentOrchestrator, model?: string, llmClient: AgentLLMClient = defaultAgentLLMClient) {
+  constructor(
+    orchestrator: AgentOrchestrator,
+    model?: string,
+    llmClient: AgentLLMClient = defaultAgentLLMClient,
+    lifecycleFactory?: AgentLifecycleFactory,
+  ) {
     this.orchestrator = orchestrator;
     this.model = model;
     this.llm = llmClient;
+    this.lifecycleFactory = lifecycleFactory;
   }
 
   /**
@@ -201,6 +216,9 @@ export class AgentLoop {
     // modelo: sin reiniciarlo, una corrida nueva hereda los fallos de la anterior.
     this.noProgressSteps = 0;
     this.verifyGate = new VerifyGate();
+    this.modelTurns = 0;
+    this.lifecycleClosing = null;
+    await this.beginLifecycle(task);
     // Sin hilo propio cuando la corrida ya pertenece a una conversación (la
     // auditoría del chat): crear uno por corrida llenaba el historial de sesiones
     // tituladas con el prompt entero, una por pulsación.
@@ -222,7 +240,7 @@ export class AgentLoop {
     if (mcpParts.length > 0) {
       this.orchestrator.addThought('MCP', `Servidores activos: ${mcpParts.length}`);
     }
-    await this.step();
+    await this.runStepSafely();
   }
 
   /**
@@ -241,6 +259,9 @@ export class AgentLoop {
     this.noProgressSteps = 0;
     this.verifyGate = new VerifyGate();
     const { rules, mcpParts } = await this.prepare();
+    this.modelTurns = 0;
+    this.lifecycleClosing = null;
+    await this.beginLifecycle(task);
     if (!this.orchestrator.resume()) {
       this.running = false;
       return;
@@ -252,13 +273,81 @@ export class AgentLoop {
     if (mcpParts.length > 0) {
       this.orchestrator.addThought('MCP', `Servidores activos: ${mcpParts.length}`);
     }
-    await this.step();
+    await this.runStepSafely();
   }
 
   stop() {
     this.running = false;
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     this.orchestrator.stop();
+    const outcome = this.lifecycleClosing ?? { kind: 'stopped' as const, reason: 'user' as const };
+    this.lifecycleClosing = null;
+    this.closeLifecycle(outcome);
+  }
+
+  /** Construye y arranca el lifecycle de una corrida. */
+  private async beginLifecycle(task: AgentTask): Promise<void> {
+    this.lifecycle = this.lifecycleFactory
+      ? this.lifecycleFactory({
+          sessionId: task.id,
+          root: task.cwd,
+          goal: task.goal,
+          model: this.model || '',
+        })
+      : null;
+    await this.lifecycle?.start();
+  }
+
+  /** `stop()` es síncrono: el cierre se encola y nunca bloquea la UI. */
+  private closeLifecycle(outcome: PluginCloseOutcome): void {
+    const lifecycle = this.lifecycle;
+    if (!lifecycle) return;
+    this.lifecycle = null;
+    this.lifecycleTail = lifecycle.close(outcome).catch(() => { /* nunca rompe la corrida */ });
+  }
+
+  /** Espera al hook terminal (tests y cierre ordenado). */
+  async whenLifecycleSettled(): Promise<void> {
+    await this.lifecycleTail;
+  }
+
+  /** Un fallo inesperado del paso también cierra el lifecycle. */
+  private async runStepSafely(): Promise<void> {
+    try {
+      await this.step();
+    } catch (error: any) {
+      this.lifecycleClosing = { kind: 'error', error: String(error?.message || error) };
+      this.stop();
+      throw error;
+    }
+  }
+
+  /** Envuelve una llamada al modelo con `beforeModel`/`afterModel`. */
+  private async modelCall<T>(call: () => Promise<T>): Promise<T> {
+    const turn = ++this.modelTurns;
+    await this.lifecycle?.beforeModel(turn);
+    try {
+      const result = await call();
+      await this.lifecycle?.afterModel(turn, true);
+      return result;
+    } catch (error: any) {
+      await this.lifecycle?.afterModel(turn, false, String(error?.message || error));
+      throw error;
+    }
+  }
+
+  /** `callTools` con su par beforeModel/afterModel pegado a la llamada real. */
+  private callToolsWithLifecycle(
+    ...args: Parameters<AgentLLMClient['callTools']>
+  ): ReturnType<AgentLLMClient['callTools']> {
+    return this.modelCall(() => this.llm.callTools(...args));
+  }
+
+  /** `callJson` con su par beforeModel/afterModel pegado a la llamada real. */
+  private callJsonWithLifecycle(
+    ...args: Parameters<AgentLLMClient['callJson']>
+  ): ReturnType<AgentLLMClient['callJson']> {
+    return this.modelCall(() => this.llm.callJson(...args));
   }
 
   private async loadRepoRules(): Promise<{ file: string; text: string } | null> {
@@ -332,6 +421,10 @@ export class AgentLoop {
       if (this.noProgressSteps >= 8) {
         this.addThoughtCapped('Límite de pasos', '8 pasos seguidos sin cambios: se detiene para evitar bucle.');
         this.pushTurn('user', 'CORTE: llevas 8 pasos sin producir ningún cambio en el workspace. Detente y reporta qué bloquea el avance, o pide instrucciones al usuario.');
+        this.lifecycleClosing = {
+          kind: 'error',
+          error: '8 pasos seguidos sin cambios: se detiene para evitar bucle.',
+        };
         this.stop();
       }
     }
@@ -431,6 +524,7 @@ export class AgentLoop {
     const text = String(decision.text ?? '');
     this.addThoughtCapped('Gate de verificación', text);
     if (decision.fatal) {
+      this.lifecycleClosing = { kind: 'error', error: text };
       this.stop();
       return true;
     }
@@ -440,7 +534,14 @@ export class AgentLoop {
 
   private async stepOnce() {
     if (!this.running || !this.task) return;
+    // Una intención de cierre de un turno que fue bloqueado no sobrevive al
+    // siguiente: el gate de verificación puede devolver el control al modelo.
+    this.lifecycleClosing = null;
     if (this.orchestrator.getState().steps.length >= this.task.maxSteps) {
+      this.lifecycleClosing = {
+        kind: 'error',
+        error: `Se alcanzó el límite de ${this.task.maxSteps} pasos sin respuesta final.`,
+      };
       this.stop();
       return;
     }
@@ -483,7 +584,7 @@ export class AgentLoop {
     if (!this.task) return;
     let native;
     try {
-      native = await this.llm.callTools(
+      native = await this.callToolsWithLifecycle(
         {
           goal: this.task.goal,
           cwd: this.task.cwd,
@@ -542,6 +643,10 @@ export class AgentLoop {
       // Sin calls = respuesta final, salvo que falte verificar la última edición.
       this.pushTurn('model', native.thought || '(sin salida)');
       if (this.blockClosingForVerification()) return;
+      this.lifecycleClosing = {
+        kind: 'done',
+        answer: native.thought || 'Objetivo completado.',
+      };
       this.addThoughtCapped('Finalizado', native.thought || 'Objetivo completado.');
       this.stop();
       return;
@@ -575,7 +680,7 @@ export class AgentLoop {
 
   private async stepJson(recentSteps: any[], plan: any[]) {
     if (!this.task) return;
-    const llmRes = await this.llm.callJson(
+    const llmRes = await this.callJsonWithLifecycle(
       {
         goal: this.task.goal,
         cwd: this.task.cwd,
@@ -607,6 +712,7 @@ export class AgentLoop {
     }
 
     if (llmRes.finish) {
+      this.lifecycleClosing = { kind: 'done', answer: llmRes.answer || '' };
       if (llmRes.answer) {
         if (this.blockClosingForVerification()) return;
         this.addThoughtCapped('Finalizado', llmRes.answer);
@@ -650,6 +756,7 @@ export class AgentLoop {
       }
     } else {
       this.addThoughtCapped('Sin acción', 'LLM no propuso toolCalls ni finish. Forzando detención segura.');
+      this.lifecycleClosing = { kind: 'error', error: 'LLM no propuso toolCalls ni finish.' };
       this.stop();
       return;
     }

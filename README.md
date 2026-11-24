@@ -331,6 +331,8 @@ Los hooks de tool reciben `toolId`, `input` y `root`; `afterTool` añade `result
 
 El lifecycle corre en orden alfabético por id de plugin. `sessionEnd` es el cierre normal; `stop` y `error` son cierres alternativos. Cada hook tiene un timeout de 5 s y un fallo o un cuelgue no rompe la corrida: los errores quedan en `getPluginErrors()` y los hooks de tool también se adjuntan a `data.pluginErrors`. Los hooks corren dentro del proceso del servidor con sus mismos permisos: son código de confianza, como un script de `package.json`. Un plugin que no compila tampoco impide cargar los demás.
 
+El bucle del servidor (`AgentSession`) ejecuta los hooks en proceso. El del navegador (`AgentLoop`) y el del CLI (`runAgent`) ejecutan el agente fuera del servidor y mandan cada hook a `POST /api/plugins/lifecycle`, que reutiliza ese mismo runtime: `sessionStart` antes del primer modelo, `beforeModel`/`afterModel` por llamada y un único cierre (`sessionEnd`, `stop` o `error`). Un fallo de red o un servidor sin plugins no cambia la corrida.
+
 `examples/plugins/reference-plugin` es el plugin de referencia: registra todos los hooks en `.commander/reference-plugin.log` sin alterar nada. Incluye `plugin.json` con la API 1 y ambos permisos.
 
 ### Catálogo de plugins (marketplaces de Claude)

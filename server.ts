@@ -2429,11 +2429,15 @@ app.delete('/api/providers/:id', (req, res) => {
 // Monta el router de MCP bajo /api/mcp
 import { mcpRouter } from './src/mcp/index.js';
 import { pluginMarketRouter } from './src/plugins/marketplace.js';
+import { pluginLifecycleRouter } from './src/plugins/lifecycleApi.js';
 import { uninstallInstalledPlugin } from './src/plugins/uninstall.js';
 app.use('/api/mcp', mcpRouter);
 // Catálogo de plugins (marketplace.json) bajo el mismo prefijo: sus rutas
 // `/discover` e `/install-from-marketplace` no chocan con las de arriba.
 app.use('/api/plugins', pluginMarketRouter);
+// Hooks de lifecycle para el bucle del navegador y el del CLI, que no corren
+// dentro de `AgentSession`: la ruta reutiliza el mismo runtime de plugins.
+app.use('/api/plugins', pluginLifecycleRouter);
 
 // ==================== PLUGINS ECOSISTEMA ====================
 // Rutas basicas para discovery, instalacion y listado de plugins.
