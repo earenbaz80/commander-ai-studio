@@ -61,6 +61,9 @@ fs.writeFileSync(
         servers: {
           fake: { command: process.execPath, args: [fakeScript] },
           corte: { command: process.execPath, args: [cutScript] },
+          // `spawnSync` no llega a lanzarlo: valida los args y lanza un error
+          // que repite el valor, que es justo lo que no debe salir.
+          roto: { command: process.execPath, args: [`--token=${SECRET}\u0000`] },
         },
       },
     },
@@ -80,10 +83,11 @@ test('/api/mcp/health devuelve el arranque del MCP redactado y acotado', async (
 
   assert.equal(res.status, 200, res.raw);
   assert.equal(res.body.status, 'ready');
-  assert.equal(res.body.total, 2);
+  assert.equal(res.body.total, 3);
   assert.equal(res.body.summary.healthy, 2);
+  assert.equal(res.body.summary.unknown, 1);
 
-  const [fake, corte] = res.body.servers;
+  const [fake, corte, roto] = res.body.servers;
   assert.equal(fake.name, 'fake');
   assert.equal(typeof fake.output, 'string');
   assert.match(fake.output, /fake-mcp listo/);
@@ -95,6 +99,10 @@ test('/api/mcp/health devuelve el arranque del MCP redactado y acotado', async (
   assert.equal(corte.output.length, 200);
   assert.ok(corte.output.startsWith('a'.repeat(190)));
   assert.ok(!corte.output.includes(SECRET.slice(0, 10)));
+
+  assert.equal(roto.status, 'unknown');
+  assert.match(roto.error, /must be a string without null bytes/);
+  assert.ok(!roto.error.includes(SECRET));
 
   assert.ok(!res.raw.includes(SECRET), 'el secreto no debe viajar en la respuesta');
   assert.ok(!res.raw.includes(TOKEN), 'el token no debe viajar en la respuesta');

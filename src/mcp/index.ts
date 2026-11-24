@@ -453,6 +453,21 @@ export function mcpHealthOutput(stdout: string | Buffer | null | undefined): str
 }
 
 /**
+ * Mensaje del fallo de un servidor MCP para el health check.
+ *
+ * `spawnSync` valida `command` y `args` y, cuando no puede, lanza un error que
+ * repite el valor recibido (`Received '…'`): un byte nulo en un comando o en un
+ * argumento devolvería ese contenido de la config a la respuesta. Se corta en
+ * ese punto —el motivo y el índice del argumento siguen legibles— y se sanean
+ * los secretos que pudieran venir en el resto del mensaje.
+ */
+export function mcpHealthError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const echoed = raw.search(/\.\s+Received\b/);
+  return redactSecrets(echoed === -1 ? raw : raw.slice(0, echoed + 1));
+}
+
+/**
  * Health check: intenta ejecutar brevemente cada comando registrado.
  */
 mcpRouter.get('/health', async (_req, res) => {
@@ -482,7 +497,7 @@ mcpRouter.get('/health', async (_req, res) => {
           name,
           command: c.command,
           status: 'unknown' as const,
-          error: err instanceof Error ? err.message : String(err),
+          error: mcpHealthError(err),
         };
       }
     });
