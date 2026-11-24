@@ -666,8 +666,8 @@ test('AgentLoop emite el lifecycle del navegador', async () => {
   };
   const loop = new AgentLoop(orchestrator, 'gemini-2.0-flash', client, () => lifecycle);
 
+  // `start()` espera el terminal: no hace falta `whenLifecycleSettled()`.
   await loop.start({ id: 'life-browser', goal: 'Test goal', cwd: '.', maxSteps: 5 });
-  await loop.whenLifecycleSettled();
 
   assert.deepEqual(events, ['sessionStart', 'beforeModel', 'afterModel', 'sessionEnd']);
 });
@@ -696,6 +696,76 @@ test('AgentLoop cierra con stop cuando se detiene la corrida', async () => {
   await loop.whenLifecycleSettled();
 
   assert.deepEqual(events, ['sessionStart', 'beforeModel', 'stop']);
+});
+
+test('un fallo del modelo en un paso programado cierra el lifecycle', async () => {
+  const { orchestrator, getState } = createMockOrchestrator();
+  (orchestrator as any).runTool = async (toolId: string) =>
+    toolId === 'fs.read'
+      ? { ok: true, data: { content: 'x' } }
+      : { ok: false, error: `tool inesperada: ${toolId}` };
+  const events: string[] = [];
+  let calls = 0;
+  const client: AgentLLMClient = {
+    // `stepNative` cae a JSON cuando la vía nativa falla: el fallo del timer
+    // tiene que atravesar también esa caída para llegar al cierre.
+    callJson: async () => {
+      throw new Error('JSON caído');
+    },
+    callTools: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return { thought: 'leo', calls: [{ name: 'fs_read', args: { path: 'AGENTS.md' } }] };
+      }
+      throw new Error('LLM caído');
+    },
+  };
+  const lifecycle = new RunPluginLifecycle(
+    async (hook) => { events.push(hook); },
+    { sessionId: 'life-timer', root: '.', goal: 'Test goal', model: 'gemini-2.0-flash' }
+  );
+  const loop = new AgentLoop(orchestrator, 'gemini-2.0-flash', client, () => lifecycle);
+
+  await loop.start({ id: 'life-timer', goal: 'Test goal', cwd: '.', maxSteps: 5, persistThread: false });
+  const stopped = await waitFor(() => getState().running === false, 10_000);
+  assert.ok(stopped, 'el fallo del modelo detiene la corrida');
+  await loop.whenLifecycleSettled();
+
+  assert.deepEqual(events, [
+    'sessionStart',
+    'beforeModel',
+    'afterModel',
+    'beforeModel',
+    'afterModel',
+    'beforeModel',
+    'afterModel',
+    'error',
+  ]);
+  assert.equal(events.filter((hook) => hook === 'error').length, 1);
+  assert.ok(!events.includes('sessionEnd') && !events.includes('stop'));
+});
+
+test('resume sin tarea no arranca el lifecycle', async () => {
+  const { orchestrator, getState } = createMockOrchestrator();
+  const events: string[] = [];
+  let created = 0;
+  const client: AgentLLMClient = {
+    callJson: async () => ({}),
+    callTools: async () => ({ thought: '', calls: [] }),
+  };
+  const loop = new AgentLoop(orchestrator, 'gemini-2.0-flash', client, () => {
+    created += 1;
+    return new RunPluginLifecycle(
+      async (hook) => { events.push(hook); },
+      { sessionId: 'life-resume', root: '.', goal: 'Test goal', model: 'gemini-2.0-flash' }
+    );
+  });
+
+  await loop.resume({ id: 'life-resume', goal: 'Test goal', cwd: '.', maxSteps: 5, persistThread: false });
+
+  assert.equal(created, 0, 'sin tarea no hay sessionStart que cerrar');
+  assert.deepEqual(events, []);
+  assert.equal(getState().running, false);
 });
 
 test('el gate de verificación deja cerrar con un verde posterior (escritorio)', async () => {

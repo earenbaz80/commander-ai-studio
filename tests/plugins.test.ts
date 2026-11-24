@@ -308,3 +308,23 @@ test('POST /api/plugins/lifecycle ejecuta los hooks del proyecto', async () => {
     'los hooks salen en el orden en que el bucle los emite'
   );
 });
+
+test('POST /api/plugins/lifecycle valida hook, context y root', async () => {
+  const badHook = await srv.request('POST', '/api/plugins/lifecycle', {
+    hook: 'no-existe',
+    context: { root },
+  });
+  assert.equal(badHook.status, 400);
+
+  const noContext = await srv.request('POST', '/api/plugins/lifecycle', {
+    hook: 'sessionStart',
+  });
+  assert.equal(noContext.status, 400);
+
+  const noRoot = await srv.request('POST', '/api/plugins/lifecycle', {
+    hook: 'sessionStart',
+    context: { sessionId: 'sess_http' },
+  });
+  assert.equal(noRoot.status, 400);
+  assert.match(String(noRoot.body.error), /root/);
+});

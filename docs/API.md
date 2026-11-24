@@ -419,7 +419,7 @@ Lista los manifiestos instalados y los plugins locales con `index.js`/`plugin.js
 Borra el manifiesto y el `.zip` del plugin, con el mismo filtro de `id`.
 
 ### `POST /api/plugins/lifecycle`
-**Body:** `{hook, context}`. Lo usan el bucle del navegador y el del CLI, que no corren dentro de `AgentSession`: `hook` es `sessionStart`, `beforeModel`, `afterModel`, `sessionEnd`, `stop` o `error`, y `context` lleva `sessionId`, `root`, `goal`, `model` más los campos del hook (`turn`, `ok`, `answer`, `reason`, `error`). Ejecuta el mismo runtime de plugins y responde `{success, ran, errors}`; los hooks son observacionales.
+**Body:** `{hook, context}`. Lo usan el bucle del navegador y el del CLI, que no corren dentro de `AgentSession`: `hook` es `sessionStart`, `beforeModel`, `afterModel`, `sessionEnd`, `stop` o `error`, y `context` lleva `sessionId`, `root` (obligatorio), `goal`, `model` más los campos del hook (`turn`, `ok`, `answer`, `reason`, `error`). Ejecuta el mismo runtime de plugins y responde `{success, ran, errors}`; los hooks son observacionales.
 
 ### Hooks del runtime
 Los hooks viven en `.commander/plugins/<id>/index.js` (ESM) y corren en orden alfabético por id, cada uno con un timeout de 5 s. `plugin.json`, junto al módulo, declara `apiVersion` y `permissions` (`lifecycle`, `tools`): se valida antes de importar, una mayor distinta de 1 se rechaza sin ejecutar código y un hook sin permiso no se despacha; sin manifiesto el plugin se carga como legado. El lifecycle es `sessionStart`, `beforeModel`, `afterModel`, `beforeTool`, `afterTool`, `sessionEnd`, `stop` y `error`.

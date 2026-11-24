@@ -52,9 +52,16 @@ pluginLifecycleRouter.post('/lifecycle', async (req, res) => {
   }
   const context = raw as Record<string, unknown>;
 
+  // Sin `root` no se adivina el proyecto del servidor: ejecutar sus plugins por
+  // un contexto incompleto sería peor que rechazar el hook.
+  const rootInput = text(context.root, 1024);
+  if (!rootInput) {
+    return res.status(400).json({ success: false, error: 'root requerido' });
+  }
+
   let root: string;
   try {
-    root = resolveProjectPath('.', text(context.root, 1024) || process.cwd()).root;
+    root = resolveProjectPath('.', rootInput).root;
   } catch (error: any) {
     return res.status(400).json({ success: false, error: error?.message || 'root inválido' });
   }
@@ -67,46 +74,43 @@ pluginLifecycleRouter.post('/lifecycle', async (req, res) => {
   };
 
   try {
-    let result;
-    if (hook === 'beforeModel' || hook === 'afterModel') {
-      const turn = Number(context.turn);
-      const ctx: PluginModelContext = {
-        ...base,
-        phase: hook === 'beforeModel' ? 'before' : 'after',
-        turn: Number.isFinite(turn) && turn > 0 ? Math.floor(turn) : 1,
-        ...(hook === 'afterModel'
-          ? {
-              ok: context.ok !== false,
-              ...(context.ok === false
-                ? { error: text(context.error, 2000) || 'el modelo falló' }
-                : {}),
-            }
-          : {}),
-      };
-      result = await runPluginHook(root, hook, ctx);
-    } else if (hook === 'sessionEnd') {
-      const ctx: PluginSessionEndContext = {
-        ...base,
-        answer: text(context.answer, 20_000),
-      };
-      result = await runPluginHook(root, hook, ctx);
-    } else if (hook === 'stop') {
-      const ctx: PluginStopContext = {
-        ...base,
-        reason: context.reason === 'timeout' ? 'timeout' : 'user',
-      };
-      result = await runPluginHook(root, hook, ctx);
-    } else if (hook === 'error') {
-      const ctx: PluginErrorContext = {
-        ...base,
-        error: text(context.error, 2000) || 'error',
-      };
-      result = await runPluginHook(root, hook, ctx);
-    } else {
-      const ctx: PluginSessionContext = base;
-      result = await runPluginHook(root, hook, ctx);
+    let ctx:
+      | PluginSessionContext
+      | PluginModelContext
+      | PluginSessionEndContext
+      | PluginStopContext
+      | PluginErrorContext;
+    switch (hook) {
+      case 'beforeModel':
+      case 'afterModel': {
+        const turn = Math.max(1, Math.floor(Number(context.turn) || 1));
+        if (hook === 'beforeModel') {
+          ctx = { ...base, phase: 'before', turn };
+        } else {
+          const ok = context.ok !== false;
+          ctx = {
+            ...base,
+            phase: 'after',
+            turn,
+            ok,
+            ...(ok ? {} : { error: text(context.error, 2000) || 'el modelo falló' }),
+          };
+        }
+        break;
+      }
+      case 'sessionEnd':
+        ctx = { ...base, answer: text(context.answer, 20_000) };
+        break;
+      case 'stop':
+        ctx = { ...base, reason: context.reason === 'timeout' ? 'timeout' : 'user' };
+        break;
+      case 'error':
+        ctx = { ...base, error: text(context.error, 2000) || 'error' };
+        break;
+      default:
+        ctx = base;
     }
-    return res.json({ success: true, ...result });
+    return res.json({ success: true, ...(await runPluginHook(root, hook, ctx)) });
   } catch (error: any) {
     return res.status(400).json({ success: false, error: error?.message || 'hook falló' });
   }

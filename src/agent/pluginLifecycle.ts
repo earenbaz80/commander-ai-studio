@@ -39,56 +39,68 @@ export type PluginLifecycleTransport = (
 /** Ruta del endpoint que ejecuta el runtime en el servidor. */
 export const PLUGIN_LIFECYCLE_PATH = '/api/plugins/lifecycle';
 
+/** Tope de una petición de lifecycle; un servidor colgado no frena la corrida. */
+export const PLUGIN_LIFECYCLE_TIMEOUT_MS = 15_000;
+
 /** Transporte HTTP; `baseUrl` vacío usa el mismo origen (navegador). */
 export function httpPluginLifecycleTransport(options: {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
+  timeoutMs?: number;
 } = {}): PluginLifecycleTransport {
   const base = String(options.baseUrl ?? '').replace(/\/+$/, '');
   const url = `${base}${PLUGIN_LIFECYCLE_PATH}`;
   const fetchImpl = options.fetchImpl ?? fetch;
+  const timeoutMs = options.timeoutMs ?? PLUGIN_LIFECYCLE_TIMEOUT_MS;
   return async (hook, context) => {
-    const response = await fetchImpl(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hook, context }),
-      // La corrida no espera al cierre; `keepalive` deja salir la petición.
-      keepalive: true,
-    });
-    if (!response.ok) return undefined;
-    return response.json().catch(() => undefined);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      await fetchImpl(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hook, context }),
+        // Si la pestaña se cierra, `keepalive` deja salir el hook.
+        keepalive: true,
+        signal: controller.signal,
+      });
+      // La respuesta no se usa: el hook es observacional.
+    } finally {
+      clearTimeout(timer);
+    }
   };
 }
 
 /**
  * Lifecycle de una corrida.
  *
- * `start()` se espera para que `sessionStart` preceda al primer modelo; los
- * hooks de modelo también se esperan. El cierre es idempotente y silencioso, y
- * después de cerrar se ignoran los eventos tardíos (un `afterModel` que llega
- * cuando el usuario ya detuvo la corrida).
+ * Todos los hooks viajan por una sola cola: `sessionStart` precede al primer
+ * modelo, cada `beforeModel` precede a su `afterModel` y el terminal espera a
+ * los hooks ya encolados. Así un `stop()` durante el arranque no puede adelantar
+ * al `sessionStart` ni un cierre puede dispararse dos veces.
  */
 export class RunPluginLifecycle {
   private started = false;
   private closed = false;
+  private tail: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly transport: PluginLifecycleTransport,
     private readonly context: PluginLifecycleContext,
   ) {}
 
-  async start(): Promise<void> {
-    if (this.started || this.closed) return;
+  start(): Promise<void> {
+    if (this.started || this.closed) return this.tail;
     this.started = true;
-    await this.emit('sessionStart', {});
+    return this.append('sessionStart', {});
   }
 
   beforeModel(turn: number): Promise<void> {
-    return this.emit('beforeModel', { phase: 'before', turn });
+    return this.append('beforeModel', { phase: 'before', turn });
   }
 
   afterModel(turn: number, ok: boolean, error?: string): Promise<void> {
-    return this.emit('afterModel', {
+    return this.append('afterModel', {
       phase: 'after',
       turn,
       ok,
@@ -96,23 +108,43 @@ export class RunPluginLifecycle {
     });
   }
 
-  /** Cierra una sola vez: `sessionEnd`, `stop` o `error`, nunca dos. */
+  /**
+   * Cierra una sola vez: `sessionEnd`, `stop` o `error`, nunca dos.
+   *
+   * El terminal se encola detrás de los hooks que ya estaban en vuelo. Antes de
+   * `start()` no hay corrida que cerrar y un `start()` posterior queda anulado.
+   */
   close(outcome: PluginCloseOutcome): Promise<void> {
-    if (this.closed || !this.started) return Promise.resolve();
+    if (this.closed) return this.tail;
     this.closed = true;
+    if (!this.started) return this.tail;
+    let hook: PluginLifecycleHook;
+    let extra: Record<string, unknown>;
     switch (outcome.kind) {
       case 'done':
-        return this.emit('sessionEnd', { answer: outcome.answer });
+        hook = 'sessionEnd';
+        extra = { answer: outcome.answer };
+        break;
       case 'stopped':
-        return this.emit('stop', { reason: outcome.reason });
+        hook = 'stop';
+        extra = { reason: outcome.reason };
+        break;
       default:
-        return this.emit('error', { error: outcome.error });
+        hook = 'error';
+        extra = { error: outcome.error };
     }
+    this.tail = this.tail.then(() => this.send(hook, extra));
+    return this.tail;
   }
 
-  private async emit(hook: PluginLifecycleHook, extra: Record<string, unknown>): Promise<void> {
-    const terminal = hook === 'sessionEnd' || hook === 'stop' || hook === 'error';
-    if (this.closed && !terminal) return;
+  /** Encola un hook no terminal; después del cierre se ignora. */
+  private append(hook: PluginLifecycleHook, extra: Record<string, unknown>): Promise<void> {
+    if (this.closed) return Promise.resolve();
+    this.tail = this.tail.then(() => this.send(hook, extra));
+    return this.tail;
+  }
+
+  private async send(hook: PluginLifecycleHook, extra: Record<string, unknown>): Promise<void> {
     try {
       await this.transport(hook, { ...this.context, ...extra });
     } catch {
@@ -125,9 +157,14 @@ export function createPluginLifecycle(options: {
   context: PluginLifecycleContext;
   baseUrl?: string;
   fetchImpl?: typeof fetch;
+  timeoutMs?: number;
 }): RunPluginLifecycle {
   return new RunPluginLifecycle(
-    httpPluginLifecycleTransport({ baseUrl: options.baseUrl, fetchImpl: options.fetchImpl }),
+    httpPluginLifecycleTransport({
+      baseUrl: options.baseUrl,
+      fetchImpl: options.fetchImpl,
+      timeoutMs: options.timeoutMs,
+    }),
     options.context,
   );
 }

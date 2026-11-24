@@ -85,6 +85,41 @@ describe('lifecycle en el bucle local del CLI', () => {
     }
   });
 
+  test('espera el hook de cierre antes de devolver', async () => {
+    const server = await fakeServer();
+    const events: string[] = [];
+    const lifecycle = new RunPluginLifecycle(
+      async (hook) => {
+        // Si `done()` no esperara, el resultado volvería sin `sessionEnd`.
+        if (hook === 'sessionEnd') await new Promise((resolve) => setTimeout(resolve, 25));
+        events.push(hook);
+      },
+      {
+        sessionId: 'sess_cli_lifecycle',
+        root: os.tmpdir(),
+        goal: 'probar lifecycle',
+        model: GEMINI_DEFAULT_MODEL,
+      }
+    );
+    const cwd = tempCwd();
+    try {
+      await runAgent({
+        serverUrl: server.baseUrl,
+        task: 'SCENARIO:final',
+        cwd,
+        model: GEMINI_DEFAULT_MODEL,
+        sessionId: 'sess_cli_lifecycle',
+        lifecycle,
+      });
+
+      assert.equal(events.at(-1), 'sessionEnd');
+      assert.equal(events.filter((hook) => hook === 'sessionEnd').length, 1);
+      assert.ok(!events.includes('stop') && !events.includes('error'));
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   test('emite afterModel ok:false y error cuando el proveedor falla', async () => {
     const server = await fakeServer();
     const { events, lifecycle } = recorder();
