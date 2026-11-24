@@ -5043,6 +5043,11 @@ app.get('/api/ollama/models', async (req, res) => {
   const host = String(
     req.query.host || getRequestApiKey(req, 'OLLAMA_HOST') || process.env.OLLAMA_HOST || 'http://localhost:11434'
   );
+  // `OLLAMA_HOST` admite credenciales en la URL (`https://usuario:clave@host`).
+  // El modal sólo pinta el host y no lo reescribe, y `fetch` rechaza esas URLs
+  // repitiéndolas en el error: el host y el mensaje salen redactados, con el
+  // host y el puerto a la vista para diagnosticar.
+  const hostVisible = redactSecrets(host);
   try {
     const response = await fetch(`${host}/api/tags`, {
       method: 'GET',
@@ -5053,9 +5058,14 @@ app.get('/api/ollama/models', async (req, res) => {
     const models = Array.isArray(data?.models)
       ? data.models.map((m: any) => (typeof m === 'string' ? m : (m?.name || m?.model))).filter(Boolean)
       : [];
-    res.json({ success: response.ok, models, host, error: response.ok ? undefined : ('HTTP ' + response.status) });
+    res.json({
+      success: response.ok,
+      models,
+      host: hostVisible,
+      error: response.ok ? undefined : ('HTTP ' + response.status),
+    });
   } catch (error: any) {
-    res.json({ success: false, models: [], host, error: error?.message || 'unreachable' });
+    res.json({ success: false, models: [], host: hostVisible, error: redactSecrets(error?.message || 'unreachable') });
   }
 });
 
@@ -5063,6 +5073,9 @@ app.get('/api/ollama/health', async (req, res) => {
   const host = String(
     req.query.host || getRequestApiKey(req, 'OLLAMA_HOST') || process.env.OLLAMA_HOST || 'http://localhost:11434'
   );
+  // Misma regla que `/api/ollama/models`: el host va redactado porque el
+  // cliente no lo reutiliza, y el mensaje de `fetch` también lo repite.
+  const hostVisible = redactSecrets(host);
   try {
     const response = await fetch(`${host}/api/tags`, {
       method: 'GET',
@@ -5073,9 +5086,21 @@ app.get('/api/ollama/health', async (req, res) => {
     const models = Array.isArray(data?.models)
       ? data.models.map((m: any) => (typeof m === 'string' ? m : (m?.name || m?.model))).filter(Boolean)
       : [];
-    res.json({ success: response.ok, ok: response.ok, models, host, error: response.ok ? undefined : ('HTTP ' + response.status) });
+    res.json({
+      success: response.ok,
+      ok: response.ok,
+      models,
+      host: hostVisible,
+      error: response.ok ? undefined : ('HTTP ' + response.status),
+    });
   } catch (error: any) {
-    res.json({ success: false, ok: false, models: [], host, error: error?.message || 'unreachable' });
+    res.json({
+      success: false,
+      ok: false,
+      models: [],
+      host: hostVisible,
+      error: redactSecrets(error?.message || 'unreachable'),
+    });
   }
 });
 
