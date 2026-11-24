@@ -34,6 +34,11 @@ export function redactSecrets(text: string, env: NodeJS.ProcessEnv = process.env
   for (const secret of values) value = value.split(secret).join('[redactado]');
 
   value = value.replace(/\bpostgres(?:ql)?:\/\/[^\s"'`]+/gi, 'postgresql://[redactado]');
+  // Credenciales embebidas en una URL (`https://usuario:clave@host`). `fetch`
+  // rechaza esas URLs repitiéndolas enteras en el mensaje, así que un host con
+  // clave guardado en la config viajaría tal cual en el error. Se tapa sólo el
+  // userinfo: el host y el puerto siguen a la vista para diagnosticar.
+  value = value.replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, '$1[redactado]@');
   value = value.replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer [redactado]');
   value = value.replace(
     /(\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_?KEY|DATABASE_URL)\s*=\s*)\S+/g,

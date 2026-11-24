@@ -62,6 +62,7 @@ import { mergeStrataToolCallFragment, normalizeStrataToolCalls } from './src/lib
 import { StrataLifecycleManager } from './src/lib/strataLifecycle';
 import { deleteStrataApiKey, getStrataApiKey, normalizeStrataApiKey, saveStrataApiKey } from './src/lib/strataKeyStore';
 import { redactStrataSecret } from './src/lib/strataRedaction';
+import { redactSecrets } from './secretRedaction';
 import {
   classifyStrataFailure,
   fetchStrataWithRetry,
@@ -1548,7 +1549,12 @@ async function probeOpenAiCompatibility(baseURL: string, apiKey?: string): Promi
       compatible: false,
       status: 'unreachable',
       models: [],
-      error: error?.name === 'TimeoutError' ? 'sin respuesta en 8 s' : error?.message || 'no se pudo conectar',
+      // `fetch` repite la URL en el error: un `baseUrl` con credenciales
+      // (`https://usuario:clave@host`) devolvería la clave al cliente.
+      error:
+        error?.name === 'TimeoutError'
+          ? 'sin respuesta en 8 s'
+          : redactSecrets(error?.message || 'no se pudo conectar'),
     };
   }
 }
@@ -4890,7 +4896,7 @@ app.get('/api/lmstudio/models', async (req, res) => {
       models: saved.models,
       cached: saved.models.length > 0,
       updatedAt: saved.updatedAt,
-      error: e?.message || 'LM Studio no responde',
+      error: redactSecrets(e?.message || 'LM Studio no responde'),
     });
   }
 });
@@ -4914,7 +4920,7 @@ app.post('/api/lmstudio/models', async (req, res) => {
       models: saved.models,
       cached: saved.models.length > 0,
       updatedAt: saved.updatedAt,
-      error: e?.message || 'LM Studio no responde',
+      error: redactSecrets(e?.message || 'LM Studio no responde'),
     });
   }
 });
@@ -4961,7 +4967,7 @@ app.post('/api/lmstudio/generate', async (req, res) => {
       // esto solo vería `loading: false` y no podría explicar el fallo.
       lmStudioLoadErrors.set(target, {
         model: target,
-        error: error instanceof Error ? error.message : String(error || 'Error desconocido'),
+        error: redactSecrets(error instanceof Error ? error.message : String(error || 'Error desconocido')),
         failedAt: Date.now(),
       });
       throw error;
@@ -5024,7 +5030,7 @@ app.post('/api/lmstudio/generate', async (req, res) => {
       },
     });
   } catch (e: any) {
-    return res.json({ ok: false, error: e?.message || 'LM Studio generate falló' });
+    return res.json({ ok: false, error: redactSecrets(e?.message || 'LM Studio generate falló') });
   }
 });
 
