@@ -68,11 +68,31 @@ const PROCESS_FUNCTIONS = new Set([
   'fork',
 ]);
 
-interface Finding {
+export interface Finding {
   file: string;
   line: number;
   rule: string;
   detail: string;
+}
+
+export interface SourceInput {
+  /** Ruta lógica (absoluta) que se usa para resolver imports y server.ts. */
+  path: string;
+  text: string;
+}
+
+export interface SpawnCall {
+  file: string;
+  line: number;
+  method: string;
+}
+
+export interface BoundaryReport {
+  files: number;
+  imports: Finding[];
+  symbols: Finding[];
+  processes: Finding[];
+  spawns: SpawnCall[];
 }
 
 function sourceFiles(): string[] {
@@ -333,38 +353,144 @@ function checkServeSpawn(call: ProcessCall, findings: Finding[]): void {
   }
 }
 
+/**
+ * Analiza fuentes ya cargadas en memoria. Es el punto de inyección para los
+ * casos sintéticos: no lee ni escribe archivos.
+ */
+export function checkBoundary(sources: SourceInput[]): BoundaryReport {
+  const imports: Finding[] = [];
+  const symbols: Finding[] = [];
+  const processes: Finding[] = [];
+  const calls: ProcessCall[] = [];
+
+  for (const input of sources) {
+    const source = ts.createSourceFile(
+      input.path,
+      input.text,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS
+    );
+    checkImports(input.path, source, imports);
+    checkForbiddenSymbols(input.path, source, symbols);
+    calls.push(...checkProcesses(input.path, source, processes));
+  }
+  for (const call of calls) checkServeSpawn(call, processes);
+
+  return {
+    files: sources.length,
+    imports,
+    symbols,
+    processes,
+    spawns: calls.map((call) => ({
+      file: rel(call.file),
+      line: lineOf(call.source, call.node),
+      method: call.method,
+    })),
+  };
+}
+
+/** Fuente real de la extensión (disco). */
+export function scanBoundary(): BoundaryReport {
+  return checkBoundary(
+    sourceFiles().map((file) => ({ path: file, text: fs.readFileSync(file, 'utf8') }))
+  );
+}
+
 describe('F4A-5: frontera de la extensión de VS Code', () => {
   test('la extensión no importa el agente ni dependencias prohibidas', () => {
-    const files = sourceFiles();
-    assert.ok(files.length >= 7, `no se encontraron los módulos de vscode-extension/src (${files.length})`);
-    const findings: Finding[] = [];
-    for (const file of files) {
-      const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-      checkImports(file, source, findings);
-    }
-    assert.deepEqual(findings, [], `\n${format(findings)}\n`);
+    const report = scanBoundary();
+    assert.ok(report.files >= 7, `no se encontraron los módulos de vscode-extension/src (${report.files})`);
+    assert.deepEqual(report.imports, [], `\n${format(report.imports)}\n`);
   });
 
   test('la extensión no ejecuta tools ni evalúa aprobaciones localmente', () => {
-    const findings: Finding[] = [];
-    for (const file of sourceFiles()) {
-      const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-      checkForbiddenSymbols(file, source, findings);
-    }
-    assert.deepEqual(findings, [], `\n${format(findings)}\n`);
+    const report = scanBoundary();
+    assert.deepEqual(report.symbols, [], `\n${format(report.symbols)}\n`);
   });
 
   test('el único proceso es commander serve con el CLI empaquetado', () => {
-    const findings: Finding[] = [];
-    const calls: ProcessCall[] = [];
-    for (const file of sourceFiles()) {
-      const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-      calls.push(...checkProcesses(file, source, findings));
-    }
-    for (const call of calls) checkServeSpawn(call, findings);
+    const report = scanBoundary();
+    const serveSpawns = report.spawns.filter(
+      (call) => call.file === rel(SERVER_FILE) && call.method === 'spawn'
+    );
+    assert.equal(serveSpawns.length, 1, `se esperaba un único spawn en server.ts, hay ${serveSpawns.length}`);
+    assert.deepEqual(report.processes, [], `\n${format(report.processes)}\n`);
+  });
 
-    const serveCalls = calls.filter((call) => call.method === 'spawn' && path.resolve(call.file) === SERVER_FILE);
-    assert.equal(serveCalls.length, 1, `se esperaba un único spawn en server.ts, hay ${serveCalls.length}`);
-    assert.deepEqual(findings, [], `\n${format(findings)}\n`);
+  // ── Casos sintéticos: prueban el checker, no sólo el código actual ──
+
+  function analyze(text: string, file = path.join(EXT_SRC, 'sintetico.ts')): BoundaryReport {
+    return checkBoundary([{ path: file, text }]);
+  }
+
+  test('sintético: acepta spawn(process.execPath, [cli, "serve", …])', () => {
+    const report = checkBoundary([{
+      path: SERVER_FILE,
+      text: `
+        import { spawn } from 'child_process';
+        declare function bundledCliPath(extensionPath: string): string;
+        export function start(extensionPath: string, port: string): void {
+          const cli = bundledCliPath(extensionPath);
+          spawn(process.execPath, [cli, 'serve', '--port', port, '--host', '127.0.0.1'], {});
+        }
+      `,
+    }]);
+    assert.deepEqual(report.imports, [], format(report.imports));
+    assert.deepEqual(report.symbols, [], format(report.symbols));
+    assert.deepEqual(report.processes, [], format(report.processes));
+    assert.equal(report.spawns.length, 1, format(report.processes));
+  });
+
+  test('sintético: falla con require("child_process")', () => {
+    const report = analyze(`
+      const cp = require('child_process');
+      export function start(): void { cp.spawn('cmd.exe'); }
+    `);
+    assert.equal(report.processes.length, 2, format(report.processes));
+    assert.match(format(report.processes), /require\/import de child_process/);
+    assert.match(format(report.processes), /sólo server.ts puede arrancar procesos/);
+  });
+
+  test('sintético: falla con import("child_process") dinámico', () => {
+    const report = analyze(`
+      export async function start(): Promise<void> {
+        const cp = await import('child_process');
+        cp.spawn('cmd.exe');
+      }
+    `);
+    assert.equal(report.processes.length, 2, format(report.processes));
+    assert.match(format(report.processes), /require\/import de child_process/);
+    assert.match(format(report.processes), /sólo server.ts puede arrancar procesos/);
+  });
+
+  test('sintético: falla con tools o approvals locales', () => {
+    const report = analyze(`
+      import { executeAgentTool } from '../../src/agent/agentTools';
+      export function start(): void {
+        executeAgentTool({ tool: 'fs.write', input: {} });
+        requiresApproval();
+      }
+    `);
+    assert.ok(report.imports.length >= 1, format(report.imports));
+    assert.match(format(report.imports), /sale de vscode-extension\/src|apunta al agente/);
+    assert.match(format(report.symbols), /executeAgentTool/);
+    assert.match(format(report.symbols), /requiresApproval/);
+  });
+
+  test('sintético: falla si serve no es el primer argumento tras el CLI', () => {
+    const report = checkBoundary([{
+      path: SERVER_FILE,
+      text: `
+        import { spawn } from 'child_process';
+        declare function bundledCliPath(extensionPath: string): string;
+        export function start(extensionPath: string, port: string): void {
+          const cli = bundledCliPath(extensionPath);
+          spawn(process.execPath, [cli, '--port', port, 'serve', '--host', '127.0.0.1'], {});
+        }
+      `,
+    }]);
+    assert.equal(report.processes.length, 1, format(report.processes));
+    assert.match(format(report.processes), /"serve" debe ser el primer argumento después del CLI/);
   });
 });

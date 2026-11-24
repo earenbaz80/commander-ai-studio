@@ -132,8 +132,10 @@ Automatizado: `tests/vscodeExtensionBoundary.test.ts` recorre el AST de
 `vscode-extension/src` y falla si hay un import del agente, un símbolo de
 tools/permisos, `child_process` fuera de `server.ts` (incluidos `require` e
 `import()` dinámico) o un spawn que no sea el CLI empaquetado con `serve` como
-primer argumento. Corre en `npm run test:node`, que ya forma parte del pre-push
-y de CI.
+primer argumento. El checker acepta fuentes en memoria (`checkBoundary`) y se
+prueba con casos sintéticos sin archivos temporales: require e import dinámico,
+tools/approvals locales, `serve` fuera de posición y el arranque válido. Corre
+en `npm run test:node`, que ya forma parte del pre-push y de CI.
 
 Comprobación reproducible manual (desde la raíz):
 
