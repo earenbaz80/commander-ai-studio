@@ -96,6 +96,52 @@ en `bin/commander.ts`, `server.ts` y `src/cli/`.
   id que ya no existe. Falta el click real de cerrar/reabrir el panel en VS
   Code, que requiere que lo ejecute el usuario.
 
+## Implementado en este paso (criterio 5): invariante de cliente fino
+
+**Auditoría:** 2026-11-24 sobre `vscode-extension/src` (7 módulos: `extension`,
+`server`, `session`, `chatPanel`, `chatHtml`, `tasks`, `cli`). El VSIX empaqueta
+además `cli/`, que es el servidor del escritorio copiado tal cual: no es código
+de la extensión.
+
+Lo que la extensión **sí** hace:
+
+- Arrancar o reutilizar el servidor empaquetado con un único `spawn`:
+  `server.ts:129`, `commander.mjs serve --port … --host 127.0.0.1`. Sin
+  objetivo, tools ni `--json`: no ejecuta el bucle.
+- Hablar sólo HTTP/SSE con `/api/agent/sessions` (crear, listar/estado, mensaje,
+  cancelar, aprobaciones, stream).
+- Guardar la clave en `SecretStorage`, el id en `workspaceState`, pintar eventos
+  y abrir archivos/líneas en el editor.
+
+Lo que **no** existe en la extensión (verificado con los comandos de abajo):
+
+- imports del agente o del CLI desde `../src` (`src/agent`, `executeAgentTool`,
+  `TOOL_REGISTRY`, `EventSequencer`, `SessionStore`, `node-pty`): **0**.
+- motor de permisos propio (`requiresApproval`, `sessionApprovalRules`,
+  `allow-session`, `permissionRules`): **0**. Las aprobaciones sólo se reenvían:
+  el webview manda `decision` y `session.ts` hace
+  `POST …/approvals/:approvalId`; quien decide y aplica es el servidor.
+- llamadas a proveedores LLM (SDK, `chat/completions`, endpoints): **0**. Las
+  únicas menciones a `GEMINI_*`/`ANTHROPIC_*` son nombres de variables de
+  entorno en `server.ts`.
+- bucle de agente: **0**. `maxSteps` sólo se envía como opción de la sesión; los
+  únicos `while` son el vaciado de `disposables`, la espera de `/api/health` y
+  el parseo de frames SSE.
+
+Comprobación reproducible (desde la raíz):
+
+```bash
+cd vscode-extension/src
+grep -rnE "child_process|spawn\(|executeAgentTool|TOOL_REGISTRY|EventSequencer|SessionStore|node-pty|from ['\"]\.\./src" .
+grep -rnE "requiresApproval|sessionApprovalRules|allow-session|permissionRules" .
+grep -rnE "while \(|for \(;;\)" .
+```
+
+Resultado esperado: el primer comando devuelve sólo `server.ts:2` (import de
+`child_process`) y `server.ts:129` (spawn del servidor); el segundo, vacío; el
+tercero, los tres `while` citados. Cualquier otro resultado rompe el invariante
+y es un hallazgo de revisión, no una variante aceptable.
+
 ## Evidencia que falta para cerrar los criterios 1 y 2
 
 1. Instalar el `.vsix` en un VS Code limpio (sin `commander` global ni `npx`).
@@ -118,10 +164,11 @@ ni una aprobación real: no hay clave de proveedor disponible en esta sesión.
    del estado recuperado; la sesión sigue en el listado.
 4. Enviar otro turno: responde sobre la misma sesión, sin crear otra.
 
-## Lo que queda después
+## Fuera del mínimo
 
-- **C5:** revisión final de que no quedó lógica de agente en la extensión
-  (el lanzamiento por terminal se retiró en C2).
-- Fuera del mínimo: marketplace, LSP propio, JetBrains/Zed/Xcode, VSIX
-  multiplataforma (hoy se empaqueta el prebuild de `node-pty` de la máquina que
-  empaqueta).
+- Marketplace, LSP propio, JetBrains/Zed/Xcode, VSIX multiplataforma (hoy se
+  empaqueta el prebuild de `node-pty` de la máquina que empaqueta).
+
+Los cinco criterios quedaron implementados. Lo único pendiente es la evidencia
+manual en un VS Code limpio con clave real (tres tareas, aprobación, refs y
+reopen), que requiere que la ejecute el usuario.
