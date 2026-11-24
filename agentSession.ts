@@ -64,6 +64,7 @@ import {
 } from './src/agent/sessionTypes';
 import { createSessionStore, isValidSessionId, type SessionStore } from './src/agent/sessionStore';
 import { SessionEventBuffer, type SessionGoneReason } from './src/agent/sessionStream';
+import { toolResultRefs } from './src/agent/toolResultRefs';
 
 // ── Eventos SSE ──
 
@@ -72,7 +73,7 @@ export type AgentEvent =
   | { type: 'thought'; title: string; content: string }
   | { type: 'plan'; plan: { id: string; text: string; done: boolean }[] }
   | { type: 'tool_call'; toolId: string; input: unknown }
-  | { type: 'tool_result'; toolId: string; ok: boolean; data?: unknown; error?: string }
+  | { type: 'tool_result'; toolId: string; ok: boolean; data?: unknown; error?: string; input?: unknown }
   | { type: 'approval_request'; approval: ApprovalRequestV2 }
   | { type: 'approval_result'; approvalId: string; decision: ApprovalDecision; reason?: string }
   | { type: 'finish'; answer: string }
@@ -99,13 +100,17 @@ function toCliPayload(evt: AgentEvent): CliEventPayload | null {
       return { type: 'plan', plan: normalizePlan(evt.plan, []) };
     case 'tool_call':
       return { type: 'tool_call', tool: evt.toolId, input: evt.input };
-    case 'tool_result':
+    case 'tool_result': {
+      // `refs` sale del resultado completo, no del `summary` truncado.
+      const refs = evt.ok ? toolResultRefs(evt.data, evt.input) : [];
       return {
         type: 'tool_result',
         tool: evt.toolId,
         ok: evt.ok,
         summary: evt.ok ? streamSummary(evt.data) : (evt.error || 'error'),
+        ...(refs.length > 0 ? { refs } : {}),
       };
+    }
     case 'approval_request':
       return { type: 'approval_request', approval: evt.approval };
     case 'approval_result':
@@ -1707,7 +1712,14 @@ export class AgentSession {
         input: executable.find((e) => e.name === r.tool)?.args, output: r.data, status: r.ok ? 'completed' : 'failed',
         ...(r.approval ? { approval: r.approval } : {}),
       });
-      this.emit({ type: 'tool_result', toolId: r.tool, ok: r.ok, data: r.data, error: r.error });
+      this.emit({
+        type: 'tool_result',
+        toolId: r.tool,
+        ok: r.ok,
+        data: r.data,
+        error: r.error,
+        input: executable.find((e) => e.name === r.tool)?.args,
+      });
     }
     const fails = results.filter((r) => !r.ok);
     if (fails.length > 0) {
@@ -1827,7 +1839,14 @@ export class AgentSession {
           input: executable.find((e) => e.tool === r.tool)?.input, output: r.data, status: r.ok ? 'completed' : 'failed',
           ...(r.approval ? { approval: r.approval } : {}),
         });
-        this.emit({ type: 'tool_result', toolId: r.tool, ok: r.ok, data: r.data, error: r.error });
+        this.emit({
+          type: 'tool_result',
+          toolId: r.tool,
+          ok: r.ok,
+          data: r.data,
+          error: r.error,
+          input: executable.find((e) => e.tool === r.tool)?.input,
+        });
       }
       const fails = results.filter((r) => !r.ok);
       if (fails.length > 0) {

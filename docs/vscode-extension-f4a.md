@@ -56,6 +56,27 @@ en `bin/commander.ts`, `server.ts` y `src/cli/`.
 - Se retiró el lanzamiento por terminal y `commander.cliCommand`: no queda
   ningún `spawn` con lógica de agente en la extensión.
 
+## Implementado en este paso (criterio 3)
+
+- `src/agent/toolResultRefs.ts` (servidor) normaliza archivo, línea, columna y
+  texto desde el resultado completo de la tool: `matches` de `fs.grep`,
+  `declarations`/`references` de `code.analyze`, `diagnostics` y, como respaldo,
+  `fs.read` (cuya ruta viaja en el input). Deduplica y corta en 20 referencias.
+- El evento `tool_result` lleva `refs` (contrato v2 en `sessionTypes.ts`). Se
+  calcula en el servidor, no en el cliente, porque el evento sólo publica el
+  `summary` truncado y cada cliente tendría que repetir el parseo.
+- El webview pinta un botón por referencia (`ruta:línea — texto`); al hacer
+  click envía `openLocation` y la extensión abre el archivo con
+  `showTextDocument` y selecciona línea y columna (acotadas al documento).
+- `chatHtml.ts` separa HTML y script del panel para poder probar el script real
+  en jsdom sin un extension host.
+- Verificación: `tests/unit/toolResultRefs.test.ts` (6 casos) y
+  `tests/ui/vscodeChatRefs.test.ts` (3 casos: link + `openLocation`, resultado
+  sin refs, diff línea por línea); smoke E2E con proveedor guionado y
+  `fs.grep` real: el SSE entregó `refs: [{path: "nota.txt", line: 2, ...}]` y la
+  sesión terminó `completed`. Falta el click en un VS Code real, que requiere
+  que lo ejecute el usuario.
+
 ## Evidencia que falta para cerrar los criterios 1 y 2
 
 1. Instalar el `.vsix` en un VS Code limpio (sin `commander` global ni `npx`).
@@ -71,7 +92,6 @@ ni una aprobación real: no hay clave de proveedor disponible en esta sesión.
 
 ## Lo que queda después
 
-- **C3:** links archivo/línea en los resultados (medio día).
 - **C4:** verificar en el escritorio el id de sesión que muestra la extensión
   (medio día; el id ya se crea y se muestra en el panel).
 - **C5:** revisión final de que no quedó lógica de agente en la extensión

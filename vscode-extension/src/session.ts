@@ -20,9 +20,17 @@ export interface ApprovalRequestV2 {
   expiresAt?: number;
 }
 
+export interface ToolResultRef {
+  path: string;
+  line?: number;
+  column?: number;
+  text?: string;
+}
+
 export interface SessionEvent {
   type: string;
   seq?: number;
+  refs?: ToolResultRef[];
   text?: string;
   content?: string;
   status?: string;

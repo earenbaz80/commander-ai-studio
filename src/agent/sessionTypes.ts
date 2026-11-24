@@ -340,6 +340,21 @@ export interface SessionInfoV2 {
 }
 
 /**
+ * Archivo (y línea) al que apunta un resultado de tool (F4A-3).
+ *
+ * Lo calcula el servidor desde el resultado completo y viaja en el evento
+ * `tool_result`; es lo que permite abrir el archivo en la línea correcta sin
+ * que cada cliente parsee las formas de cada tool.
+ */
+export interface ToolResultRef {
+  path: string;
+  line?: number;
+  column?: number;
+  /** Texto corto para la etiqueta: símbolo, coincidencia o mensaje. */
+  text?: string;
+}
+
+/**
  * Cuerpo de un evento, sin el sobre.
  *
  * Se conservan los tipos que ya emitía el CLI y se añaden los que necesitan
@@ -353,7 +368,7 @@ export type CliEventPayload =
   | { type: 'chunk'; text: string }
   | { type: 'thought'; text: string }
   | { type: 'tool_call'; tool: string; input: unknown }
-  | { type: 'tool_result'; tool: string; ok: boolean; summary: string }
+  | { type: 'tool_result'; tool: string; ok: boolean; summary: string; refs?: ToolResultRef[] }
   | { type: 'plan'; plan: SessionPlanItemV2[] }
   | { type: 'approval_request'; approval: ApprovalRequestV2 }
   | {
