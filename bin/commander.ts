@@ -237,9 +237,11 @@ configCmd
 
 program
   .command('pair')
-  .description('Emitir un enlace de emparejamiento de un solo uso (sólo loopback, caduca en 5 min)')
+  .description('Emparejar un dispositivo: enlace de un solo uso, lista y revocación (sólo loopback)')
   .option('-s, --server <url>', 'Commander server URL', process.env.COMMANDER_SERVER || 'http://127.0.0.1:3280')
   .option('--session <id>', 'Sesión a emparejar (por defecto, la más reciente)')
+  .option('--devices', 'Listar los dispositivos emparejados en vez de emitir un enlace')
+  .option('--revoke <id>', 'Revocar el dispositivo indicado (dev_…)')
   .option('--json', 'Imprimir el resultado como JSON')
   .action(async (opts) => {
     const { runPairCommand } = await import('../src/cli/pairCommand.js');
@@ -247,6 +249,8 @@ program
       serverUrl: String(opts.server),
       sessionId: opts.session ? String(opts.session) : undefined,
       json: Boolean(opts.json),
+      devices: Boolean(opts.devices),
+      revoke: opts.revoke === undefined ? undefined : String(opts.revoke),
     });
   });
 
