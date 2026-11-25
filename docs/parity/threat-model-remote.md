@@ -21,7 +21,7 @@
 
 ### 1.1 Estado del código a 2026-11-25
 
-`commander pair` existe ya en su tramo local: emisión y canje del enlace, con `Origin` exacto y caducidad de 5 minutos (`src/pair/`, `POST /api/pair/issue` y `/api/pair/redeem`), más la cookie de dispositivo opaca con su registro y su revocación (`src/pair/pairDevices.ts`, `GET /api/pair/device`, `GET /api/pair/devices` y `DELETE /api/pair/devices/:id`). **Falta el resto de F3** —lease, cliente web/PWA y la auditoría persistente— y **`--remote` sigue sin existir**. Lo que este modelo reutiliza:
+`commander pair` existe ya en su tramo local: emisión y canje del enlace, `--devices` y `--revoke <id>` sobre las rutas del host (`GET /api/pair/devices`, `DELETE /api/pair/devices/:id`), con `Origin` exacto y caducidad de 5 minutos (`src/pair/`, `POST /api/pair/issue` y `/api/pair/redeem`), más la cookie de dispositivo opaca con su registro y su revocación (`src/pair/pairDevices.ts`, `GET /api/pair/device`, `GET /api/pair/devices` y `DELETE /api/pair/devices/:id`), y el control lease por sesión con un solo escritor, renovación, traspaso explícito con `ack`, 409 `LEASE_HELD`/`LEASE_STALE` para el resto y auditoría en memoria (`src/pair/pairLease.ts`; `GET /api/pair/lease`, `POST /api/pair/lease`, `/renew`, `/request`, `/transfer`, `/release` y `GET /api/pair/lease/audit`). El cliente web no existe todavía, así que la guarda `pairLeaseWriteGuard` aún no está enchufada a mutaciones de sesión: el lease se ejerce sobre sus propios endpoints. **Falta el resto de F3** —cliente web/PWA, persistencia de la auditoría y el cableado de la guarda a las escrituras de sesión— y **`--remote` sigue sin existir**. Lo que este modelo reutiliza:
 
 | Pieza | Dónde | Qué aporta |
 | --- | --- | --- |
@@ -110,7 +110,7 @@ Cada amenaza tiene control **y** criterio de aceptación verificable. La columna
 - **Flags:** `HttpOnly; SameSite=Strict; Path=/` y `Secure` cuando el origen es HTTPS (túnel). Sin `Domain` (host-only).
 - **Duración:** 30 días, renovada por uso; la rotación del identificador ocurre al canjear, no en cada request.
 - **Almacenamiento:** nunca en `localStorage` ni en memoria del cliente más allá de la cookie.
-- **Revocación:** `DELETE /api/pair/devices/:id` marca `revokedAt`; el siguiente request con esa cookie recibe 401 aunque no haya caducado. Se registra en auditoría con hora y dispositivo que revocó.
+- **Revocación:** `DELETE /api/pair/devices/:id` marca `revokedAt`; el siguiente request con esa cookie recibe 401 aunque no haya caducado. Se registra en auditoría con hora y dispositivo que revocó. El registro de un revocado se conserva **24 h** (ventana de idempotencia de la baja) y después se poda: no se guarda hasta la caducidad de 30 días de la cookie, porque emparejar y revocar en bucle haría crecer la memoria sin límite.
 - **Límite:** como máximo **5 dispositivos** activos; emparejar el sexto exige revocar uno.
 
 ### 6.3 Origin, CSRF y rebinding
