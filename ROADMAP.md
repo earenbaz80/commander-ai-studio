@@ -33,7 +33,7 @@ El 60 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tamp
 | --- | --- | --- | --- |
 | **G0** Verdad externa | GitHub verificado + línea base de 24 corridas | **Cerrada** | Baseline NVIDIA válida: 24 corridas, 0 timeouts |
 | **G1** Dogfooding del CLI | 5 días y 24 corridas usando el CLI como superficie principal, sin retroceder frente a F0 | **Abierta** · dogfooding ejecutado; su única regla pendiente salió del roadmap | Sólo la cerraría un recibo humano de `latencyMs`; **no retiene ninguna fase** (§2.1) |
-| **G2** Seguridad remota | Modelo de amenazas y revisión antes de habilitar `--remote` | **No iniciada** | Aprobar el modelo de amenazas remoto (`docs/parity/threat-model-remote.md`, todavía sin versionar) |
+| **G2** Seguridad remota | Modelo de amenazas y revisión antes de habilitar `--remote` | **No iniciada** | Aprobar el modelo de amenazas remoto ([`docs/parity/threat-model-remote.md`](docs/parity/threat-model-remote.md), versionado; falta la revisión) |
 | **G3** Proveedor de plataforma | Proveedor y modelo de costo decididos antes de 5A | **No iniciada** | Decisión explícita de proveedor |
 
 G1 no se cierra por ejecutar el dogfooding ni comparando contra una estimación: le falta que el producto cumpla el presupuesto de aprobación con una muestra humana válida. G2 bloquea F3; G3 bloquea F5A. Ninguna puerta se cierra por compilar o por tener tests con mocks.
