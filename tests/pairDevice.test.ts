@@ -112,7 +112,8 @@ describe('cookie de dispositivo en el canje', () => {
   test('reutilizar el enlace responde 401 y no emite una segunda cookie', async () => {
     const device = await pairOnce();
     const before = await srv.request('GET', '/api/pair/devices');
-    const count = before.body.devices.length;
+    const entryBefore = before.body.devices.find((row: any) => row.id === device.deviceId);
+    assert.ok(entryBefore, 'el dispositivo del caso debe estar registrado');
 
     const replay = await srv.request(
       'POST',
@@ -124,8 +125,13 @@ describe('cookie de dispositivo en el canje', () => {
     assert.match(String(replay.body.error), /ya usado/);
     assert.equal(setCookies(replay).length, 0, 'un canje fallido no entrega credencial');
 
+    // El registro de dispositivos es del server compartido y otros archivos
+    // emparejan en paralelo, así que un conteo global es una carrera. Lo que
+    // este caso fija es que el reuso no duplica ni toca el registro existente.
     const after = await srv.request('GET', '/api/pair/devices');
-    assert.equal(after.body.devices.length, count, 'el reuso no registra un dispositivo nuevo');
+    const ours = after.body.devices.filter((row: any) => row.id === device.deviceId);
+    assert.equal(ours.length, 1, 'el reuso no duplica el dispositivo');
+    assert.equal(ours[0].lastSeenAt, entryBefore.lastSeenAt, 'el reuso no revalida el registro');
   });
 
   test('cookie inválida o ausente → 401 con el mismo cuerpo', async () => {

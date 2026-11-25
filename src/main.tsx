@@ -1,6 +1,7 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
+import { PairControlScreen } from './features/pair/PairControlScreen';
 import { ChatStoreProvider } from './stores/chatStore';
 import { UIStoreProvider } from './stores/uiStore';
 import './index.css';
@@ -72,13 +73,22 @@ class ErrorBoundary extends Component<Props, State> {
   }
 }
 
+// `/pair` es la pantalla corta del dispositivo emparejado: no necesita los
+// stores ni el resto de la app, así que se monta sola (el servidor ya devuelve
+// el index.html de la SPA para cualquier ruta).
+const isPairRoute = /^\/pair\/?$/.test(window.location.pathname);
+
 createRoot(document.getElementById('root')!).render(
   <ErrorBoundary>
-    <ChatStoreProvider>
-      <UIStoreProvider>
-        <App />
-      </UIStoreProvider>
-    </ChatStoreProvider>
+    {isPairRoute ? (
+      <PairControlScreen />
+    ) : (
+      <ChatStoreProvider>
+        <UIStoreProvider>
+          <App />
+        </UIStoreProvider>
+      </ChatStoreProvider>
+    )}
   </ErrorBoundary>
 );
 
