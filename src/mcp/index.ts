@@ -10,6 +10,7 @@ import {
   logoutMcp,
 } from './oauth.js';
 import { redactSecrets } from '../../secretRedaction.js';
+import { uninstallMcpServer } from './uninstall.js';
 
 /**
  * MCP Registry API endpoints (Express Router).
@@ -119,19 +120,12 @@ mcpRouter.post('/uninstall', (req, res) => {
       return res.status(400).json({ error: 'name (string) is required' });
     }
 
-    const tools = getToolsConfig();
-    if (!tools.mcp?.servers || !tools.mcp.servers[name]) {
+    // La baja se persiste con `null` (ver `uninstall.ts`): borrar en memoria y
+    // reenviar `tools` no sobrevive al `deepMerge` de `writeConfig`.
+    const result = uninstallMcpServer(name);
+    if (!result.removed) {
       return res.json({ success: true, message: `No server named "${name}"` });
     }
-
-    delete tools.mcp.servers[name];
-
-    // Si no quedan servidores, desactiva MCP para no dejar config vacía.
-    if (Object.keys(tools.mcp.servers).length === 0) {
-      tools.mcp.enabled = false;
-    }
-
-    writeConfig({ tools }, 'project');
 
     res.json({ success: true, name, message: `Server "${name}" unregistered` });
   } catch (err) {
