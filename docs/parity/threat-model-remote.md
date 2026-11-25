@@ -21,7 +21,7 @@
 
 ### 1.1 Estado del código a 2026-11-25
 
-`commander pair` y `--remote` **no existen todavía**. Lo que sí existe y este modelo reutiliza:
+`commander pair` existe ya en su tramo local: emisión y canje del enlace, con `Origin` exacto y caducidad de 5 minutos (`src/pair/`, `POST /api/pair/issue` y `/api/pair/redeem`). **Falta el resto de F3** —cookie de dispositivo, lista/revocación, lease, cliente web— y **`--remote` sigue sin existir**. Lo que este modelo reutiliza:
 
 | Pieza | Dónde | Qué aporta |
 | --- | --- | --- |
@@ -31,6 +31,7 @@
 | CORS con allowlist | `server.ts` (`CORS_ALLOW`, `CORS_ORIGINS`) | Sin comodín; `Vary: Origin` |
 | Parser de cookies | `server.ts` | Base para la cookie de dispositivo, sin dependencia nueva |
 | Motor de approvals | F1 (`agentSession.ts`, `approvalEndpoints`) | El `deny` no se salta con `allow-session`; la aprobación es por paso |
+| Tokens de pair | `src/pair/pairTokens.ts`, `src/pair/pairOrigin.ts`, `src/pair/pairLink.ts` | 256 bits, TTL 5 min, hash en memoria, un solo uso; canje con `Origin` exacto y `Sec-Fetch-Site` (T1–T4); sin cookie ni dispositivos todavía |
 
 Ningún control de §6 se afirma implementado: son **requisitos de diseño** con parámetros propuestos que la implementación de F3 debe cumplir y probar. Donde hay un número, es una propuesta a fijar en el código, no una medición.
 

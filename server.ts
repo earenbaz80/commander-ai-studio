@@ -19,7 +19,7 @@ import { addRoot, listRoots, removeRoot, removableRoots, resolveProjectPath } fr
 import { enforceTool, getPermissions, setPermissions } from './permissions';
 import { mergeRuleSets, normalizeRules } from './src/agent/permissionRules';
 // `listSessions` ya lo exporta `sessionWorkspace` (sesiones de UI): se aliasa.
-import { createSession, forkSession, getOrLoadSession, listSessions as listAgentSessions, removeSession, stopSession } from './agentSession';
+import { createSession, forkSession, getOrLoadSession, latestSessionId, listSessions as listAgentSessions, removeSession, stopSession } from './agentSession';
 import { isValidSessionId } from './src/agent/sessionStore';
 import { decodeSessionState, type ApprovalDecision } from './src/agent/sessionTypes';
 import { normalizeOpenAIToolCalls, THINKING_OFF_PARAMS } from './src/agent/providers';
@@ -43,6 +43,8 @@ import { executeLocalHfModel, mapGeminiModel } from './localModels';
 import { countProviderTokens, estimateContextTokens } from './src/lib/contextFit';
 import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList, apiKeyMiddleware, getApiKey as getRequestApiKey } from './apiKeys';
 import { isAllowedHost, allowedHostsFromEnv } from './hostGuard';
+import { issuePairToken, pairTokenTtlMs, redeemPairToken } from './src/pair/pairTokens';
+import { isLoopbackPeer, pairAllowedOrigins, pairOriginRejection } from './src/pair/pairOrigin';
 import { CONTENT_SECURITY_POLICY } from './security';
 import { clearStrataLocalApiKey, getConfig, getConfigPath, getEnvProviderIds, getGlobalConfigPath, getProviderFileConfig, getProviderSecret, loadConfig, removeOpenAiCompatibleProvider, removeProviderConfig } from './src/config/index';
 import { PROVIDER_SPECS, NVIDIA_DEFAULT_MODEL, buildProviderList, customProviderSpecs, describeProvider, getAllProviderCatalog, getProviderCatalog } from './src/providers/registry';
@@ -607,6 +609,89 @@ app.post('/api/agent/sessions', (req, res) => {
     });
   } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
 });
+// --- Emparejamiento (F3) ---------------------------------------------------
+// Enlace de un solo uso para abrir la misma sesión en otro dispositivo. En este
+// paso sólo existen la emisión (loopback) y el canje con guarda de `Origin`; la
+// cookie de dispositivo, la lista de dispositivos y el lease son los criterios
+// siguientes de F3, y `--remote` no se toca mientras G2 siga sin veredicto.
+const PAIR_NO_STORE = { 'Cache-Control': 'no-store', Vary: 'Origin' };
+
+function pairOrigins(req: any): string[] {
+  return pairAllowedOrigins(req.socket?.localPort, CORS_ALLOW);
+}
+
+// Emisión: sólo desde la máquina host. El CLI no manda `Origin`; una página
+// ajena sí, y cae en la guarda. Un navegador no puede omitirlo, así que el
+// hueco de «sin Origin» no es alcanzable desde la web.
+app.post('/api/pair/issue', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  if (!isLoopbackPeer(req.socket?.remoteAddress)) {
+    return res.status(403).json({ success: false, error: 'el emparejamiento se emite sólo desde loopback' });
+  }
+  const rejection = pairOriginRejection({
+    origin: req.headers.origin,
+    secFetchSite: req.headers['sec-fetch-site'],
+    allowedOrigins: pairOrigins(req),
+    allowMissingOrigin: true,
+  });
+  if (rejection) return res.status(403).json({ success: false, error: rejection });
+
+  const requested = req.body?.sessionId;
+  let sessionId: string | null = null;
+  if (requested !== undefined && requested !== null && String(requested).trim() !== '') {
+    const id = String(requested).trim();
+    if (!isValidSessionId(id)) return res.status(400).json({ success: false, error: 'id inválido' });
+    if (!getOrLoadSession(id)) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    sessionId = id;
+  } else {
+    // La más reciente de todas: memoria y store persistido. Tras reiniciar el
+    // server el registro en memoria está vacío y las sesiones siguen en disco;
+    // mirar sólo la memoria daría 409 aunque hubiera sesiones para emparejar.
+    const latest = latestSessionId();
+    if (!latest) {
+      return res
+        .status(409)
+        .json({ success: false, error: 'no hay sesiones: pasá --session <id> o creá una primero' });
+    }
+    sessionId = latest;
+  }
+
+  const { token, expiresAt } = issuePairToken(sessionId);
+  return res.json({ success: true, token, sessionId, expiresAt, ttlMs: pairTokenTtlMs() });
+});
+
+// Canje: exige `Origin` exacto. El token se consume sólo después de esa guarda,
+// así un intento cross-site no quema el enlace del dueño.
+app.post('/api/pair/redeem', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  const rejection = pairOriginRejection({
+    origin: req.headers.origin,
+    secFetchSite: req.headers['sec-fetch-site'],
+    allowedOrigins: pairOrigins(req),
+  });
+  if (rejection) return res.status(403).json({ success: false, error: rejection });
+
+  const result = redeemPairToken(req.body?.token);
+  if (!result.ok) {
+    if (result.reason === 'used') {
+      return res
+        .status(401)
+        .json({ success: false, error: 'enlace ya usado: generá uno nuevo en la máquina host' });
+    }
+    // Caducado, desconocido y basura responden igual: no se filtra si existió.
+    return res.status(410).json({ success: false, error: 'enlace inválido o caducado' });
+  }
+
+  const session = getOrLoadSession(result.sessionId);
+  if (!session) {
+    return res.status(410).json({ success: false, error: 'la sesión emparejada ya no existe' });
+  }
+  return res.json({
+    success: true,
+    session: { id: session.id, status: session.getStatus(), goal: session.getGoal() },
+  });
+});
+
 app.get('/api/agent/sessions', (_req, res) => {
   try {
     res.json({ success: true, sessions: listAgentSessions() });

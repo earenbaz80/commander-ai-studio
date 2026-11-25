@@ -2159,6 +2159,32 @@ export function listSessions(): Array<{ id: string; goal: string; model: string;
   }));
 }
 
+/**
+ * Sesión más reciente, tenga o no registro en memoria.
+ *
+ * El registro en memoria sólo guarda lo que creó este proceso: tras reiniciar
+ * el servidor está vacío aunque el store persistido tenga sesiones, y elegir
+ * «la más reciente» mirando sólo la memoria respondía 409 con sesiones en
+ * disco. Se miran los dos y gana la de `updatedAt` más nuevo.
+ */
+export function latestSessionId(): string | undefined {
+  const candidates: Array<{ id: string; at: number }> = [];
+  try {
+    for (const state of createSessionStore().list()) {
+      candidates.push({ id: state.id, at: Number(state.updatedAt) || 0 });
+    }
+  } catch {
+    /* disco no disponible: queda lo que haya en memoria */
+  }
+  for (const s of sessions.values()) {
+    let at = s.createdAt;
+    try { at = Number(s.toState().updatedAt) || s.createdAt; } catch { /* estado ilegible */ }
+    candidates.push({ id: s.id, at });
+  }
+  candidates.sort((a, b) => b.at - a.at || b.id.localeCompare(a.id));
+  return candidates[0]?.id;
+}
+
 export function stopSession(id: string): boolean {
   const s = getOrLoadSession(id);
   if (!s) return false;
