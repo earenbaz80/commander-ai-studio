@@ -26,17 +26,17 @@ function fixture(before: Sessions, after: Sessions) {
   const srv: Pick<ServerHarness, 'request'> = {
     request: async (_method: string, route: string) => {
       if (route === '/api/agent/sessions') {
-        return { status: 200, body: { success: true, sessions: current.agents }, raw: '' };
+        return { status: 200, body: { success: true, sessions: current.agents }, raw: '', headers: {} };
       }
       if (route === '/api/browser/sessions') {
-        return { status: 200, body: { success: true, sessions: current.browsers }, raw: '' };
+        return { status: 200, body: { success: true, sessions: current.browsers }, raw: '', headers: {} };
       }
       if (route.startsWith('/api/agent/sessions/')) {
         const id = decodeURIComponent(route.slice('/api/agent/sessions/'.length));
         const session = current.agents.find((candidate) => candidate.id === id);
         return session
-          ? { status: 200, body: { success: true, state: session }, raw: '' }
-          : { status: 404, body: { success: false }, raw: '' };
+          ? { status: 200, body: { success: true, state: session }, raw: '', headers: {} }
+          : { status: 404, body: { success: false }, raw: '', headers: {} };
       }
       throw new Error(`ruta inesperada: ${route}`);
     },

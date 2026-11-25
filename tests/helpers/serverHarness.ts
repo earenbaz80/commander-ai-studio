@@ -104,6 +104,8 @@ export interface HttpResult {
   body: any;
   /** Cuerpo crudo, para mensajes de error legibles. */
   raw: string;
+  /** Cabeceras de la respuesta (`set-cookie` llega como lista). */
+  headers: Record<string, string | string[] | undefined>;
 }
 
 /**
@@ -157,7 +159,7 @@ function makeRequest(baseUrl: string) {
             const raw = Buffer.concat(chunks).toString('utf8');
             let parsed: any = null;
             try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; }
-            resolve({ status: res.statusCode ?? 0, body: parsed, raw });
+            resolve({ status: res.statusCode ?? 0, body: parsed, raw, headers: res.headers });
           });
         }
       );
@@ -421,6 +423,10 @@ export async function spawnServer(options: SpawnServerOptions = {}): Promise<Ser
       // 300/min, que aparecian como 429 en un test ajeno (y en las corridas de
       // agente, que escribe por HTTP). Se sube sólo aquí.
       COMMANDER_RATE_WRITE_MAX: '20000',
+      // Los dispositivos de pair (F3) también se acumulan entre archivos: el
+      // tope de 5 es para una persona, no para una corrida que canjea enlaces
+      // en varios casos. Igual que el rate limit, se sube sólo en el arnés.
+      COMMANDER_PAIR_MAX_DEVICES: '200',
       // El doble del backend gestionado (PL3) sólo se enciende en el arnés: en
       // producción la bandera no se define y `/api/backend/manage` responde
       // deshabilitado. Es memoria del proceso, sin credenciales ni red.
