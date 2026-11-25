@@ -444,14 +444,18 @@ export function pairLeaseAudit(sessionId?: string): PairLeaseAuditEntry[] {
 /**
  * Sólo para tests: deja el control y la auditoría vacíos entre casos.
  *
- * Por defecto también borra el archivo, para no heredar eventos de la corrida
- * anterior; con `keepAuditFile` sólo vacía la memoria y obliga a releer el
- * disco en la siguiente lectura (así se prueba el reinicio).
+ * Sólo borra el archivo cuando la ruta viene aislada por
+ * `COMMANDER_PAIR_LEASE_AUDIT_FILE`: el archivo por defecto es el historial
+ * real del proyecto y correr la suite no puede llevárselo por delante. Con
+ * `keepAuditFile` y con la ruta por defecto la memoria queda vacía y se relee
+ * del disco, así los eventos nuevos se suman a los que ya había en vez de
+ * reescribir el archivo desde cero.
  */
 export function resetPairLeasesForTests(options: { keepAuditFile?: boolean } = {}): void {
   leases.clear();
   audit.length = 0;
-  if (options.keepAuditFile) {
+  const isolatedFile = process.env[PAIR_LEASE_AUDIT_FILE_ENV]?.trim();
+  if (options.keepAuditFile || !isolatedFile) {
     auditLoaded = false;
     return;
   }

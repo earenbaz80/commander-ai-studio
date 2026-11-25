@@ -398,6 +398,11 @@ describe('control lease contra el server', () => {
 
 describe('control lease (módulo)', () => {
   test('la caducidad devuelve el control al escritorio y queda auditada', () => {
+    // Aislado: el reset ya no borra el archivo por defecto, así que sin override
+    // este caso leería y ensuciaría el historial real del proyecto.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-lease-expiry-'));
+    const previous = process.env[PAIR_LEASE_AUDIT_FILE_ENV];
+    process.env[PAIR_LEASE_AUDIT_FILE_ENV] = path.join(dir, 'lease-audit.jsonl');
     resetPairLeasesForTests();
     try {
       const claimed = claimPairLease('sess_demo', 'dev_a', { now: 1_000, ttlMs: 1_000 });
@@ -424,7 +429,10 @@ describe('control lease (módulo)', () => {
       assert.equal(again.ok, true);
       assert.equal(pairLeaseAudit('sess_demo').length, 3);
     } finally {
+      if (previous === undefined) delete process.env[PAIR_LEASE_AUDIT_FILE_ENV];
+      else process.env[PAIR_LEASE_AUDIT_FILE_ENV] = previous;
       resetPairLeasesForTests();
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 
@@ -467,6 +475,37 @@ describe('control lease (módulo)', () => {
     } finally {
       if (previous === undefined) delete process.env[PAIR_LEASE_AUDIT_FILE_ENV];
       else process.env[PAIR_LEASE_AUDIT_FILE_ENV] = previous;
+      resetPairLeasesForTests();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('reset no borra la auditoría real cuando la ruta es la de por defecto', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-lease-default-'));
+    const defaultFile = path.join(dir, '.commander', 'pair', 'lease-audit.jsonl');
+    const previousEnv = process.env[PAIR_LEASE_AUDIT_FILE_ENV];
+    const previousCwd = process.cwd();
+    delete process.env[PAIR_LEASE_AUDIT_FILE_ENV];
+    fs.mkdirSync(path.dirname(defaultFile), { recursive: true });
+    fs.writeFileSync(
+      defaultFile,
+      `${JSON.stringify({ at: 1_000, sessionId: 'sess_real', action: 'claimed', deviceId: 'dev_real', seq: 1 })}\n`,
+      'utf8'
+    );
+    try {
+      // La ruta por defecto cuelga del cwd: aquí es un temporal, no el .commander real.
+      process.chdir(dir);
+      resetPairLeasesForTests();
+      assert.equal(fs.existsSync(defaultFile), true, 'el historial real sobrevive al reset');
+      assert.deepEqual(
+        pairLeaseAudit('sess_real').map((row) => row.action),
+        ['claimed'],
+        'y se relee del disco en vez de darse por vacío'
+      );
+    } finally {
+      process.chdir(previousCwd);
+      if (previousEnv === undefined) delete process.env[PAIR_LEASE_AUDIT_FILE_ENV];
+      else process.env[PAIR_LEASE_AUDIT_FILE_ENV] = previousEnv;
       resetPairLeasesForTests();
       fs.rmSync(dir, { recursive: true, force: true });
     }
