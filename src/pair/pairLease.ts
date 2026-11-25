@@ -21,13 +21,16 @@
  *   Sin renovación el lease caduca y el control vuelve al escritorio, con su
  *   evento en la auditoría. Revocar un dispositivo hace lo mismo en todas las
  *   sesiones donde fuera el dueño (`dropPairLeasesForDevice`).
- * - La auditoría es en memoria y acotada: `deviceId`, `seq`, acción y hora, sin
- *   secretos. Visible desde el escritorio; persistirla es otro criterio de F3.
+ * - La auditoría se persiste en `.commander/pair/lease-audit.jsonl` (JSONL,
+ *   tope de 200 entradas, escritura atómica) y se relee al arrancar. Lleva
+ *   `deviceId`, `seq`, acción y hora, sin secretos, y se lee desde el escritorio.
  *
  * `now` y `ttlMs` son inyectables para probar la caducidad sin esperar 60 s;
  * en producción se usan `Date.now()` y `COMMANDER_PAIR_LEASE_TTL_MS` (sólo
  * tests lo bajan).
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { activePairDevice } from './pairDevices.js';
 
 export const DESKTOP_CONTROLLER = 'desktop';
@@ -35,8 +38,20 @@ export const PAIR_LEASE_TTL_MS = 60_000;
 /** El cliente renueva a la mitad del TTL: un fallo de red no pierde el control. */
 export const PAIR_LEASE_RENEW_MS = 30_000;
 export const PAIR_LEASE_TTL_ENV = 'COMMANDER_PAIR_LEASE_TTL_MS';
-/** Tope del historial en memoria; lo viejo se descarta, no se persiste. */
-const MAX_AUDIT_ENTRIES = 200;
+/** Tope del historial, en memoria y en disco: lo viejo se descarta. */
+export const PAIR_LEASE_AUDIT_MAX_ENTRIES = 200;
+/** Archivo del historial; la variable permite aislar tests y despliegues. */
+export const PAIR_LEASE_AUDIT_FILE_ENV = 'COMMANDER_PAIR_LEASE_AUDIT_FILE';
+
+/**
+ * Ruta del historial. Por defecto vive junto al resto del estado local del
+ * proyecto (`.commander/`, ignorado por git), no sólo en la memoria del
+ * proceso: un reinicio del server no borra quién tuvo el control.
+ */
+export function pairLeaseAuditPath(cwd = process.cwd()): string {
+  const override = process.env[PAIR_LEASE_AUDIT_FILE_ENV]?.trim();
+  return override ? path.resolve(override) : path.join(cwd, '.commander', 'pair', 'lease-audit.jsonl');
+}
 
 export function pairLeaseTtlMs(env: Record<string, string | undefined> = process.env): number {
   const raw = Number(env[PAIR_LEASE_TTL_ENV]);
@@ -79,6 +94,89 @@ type LeaseRecord = PairLease;
 
 const leases = new Map<string, LeaseRecord>();
 const audit: PairLeaseAuditEntry[] = [];
+/** El disco se lee una vez; `resetPairLeasesForTests` decide si se relee. */
+let auditLoaded = false;
+
+function isAuditEntry(value: any): value is PairLeaseAuditEntry {
+  return (
+    Boolean(value) &&
+    typeof value.sessionId === 'string' &&
+    typeof value.deviceId === 'string' &&
+    typeof value.action === 'string' &&
+    typeof value.at === 'number' &&
+    typeof value.seq === 'number'
+  );
+}
+
+/**
+ * Carga perezosa del historial. Una línea cortada o ilegible se ignora: un
+ * archivo dañado no puede tumbar el control de la sesión.
+ */
+function loadAudit(): void {
+  if (auditLoaded) return;
+  auditLoaded = true;
+  let raw = '';
+  try {
+    raw = fs.readFileSync(pairLeaseAuditPath(), 'utf8');
+  } catch {
+    return;
+  }
+  const rows: PairLeaseAuditEntry[] = [];
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const parsed = JSON.parse(line);
+      if (isAuditEntry(parsed)) rows.push(parsed);
+    } catch {
+      /* línea cortada por un corte de energía: se descarta */
+    }
+  }
+  audit.push(...rows.slice(-PAIR_LEASE_AUDIT_MAX_ENTRIES));
+}
+
+function sleepSync(ms: number): void {
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch {
+    /* sin espera si el runtime no lo soporta */
+  }
+}
+
+/** `rename` atómico con reintento: en Windows el antivirus puede dar EPERM. */
+function writeAuditAtomically(file: string, text: string): void {
+  const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+  fs.writeFileSync(tmp, text, 'utf8');
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.renameSync(tmp, file);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException)?.code;
+      const retriable = code === 'EPERM' || code === 'EBUSY' || code === 'EACCES';
+      if (!retriable || attempt >= 4) {
+        try { fs.unlinkSync(tmp); } catch { /* el tmp ya no está */ }
+        throw error;
+      }
+      sleepSync(15 * (attempt + 1));
+    }
+  }
+}
+
+/**
+ * Reescribe el archivo con lo que hay en memoria: así el tope también se aplica
+ * en disco (un `append` crecería sin límite). Un fallo de disco no bloquea el
+ * lease: se pierde el historial, no el control.
+ */
+function persistAudit(): void {
+  const file = pairLeaseAuditPath();
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const text = audit.map((entry) => JSON.stringify(entry)).join('\n');
+    writeAuditAtomically(file, text ? `${text}\n` : '');
+  } catch {
+    /* sin disco, la auditoría sigue en memoria */
+  }
+}
 
 function publicLease(record: LeaseRecord): PairLease {
   return {
@@ -93,6 +191,7 @@ function publicLease(record: LeaseRecord): PairLease {
 }
 
 function log(record: LeaseRecord, action: PairLeaseAction, at: number, toDeviceId?: string): void {
+  loadAudit();
   audit.push({
     at,
     sessionId: record.sessionId,
@@ -101,7 +200,8 @@ function log(record: LeaseRecord, action: PairLeaseAction, at: number, toDeviceI
     seq: record.seq,
     ...(toDeviceId ? { toDeviceId } : {}),
   });
-  while (audit.length > MAX_AUDIT_ENTRIES) audit.shift();
+  while (audit.length > PAIR_LEASE_AUDIT_MAX_ENTRIES) audit.shift();
+  persistAudit();
 }
 
 function desktopLease(sessionId: string, seq: number, now: number): LeaseRecord {
@@ -336,12 +436,29 @@ export function dropPairLeasesForDevice(
 
 /** Historial de control, opcionalmente de una sola sesión. Sin secretos. */
 export function pairLeaseAudit(sessionId?: string): PairLeaseAuditEntry[] {
+  loadAudit();
   const rows = sessionId ? audit.filter((entry) => entry.sessionId === sessionId) : audit.slice();
   return rows.map((entry) => ({ ...entry }));
 }
 
-/** Sólo para tests: deja el control y la auditoría vacíos entre casos. */
-export function resetPairLeasesForTests(): void {
+/**
+ * Sólo para tests: deja el control y la auditoría vacíos entre casos.
+ *
+ * Por defecto también borra el archivo, para no heredar eventos de la corrida
+ * anterior; con `keepAuditFile` sólo vacía la memoria y obliga a releer el
+ * disco en la siguiente lectura (así se prueba el reinicio).
+ */
+export function resetPairLeasesForTests(options: { keepAuditFile?: boolean } = {}): void {
   leases.clear();
   audit.length = 0;
+  if (options.keepAuditFile) {
+    auditLoaded = false;
+    return;
+  }
+  auditLoaded = true;
+  try {
+    fs.rmSync(pairLeaseAuditPath(), { force: true });
+  } catch {
+    /* sin archivo no hay nada que borrar */
+  }
 }

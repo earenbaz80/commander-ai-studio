@@ -418,6 +418,8 @@ export async function spawnServer(options: SpawnServerOptions = {}): Promise<Ser
       COMMANDER_PUBLISH_DIR: publishDir,
       // Las sesiones del agente (F1-02) tampoco.
       COMMANDER_AGENT_SESSIONS_DIR: path.join(dir, 'agent-sessions'),
+      // La auditoría del lease (F3) tampoco puede caer en el .commander real.
+      COMMANDER_PAIR_LEASE_AUDIT_FILE: path.join(dir, 'pair', 'lease-audit.jsonl'),
       // El tope de escrituras por IP protege a una UI, no a la suite: decenas
       // de archivos comparten este server y sus POST legítimos agotaban las
       // 300/min, que aparecian como 429 en un test ajeno (y en las corridas de

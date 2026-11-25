@@ -14,10 +14,15 @@
  */
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { startServer, type HttpResult, type ServerHarness } from './helpers/serverHarness.js';
 import { PAIR_DEVICE_COOKIE } from '../src/pair/pairDevices.js';
 import {
   DESKTOP_CONTROLLER,
+  PAIR_LEASE_AUDIT_FILE_ENV,
+  PAIR_LEASE_AUDIT_MAX_ENTRIES,
   claimPairLease,
   pairLeaseAudit,
   readPairLease,
@@ -420,6 +425,50 @@ describe('control lease (módulo)', () => {
       assert.equal(pairLeaseAudit('sess_demo').length, 3);
     } finally {
       resetPairLeasesForTests();
+    }
+  });
+
+  test('la auditoría se persiste en disco, se relee y respeta el tope', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-lease-audit-'));
+    const file = path.join(dir, 'lease-audit.jsonl');
+    const previous = process.env[PAIR_LEASE_AUDIT_FILE_ENV];
+    process.env[PAIR_LEASE_AUDIT_FILE_ENV] = file;
+    try {
+      resetPairLeasesForTests();
+      const claimed = claimPairLease('sess_persist', 'dev_a', { now: 1_000, ttlMs: 1_000 });
+      assert.equal(claimed.ok, true);
+
+      // El evento quedó en disco como una línea JSON, sin secretos.
+      const lines = fs.readFileSync(file, 'utf8').trim().split('\n');
+      assert.equal(lines.length, 1);
+      const entry = JSON.parse(lines[0]);
+      assert.deepEqual(
+        { action: entry.action, deviceId: entry.deviceId, sessionId: entry.sessionId },
+        { action: 'claimed', deviceId: 'dev_a', sessionId: 'sess_persist' }
+      );
+      assert.equal(JSON.stringify(entry).includes('token'), false, 'la auditoría no guarda secretos');
+
+      // Reinicio: memoria vacía y disco intacto → la lectura recupera el historial.
+      resetPairLeasesForTests({ keepAuditFile: true });
+      assert.deepEqual(pairLeaseAudit('sess_persist').map((row) => row.action), ['claimed']);
+
+      // El tope también rige en disco: se reescribe, no se acumula sin límite.
+      const again = claimPairLease('sess_persist', 'dev_a', { now: 2_000, ttlMs: 10_000_000 });
+      assert.equal(again.ok, true);
+      let seq = again.ok ? again.lease.seq : -1;
+      for (let i = 0; i < PAIR_LEASE_AUDIT_MAX_ENTRIES + 20; i++) {
+        const renewed = renewPairLease('sess_persist', 'dev_a', seq, { now: 2_001 + i, ttlMs: 10_000_000 });
+        assert.equal(renewed.ok, true);
+        seq = renewed.ok ? renewed.lease.seq : -1;
+      }
+      const capped = fs.readFileSync(file, 'utf8').trim().split('\n');
+      assert.equal(capped.length, PAIR_LEASE_AUDIT_MAX_ENTRIES);
+      assert.equal(JSON.parse(capped.at(-1)!).action, 'renewed');
+    } finally {
+      if (previous === undefined) delete process.env[PAIR_LEASE_AUDIT_FILE_ENV];
+      else process.env[PAIR_LEASE_AUDIT_FILE_ENV] = previous;
+      resetPairLeasesForTests();
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 });
