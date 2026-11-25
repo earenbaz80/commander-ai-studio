@@ -20,6 +20,24 @@ after(async () => {
   await srv?.stop();
 });
 
+/** Crea una sesión, emite el enlace y canja un dispositivo para el CLI. */
+async function pairForCli(goal: string): Promise<{ sessionId: string; deviceId: string }> {
+  const created = await srv.request('POST', '/api/agent/sessions', { goal });
+  assert.equal(created.status, 200, created.raw);
+  const sessionId = String(created.body.session.id);
+
+  const issued = await srv.request('POST', '/api/pair/issue', { sessionId });
+  assert.equal(issued.status, 200, issued.raw);
+  const redeemed = await srv.request(
+    'POST',
+    '/api/pair/redeem',
+    { token: issued.body.token },
+    { headers: { Origin: srv.baseUrl } }
+  );
+  assert.equal(redeemed.status, 200, redeemed.raw);
+  return { sessionId, deviceId: String(redeemed.body.device.id) };
+}
+
 function collector() {
   const lines: string[] = [];
   return { lines, out: (line: string) => lines.push(line) };
@@ -253,20 +271,7 @@ describe('commander pair', () => {
 
 describe('commander pair contra el server (F3)', () => {
   test('--devices y --revoke reutilizan las rutas del host', async () => {
-    const created = await srv.request('POST', '/api/agent/sessions', { goal: 'Pair CLI: devices (F3)' });
-    assert.equal(created.status, 200, created.raw);
-    const sessionId = String(created.body.session.id);
-
-    const issued = await srv.request('POST', '/api/pair/issue', { sessionId });
-    assert.equal(issued.status, 200, issued.raw);
-    const redeemed = await srv.request(
-      'POST',
-      '/api/pair/redeem',
-      { token: issued.body.token },
-      { headers: { Origin: srv.baseUrl } }
-    );
-    assert.equal(redeemed.status, 200, redeemed.raw);
-    const deviceId = String(redeemed.body.device.id);
+    const { deviceId } = await pairForCli('Pair CLI: devices (F3)');
 
     const listed = collector();
     assert.equal(
@@ -288,5 +293,59 @@ describe('commander pair contra el server (F3)', () => {
     const record = after.body.devices.find((entry: any) => entry.id === deviceId);
     assert.ok(record, 'el dispositivo revocado se conserva para auditoría');
     assert.equal(typeof record.revokedAt, 'number');
+  });
+
+  test('--revoke es idempotente: repetir la baja conserva el mismo revokedAt', async () => {
+    const { deviceId } = await pairForCli('Pair CLI: baja idempotente (F3)');
+
+    const first = collector();
+    assert.equal(
+      await runPairCommand({ serverUrl: srv.baseUrl, revoke: deviceId, out: first.out, err: first.out }),
+      0
+    );
+    const before = await srv.request('GET', '/api/pair/devices');
+    const firstRow = before.body.devices.find((entry: any) => entry.id === deviceId);
+    assert.ok(firstRow, 'la primera baja deja el registro para auditoría');
+    assert.equal(typeof firstRow.revokedAt, 'number');
+
+    const second = collector();
+    assert.equal(
+      await runPairCommand({ serverUrl: srv.baseUrl, revoke: deviceId, out: second.out, err: second.out }),
+      0
+    );
+    assert.match(second.lines.join('\n'), new RegExp(`${deviceId} revocado`));
+
+    const after = await srv.request('GET', '/api/pair/devices');
+    const secondRow = after.body.devices.find((entry: any) => entry.id === deviceId);
+    assert.ok(secondRow, 'repetir la baja no borra el registro');
+    assert.equal(secondRow.revokedAt, firstRow.revokedAt, 'repetir la baja no mueve la marca');
+
+    const listed = collector();
+    assert.equal(
+      await runPairCommand({ serverUrl: srv.baseUrl, devices: true, out: listed.out, err: listed.out }),
+      0
+    );
+    assert.match(listed.lines.join('\n'), new RegExp(`${deviceId}\\s+revocado`));
+  });
+
+  test('--revoke de un id inexistente responde 404 y no crea un registro', async () => {
+    const err = collector();
+    const code = await runPairCommand({
+      serverUrl: srv.baseUrl,
+      revoke: 'dev_inexistente_cli',
+      out: () => assert.fail('no debería imprimir una baja'),
+      err: err.out,
+    });
+    assert.equal(code, 1);
+    assert.match(err.lines.join('\n'), /HTTP 404/);
+    assert.match(err.lines.join('\n'), /dispositivo no encontrado/);
+
+    const listed = await srv.request('GET', '/api/pair/devices');
+    assert.equal(listed.status, 200, listed.raw);
+    assert.equal(
+      listed.body.devices.some((entry: any) => entry.id === 'dev_inexistente_cli'),
+      false,
+      'un id inexistente no se inventa en el registro'
+    );
   });
 });
