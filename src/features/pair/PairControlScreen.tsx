@@ -17,6 +17,8 @@
  * el host puede seguir leyendo el estado si la petición es loopback.
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { deText } from '../../i18n/de';
+import type { Language } from '../../i18n/translations';
 import {
   createPairLeaseClient,
   type PairLeaseClient,
@@ -27,6 +29,8 @@ import {
 export interface PairControlScreenProps {
   /** Para enlaces internos y tests; si falta se lee `?sessionId=` de la URL. */
   sessionId?: string;
+  /** Idioma de la pantalla; por defecto espanol, como el resto de la app. */
+  lang?: Language;
 }
 
 function readSessionFromUrl(): string {
@@ -34,13 +38,19 @@ function readSessionFromUrl(): string {
   return new URLSearchParams(window.location.search).get('sessionId')?.trim() ?? '';
 }
 
-function ownerLabel(id: string | null | undefined): string {
-  if (!id || id === 'desktop') return 'el escritorio';
+type Translate = (es: string, en: string) => string;
+
+function translate(lang: Language, es: string, en: string): string {
+  return lang === 'es' ? es : lang === 'de' ? deText(en) : en;
+}
+
+function ownerLabel(id: string | null | undefined, L: Translate): string {
+  if (!id || id === 'desktop') return L('el escritorio', 'the desktop');
   return id;
 }
 
-function clock(at: number | null): string {
-  if (at === null) return 'sin caducidad';
+function clock(at: number | null, L: Translate): string {
+  if (at === null) return L('sin caducidad', 'no expiry');
   try {
     return new Date(at).toLocaleTimeString('es-ES', { hour12: false });
   } catch {
@@ -48,15 +58,18 @@ function clock(at: number | null): string {
   }
 }
 
-function statusText(state: PairLeaseClientState): string {
-  if (state.phase === 'syncing') return 'Sincronizando con el host…';
-  if (state.phase === 'error') return 'No se pudo leer el control de la sesión';
-  if (state.canWrite) return 'Tenés el control de escritura';
-  if (state.mine) return 'El control es de este dispositivo, falta confirmarlo';
-  return `Sólo lectura · el control lo tiene ${ownerLabel(state.lease?.deviceId)}`;
+function statusText(state: PairLeaseClientState, L: Translate): string {
+  if (state.phase === 'syncing') return L('Sincronizando con el host…', 'Syncing with the host…');
+  if (state.phase === 'error')
+    return L('No se pudo leer el control de la sesión', 'Could not read the session control');
+  if (state.canWrite) return L('Tenés el control de escritura', 'You have write control');
+  if (state.mine)
+    return L('El control es de este dispositivo, falta confirmarlo', 'This device holds control; it is not confirmed yet');
+  return `${L('Sólo lectura · el control lo tiene', 'Read only · control held by')} ${ownerLabel(state.lease?.deviceId, L)}`;
 }
 
-export function PairControlScreen({ sessionId: preset }: PairControlScreenProps) {
+export function PairControlScreen({ sessionId: preset, lang = 'es' }: PairControlScreenProps) {
+  const L: Translate = (es, en) => translate(lang, es, en);
   const initial = (preset ?? readSessionFromUrl()).trim();
   const [sessionId, setSessionId] = useState(initial);
   const [draft, setDraft] = useState(initial);
@@ -81,11 +94,22 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
           setDeviceId(String(data.device.id));
         } else {
           setDeviceNote(
-            'Este navegador no está emparejado como dispositivo: el host puede mostrar el control, pero no reclamarlo desde acá. Generá un enlace con `commander pair` y canjealo en este navegador.'
+            translate(
+              lang,
+              'Este navegador no está emparejado como dispositivo: el host puede mostrar el control, pero no reclamarlo desde acá. Generá un enlace con `commander pair` y canjealo en este navegador.',
+              'This browser is not paired as a device: the host can show control, but you cannot claim it from here. Generate a link with `commander pair` and redeem it in this browser.'
+            )
           );
         }
       } catch {
-        if (!cancelled) setDeviceNote('No se pudo comprobar el dispositivo: sin conexión con el host.');
+        if (!cancelled)
+          setDeviceNote(
+            translate(
+              lang,
+              'No se pudo comprobar el dispositivo: sin conexión con el host.',
+              'Could not check the device: no connection to the host.'
+            )
+          );
       } finally {
         if (!cancelled) setDeviceChecked(true);
       }
@@ -93,7 +117,7 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [lang]);
 
   useEffect(() => {
     if (!sessionId || !deviceChecked) return;
@@ -162,17 +186,22 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
       <div className="mx-auto w-full max-w-2xl space-y-4">
         <header className="space-y-1">
           <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--nc-text-dim)]">
-            Commander AI Studio · pair
+            {L('Commander AI Studio · pair', 'Commander AI Studio · pair')}
           </p>
-          <h1 className="text-lg font-bold text-[var(--nc-text-accent)]">Control de la sesión</h1>
+          <h1 className="text-lg font-bold text-[var(--nc-text-accent)]">
+            {L('Control de la sesión', 'Session control')}
+          </h1>
           <p className="text-xs text-[var(--nc-text-dim)]">
-            Un solo dispositivo escribe; el resto lee y puede pedir el traspaso.
+            {L(
+              'Un solo dispositivo escribe; el resto lee y puede pedir el traspaso.',
+              'One device writes; the rest read and may request the handover.'
+            )}
           </p>
         </header>
 
         <form onSubmit={connect} className="nc-panel flex flex-col gap-2 p-3 sm:flex-row sm:items-end">
           <label className="flex-1 space-y-1 text-xs">
-            <span className="block text-[var(--nc-text-dim)]">Sesión</span>
+            <span className="block text-[var(--nc-text-dim)]">{L('Sesión', 'Session')}</span>
             <input
               data-testid="pair-session"
               value={draft}
@@ -184,7 +213,7 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
             />
           </label>
           <button type="submit" data-testid="pair-connect" className="nc-button text-xs" disabled={!draft.trim()}>
-            Conectar
+            {L('Conectar', 'Connect')}
           </button>
         </form>
 
@@ -199,7 +228,7 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
 
         {!sessionId && (
           <p className="text-xs text-[var(--nc-text-dim)]">
-            Elegí una sesión para ver quién tiene el control.
+            {L('Elegí una sesión para ver quién tiene el control.', 'Pick a session to see who holds control.')}
           </p>
         )}
 
@@ -207,7 +236,7 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
           <section className="nc-panel space-y-3 p-4" aria-live="polite">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p data-testid="pair-status" className="text-sm font-bold">
-                {statusText(state)}
+                {statusText(state, L)}
               </p>
               <span className="text-[11px] text-[var(--nc-text-dim)]">
                 {sessionId}
@@ -217,14 +246,19 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
 
             <dl className="grid grid-cols-1 gap-1 text-xs sm:grid-cols-2">
               <div>
-                <dt className="text-[var(--nc-text-dim)]">Dueño</dt>
-                <dd data-testid="pair-owner">{ownerLabel(lease?.deviceId)}</dd>
+                <dt className="text-[var(--nc-text-dim)]">{L('Dueño', 'Owner')}</dt>
+                <dd data-testid="pair-owner">{ownerLabel(lease?.deviceId, L)}</dd>
               </div>
               <div>
-                <dt className="text-[var(--nc-text-dim)]">Caducidad</dt>
+                <dt className="text-[var(--nc-text-dim)]">{L('Caducidad', 'Expiry')}</dt>
                 <dd data-testid="pair-expiry">
-                  {lease ? clock(lease.expiresAt) : '—'}
-                  {lease?.expiresAt !== null && lease ? ` · renueva cada ${Math.round(state.renewMs / 1000)} s` : ''}
+                  {lease ? clock(lease.expiresAt, L) : '—'}
+                  {lease?.expiresAt !== null && lease
+                    ? L(
+                        ` · renueva cada ${Math.round(state.renewMs / 1000)} s`,
+                        ` · renews every ${Math.round(state.renewMs / 1000)} s`
+                      )
+                    : ''}
                 </dd>
               </div>
             </dl>
@@ -233,19 +267,23 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
               data-testid="pair-renewal"
               className={`text-xs ${state.renewalActive ? 'text-[var(--nc-success)]' : 'text-[var(--nc-text-dim)]'}`}
             >
-              {state.renewalActive ? 'Renovación activa cada 30 s' : 'Renovación detenida'}
+              {state.renewalActive
+                ? L('Renovación activa cada 30 s', 'Renewing every 30 s')
+                : L('Renovación detenida', 'Renewal stopped')}
             </p>
 
             {pending && (
               <p data-testid="pair-pending" className="text-xs text-[var(--nc-text-accent)]">
-                Traspaso pedido por {ownerLabel(pending.deviceId)}
-                {canWrite ? ': aceptalo para cederle el control.' : ': esperando que el dueño lo acepte.'}
+                {L('Traspaso pedido por', 'Handover requested by')} {ownerLabel(pending.deviceId, L)}
+                {canWrite
+                  ? L(': aceptalo para cederle el control.', ': accept it to hand over control.')
+                  : L(': esperando que el dueño lo acepte.', ': waiting for the owner to accept it.')}
               </p>
             )}
 
             {state.ack && (
               <p data-testid="pair-ack" className="text-xs text-[var(--nc-success)]">
-                Control cedido a {state.ack.deviceId} · seq {state.ack.seq}
+                {L('Control cedido a', 'Control handed to')} {state.ack.deviceId} · seq {state.ack.seq}
               </p>
             )}
 
@@ -258,8 +296,10 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
                 <p className="font-bold">{[state.lastError.code ?? 'ERROR', state.lastError.message].join(' · ')}</p>
                 {state.lastError.code === 'LEASE_HELD' && (
                   <p className="mt-1 text-[var(--nc-text)]">
-                    La sesión la escribe otro dispositivo. Pedí el traspaso y esperá que el dueño lo acepte; no
-                    insistas con el reclamo.
+                    {L(
+                      'La sesión la escribe otro dispositivo. Pedí el traspaso y esperá que el dueño lo acepte; no insistas con el reclamo.',
+                      'Another device writes this session. Request the handover and wait for the owner to accept it; do not keep retrying the claim.'
+                    )}
                   </p>
                 )}
               </div>
@@ -273,7 +313,7 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
                 disabled={disabled}
                 onClick={() => run('refresh', (client) => client.refresh())}
               >
-                Actualizar estado
+                {L('Actualizar estado', 'Refresh state')}
               </button>
 
               {!canWrite && (
@@ -285,7 +325,7 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
                     disabled={disabled}
                     onClick={() => run('claim', (client) => client.claim())}
                   >
-                    Reclamar control
+                    {L('Reclamar control', 'Claim control')}
                   </button>
                   <button
                     type="button"
@@ -294,7 +334,7 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
                     disabled={disabled || pending !== null}
                     onClick={() => run('request', (client) => client.requestTransfer())}
                   >
-                    Pedir traspaso
+                    {L('Pedir traspaso', 'Request handover')}
                   </button>
                 </>
               )}
@@ -308,7 +348,7 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
                     disabled={disabled}
                     onClick={() => run('release', (client) => client.release())}
                   >
-                    Liberar control
+                    {L('Liberar control', 'Release control')}
                   </button>
                   {pending && (
                     <button
@@ -318,7 +358,7 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
                       disabled={disabled}
                       onClick={() => run('accept', (client) => client.transfer())}
                     >
-                      Aceptar traspaso a {ownerLabel(pending.deviceId)}
+                      {L('Aceptar traspaso a', 'Accept handover to')} {ownerLabel(pending.deviceId, L)}
                     </button>
                   )}
                 </>
@@ -328,7 +368,9 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
             {canWrite && (
               <div className="flex flex-col gap-2 border-t-2 border-[var(--nc-border-dark)] pt-3 sm:flex-row sm:items-end">
                 <label className="flex-1 space-y-1 text-xs">
-                  <span className="block text-[var(--nc-text-dim)]">Ceder el control a (deviceId)</span>
+                  <span className="block text-[var(--nc-text-dim)]">
+                    {L('Ceder el control a (deviceId)', 'Hand control to (deviceId)')}
+                  </span>
                   <input
                     data-testid="pair-target"
                     placeholder="dev_…"
@@ -351,7 +393,7 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
                     )
                   }
                 >
-                  Ceder control
+                  {L('Ceder control', 'Hand over control')}
                 </button>
               </div>
             )}
@@ -359,7 +401,9 @@ export function PairControlScreen({ sessionId: preset }: PairControlScreenProps)
         )}
 
         {sessionId && !state && (
-          <p className="text-xs text-[var(--nc-text-dim)]">Leyendo el control de la sesión…</p>
+          <p className="text-xs text-[var(--nc-text-dim)]">
+            {L('Leyendo el control de la sesión…', 'Reading session control…')}
+          </p>
         )}
       </div>
     </div>
