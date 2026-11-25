@@ -181,6 +181,8 @@ G2 se cierra cuando exista una revisión que, sobre este documento:
 
 **Lo que no cierra G2:** este documento, que exista el endpoint de pair, que los tests de Origin/caducidad estén en verde, o que el cliente web funcione en loopback. G2 es una **decisión de revisión**, no un artefacto.
 
+**Preparación de la revisión:** [`receipts/G2-REVIEW-2026-11-25.md`](receipts/G2-REVIEW-2026-11-25.md) — checklist de estos ocho criterios con lo verificable hoy en el árbol y lo que sólo se sabrá al implementar el pair; sin veredicto.
+
 ## 9. Riesgos residuales y decisiones abiertas
 
 | Tema | Estado | Qué falta |

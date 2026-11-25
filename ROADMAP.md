@@ -105,7 +105,7 @@ Plan, diff, evidencia de tests, informe local, visor, revisión por hunk con aud
 
 **Alcance.** `commander pair` con enlace de un solo uso, QR y caducidad de 5 minutos, cookie de sesión de 30 días y `--remote` explícito para exponer fuera de loopback. Cliente web responsive/PWA con sesiones, chat, plan, approvals, artifacts y estado de trabajos; no es un IDE ni un editor de código. **Control lease:** un dispositivo controla la sesión y los demás ven en lectura, con traspaso explícito y auditado. Registro de dispositivos, revocación, auditoría por dispositivo, rate limit, CSRF y `Origin` ajeno → 403. Streaming reanudable: al caer la red el cliente se reconecta y pide el estado, y las approvals son idempotentes.
 
-Continuar la misma sesión desde el móvil o el navegador con la misma política de aprobación, sin convertir a Commander en una nube. Requisito previo: el modelo de amenazas remoto (`docs/parity/threat-model-remote.md`, **todavía sin versionar**); `--remote` no se habilita en una release hasta que esa revisión pase.
+Continuar la misma sesión desde el móvil o el navegador con la misma política de aprobación, sin convertir a Commander en una nube. Requisito previo: el modelo de amenazas remoto ([`docs/parity/threat-model-remote.md`](docs/parity/threat-model-remote.md)), **versionado y todavía sin revisión**. Cubre T1–T12 —canje y caducidad del enlace, adivinación por fuerza bruta, token en URL/logs, CSRF/Origin ajeno, DNS rebinding, robo y revocación de cookie, dispositivo perdido, dos escritores, repetición de approvals, `--remote` accidental, fuga de secretos y saturación— con sus controles en §6 y una tabla de invariantes (§7) que mapea cada uno a uno de los ocho criterios de abajo. `--remote` no se habilita en una release hasta que esa revisión pase.
 
 - [ ] Se inicia una tarea en escritorio, se empareja el móvil, se ve la misma sesión y se aprueba un diff; el escritorio refleja la aprobación sin duplicar pasos.
 - [ ] El enlace caduca a los 5 minutos, no se puede reutilizar y un `Origin` ajeno recibe 403.
@@ -116,7 +116,7 @@ Continuar la misma sesión desde el móvil o el navegador con la misma política
 - [ ] La vista de 390×844 no tiene scroll horizontal y permite aprobar/denegar con el diff visible.
 - [ ] Ningún token de emparejamiento, cookie o secreto aparece en la URL, logs o artifacts.
 
-**G2** exige la revisión de seguridad antes de habilitar `--remote` en builds de release; si no pasa, queda sólo el cliente local en loopback.
+**Qué falta para G2.** Una revisión de seguridad con veredicto explícito sobre ese documento (§8 del modelo), no un artefacto más: recorrer T1–T12 aceptando o corrigiendo cada control con su riesgo residual declarado; confirmar que ningún control depende de una autenticación de usuario que no existe; fijar el reparto con el túnel —quién termina TLS y qué cabeceras añade o quita— o dejar escrito que F3 sale sólo en loopback; aprobar los parámetros de §6 (256 bits de entropía, enlace de 5 min, cookie de 30 días, lease de 60 s, 5 dispositivos) o cambiarlos con motivo; declarar la política de logs y auditoría (qué se guarda, cuánto y dónde); y delimitar qué queda fuera del modelo. Sin veredicto «pasa», `--remote` no se publica y F3 queda en el cliente local. Tener el modelo versionado, el endpoint de pair o los tests de Origin/caducidad en verde **no** cierra G2 ni mueve ninguna casilla: F3 sigue en 0/8.
 
 ### F4 · Editor y ecosistema — Pendiente · P1 · 12–15 d · 6/11
 
