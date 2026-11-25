@@ -8,6 +8,25 @@
  */
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { runAgent } from '../../src/cli/agentClient';
+import { RunPluginLifecycle } from '../../src/agent/pluginLifecycle';
+
+/**
+ * Lifecycle sin red para los tests del bucle.
+ *
+ * Por defecto `runAgent` construye uno que hace `POST /api/plugins/lifecycle`
+ * en `start`, cada `beforeModel`/`afterModel` y el cierre. Con `fetch` simulado
+ * esas peticiones consumen los `mockResolvedValueOnce` del modelo y desplazan
+ * toda la secuencia, así que el contrato del bucle se prueba inyectando el
+ * lifecycle (la opción existe justamente para esto).
+ */
+function silentLifecycle(): RunPluginLifecycle {
+  return new RunPluginLifecycle(async () => {}, {
+    sessionId: 'sess-test',
+    root: '.',
+    goal: 'demo',
+    model: 'gemini-2.5-flash',
+  });
+}
 
 /**
  * Construye una `Response` falsa con cuerpo SSE.
@@ -67,6 +86,7 @@ describe('runAgent (streaming)', () => {
       model: 'gemini-2.5-flash',
       stream: true,
       maxSteps: 5,
+      lifecycle: silentLifecycle(),
       onEvent: (e) => {
         types.push(e.type);
         if (e.type === 'chunk') chunks.push(e.text);
@@ -101,6 +121,7 @@ describe('runAgent (streaming)', () => {
       model: 'gemini-2.5-flash',
       stream: false,
       maxSteps: 5,
+      lifecycle: silentLifecycle(),
       onEvent: (e) => types.push(e.type),
     });
 
@@ -131,6 +152,7 @@ describe('runAgent con Freebuff', () => {
       // Freebuff no expone SSE: pedir stream no debe abrir una conexión inútil.
       stream: true,
       maxSteps: 5,
+      lifecycle: silentLifecycle(),
     });
 
     expect(result.answer).toBe('Listo');
@@ -158,6 +180,7 @@ describe('runAgent con Freebuff', () => {
       cwd: '.',
       model: 'freebuff/qwen-chat-7b',
       maxSteps: 5,
+      lifecycle: silentLifecycle(),
       onEvent: (e) => {
         if (e.type === 'error') errors.push(e.text);
       },
