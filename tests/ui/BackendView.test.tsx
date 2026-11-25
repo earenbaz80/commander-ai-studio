@@ -212,4 +212,49 @@ describe('BackendView', () => {
     expect(await screen.findByText('informe.pdf')).toBeInTheDocument();
     expect(screen.getByText('nota.txt')).toBeInTheDocument();
   });
+
+  // Carrera real que puso rojo el CI: el GET inicial de /records resolvía
+  // después del alta y `setRecords(loaded)` borraba el registro recién creado.
+  test('conserva el registro creado si el listado inicial llega después', async () => {
+    sessionStorage.setItem('commander_backend_token', 'token-1');
+    const created = { ...record, id: 'record-2', title: 'Registro nuevo', body: 'Contenido' };
+    const listed = { ...record, id: 'record-3', title: 'Registro del servidor' };
+    let resolveRecords!: (value: Response) => void;
+    const recordsResponse = new Promise<Response>((resolve) => {
+      resolveRecords = resolve;
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/auth/me')) {
+        return Promise.resolve(jsonResponse({ success: true, user: session.user, tenant: session.tenant }));
+      }
+      if (url.endsWith('/records') && isGet(init)) {
+        return recordsResponse;
+      }
+      if (url.endsWith('/files') && isGet(init)) {
+        return Promise.resolve(jsonResponse({ success: true, files: [] }));
+      }
+      if (url.endsWith('/records') && init?.method === 'POST') {
+        return Promise.resolve(jsonResponse({ success: true, record: created }, true, 201));
+      }
+      return Promise.resolve(jsonResponse({ success: false, error: 'inesperado' }, false, 500));
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<BackendView />);
+    await screen.findByRole('tab', { name: 'Registros' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Registros' }));
+
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Registro nuevo' } });
+    fireEvent.change(screen.getByLabelText('Contenido'), { target: { value: 'Contenido' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar registro' }));
+    expect(await screen.findByText('Registro nuevo')).toBeInTheDocument();
+
+    // La lista en vuelo resuelve después del alta: es una foto vieja y no puede
+    // pisar lo que ya está en pantalla.
+    resolveRecords(jsonResponse({ success: true, records: [listed] }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(screen.getByText('Registro nuevo')).toBeInTheDocument();
+  });
 });

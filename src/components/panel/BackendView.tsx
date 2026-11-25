@@ -126,9 +126,10 @@ export function BackendView({ lang = 'es' }: BackendViewProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ConfirmDelete | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Cambia con cada subida o borrado: un listado que estaba en vuelo no puede
-  // pisar lo que ya se modificó en pantalla.
+  // Cambia con cada subida, borrado o alta: un listado que estaba en vuelo no
+  // puede pisar lo que ya se modificó en pantalla.
   const filesRevision = useRef(0);
+  const recordsRevision = useRef(0);
 
   const dropSession = useCallback((message = '') => {
     clearToken();
@@ -157,6 +158,7 @@ export function BackendView({ lang = 'es' }: BackendViewProps) {
       setLoadingData(true);
       setError('');
       const filesRevisionAtStart = filesRevision.current;
+      const recordsRevisionAtStart = recordsRevision.current;
       try {
         const [recordsResult, filesResult] = await Promise.allSettled([
           listRecords(token),
@@ -164,7 +166,10 @@ export function BackendView({ lang = 'es' }: BackendViewProps) {
         ]);
 
         if (recordsResult.status === 'fulfilled') {
-          setRecords(recordsResult.value);
+          const loaded = recordsResult.value;
+          // Si durante la carga se creó, editó o borró un registro, el listado
+          // es una foto vieja: se descarta en vez de resucitar o pisar cambios.
+          setRecords((current) => (recordsRevision.current === recordsRevisionAtStart ? loaded : current));
         } else if (
           handleUnauthorized(
             recordsResult.reason,
@@ -319,6 +324,7 @@ export function BackendView({ lang = 'es' }: BackendViewProps) {
       const saved = recordDraft.id
         ? await updateRecord(session.token, recordDraft.id, { title, body: recordDraft.body })
         : await createRecord(session.token, { title, body: recordDraft.body });
+      recordsRevision.current += 1;
       setRecords((current) =>
         recordDraft.id
           ? current.map((record) => (record.id === saved.id ? saved : record))
@@ -339,6 +345,7 @@ export function BackendView({ lang = 'es' }: BackendViewProps) {
     setError('');
     try {
       await deleteRecord(session.token, id);
+      recordsRevision.current += 1;
       setRecords((current) => current.filter((record) => record.id !== id));
       if (recordDraft.id === id) setRecordDraft({ id: null, title: '', body: '' });
       setConfirmDelete(null);
