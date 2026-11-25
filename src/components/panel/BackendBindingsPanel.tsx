@@ -39,6 +39,48 @@ interface BackendManageResponse {
   error?: string;
 }
 
+/**
+ * Nombre del proveedor para la UI: `none` es «adaptador ausente», no un
+ * proveedor real, así que se pinta como «sin proveedor».
+ */
+function providerName(value: unknown, fallback = ''): string {
+  const name = typeof value === 'string' ? value.trim() : '';
+  return !name || name.toLowerCase() === 'none' ? fallback : name;
+}
+
+/**
+ * ¿La respuesta es el contrato de `/api/backend/manage`? Sin estas claves es
+ * otro recurso contestando en el mismo origen (p. ej. el estado de publicar o
+ * el doble de un test), y el panel no tiene nada que decir sobre él.
+ */
+function isManageResponse(data: BackendManageResponse | null | undefined): boolean {
+  return Boolean(data) && typeof data?.enabled === 'boolean' && typeof data?.provider === 'string';
+}
+
+/**
+ * `status` sólo se acepta con la forma de `BackendStatus`.
+ *
+ * La respuesta de otra ruta puede traer un `status` que no es el del backend
+ * (el de publicación también se llama así); leerlo tal cual rompía el render en
+ * `migrations.applied` y dejaba el árbol de React vacío.
+ */
+function asBackendStatus(value: unknown): BackendStatus | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as Partial<BackendStatus>;
+  if (!Array.isArray(candidate.bindings) || !candidate.migrations) return null;
+  if (!Array.isArray(candidate.migrations.applied) || !Array.isArray(candidate.migrations.pending)) {
+    return null;
+  }
+  return {
+    provider: typeof candidate.provider === 'string' ? candidate.provider : '',
+    projectId: typeof candidate.projectId === 'string' ? candidate.projectId : '',
+    bindings: candidate.bindings,
+    migrations: candidate.migrations,
+    secretNames: Array.isArray(candidate.secretNames) ? candidate.secretNames : [],
+    ready: candidate.ready === true,
+  };
+}
+
 const BINDINGS: { kind: BackendBindingKind; es: string; en: string; de: string; icon: typeof Database }[] = [
   { kind: 'database', es: 'Base de datos', en: 'Database', de: 'Datenbank', icon: Database },
   { kind: 'storage', es: 'Storage', en: 'Storage', de: 'Storage', icon: HardDrive },
@@ -51,6 +93,8 @@ export function BackendBindingsPanel({ projectId, lang = 'es' }: BackendBindings
     [lang]
   );
   const [status, setStatus] = useState<BackendStatus | null>(null);
+  /** false hasta que la ruta contesta con su contrato; entonces no se dibuja. */
+  const [recognized, setRecognized] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [configured, setConfigured] = useState(false);
   const [provider, setProvider] = useState('');
@@ -76,14 +120,27 @@ export function BackendBindingsPanel({ projectId, lang = 'es' }: BackendBindings
         { credentials: 'include' }
       );
       const data = (await res.json().catch(() => ({}))) as BackendManageResponse;
+      // Sin el contrato de `/manage` no hay estado que pintar: no se inventa un
+      // «deshabilitado» ni se muestra el error de otra ruta.
+      if (!isManageResponse(data)) {
+        setStatus(null);
+        setEnabled(false);
+        setConfigured(false);
+        setProvider('');
+        setError('');
+        setRecognized(false);
+        return;
+      }
+      setRecognized(true);
       if (!res.ok || data.success === false) {
         throw new Error(data.error || t('No se pudo leer el backend', 'Could not read the backend', 'Backend konnte nicht gelesen werden'));
       }
       setEnabled(data.enabled === true);
       setConfigured(data.configured === true);
-      setProvider(typeof data.provider === 'string' ? data.provider : '');
-      setStatus((data.status as BackendStatus | null) ?? null);
+      setProvider(providerName(data.provider));
+      setStatus(asBackendStatus(data.status));
     } catch (e: any) {
+      setRecognized(true);
       setStatus(null);
       setEnabled(false);
       setError(
@@ -122,8 +179,8 @@ export function BackendBindingsPanel({ projectId, lang = 'es' }: BackendBindings
       }
       setEnabled(true);
       setConfigured(true);
-      setProvider(typeof data.provider === 'string' ? data.provider : provider);
-      setStatus((data.status as BackendStatus | null) ?? null);
+      setProvider(providerName(data.provider, provider));
+      setStatus(asBackendStatus(data.status));
     } catch (e: any) {
       setError(
         e?.message ||
@@ -168,9 +225,13 @@ export function BackendBindingsPanel({ projectId, lang = 'es' }: BackendBindings
   };
 
   const bindingState = (kind: BackendBindingKind) =>
-    status?.bindings.find((binding) => binding.kind === kind) ?? null;
-  const applied = status?.migrations.applied.length ?? 0;
-  const pending = status?.migrations.pending.length ?? 0;
+    status?.bindings?.find((binding) => binding.kind === kind) ?? null;
+  const applied = status?.migrations?.applied?.length ?? 0;
+  const pending = status?.migrations?.pending?.length ?? 0;
+
+  // Sin contrato de `/manage` el panel no se dibuja: así una vista que no es de
+  // backend no hereda su mensaje de G3 ni duplica el error de otra sección.
+  if (!recognized) return null;
 
   return (
     <div
@@ -260,7 +321,7 @@ export function BackendBindingsPanel({ projectId, lang = 'es' }: BackendBindings
             {pending > 0 ? ` · ${pending} ${t('pendientes', 'pending', 'ausstehend')}` : ''}
             {' · '}
             {t('credenciales', 'credentials', 'Zugangsdaten')}:{' '}
-            {status && status.secretNames.length > 0
+            {Array.isArray(status?.secretNames) && status.secretNames.length > 0
               ? status.secretNames.join(', ')
               : t('ninguna emitida', 'none issued', 'keine ausgegeben')}
           </div>
