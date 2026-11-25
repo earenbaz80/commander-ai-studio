@@ -840,6 +840,44 @@ function pairLeaseRejection(res: any, reason: string): any {
   return res.status(409).json({ success: false, code: entry.code, error: entry.error });
 }
 
+/**
+ * Escritura de sesión con lease (§6.4): un dispositivo emparejado escribe sólo
+ * si es el dueño y manda el `seq` vigente. Mientras el lease está en el
+ * escritorio, los clientes locales (sin cookie) siguen escribiendo como
+ * siempre; un dispositivo que aún no reclamó recibe 409 `LEASE_HELD`, y con el
+ * control en otro dispositivo toda escritura ajena —incluida la del escritorio—
+ * también, para que el escritor sea uno solo. El `seq` viejo da 409
+ * `LEASE_STALE`: un mensaje en vuelo no revive un control ya cedido.
+ */
+function pairLeaseWriteDenied(req: any, res: any, sessionId: string): boolean {
+  const cookie = (req as any).cookies?.[PAIR_DEVICE_COOKIE];
+  let caller = DESKTOP_CONTROLLER;
+  if (cookie) {
+    const checked = resolvePairDevice(cookie);
+    if (!checked.ok) {
+      res.status(401).json({ success: false, error: 'dispositivo no autorizado' });
+      return true;
+    }
+    caller = checked.device.id;
+  }
+  const lease = readPairLease(sessionId);
+  if (lease.deviceId === DESKTOP_CONTROLLER) {
+    if (caller === DESKTOP_CONTROLLER) return false;
+    pairLeaseRejection(res, 'held');
+    return true;
+  }
+  if (lease.deviceId !== caller) {
+    pairLeaseRejection(res, 'held');
+    return true;
+  }
+  const seq = Number(req.body?.seq);
+  if (!Number.isInteger(seq) || seq !== lease.seq) {
+    pairLeaseRejection(res, 'stale');
+    return true;
+  }
+  return false;
+}
+
 app.get('/api/pair/lease', (req, res) => {
   res.set(PAIR_NO_STORE);
   const sessionId = pairLeaseSession(req, res);
@@ -1033,6 +1071,7 @@ app.post('/api/agent/sessions/:id/message', (req, res) => {
     if (!isValidSessionId(id)) return res.status(400).json({ success: false, error: 'id inválido' });
     const session = getOrLoadSession(id);
     if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    if (pairLeaseWriteDenied(req, res, id)) return;
     const text = String(req.body?.text ?? req.body?.message ?? '').trim();
     if (!text) return res.status(400).json({ success: false, error: 'text requerido' });
     if (text.length > 20_000) return res.status(400).json({ success: false, error: 'text demasiado largo (>20000)' });

@@ -325,6 +325,70 @@ describe('control lease contra el server', () => {
     const badSession = await read('sess_inexistente_f3');
     assert.equal(badSession.status, 404, badSession.raw);
   });
+
+  test('la escritura de sesión exige el control y el seq vigente', async () => {
+    const sessionId = await createSession('Lease: escritura de sesion (F3)');
+    const owner = await pairDevice(sessionId);
+    const guest = await pairDevice(sessionId);
+
+    // La escritura real es POST /message: sin control no se añade ningún turno.
+    const write = (cookie: string | null, body: object = {}) =>
+      srv.request(
+        'POST',
+        `/api/agent/sessions/${sessionId}/message`,
+        { text: 'turno del dispositivo', ...body },
+        cookie ? { headers: { Cookie: cookie } } : undefined
+      );
+
+    // Sin reclamar, el lease está en el escritorio: un dispositivo no escribe.
+    const unclaimed = await write(guest.cookie);
+    assert.equal(unclaimed.status, 409, unclaimed.raw);
+    assert.equal(unclaimed.body.code, 'LEASE_HELD');
+
+    const claimed = await claim(sessionId, owner.cookie);
+
+    // El otro dispositivo lee el estado pero no escribe.
+    const held = await write(guest.cookie, { seq: claimed.seq });
+    assert.equal(held.status, 409, held.raw);
+    assert.equal(held.body.code, 'LEASE_HELD');
+
+    // El escritorio tampoco: con el control en un dispositivo hay un solo escritor.
+    const desktop = await write(null, { seq: claimed.seq });
+    assert.equal(desktop.status, 409, desktop.raw);
+    assert.equal(desktop.body.code, 'LEASE_HELD');
+
+    // El dueño necesita el seq vigente; sin él o con uno viejo no revive el control.
+    const stale = await write(owner.cookie, { seq: claimed.seq - 1 });
+    assert.equal(stale.status, 409, stale.raw);
+    assert.equal(stale.body.code, 'LEASE_STALE');
+
+    const missing = await write(owner.cookie);
+    assert.equal(missing.status, 409, missing.raw);
+    assert.equal(missing.body.code, 'LEASE_STALE');
+
+    // Renovar mueve el testigo: el seq anterior deja de servir.
+    const renewed = await post('/api/pair/lease/renew', sessionId, owner.cookie, { seq: claimed.seq });
+    assert.equal(renewed.status, 200, renewed.raw);
+    const afterRenew = await write(owner.cookie, { seq: claimed.seq });
+    assert.equal(afterRenew.status, 409, afterRenew.raw);
+    assert.equal(afterRenew.body.code, 'LEASE_STALE');
+
+    // Con el seq vigente la escritura entra y el turno queda en la sesión.
+    const accepted = await write(owner.cookie, { seq: renewed.body.lease.seq });
+    assert.equal(accepted.status, 202, accepted.raw);
+    const acceptedTurns = (accepted.body.state?.turns ?? []).filter(
+      (turn: any) => turn.text === 'turno del dispositivo'
+    );
+    assert.equal(acceptedTurns.length, 1);
+
+    // Ninguna tentativa rechazada dejó turno: sólo la autorizada escribió.
+    const state = await srv.request('GET', `/api/agent/sessions/${sessionId}`);
+    assert.equal(state.status, 200, state.raw);
+    const stored = (state.body.state?.turns ?? []).filter(
+      (turn: any) => turn.text === 'turno del dispositivo'
+    );
+    assert.equal(stored.length, 1, 'sólo la petición autorizada añade el turno');
+  });
 });
 
 describe('control lease (módulo)', () => {
