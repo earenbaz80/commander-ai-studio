@@ -12,10 +12,10 @@ No promete fechas; los esfuerzos son órdenes de magnitud. Una fase o un criteri
 
 | Frente | Fases | Cerradas | Criterios en alcance |
 | --- | ---: | ---: | ---: |
-| Paridad | 7 | 1 (F0) | 23/47 |
+| Paridad | 7 | 1 (F0) | 27/47 |
 | Plataforma | 8 | 1 (PL0) | 24/38 |
 | UX | 1 | 1 (UX 1.0) | 10/10 |
-| **Total** | **16** | **4/13 en alcance** | **57/95 (60 %)** |
+| **Total** | **16** | **4/13 en alcance** | **61/95 (64 %)** |
 
 - **4 fases cerradas:** F0, PL0, UX 1.0 y F2.
 - **5 parciales:** F1, PL2, PL3, PL5 y PL6.
@@ -23,7 +23,7 @@ No promete fechas; los esfuerzos son órdenes de magnitud. Una fase o un criteri
 - **Fuera del cómputo:** PL1 (fuera de alcance hasta G3) y F6/PL7 (opcionales).
 - **Puertas:** G0 cerrada; G1 abierta (dogfooding ejecutado; **no retiene fases**, §2.1); G2 y G3 no iniciadas.
 
-El 60 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tampoco dice que la app esté al 60 %: dice que 57 de los 95 criterios en alcance tienen evidencia. Cada criterio es una casilla de este documento: cuenta el `[x]` o la cobertura que la fase declara (F2 cerró con sus siete criterios y su verificación en Electron); los `[—]`, las fases opcionales y PL1 quedan fuera del numerador y del denominador. F0 cerró G0 con una baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts y 0 inválidas); la paridad es baja. El dogfooding de G1 se ejecutó el 2026-11-12 (17/28, 60,7 %) y la puerta sigue abierta por una sola regla: el p95 de aprobación.
+El 64 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tampoco dice que la app esté al 64 %: dice que 61 de los 95 criterios en alcance tienen evidencia. Cada criterio es una casilla de este documento: cuenta el `[x]` o la cobertura que la fase declara (F2 cerró con sus siete criterios y su verificación en Electron); los `[—]`, las fases opcionales y PL1 quedan fuera del numerador y del denominador. F0 cerró G0 con una baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts y 0 inválidas); la paridad es baja. El dogfooding de G1 se ejecutó el 2026-11-12 (17/28, 60,7 %) y la puerta sigue abierta por una sola regla: el p95 de aprobación.
 
 **El norte no es la cifra, es el producto:** un agente que corre local-first, que pide aprobación con diff antes de escribir, que deja evidencia revisable de lo que hizo y que puede instalarse y publicarse sin cuenta. Lo que sigue a §2 mide cuánto de eso está verificado.
 
@@ -118,7 +118,7 @@ Continuar la misma sesión desde el móvil o el navegador con la misma política
 
 **G2** exige la revisión de seguridad antes de habilitar `--remote` en builds de release; si no pasa, queda sólo el cliente local en loopback.
 
-### F4 · Editor y ecosistema — Pendiente · P1 · 12–15 d · 2/11
+### F4 · Editor y ecosistema — Pendiente · P1 · 12–15 d · 6/11
 
 **Alcance 4A (extensión VS Code).** Compilar e instalar el `.vsix`, arrancar/reutilizar el servidor embebido sin exigir `npx` en producción, webview de chat con streaming, modelo/modo, selección de código como contexto, plan y approvals con diff; abrir archivo/línea desde un resultado de tool, mostrar diagnósticos del editor y conservar la misma sesión del escritorio, sin duplicar el bucle del agente.
 
@@ -137,11 +137,13 @@ Llevar el agente al editor dominante y convertir la extensibilidad en una API es
 #### 4B · Hooks, plugins y política MCP (6)
 
 - [x] Un plugin de referencia ejecuta los hooks en orden y un hook que lanza no rompe la corrida (`tests/unit/pluginsRuntime.test.ts`, `tests/unit/pluginLifecycle.test.ts`).
-- [ ] Un plugin no puede saltarse una regla `deny` del motor de permisos.
-- [ ] Una tool MCP denegada no se ejecuta y el modelo recibe un error estructurado.
-- [ ] Se importan skills de tres formatos soportados y una skill inválida no se carga.
+- [x] Un plugin no puede saltarse una regla `deny` del motor de permisos (`tests/pluginDenyBypass.test.ts`: un `beforeTool` que reescribe la ruta o el servidor no rescata la llamada, y ni siquiera se despacha el hook).
+- [x] Una tool MCP denegada no se ejecuta y el modelo recibe un error estructurado (`tests/pluginDenyBypass.test.ts` exige `MCP_TOOL_DENIED` + 403 sin red; `tests/mcpToolPolicy.test.ts` cubre la política por regla).
+- [x] Se importan skills de tres formatos soportados y una skill inválida no se carga (`tests/unit/skillFormats.test.ts`; el layout en `skills/plugins/<id>/` lo fijan `tests/unit/skillLayout.test.ts` y la decisión de criterio 4).
 - [x] Un plugin con versión de API incompatible se rechaza sin ejecutar código (`tests/unit/pluginsRuntime.test.ts`).
-- [ ] La instalación y desinstalación no dejan servidores MCP huérfanos ni archivos fuera de `.commander/`.
+- [x] La instalación y desinstalación no dejan servidores MCP huérfanos ni tocan archivos fuera de las dos carpetas del plugin: `skills/plugins/<id>/` y `.commander/plugins/<id>{,.manifest.json,.mcp.json,.zip}` (`tests/unit/pluginUninstall.test.ts`: manifiesto corrupto + sidecar, baja de MCP persistida y `..` confinado; `tests/plugins.test.ts` instala y desinstala de verdad).
+
+**Decisión de ubicación (F4B, criterio 4 — 2026-11-25).** Las skills instaladas **se quedan en `skills/plugins/<id>/`**; no se mueven bajo `.commander/`. `skills/` es el árbol que el proyecto versiona y revisa: el loader ya descubre ahí los tres formatos, la precedencia `proyecto > plugin` sale de leer un solo árbol y git puede ignorar `skills/plugins/` en bloque sin ocultar las skills propias. `.commander/` guarda estado de máquina (permisos, worktrees, la copia del plugin y sus manifiestos), no contenido que se edita o se revisa en un diff. Para que la decisión sea verificable, la ruta vive en una sola constante —`PLUGIN_SKILLS_DIR` y `pluginSkillsPath()` en `skills/layout.ts`— que usan el loader, la instalación y la desinstalación; `tests/unit/skillLayout.test.ts` fija que el loader lee de ahí y **no** de `.commander`, y `tests/unit/pluginUninstall.test.ts` que nada fuera de esas carpetas se borra ni se deja atrás.
 
 ### F5 · SSR, backend y realtime — Pendiente · espera G3 · P1 · 18–25 d · 0/7
 

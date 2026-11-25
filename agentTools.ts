@@ -681,6 +681,48 @@ export function isReadOnlyCall(toolId: string, input: any): boolean {
 }
 
 /**
+ * Política del proyecto para una llamada concreta: modo plan/readonly, tools
+ * habilitadas, reglas por patrón y política MCP. Devuelve el error ya formado, o
+ * `null` si la llamada puede seguir.
+ *
+ * Se evalúa sobre la entrada original **antes** de los hooks `beforeTool` y otra
+ * vez sobre la que ven los plugins: un plugin que reescribe `path`, `command`,
+ * `serverUrl` o el nombre de la tool no puede convertir una llamada denegada en
+ * otra que ya no coincide con la regla.
+ */
+function policyDenial(
+  toolId: string,
+  input: any,
+  perms: ReturnType<typeof getPermissions>,
+): ToolResult | null {
+  // Las variantes de sólo consulta se permiten incluso en modo plan/readonly
+  // (las listas de tools permitidas/denegadas siguen aplicando dentro).
+  const toolErr = enforceTool(perms, toolId, { readOnly: isReadOnlyCall(toolId, input) });
+  if (toolErr) return { ok: false, error: toolErr, status: 403 };
+  // Reglas por patrón del proyecto (F1-07): `deny` gana siempre y se evalúa
+  // antes de ejecutar, así que ni `allow-session` ni una aprobación anterior
+  // pueden saltarlo; el CLI no tiene ninguna bandera que lo desactive.
+  if (decide(toolId, input, perms.rules) === 'deny') {
+    return { ok: false, error: `Denegado por regla de permisos del proyecto: ${toolId}`, status: 403 };
+  }
+  // Política MCP por servidor y tool. Se evalúa antes de que la rama MCP abra
+  // una conexión o arranque un proceso stdio: una `deny` no puede llegar al
+  // servidor ni siquiera para descubrir que la tool existía.
+  const mcpTarget = mcpToolTarget(toolId, input);
+  if (mcpTarget && decideMcpToolPolicyForTarget(mcpTarget, perms.mcpToolRules) === 'deny') {
+    return mcpToolDenial(mcpTarget) as unknown as ToolResult;
+  }
+  return null;
+}
+
+/** Igual que `policyDenial`, resolviendo las reglas del proyecto de la entrada. */
+function policyDenialFor(toolId: string, input: any): ToolResult | null {
+  const rootHint = input?.root ? String(input.root).slice(0, 1024) : undefined;
+  const permRoot = rootHint ? resolveProjectPath('.', rootHint).abs : AGENT_ROOT;
+  return policyDenial(toolId, input, getPermissions(permRoot));
+}
+
+/**
  * Ejecuta una tool. `opts.signal` es la cancelación de la sesión que la pidió y
  * se pasa a lo que pueda quedarse en vuelo (hoy, el proceso de `shell.run`).
  * `opts.sessionId` deja el trabajo en segundo plano a nombre de esa sesión, para
@@ -698,23 +740,8 @@ async function executeAgentToolCore(
   // permisos cambiando `input.root`.
   const permRoot = rootHint ? resolveProjectPath('.', rootHint).abs : AGENT_ROOT;
   const perms = getPermissions(permRoot);
-  // Las variantes de sólo consulta se permiten incluso en modo plan/readonly
-  // (las listas de tools permitidas/denegadas siguen aplicando dentro).
-  const toolErr = enforceTool(perms, toolId, { readOnly: isReadOnlyCall(toolId, input) });
-  if (toolErr) return { ok: false, error: toolErr, status: 403 };
-  // Reglas por patrón del proyecto (F1-07): `deny` gana siempre y se evalúa
-  // antes de ejecutar, así que ni `allow-session` ni una aprobación anterior
-  // pueden saltarlo; el CLI no tiene ninguna bandera que lo desactive.
-  if (decide(toolId, input, perms.rules) === 'deny') {
-    return { ok: false, error: `Denegado por regla de permisos del proyecto: ${toolId}`, status: 403 };
-  }
-  // Política MCP por servidor y tool. Se evalúa aquí, antes de que la rama MCP
-  // abra una conexión o arranque un proceso stdio: una `deny` no puede llegar
-  // al servidor ni siquiera para descubrir que la tool existía.
-  const mcpTarget = mcpToolTarget(toolId, input);
-  if (mcpTarget && decideMcpToolPolicyForTarget(mcpTarget, perms.mcpToolRules) === 'deny') {
-    return mcpToolDenial(mcpTarget);
-  }
+  const denial = policyDenial(toolId, input, perms);
+  if (denial) return denial;
 
   if (toolId === 'fs.read') {
     const p = String(input.path || '').slice(0, 500);
@@ -2190,6 +2217,10 @@ export async function executeAgentTool(
 ): Promise<ToolResult> {
   const pluginRoot = pluginRootFor(input);
   const pluginOpts = { timeoutMs: opts?.pluginTimeoutMs };
+  // La política se mira primero sobre lo que pidió el modelo: si la llamada ya
+  // está denegada, ningún `beforeTool` la puede rescatar reescribiéndola.
+  const deniedBeforeHooks = policyDenialFor(toolId, input || {});
+  if (deniedBeforeHooks) return withPluginErrors(deniedBeforeHooks, []);
   const before = await runBeforeToolHooks(pluginRoot, toolId, input || {}, pluginOpts);
   const confined = confinementError(toolId, before.input);
   if (confined) return withPluginErrors(confined, before.errors);

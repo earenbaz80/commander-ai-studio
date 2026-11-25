@@ -23,6 +23,12 @@ function deepMerge(target: any, source: any): any {
   for (const key of Object.keys(source)) {
     const srcVal = source[key];
     const tgtVal = target[key];
+    // `null` borra la clave: `writeConfig` fusiona con el fichero y sin esto
+    // una clave eliminada en memoria volvía al guardar (p. ej. un servidor MCP).
+    if (srcVal === null) {
+      delete result[key];
+      continue;
+    }
     if (srcVal && typeof srcVal === 'object' && !Array.isArray(srcVal) &&
         tgtVal && typeof tgtVal === 'object' && !Array.isArray(tgtVal)) {
       result[key] = deepMerge(tgtVal, srcVal);

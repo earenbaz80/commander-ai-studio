@@ -9,6 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getToolsConfig, writeConfig } from '../config/index.js';
+import { PLUGIN_SKILLS_DIR, pluginSkillsPath } from '../../skills/layout.js';
 
 /** Mismo id que aceptan el manifiesto y las rutas de plugins. */
 const PLUGIN_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -70,12 +71,16 @@ export function uninstallInstalledPlugin(id: string, options: { root?: string } 
     candidates.add(path.resolve(root, String(rel)));
   }
 
+  // Sólo se borra dentro de las dos carpetas que el plugin declara como suyas:
+  // una ruta del manifiesto con `..` no puede sacar el borrado de ahí.
+  const within = (dir: string, file: string) => {
+    const relative = path.relative(dir, file);
+    return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+  };
+
   const removed: string[] = [];
   for (const file of candidates) {
-    // Sólo se borran ficheros de `skills/` del proyecto: una ruta del manifiesto
-    // con `..` no puede sacar el borrado de ahí.
-    const relative = path.relative(skillsDir, file);
-    if (relative.startsWith('..') || path.isAbsolute(relative)) continue;
+    if (!within(skillsDir, file) && !within(pluginsDir, file)) continue;
     try {
       if (!fs.statSync(file).isFile()) continue;
       fs.unlinkSync(file);
@@ -86,20 +91,37 @@ export function uninstallInstalledPlugin(id: string, options: { root?: string } 
   }
 
   const mcpServers: string[] = [];
-  const names = Array.isArray(components?.mcp) ? components.mcp.map(String) : [];
-  if (names.length > 0 && root === path.resolve(process.cwd())) {
+  // El manifiesto es la fuente normal; el sidecar que escribe la instalación
+  // sigue diciendo qué servidores tocó aunque el manifiesto se haya corrompido.
+  // Sin él, desinstalar dejaba esos servidores configurados para siempre.
+  const sidecarPath = path.join(pluginsDir, `${id}.mcp.json`);
+  const names = new Set<string>(Array.isArray(components?.mcp) ? components.mcp.map(String) : []);
+  if (fs.existsSync(sidecarPath)) {
+    try {
+      const sidecar = JSON.parse(fs.readFileSync(sidecarPath, 'utf8')) as { servers?: unknown };
+      if (Array.isArray(sidecar?.servers)) for (const name of sidecar.servers) names.add(String(name));
+    } catch {
+      // Sidecar ilegible: queda lo que diga el manifiesto.
+    }
+  }
+  if (names.size > 0 && root === path.resolve(process.cwd())) {
     try {
       const tools: any = getToolsConfig();
       const servers = tools?.mcp?.servers;
       if (servers && typeof servers === 'object') {
-        let changed = false;
+        // `writeConfig` fusiona con el fichero: un `null` borra la clave. Borrar
+        // en memoria y reenviar el objeto no persistía nada y el servidor
+        // volvía en la siguiente lectura.
+        const removal: Record<string, null> = {};
         for (const name of names) {
           if (!Object.prototype.hasOwnProperty.call(servers, name)) continue;
-          delete servers[name];
-          mcpServers.push(name);
-          changed = true;
+          removal[name] = null;
         }
-        if (changed) writeConfig({ tools }, 'project');
+        const present = Object.keys(removal);
+        if (present.length > 0) {
+          writeConfig({ tools: { mcp: { servers: removal } } } as any, 'project');
+          mcpServers.push(...present);
+        }
       }
     } catch {
       // Sin config legible, el resto de la desinstalación sigue.
@@ -107,12 +129,12 @@ export function uninstallInstalledPlugin(id: string, options: { root?: string } 
   }
 
   // Formato nuevo: el plugin tiene su propia carpeta bajo `skills/plugins`.
-  const pluginSkillsDir = path.join(skillsDir, 'plugins', id);
+  const pluginSkillsDir = pluginSkillsPath(skillsDir, id);
   if (fs.existsSync(pluginSkillsDir)) {
     fs.rmSync(pluginSkillsDir, { recursive: true, force: true });
     removed.push(path.relative(root, pluginSkillsDir));
   }
-  const pluginsSkillsRoot = path.join(skillsDir, 'plugins');
+  const pluginsSkillsRoot = path.join(skillsDir, PLUGIN_SKILLS_DIR);
   try {
     if (fs.existsSync(pluginsSkillsRoot) && fs.readdirSync(pluginsSkillsRoot).length === 0) {
       fs.rmdirSync(pluginsSkillsRoot);
@@ -127,7 +149,7 @@ export function uninstallInstalledPlugin(id: string, options: { root?: string } 
     fs.rmSync(pluginDir, { recursive: true, force: true });
     removed.push(path.relative(root, pluginDir));
   }
-  for (const file of [manifestPath, path.join(pluginsDir, `${id}.zip`)]) {
+  for (const file of [manifestPath, sidecarPath, path.join(pluginsDir, `${id}.zip`)]) {
     if (!fs.existsSync(file)) continue;
     fs.unlinkSync(file);
     removed.push(path.relative(root, file));

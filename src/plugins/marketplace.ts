@@ -13,6 +13,7 @@ import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { getToolsConfig, writeConfig } from '../config/index.js';
+import { pluginSkillsPath } from '../../skills/layout.js';
 import { withRequiredFrontMatter } from '../../skills/api';
 import {
   classifyPluginFile,
@@ -78,6 +79,12 @@ function skillsRootDir(): string {
 
 function pluginsDir(): string {
   return path.join(process.cwd(), '.commander', 'plugins');
+}
+
+/** ¿`file` queda dentro de `dir`? Se compara en absoluto, sin depender del cwd. */
+function withinDir(dir: string, file: string): boolean {
+  const relative = path.relative(path.resolve(dir), path.resolve(file));
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
 /**
@@ -300,6 +307,9 @@ pluginMarketRouter.post('/install-from-marketplace', async (req, res) => {
     const pluginDir = path.join(dir, name);
     for (const file of downloaded) {
       const dest = path.join(pluginDir, 'files', file.rel);
+      // La ruta viene de un árbol de GitHub, pero se comprueba igual: nada se
+      // escribe fuera de la carpeta del plugin.
+      if (!withinDir(pluginDir, dest)) continue;
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       fs.writeFileSync(dest, file.text, 'utf8');
     }
@@ -346,18 +356,19 @@ pluginMarketRouter.post('/install-from-marketplace', async (req, res) => {
 
       const slug = (classified.slug || name).toLowerCase().replace(/[^a-z0-9._-]+/g, '-');
       if (!slug) continue;
-      // Cada plugin en su propia carpeta bajo `skills/plugins/<id>/`: así no
-      // colisiona con las skills propias ni con otro plugin, y git puede
-      // ignorar `skills/plugins/` entero.
+      // Cada plugin en su propia carpeta bajo `skills/plugins/<id>/` (ver
+      // `skills/layout.ts`): así no colisiona con las skills propias ni con otro
+      // plugin, y git puede ignorar `skills/plugins/` entero.
       const targetDir = path.join(
-        skillsRootDir(),
-        'plugins',
-        name,
+        pluginSkillsPath(skillsRootDir(), name),
         classified.kind === 'agent' ? 'agents' : 'commands'
       );
       fs.mkdirSync(targetDir, { recursive: true });
 
       const dest = path.join(targetDir, `${slug}.md`);
+      // Las piezas nativas viven sólo bajo `skills/`: un slug raro no puede
+      // sacar el archivo del árbol de skills del proyecto.
+      if (!withinDir(skillsRootDir(), dest)) continue;
 
       const summary =
         (file.text.match(/^---\r?\n[\s\S]*?^description\s*:\s*(.+)$/m)?.[1] || '').trim() ||
@@ -382,6 +393,17 @@ pluginMarketRouter.post('/install-from-marketplace', async (req, res) => {
     }
 
     if (mcpChanged) writeConfig({ tools }, 'project');
+    // Sidecar con los servidores MCP que agregó este plugin. El manifiesto es
+    // la fuente normal, pero si se corrompe el sidecar sigue diciendo qué
+    // nombres tocó: sin él la desinstalación dejaba procesos configurados.
+    if (components.mcp.length > 0) {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, `${name}.mcp.json`),
+        JSON.stringify({ servers: components.mcp }, null, 2),
+        'utf8'
+      );
+    }
 
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(
