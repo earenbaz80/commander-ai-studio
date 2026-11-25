@@ -45,6 +45,16 @@ import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList
 import { isAllowedHost, allowedHostsFromEnv } from './hostGuard';
 import { issuePairToken, pairTokenTtlMs, redeemPairToken } from './src/pair/pairTokens';
 import { isLoopbackPeer, pairAllowedOrigins, pairOriginRejection } from './src/pair/pairOrigin';
+import {
+  MAX_PAIR_DEVICES,
+  PAIR_DEVICE_COOKIE,
+  issuePairDevice,
+  listPairDevices,
+  pairDeviceCookie,
+  pairDeviceLimitReached,
+  resolvePairDevice,
+  revokePairDevice,
+} from './src/pair/pairDevices';
 import { CONTENT_SECURITY_POLICY } from './security';
 import { clearStrataLocalApiKey, getConfig, getConfigPath, getEnvProviderIds, getGlobalConfigPath, getProviderFileConfig, getProviderSecret, loadConfig, removeOpenAiCompatibleProvider, removeProviderConfig } from './src/config/index';
 import { PROVIDER_SPECS, NVIDIA_DEFAULT_MODEL, buildProviderList, customProviderSpecs, describeProvider, getAllProviderCatalog, getProviderCatalog } from './src/providers/registry';
@@ -671,6 +681,15 @@ app.post('/api/pair/redeem', (req, res) => {
   });
   if (rejection) return res.status(403).json({ success: false, error: rejection });
 
+  // El tope se mira antes de canjear: consumir el token para después responder
+  // 409 dejaría al operador sin enlace. Revocar uno y generar otro es barato.
+  if (pairDeviceLimitReached()) {
+    return res.status(409).json({
+      success: false,
+      error: `límite de ${MAX_PAIR_DEVICES} dispositivos: revocá uno antes de emparejar otro`,
+    });
+  }
+
   const result = redeemPairToken(req.body?.token);
   if (!result.ok) {
     if (result.reason === 'used') {
@@ -686,10 +705,64 @@ app.post('/api/pair/redeem', (req, res) => {
   if (!session) {
     return res.status(410).json({ success: false, error: 'la sesión emparejada ya no existe' });
   }
+
+  // Credencial del dispositivo: opaca, `HttpOnly` y `SameSite=Strict`. El token
+  // en claro sólo viaja en esta cabecera; en el cuerpo va el id del registro.
+  const issued = issuePairDevice({ userAgent: req.headers['user-agent'] });
+  if (!issued.ok) {
+    return res.status(409).json({
+      success: false,
+      error: `límite de ${MAX_PAIR_DEVICES} dispositivos: revocá uno antes de emparejar otro`,
+    });
+  }
+  res.setHeader(
+    'Set-Cookie',
+    pairDeviceCookie(issued.token, { secure: req.protocol === 'https' })
+  );
   return res.json({
     success: true,
     session: { id: session.id, status: session.getStatus(), goal: session.getGoal() },
+    device: { id: issued.device.id, createdAt: issued.device.createdAt, expiresAt: issued.device.expiresAt },
   });
+});
+
+// ── Dispositivos emparejados ────────────────────────────────────────────────
+// Registro y revocación (§6.2). La lista y la baja son operaciones del host:
+// sólo loopback, y la baja exige `Origin` exacto como cualquier mutación.
+app.get('/api/pair/devices', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  if (!isLoopbackPeer(req.socket?.remoteAddress)) {
+    return res.status(403).json({ success: false, error: 'la lista de dispositivos se lee sólo desde loopback' });
+  }
+  return res.json({ success: true, devices: listPairDevices(), maxDevices: MAX_PAIR_DEVICES });
+});
+
+app.delete('/api/pair/devices/:id', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  if (!isLoopbackPeer(req.socket?.remoteAddress)) {
+    return res.status(403).json({ success: false, error: 'la revocación se hace sólo desde loopback' });
+  }
+  const rejection = pairOriginRejection({
+    origin: req.headers.origin,
+    secFetchSite: req.headers['sec-fetch-site'],
+    allowedOrigins: pairOrigins(req),
+  });
+  if (rejection) return res.status(403).json({ success: false, error: rejection });
+
+  const revoked = revokePairDevice(req.params.id);
+  if (!revoked) return res.status(404).json({ success: false, error: 'dispositivo no encontrado' });
+  return res.json({ success: true, device: revoked });
+});
+
+// Quién soy para el cliente emparejado. Caducada, revocada y desconocida
+// responden igual (401, mismo cuerpo): no se filtra si un id existió.
+app.get('/api/pair/device', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  const checked = resolvePairDevice((req as any).cookies?.[PAIR_DEVICE_COOKIE]);
+  if (!checked.ok) {
+    return res.status(401).json({ success: false, error: 'dispositivo no autorizado' });
+  }
+  return res.json({ success: true, device: checked.device });
 });
 
 app.get('/api/agent/sessions', (_req, res) => {
