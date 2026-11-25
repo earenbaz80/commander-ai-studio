@@ -187,6 +187,56 @@ describe('control lease contra el server', () => {
     assert.equal(oldOwner.body.code, 'LEASE_HELD');
   });
 
+  test('el traspaso rechaza con 409 un destino inexistente o revocado', async () => {
+    const sessionId = await createSession('Lease: destino invalido (F3)');
+    const owner = await pairDevice(sessionId);
+    const claimed = await claim(sessionId, owner.cookie);
+
+    // Un id inventado no puede recibir el control.
+    const unknown = await post('/api/pair/lease/transfer', sessionId, owner.cookie, {
+      seq: claimed.seq,
+      toDeviceId: 'dev_inexistente_f3',
+    });
+    assert.equal(unknown.status, 409, unknown.raw);
+    assert.equal(unknown.body.code, 'LEASE_TARGET_UNAVAILABLE');
+    const afterUnknown = await read(sessionId, owner.cookie);
+    assert.equal(afterUnknown.body.lease.deviceId, owner.deviceId);
+    assert.equal(afterUnknown.body.lease.seq, claimed.seq, 'un destino inválido no mueve el testigo');
+
+    // Un dispositivo revocado tampoco: el registro manda, no el id que nombre el dueño.
+    const doomed = await pairDevice(sessionId);
+    const revoked = await srv.request('DELETE', `/api/pair/devices/${doomed.deviceId}`, undefined, {
+      headers: { Origin: srv.baseUrl },
+    });
+    assert.equal(revoked.status, 200, revoked.raw);
+    const toRevoked = await post('/api/pair/lease/transfer', sessionId, owner.cookie, {
+      seq: claimed.seq,
+      toDeviceId: doomed.deviceId,
+    });
+    assert.equal(toRevoked.status, 409, toRevoked.raw);
+    assert.equal(toRevoked.body.code, 'LEASE_TARGET_UNAVAILABLE');
+    assert.equal((await read(sessionId, owner.cookie)).body.lease.deviceId, owner.deviceId);
+
+    // Y si el que pidió el traspaso es revocado mientras espera, la baja descarta
+    // su solicitud: aceptarla no puede entregar el control a un fantasma.
+    const guest = await pairDevice(sessionId);
+    const requested = await post('/api/pair/lease/request', sessionId, guest.cookie);
+    assert.equal(requested.status, 200, requested.raw);
+    const guestRevoked = await srv.request(
+      'DELETE',
+      `/api/pair/devices/${guest.deviceId}`,
+      undefined,
+      { headers: { Origin: srv.baseUrl } }
+    );
+    assert.equal(guestRevoked.status, 200, guestRevoked.raw);
+    const accept = await post('/api/pair/lease/transfer', sessionId, owner.cookie, {
+      seq: requested.body.lease.seq,
+    });
+    assert.equal(accept.status, 409, accept.raw);
+    assert.equal(accept.body.code, 'LEASE_NO_REQUEST');
+    assert.equal((await read(sessionId, owner.cookie)).body.lease.deviceId, owner.deviceId);
+  });
+
   test('sin traspaso pendiente y sin destinatario, aceptar responde 409 LEASE_NO_REQUEST', async () => {
     const sessionId = await createSession('Lease: sin solicitud (F3)');
     const device = await pairDevice(sessionId);

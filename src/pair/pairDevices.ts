@@ -195,6 +195,25 @@ export function revokePairDevice(id: unknown, options: { now?: number } = {}): P
   return publicDevice(record);
 }
 
+/**
+ * Dispositivo activo por id: existe, no está revocado y no venció. Sirve para
+ * validar destinos (un traspaso de lease no puede apuntar a un id inventado ni
+ * a uno dado de baja). `null` si no sirve.
+ */
+export function activePairDevice(
+  id: unknown,
+  options: { now?: number } = {}
+): PairDevice | null {
+  if (typeof id !== 'string' || !id) return null;
+  const hash = idToHash.get(id);
+  if (!hash) return null;
+  const record = devices.get(hash);
+  if (!record) return null;
+  const now = options.now ?? Date.now();
+  if (record.revokedAt !== null || now >= record.expiresAt) return null;
+  return publicDevice(record);
+}
+
 /** Dispositivos vivos (revocados incluidos, con su `revokedAt`). */
 export function listPairDevices(options: { now?: number } = {}): PairDevice[] {
   const now = options.now ?? Date.now();

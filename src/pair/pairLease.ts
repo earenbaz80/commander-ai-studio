@@ -28,6 +28,7 @@
  * en producción se usan `Date.now()` y `COMMANDER_PAIR_LEASE_TTL_MS` (sólo
  * tests lo bajan).
  */
+import { activePairDevice } from './pairDevices.js';
 
 export const DESKTOP_CONTROLLER = 'desktop';
 export const PAIR_LEASE_TTL_MS = 60_000;
@@ -145,7 +146,7 @@ export interface PairLeaseOptions {
 
 export type PairLeaseResult =
   | { ok: true; lease: PairLease }
-  | { ok: false; reason: 'held' | 'stale' | 'owner' | 'no-request' };
+  | { ok: false; reason: 'held' | 'stale' | 'owner' | 'no-request' | 'invalid-target' };
 
 /** Estado del control. No caduca nada más que el lease: es una lectura. */
 export function readPairLease(sessionId: string, options: { now?: number } = {}): PairLease {
@@ -231,7 +232,7 @@ export function requestPairTransfer(
 
 export type PairLeaseTransferResult =
   | { ok: true; lease: PairLease; ack: { deviceId: string; seq: number; at: number } }
-  | { ok: false; reason: 'held' | 'stale' | 'no-request' };
+  | { ok: false; reason: 'held' | 'stale' | 'no-request' | 'invalid-target' };
 
 /**
  * Acepta el traspaso pendiente (o nombra a otro dispositivo) y devuelve el
@@ -240,7 +241,12 @@ export type PairLeaseTransferResult =
 export function transferPairLease(
   sessionId: string,
   deviceId: string,
-  options: PairLeaseOptions & { seq: number; toDeviceId?: string }
+  options: PairLeaseOptions & {
+    seq: number;
+    toDeviceId?: string;
+    /** Inyectable para tests del módulo; por defecto, el registro real. */
+    isActiveDevice?: (id: string) => boolean;
+  }
 ): PairLeaseTransferResult {
   const now = options.now ?? Date.now();
   const ttlMs = options.ttlMs ?? pairLeaseTtlMs();
@@ -253,6 +259,11 @@ export function transferPairLease(
   if (!target || target === record.deviceId || target === DESKTOP_CONTROLLER) {
     return { ok: false, reason: 'no-request' };
   }
+  // El destino tiene que existir y seguir activo: el dueño puede nombrar un id
+  // inventado, uno revocado o uno que pidió el traspaso y fue dado de baja
+  // mientras esperaba. Sin esto el control quedaría en un fantasma.
+  const isActive = options.isActiveDevice ?? ((id: string) => activePairDevice(id, { now }) !== null);
+  if (!isActive(target)) return { ok: false, reason: 'invalid-target' };
   // El evento se registra con el emisor en `deviceId` y el destinatario aparte.
   record.seq += 1;
   log(record, 'transferred', now, target);

@@ -826,6 +826,10 @@ const PAIR_LEASE_REJECTIONS: Record<string, { code: string; error: string }> = {
   stale: { code: 'LEASE_STALE', error: 'el control cambió: recargá el estado antes de reintentar' },
   owner: { code: 'LEASE_OWNED', error: 'ya tenés el control de esta sesión' },
   'no-request': { code: 'LEASE_NO_REQUEST', error: 'no hay un traspaso pendiente que aceptar' },
+  'invalid-target': {
+    code: 'LEASE_TARGET_UNAVAILABLE',
+    error: 'el dispositivo destino no existe o está revocado',
+  },
 };
 
 function pairLeaseRejection(res: any, reason: string): any {
