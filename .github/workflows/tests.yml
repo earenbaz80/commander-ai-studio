@@ -104,12 +104,33 @@ jobs:
         if: always()
         run: npm run ci:summary -- node-test
 
+      # El log del paso no se puede leer sin sesión en el repo: con `tee` la
+      # salida del reporter queda en un archivo que se sube como artefacto si
+      # el paso falla. `pipefail` conserva el código de salida real de Vitest,
+      # que `tee` se comería.
       - name: Tests (Vitest)
-        run: npm run test -- --reporter=default --reporter=json --outputFile=.ci/vitest.json
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p .ci
+          npm run test -- --reporter=default --reporter=json --outputFile=.ci/vitest.json 2>&1 | tee .ci/vitest-output.log
 
       - name: Resumen (Vitest)
         if: always()
         run: npm run ci:summary -- vitest
+
+      # Diagnóstico del rojo opaco: `exit code 1` sin test nombrado no dice qué
+      # rompió. El JSON conserva el nombre y el mensaje de cada fallo.
+      - name: Artefactos de Vitest (diagnóstico)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vitest-diagnostico
+          path: |
+            .ci/vitest.json
+            .ci/vitest-output.log
+          if-no-files-found: warn
+          retention-days: 7
 
   # Sólo el proyecto `node` de Vitest (tests/unit + tests/mcp): lógica pura, sin
   # jsdom ni polyfills de UI. No lleva `needs` a propósito —corre en paralelo a
@@ -130,14 +151,31 @@ jobs:
 
       - run: npm ci --ignore-scripts
 
+      # Mismo `tee` + `pipefail` que en `lint-and-test`: sin sesión, el log del
+      # paso no se ve, y este job es el que viene fallando con `exit code 1`.
       - name: Tests de lógica (Vitest, proyecto node)
-        run: npm run test:logic -- --reporter=default --reporter=json --outputFile=.ci/vitest.json
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p .ci
+          npm run test:logic -- --reporter=default --reporter=json --outputFile=.ci/vitest.json 2>&1 | tee .ci/vitest-output.log
 
       # Los conteos de este job tampoco se ven sin sesión: van al resumen.
       # `--title`: acá sólo corre el proyecto node, así que el rótulo lo aclara.
       - name: Resumen (Vitest, lógica)
         if: always()
         run: npm run ci:summary -- vitest --title "Tests (Vitest, lógica)"
+
+      - name: Artefactos de Vitest (diagnóstico)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vitest-logica-diagnostico
+          path: |
+            .ci/vitest.json
+            .ci/vitest-output.log
+          if-no-files-found: warn
+          retention-days: 7
 
   build:
     name: Build
