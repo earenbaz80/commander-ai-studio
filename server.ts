@@ -55,6 +55,18 @@ import {
   resolvePairDevice,
   revokePairDevice,
 } from './src/pair/pairDevices';
+import {
+  DESKTOP_CONTROLLER,
+  PAIR_LEASE_RENEW_MS,
+  claimPairLease,
+  dropPairLeasesForDevice,
+  pairLeaseAudit,
+  readPairLease,
+  releasePairLease,
+  renewPairLease,
+  requestPairTransfer,
+  transferPairLease,
+} from './src/pair/pairLease';
 import { CONTENT_SECURITY_POLICY } from './security';
 import { clearStrataLocalApiKey, getConfig, getConfigPath, getEnvProviderIds, getGlobalConfigPath, getProviderFileConfig, getProviderSecret, loadConfig, removeOpenAiCompatibleProvider, removeProviderConfig } from './src/config/index';
 import { PROVIDER_SPECS, NVIDIA_DEFAULT_MODEL, buildProviderList, customProviderSpecs, describeProvider, getAllProviderCatalog, getProviderCatalog } from './src/providers/registry';
@@ -751,6 +763,9 @@ app.delete('/api/pair/devices/:id', (req, res) => {
 
   const revoked = revokePairDevice(req.params.id);
   if (!revoked) return res.status(404).json({ success: false, error: 'dispositivo no encontrado' });
+  // Revocar devuelve el control al escritorio: un dispositivo perdido no puede
+  // quedarse con el lease de ninguna sesión.
+  dropPairLeasesForDevice(req.params.id);
   return res.json({ success: true, device: revoked });
 });
 
@@ -763,6 +778,166 @@ app.get('/api/pair/device', (req, res) => {
     return res.status(401).json({ success: false, error: 'dispositivo no autorizado' });
   }
   return res.json({ success: true, device: checked.device });
+});
+
+// ── Control lease ───────────────────────────────────────────────────────────
+// Un solo escritor por sesión (§6.4). Leer es libre para cualquier dispositivo
+// emparejado; escribir sin el lease da 409 `LEASE_HELD`, y el traspaso sólo
+// cambia de dueño cuando el escritor actual lo acepta y el nuevo ve el `ack`.
+function pairLeaseSession(req: any, res: any): string | null {
+  const raw = String(req.query?.sessionId ?? req.body?.sessionId ?? '').trim();
+  if (!raw || !isValidSessionId(raw)) {
+    res.status(400).json({ success: false, error: 'id inválido' });
+    return null;
+  }
+  if (!getOrLoadSession(raw)) {
+    res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    return null;
+  }
+  return raw;
+}
+
+function pairLeaseOriginRejection(req: any): string | null {
+  return pairOriginRejection({
+    origin: req.headers.origin,
+    secFetchSite: req.headers['sec-fetch-site'],
+    allowedOrigins: pairOrigins(req),
+  });
+}
+
+/** Dispositivo del request; `DESKTOP_CONTROLLER` sólo si se permite y es loopback. */
+function pairLeaseCaller(req: any, res: any, options: { allowDesktop?: boolean } = {}): string | null {
+  const cookie = (req as any).cookies?.[PAIR_DEVICE_COOKIE];
+  if (!cookie) {
+    if (options.allowDesktop && isLoopbackPeer(req.socket?.remoteAddress)) return DESKTOP_CONTROLLER;
+    res.status(401).json({ success: false, error: 'dispositivo no autorizado' });
+    return null;
+  }
+  const checked = resolvePairDevice(cookie);
+  if (!checked.ok) {
+    res.status(401).json({ success: false, error: 'dispositivo no autorizado' });
+    return null;
+  }
+  return checked.device.id;
+}
+
+const PAIR_LEASE_REJECTIONS: Record<string, { code: string; error: string }> = {
+  held: { code: 'LEASE_HELD', error: 'la sesión la escribe otro dispositivo: pedí el traspaso' },
+  stale: { code: 'LEASE_STALE', error: 'el control cambió: recargá el estado antes de reintentar' },
+  owner: { code: 'LEASE_OWNED', error: 'ya tenés el control de esta sesión' },
+  'no-request': { code: 'LEASE_NO_REQUEST', error: 'no hay un traspaso pendiente que aceptar' },
+};
+
+function pairLeaseRejection(res: any, reason: string): any {
+  const entry = PAIR_LEASE_REJECTIONS[reason] ?? {
+    code: 'LEASE_HELD',
+    error: 'control no disponible',
+  };
+  return res.status(409).json({ success: false, code: entry.code, error: entry.error });
+}
+
+app.get('/api/pair/lease', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  const sessionId = pairLeaseSession(req, res);
+  if (!sessionId) return;
+  const caller = pairLeaseCaller(req, res, { allowDesktop: true });
+  if (!caller) return;
+  const lease = readPairLease(sessionId);
+  return res.json({
+    success: true,
+    lease,
+    mine: lease.deviceId === caller,
+    desktop: caller === DESKTOP_CONTROLLER,
+    renewMs: PAIR_LEASE_RENEW_MS,
+  });
+});
+
+app.post('/api/pair/lease', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  const rejection = pairLeaseOriginRejection(req);
+  if (rejection) return res.status(403).json({ success: false, error: rejection });
+  const sessionId = pairLeaseSession(req, res);
+  if (!sessionId) return;
+  const deviceId = pairLeaseCaller(req, res);
+  if (!deviceId) return;
+  const result = claimPairLease(sessionId, deviceId);
+  if (!result.ok) return pairLeaseRejection(res, result.reason);
+  return res.json({ success: true, lease: result.lease, mine: true, renewMs: PAIR_LEASE_RENEW_MS });
+});
+
+app.post('/api/pair/lease/renew', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  const rejection = pairLeaseOriginRejection(req);
+  if (rejection) return res.status(403).json({ success: false, error: rejection });
+  const sessionId = pairLeaseSession(req, res);
+  if (!sessionId) return;
+  const deviceId = pairLeaseCaller(req, res);
+  if (!deviceId) return;
+  const seq = Number(req.body?.seq);
+  if (!Number.isInteger(seq)) return res.status(400).json({ success: false, error: 'seq requerido' });
+  const result = renewPairLease(sessionId, deviceId, seq);
+  if (!result.ok) return pairLeaseRejection(res, result.reason);
+  return res.json({ success: true, lease: result.lease, mine: true, renewMs: PAIR_LEASE_RENEW_MS });
+});
+
+app.post('/api/pair/lease/request', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  const rejection = pairLeaseOriginRejection(req);
+  if (rejection) return res.status(403).json({ success: false, error: rejection });
+  const sessionId = pairLeaseSession(req, res);
+  if (!sessionId) return;
+  const deviceId = pairLeaseCaller(req, res);
+  if (!deviceId) return;
+  const result = requestPairTransfer(sessionId, deviceId);
+  if (!result.ok) return pairLeaseRejection(res, result.reason);
+  return res.json({ success: true, lease: result.lease, pending: result.lease.pending !== null });
+});
+
+app.post('/api/pair/lease/transfer', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  const rejection = pairLeaseOriginRejection(req);
+  if (rejection) return res.status(403).json({ success: false, error: rejection });
+  const sessionId = pairLeaseSession(req, res);
+  if (!sessionId) return;
+  const deviceId = pairLeaseCaller(req, res);
+  if (!deviceId) return;
+  const seq = Number(req.body?.seq);
+  if (!Number.isInteger(seq)) return res.status(400).json({ success: false, error: 'seq requerido' });
+  const toDeviceId = req.body?.toDeviceId === undefined ? undefined : String(req.body.toDeviceId);
+  const result = transferPairLease(sessionId, deviceId, { seq, toDeviceId });
+  if (!result.ok) return pairLeaseRejection(res, result.reason);
+  return res.json({ success: true, lease: result.lease, ack: result.ack, renewMs: PAIR_LEASE_RENEW_MS });
+});
+
+app.post('/api/pair/lease/release', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  const rejection = pairLeaseOriginRejection(req);
+  if (rejection) return res.status(403).json({ success: false, error: rejection });
+  const sessionId = pairLeaseSession(req, res);
+  if (!sessionId) return;
+  const deviceId = pairLeaseCaller(req, res);
+  if (!deviceId) return;
+  const seq = req.body?.seq === undefined ? undefined : Number(req.body.seq);
+  if (seq !== undefined && !Number.isInteger(seq)) {
+    return res.status(400).json({ success: false, error: 'seq inválido' });
+  }
+  const result = releasePairLease(sessionId, deviceId, { seq });
+  if (!result.ok) return pairLeaseRejection(res, result.reason);
+  return res.json({ success: true, lease: result.lease });
+});
+
+// Historial de control: visible en el escritorio (§6.4). Sin secretos.
+app.get('/api/pair/lease/audit', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  if (!isLoopbackPeer(req.socket?.remoteAddress)) {
+    return res.status(403).json({ success: false, error: 'el historial de control se lee sólo desde loopback' });
+  }
+  if (req.query?.sessionId !== undefined) {
+    const sessionId = pairLeaseSession(req, res);
+    if (!sessionId) return;
+    return res.json({ success: true, entries: pairLeaseAudit(sessionId) });
+  }
+  return res.json({ success: true, entries: pairLeaseAudit() });
 });
 
 app.get('/api/agent/sessions', (_req, res) => {
