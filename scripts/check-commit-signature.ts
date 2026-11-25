@@ -25,6 +25,11 @@
  * sintética que la plataforma escribe al hacer squash o rebase de un PR. Es
  * sólo el committer; el autor sigue teniendo que ser la firma canónica.
  *
+ * La identidad se lee con `%aN`/`%aE` y `%cN`/`%cE`, que aplican `.mailmap`: un
+ * commit hecho desde la web de GitHub firma con el login (`earenbaz80`) y el
+ * correo del autor, y el `.mailmap` lo canoniza a la firma única. Sin
+ * `.mailmap` (repos temporales de los tests) se lee la identidad cruda.
+ *
  * Sale 1 con los commits y el motivo; 0 si todas las firmas son la del autor.
  */
 import { execFileSync } from 'node:child_process';
@@ -124,7 +129,7 @@ type CommitRevisado = {
  * El `cwd` permite probarlo contra un repo temporal.
  */
 export function commitsDelRango(rango: string, cwd = process.cwd()): CommitRevisado[] {
-  const formato = `%H${CAMPO}%an${CAMPO}%ae${CAMPO}%cn${CAMPO}%ce${CAMPO}%B${REGISTRO}`;
+  const formato = `%H${CAMPO}%aN${CAMPO}%aE${CAMPO}%cN${CAMPO}%cE${CAMPO}%B${REGISTRO}`;
   const salida = execFileSync('git', ['log', '--no-merges', `--format=${formato}`, rango], {
     cwd,
     encoding: 'utf8',

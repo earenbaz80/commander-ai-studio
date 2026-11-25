@@ -196,6 +196,32 @@ test('firma: un squash de GitHub (committer de plataforma) pasa', () => {
   }
 });
 
+test('firma: `.mailmap` canoniza el login que firma la web de GitHub', () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'firma-mailmap-'));
+  const git = (args: string[]): string =>
+    execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+
+  try {
+    git(['init', '-q', '-b', 'main']);
+    // La web de GitHub firma con el login y el correo del autor.
+    git(['config', 'user.name', 'earenbaz80']);
+    git(['config', 'user.email', FIRMA.email]);
+    fs.writeFileSync(
+      path.join(repo, '.mailmap'),
+      `${FIRMA.nombre} <${FIRMA.email}> earenbaz80 <${FIRMA.email}>\n`
+    );
+    fs.writeFileSync(path.join(repo, 'LICENSE'), 'MIT\n');
+    git(['add', '.mailmap', 'LICENSE']);
+    git(['commit', '-q', '-m', 'Add MIT License to the project']);
+
+    const [commit] = commitsDelRango('HEAD', repo);
+    assert.equal(commit.autor.nombre, FIRMA.nombre, 'el login se lee canonizado');
+    assert.equal(problemaDe(commit), null);
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
 test('firma: un commit con trailer se reporta con su hash y el motivo', () => {
   const problema = problemaDe({
     hash: 'abcdef1234567890',
