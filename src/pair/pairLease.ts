@@ -340,24 +340,6 @@ export function pairLeaseAudit(sessionId?: string): PairLeaseAuditEntry[] {
   return rows.map((entry) => ({ ...entry }));
 }
 
-/**
- * Guarda para una mutación de sesión hecha por un dispositivo emparejado. El
- * cliente web la usará al escribir; el `code` va tal cual al 409.
- */
-export function pairLeaseWriteGuard(
-  sessionId: string,
-  deviceId: string,
-  seq: number,
-  options: { now?: number } = {}
-):
-  | { blocked: false; lease: PairLease }
-  | { blocked: true; code: 'LEASE_HELD' | 'LEASE_STALE'; lease: PairLease } {
-  const lease = readPairLease(sessionId, options);
-  if (lease.deviceId !== deviceId) return { blocked: true, code: 'LEASE_HELD', lease };
-  if (!Number.isInteger(seq) || seq !== lease.seq) return { blocked: true, code: 'LEASE_STALE', lease };
-  return { blocked: false, lease };
-}
-
 /** Sólo para tests: deja el control y la auditoría vacíos entre casos. */
 export function resetPairLeasesForTests(): void {
   leases.clear();
