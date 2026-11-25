@@ -8,7 +8,8 @@
  * - El registro expone un `id` (`dev_…`) separado del token: la lista y la
  *   revocación nombran al dispositivo sin revelar la credencial.
  * - Revocar marca `revokedAt`; el siguiente request con esa cookie recibe 401
- *   aunque no haya caducado. Revocar dos veces es idempotente.
+ *   aunque no haya caducado. Revocar dos veces es idempotente mientras dure la
+ *   retención del revocado (24 h por defecto); luego el registro se poda.
  * - Caducidad de 30 días renovada por uso. Caducado, revocado y desconocido se
  *   responden igual desde el endpoint (`401`), pero el módulo distingue el
  *   motivo para tests y auditoría.
@@ -26,6 +27,14 @@ export const PAIR_DEVICE_BYTES = 32;
 export const PAIR_DEVICE_TTL_MS = 30 * 24 * 60 * 60_000;
 export const PAIR_DEVICE_TTL_ENV = 'COMMANDER_PAIR_DEVICE_TTL_MS';
 export const PAIR_DEVICE_MAX_ENV = 'COMMANDER_PAIR_MAX_DEVICES';
+export const PAIR_DEVICE_REVOKED_TTL_ENV = 'COMMANDER_PAIR_REVOKED_TTL_MS';
+/**
+ * Cuánto se conserva un revocado: es la ventana en que repetir la baja sigue
+ * siendo idempotente (mismo `revokedAt`). Pasada, el registro se poda: si se
+ * guardara los 30 días de la cookie, emparejar y revocar en bucle haría crecer
+ * la memoria sin límite por algo que ya no autentica a nadie.
+ */
+export const PAIR_DEVICE_REVOKED_RETENTION_MS = 24 * 60 * 60_000;
 export const MAX_PAIR_DEVICES = 5;
 export const MAX_PAIR_DEVICE_TOKEN_LENGTH = 512;
 /** Un User-Agent de 4 KB no aporta nada y engorda el registro. */
@@ -39,6 +48,13 @@ export function pairDeviceTtlMs(env: Record<string, string | undefined> = proces
 export function maxPairDevices(env: Record<string, string | undefined> = process.env): number {
   const raw = Number(env[PAIR_DEVICE_MAX_ENV]);
   return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : MAX_PAIR_DEVICES;
+}
+
+export function pairDeviceRevokedTtlMs(
+  env: Record<string, string | undefined> = process.env
+): number {
+  const raw = Number(env[PAIR_DEVICE_REVOKED_TTL_ENV]);
+  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : PAIR_DEVICE_REVOKED_RETENTION_MS;
 }
 
 export function hashPairDeviceToken(token: string): string {
@@ -73,10 +89,17 @@ function publicDevice(record: DeviceRecord): PairDevice {
   };
 }
 
-/** Descarte perezoso: sin esto el registro crece con cada emparejamiento. */
-function sweep(now: number): void {
+/**
+ * Descarte perezoso: sin esto el registro crece con cada emparejamiento. Un
+ * revocado no se guarda hasta su caducidad de cookie sino hasta que vence su
+ * ventana de idempotencia; después ya no aporta nada (la cookie da 401 igual).
+ */
+function sweep(now: number, revokedTtlMs = pairDeviceRevokedTtlMs()): void {
   for (const [hash, record] of devices) {
-    if (now >= record.expiresAt) {
+    const expired = now >= record.expiresAt;
+    const revokedWindowOver =
+      record.revokedAt !== null && now - record.revokedAt >= revokedTtlMs;
+    if (expired || revokedWindowOver) {
       devices.delete(hash);
       idToHash.delete(record.id);
     }

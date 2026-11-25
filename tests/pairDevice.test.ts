@@ -15,8 +15,10 @@ import assert from 'node:assert/strict';
 import { startServer, type HttpResult, type ServerHarness } from './helpers/serverHarness.js';
 import {
   PAIR_DEVICE_COOKIE,
+  PAIR_DEVICE_REVOKED_RETENTION_MS,
   PAIR_DEVICE_TTL_MS,
   issuePairDevice,
+  pairDeviceRevokedTtlMs,
   listPairDevices,
   pairDeviceCookie,
   resetPairDevicesForTests,
@@ -256,6 +258,70 @@ describe('registro de dispositivos (módulo)', () => {
     assert.equal(dump.includes(again.token), false);
     assert.equal(dump.includes('hash'), false);
     resetPairDevicesForTests();
+  });
+
+  test('los revocados se podan al vencer su ventana de idempotencia', () => {
+    const previous = process.env.COMMANDER_PAIR_REVOKED_TTL_MS;
+    resetPairDevicesForTests();
+    process.env.COMMANDER_PAIR_REVOKED_TTL_MS = '1000';
+    try {
+      const issued = issuePairDevice({ now: 10_000 });
+      assert.ok(issued.ok);
+      assert.equal(revokePairDevice(issued.device.id, { now: 10_000 })?.revokedAt, 10_000);
+
+      // Dentro de la ventana sigue en el registro y repetir la baja es idempotente.
+      const inside = listPairDevices({ now: 10_999 }).find((row) => row.id === issued.device.id);
+      assert.ok(inside, 'un revocado reciente se conserva para la baja idempotente');
+      assert.equal(revokePairDevice(issued.device.id, { now: 10_500 })?.revokedAt, 10_000);
+
+      // Vencida la ventana, la poda lo saca: ya no autentica ni ocupa memoria.
+      assert.equal(
+        listPairDevices({ now: 11_000 }).some((row) => row.id === issued.device.id),
+        false
+      );
+      assert.equal(revokePairDevice(issued.device.id, { now: 11_000 }), null);
+      assert.deepEqual(resolvePairDevice(issued.token, { now: 11_000, ttlMs: PAIR_DEVICE_TTL_MS }), {
+        ok: false,
+        reason: 'invalid',
+      });
+    } finally {
+      if (previous === undefined) delete process.env.COMMANDER_PAIR_REVOKED_TTL_MS;
+      else process.env.COMMANDER_PAIR_REVOKED_TTL_MS = previous;
+      resetPairDevicesForTests();
+    }
+  });
+
+  test('emparejar y revocar en bucle no acumula revocados', () => {
+    const previous = process.env.COMMANDER_PAIR_REVOKED_TTL_MS;
+    resetPairDevicesForTests();
+    process.env.COMMANDER_PAIR_REVOKED_TTL_MS = '1000';
+    try {
+      // Seis ciclos de emparejar+revocar con reloj avanzando: sin la poda
+      // quedarían seis registros, porque la cookie dura 30 días.
+      for (let i = 0; i < 6; i++) {
+        const issued = issuePairDevice({ now: 20_000 + i * 500 });
+        assert.ok(issued.ok, `ciclo ${i}`);
+        revokePairDevice(issued.device.id, { now: 20_000 + i * 500 });
+      }
+      const rows = listPairDevices({ now: 23_000 });
+      assert.equal(rows.length, 1, `sólo el revocado dentro de la ventana sobrevive: ${rows.length}`);
+      assert.equal(rows[0].revokedAt, 22_500);
+
+      // La poda no toca a los activos ni a los revocados recientes.
+      const active = issuePairDevice({ now: 23_000 });
+      assert.ok(active.ok);
+      assert.equal(listPairDevices({ now: 23_000 }).length, 2);
+    } finally {
+      if (previous === undefined) delete process.env.COMMANDER_PAIR_REVOKED_TTL_MS;
+      else process.env.COMMANDER_PAIR_REVOKED_TTL_MS = previous;
+      resetPairDevicesForTests();
+    }
+  });
+
+  test('la retención por defecto de un revocado es 24 h, no la vida de la cookie', () => {
+    assert.equal(pairDeviceRevokedTtlMs({}), PAIR_DEVICE_REVOKED_RETENTION_MS);
+    assert.equal(PAIR_DEVICE_REVOKED_RETENTION_MS, 24 * 60 * 60_000);
+    assert.ok(PAIR_DEVICE_REVOKED_RETENTION_MS < PAIR_DEVICE_TTL_MS);
   });
 
   test('la cookie agrega Secure sólo sobre HTTPS', () => {
