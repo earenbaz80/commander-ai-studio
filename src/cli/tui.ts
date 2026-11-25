@@ -800,10 +800,20 @@ export function promptApprovalDecision(
 
     const showExpiryWarning = (): void => {
       if (settled || expiryWarningShown) return;
-      expiryWarningShown = true;
       // Campana sólo en el aviso puntual; en un repintado se conserva la línea,
       // no se vuelve a sonar.
-      if (!paintExpiryWarning(true)) expiryWarningShown = false;
+      if (!paintExpiryWarning(true)) {
+        // El `setTimeout` puede dispararse una fracción antes del umbral (Node
+        // no garantiza el retardo mínimo) y entonces el texto todavía está
+        // vacío. Se reprograma en vez de perder el único aviso para siempre.
+        const remaining = approval.expiresAt - APPROVAL_EXPIRY_WARNING_MS - Date.now();
+        if (!settled && remaining > 0) {
+          expiryWarningTimer = setTimeout(showExpiryWarning, remaining + 1);
+          expiryWarningTimer.unref?.();
+        }
+        return;
+      }
+      expiryWarningShown = true;
     };
 
     // Menú y pie se pintan juntos: así el repintado sabe exactamente cuántas
