@@ -89,10 +89,37 @@ export interface WorktreeCleanupResult {
 /** Ejecutor de git inyectable: las pruebas simulan un fallo parcial del `remove`. */
 export type GitRunner = (cwd: string, args: string[]) => string;
 
-/** Compara rutas como las imprime git (`C:/...`), sin distinguir mayúsculas en Windows. */
+/**
+ * Ruta en su forma real, para comparar lo que git imprime con lo que pidió el
+ * llamador.
+ *
+ * `path.resolve` no alcanza: en el runner de CI `os.tmpdir()` puede llegar en
+ * forma corta (`RUNNER~1`) y `git worktree list` imprime la larga, así que dos
+ * rutas del mismo directorio no coincidían y una limpieza buena se veía como
+ * fallida. Se resuelve con `realpath` (que expande el nombre corto y los enlaces)
+ * y, si el worktree ya no existe —el caso normal después de un `remove` a
+ * medias—, se resuelve el **padre**, que sí existe, y se conserva el nombre.
+ */
+function canonicalPath(target: string): string {
+  const abs = path.resolve(target);
+  try {
+    return fs.realpathSync.native(abs);
+  } catch {
+    // Ya no existe: el padre sigue ahí y es el que lleva el nombre corto.
+  }
+  try {
+    return path.join(fs.realpathSync.native(path.dirname(abs)), path.basename(abs));
+  } catch {
+    return abs;
+  }
+}
+
+/** Compara dos rutas por su forma real; Windows y macOS no distinguen mayúsculas. */
 function sameWorktreePath(a: string, b: string): boolean {
-  const norm = (p: string) => path.resolve(p).replace(/\\/g, '/').toLowerCase();
-  return norm(a) === norm(b);
+  const norm = (p: string) => canonicalPath(p).replace(/\\/g, '/').replace(/\/+$/, '');
+  return process.platform === 'win32' || process.platform === 'darwin'
+    ? norm(a).toLowerCase() === norm(b).toLowerCase()
+    : norm(a) === norm(b);
 }
 
 function firstGitError(error: unknown): string {
