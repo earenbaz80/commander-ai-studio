@@ -13,13 +13,18 @@
  *   verificarlo: `ack.deviceId` y `ack.seq` tienen que coincidir con el lease
  *   devuelto. Sin ack válido el traspaso se considera fallido y se sigue en
  *   lectura, aunque el servidor haya cambiado el dueño.
- * - `sendMessage()` y `resolveApproval()` escriben en la sesión con el `seq`
- *   que tiene el estado: el turno de usuario y la decisión de una aprobación
- *   (aprobar es aplicar un diff). Si el servidor responde `LEASE_STALE` (una
- *   renovación en vuelo movió el testigo) releen el estado y, cuando el control
- *   sigue siendo de este dispositivo, reintentan **una sola vez** con el `seq`
- *   nuevo: al dueño vigente no lo bloquea un `seq` desactualizado. Si el
- *   control cambió de dueño no reintentan; el 409 es la verdad.
+ * - `sendMessage()`, `resolveApproval()`, `cancel()`, `forkAndRun()`,
+ *   `saveState()` y `applyProposal()` escriben en la sesión con el `seq` que
+ *   tiene el estado: el turno de usuario, la decisión de una aprobación
+ *   (aprobar es aplicar un diff), parar la corrida, arrancar una copia,
+ *   guardar el checkpoint del CLI y aplicar una propuesta guardada. Si el
+ *   servidor responde `LEASE_STALE` (una renovación en vuelo movió el testigo)
+ *   releen el estado y, cuando el control sigue siendo de este dispositivo,
+ *   reintentan **una sola vez** con el `seq` nuevo: al dueño vigente no lo
+ *   bloquea un `seq` desactualizado. Si el control cambió de dueño no
+ *   reintentan; el 409 es la verdad. El fork de sólo copia (sin arrancar la
+ *   copia), el `dryRun` de una propuesta y las lecturas no escriben: no pasan
+ *   por este cliente.
  * - Quien recibe el control por un traspaso ajeno lo descubre con `refresh()`,
  *   pero tampoco escribe con eso: `canWrite` sólo se enciende con una
  *   confirmación propia (reclamo, renovación exitosa o escritura aceptada con
@@ -77,6 +82,15 @@ export interface PairLeaseApprovalBody {
   reason?: string;
 }
 
+/**
+ * Primer turno opcional de la copia; el arranque no se elige: `forkAndRun()`
+ * siempre manda `run: true`, porque copiar sin arrancar no escribe y no pide
+ * el control de la sesión.
+ */
+export interface PairLeaseForkAndRunBody {
+  text?: string;
+}
+
 export type PairLeaseWriteResult =
   | { ok: true; data: any; state: PairLeaseClientState }
   | { ok: false; error: PairLeaseError; state: PairLeaseClientState };
@@ -111,6 +125,18 @@ export interface PairLeaseClient {
     approvalId: string,
     body: PairLeaseApprovalBody
   ): Promise<PairLeaseWriteResult>;
+  /** Parar la corrida cambia el estado: va firmada con el `seq` del lease. */
+  cancel(): Promise<PairLeaseWriteResult>;
+  /**
+   * Bifurca la sesión y **arranca** la copia (`run: true`): es la variante que
+   * escribe. El fork de sólo copia no pide control y queda fuera de este
+   * cliente; por eso el arranque está en el nombre y no en una opción.
+   */
+  forkAndRun(body?: PairLeaseForkAndRunBody): Promise<PairLeaseWriteResult>;
+  /** Checkpoint del CLI (`PUT /state`) firmado con el `seq` del lease. */
+  saveState(state: unknown): Promise<PairLeaseWriteResult>;
+  /** Aplica una propuesta guardada (escribe el archivo), firmada y sin `dryRun`. */
+  applyProposal(proposalId: string): Promise<PairLeaseWriteResult>;
   release(): Promise<PairLeaseClientResult>;
   dispose(): void;
 }
@@ -189,7 +215,7 @@ export function createPairLeaseClient(options: PairLeaseClientOptions): PairLeas
   }
 
   async function call(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'PUT',
     path: string,
     body?: unknown
   ): Promise<{ ok: true; data: any } | { ok: false; error: PairLeaseError }> {
@@ -329,6 +355,33 @@ export function createPairLeaseClient(options: PairLeaseClientOptions): PairLeas
     );
   }
 
+  function postCancel(seq: number) {
+    return call('POST', `/api/agent/sessions/${encodeURIComponent(sessionId)}/cancel`, { seq });
+  }
+
+  function postForkAndRun(body: PairLeaseForkAndRunBody, seq: number) {
+    return call('POST', `/api/agent/sessions/${encodeURIComponent(sessionId)}/fork`, {
+      ...body,
+      run: true,
+      seq,
+    });
+  }
+
+  function putState(state: unknown, seq: number) {
+    return call('PUT', `/api/agent/sessions/${encodeURIComponent(sessionId)}/state`, {
+      state,
+      seq,
+    });
+  }
+
+  function postApply(proposalId: string, seq: number) {
+    return call(
+      'POST',
+      `/api/agent/sessions/${encodeURIComponent(sessionId)}/proposals/${encodeURIComponent(proposalId)}/apply`,
+      { seq }
+    );
+  }
+
   /** El servidor aceptó la escritura con este `seq`: el control es nuestro. */
   function confirmWrite(seq: number, data: any): PairLeaseWriteResult {
     verifiedSeq = seq;
@@ -379,6 +432,22 @@ export function createPairLeaseClient(options: PairLeaseClientOptions): PairLeas
     body: PairLeaseApprovalBody
   ): Promise<PairLeaseWriteResult> {
     return writeSigned((seq) => postApproval(approvalId, body, seq));
+  }
+
+  function cancel(): Promise<PairLeaseWriteResult> {
+    return writeSigned((seq) => postCancel(seq));
+  }
+
+  function forkAndRun(body: PairLeaseForkAndRunBody = {}): Promise<PairLeaseWriteResult> {
+    return writeSigned((seq) => postForkAndRun(body, seq));
+  }
+
+  function saveState(state: unknown): Promise<PairLeaseWriteResult> {
+    return writeSigned((seq) => putState(state, seq));
+  }
+
+  function applyProposal(proposalId: string): Promise<PairLeaseWriteResult> {
+    return writeSigned((seq) => postApply(proposalId, seq));
   }
 
   async function tick(): Promise<void> {
@@ -499,6 +568,10 @@ export function createPairLeaseClient(options: PairLeaseClientOptions): PairLeas
     transfer,
     sendMessage,
     resolveApproval,
+    cancel,
+    forkAndRun,
+    saveState,
+    applyProposal,
     release,
     dispose() {
       stopRenewal();

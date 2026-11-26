@@ -238,6 +238,78 @@ describe('pantalla /pair', () => {
     await waitFor(() => expect(screen.getByTestId('pair-status').textContent).toContain('Sólo lectura'));
   });
 
+  test('un dispositivo emparejado aprueba desde la pantalla con el seq del lease', async () => {
+    let resolved = false;
+    const approval = {
+      id: 'apr_1',
+      sessionId: 'sess_f3',
+      tool: 'fs.edit',
+      input: { path: 'src/a.ts' },
+      diff: '--- a/src/a.ts\n+++ b/src/a.ts\n',
+      createdAt: 1_000,
+      expiresAt: 61_000,
+    };
+    const calls = stubNet((url, method) => {
+      if (url.endsWith('/api/pair/device')) return device;
+      if (url.includes('/api/pair/lease?')) {
+        return {
+          body: {
+            success: true,
+            lease: lease({ deviceId: 'dev_me', seq: 4, expiresAt: 61_000 }),
+            mine: false,
+            renewMs: 30_000,
+          },
+        };
+      }
+      if (url.endsWith('/api/pair/lease') && method === 'POST') {
+        return {
+          body: {
+            success: true,
+            lease: lease({ deviceId: 'dev_me', seq: 5, expiresAt: 61_000 }),
+            mine: true,
+            renewMs: 30_000,
+          },
+        };
+      }
+      if (url.endsWith('/api/agent/sessions/sess_f3') && method === 'GET') {
+        return {
+          body: {
+            success: true,
+            running: true,
+            state: {
+              id: 'sess_f3',
+              status: 'running',
+              pendingApproval: resolved ? null : approval,
+              pendingApprovals: resolved ? [] : [approval],
+            },
+          },
+        };
+      }
+      if (url.endsWith('/api/agent/sessions/sess_f3/approvals/apr_1') && method === 'POST') {
+        resolved = true;
+        return { body: { success: true, approval: { id: 'apr_1', decision: 'allow' } } };
+      }
+      return { status: 404, body: {} };
+    });
+
+    render(<PairControlScreen sessionId="sess_f3" />);
+    await waitFor(() => expect(screen.getByTestId('pair-approval-apr_1')).toBeInTheDocument());
+    expect(screen.getByTestId('pair-approval-apr_1').textContent).toContain('fs.edit · src/a.ts');
+    // Sin el control, aprobar aplicaría un diff desde un dispositivo de sólo lectura.
+    expect(screen.getByTestId('pair-approval-allow-apr_1')).toBeDisabled();
+
+    fireEvent.click(screen.getByTestId('pair-claim'));
+    await waitFor(() => expect(screen.getByTestId('pair-approval-allow-apr_1')).toBeEnabled());
+
+    fireEvent.click(screen.getByTestId('pair-approval-allow-apr_1'));
+
+    await waitFor(() => expect(resolved).toBe(true));
+    const post = calls.find((call) => call.url.endsWith('/approvals/apr_1') && call.method === 'POST');
+    expect(post?.body).toEqual({ decision: 'allow', seq: 5 });
+    await waitFor(() => expect(screen.queryByTestId('pair-approval-apr_1')).toBeNull());
+    expect(screen.getByTestId('pair-approval-note').textContent).toContain('Aprobaste fs.edit');
+  });
+
   test('conectar desde el formulario pide el lease de esa sesión', async () => {
     const calls = stubNet((url) => {
       if (url.endsWith('/api/pair/device')) return device;

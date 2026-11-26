@@ -487,6 +487,97 @@ describe('cliente web del lease', () => {
     assert.equal(net.calls.length, 0);
   });
 
+  test('cancelar, bifurcar y arrancar, guardar estado y aplicar una propuesta van firmadas', async () => {
+    const net = fakeFetch((call) => {
+      if (call.url.endsWith('/api/pair/lease')) {
+        return json({ success: true, lease: lease({ seq: 8 }), mine: true });
+      }
+      return json({ success: true, state: { sessionId: 'sess_f3' } });
+    });
+    const leaseClient = client(net.impl);
+
+    await leaseClient.claim();
+    const cancelled = await leaseClient.cancel();
+    const forked = await leaseClient.forkAndRun({ text: 'seguí' });
+    const saved = await leaseClient.saveState({ id: 'sess_f3', status: 'idle' });
+    const applied = await leaseClient.applyProposal('prop_1');
+
+    assert.equal(cancelled.ok, true);
+    assert.equal(forked.ok, true);
+    assert.equal(saved.ok, true);
+    assert.equal(applied.ok, true);
+    const writes = net.calls.slice(1).map((call) => ({
+      method: call.method,
+      path: call.url.replace('http://127.0.0.1:3280', ''),
+      body: call.body,
+      credentials: call.credentials,
+    }));
+    assert.deepEqual(writes, [
+      {
+        method: 'POST',
+        path: '/api/agent/sessions/sess_f3/cancel',
+        body: { seq: 8 },
+        credentials: 'same-origin',
+      },
+      {
+        method: 'POST',
+        path: '/api/agent/sessions/sess_f3/fork',
+        body: { text: 'seguí', run: true, seq: 8 },
+        credentials: 'same-origin',
+      },
+      {
+        method: 'PUT',
+        path: '/api/agent/sessions/sess_f3/state',
+        body: { state: { id: 'sess_f3', status: 'idle' }, seq: 8 },
+        credentials: 'same-origin',
+      },
+      {
+        method: 'POST',
+        path: '/api/agent/sessions/sess_f3/proposals/prop_1/apply',
+        body: { seq: 8 },
+        credentials: 'same-origin',
+      },
+    ]);
+    assert.equal(leaseClient.getState().canWrite, true, 'cada escritura aceptada confirma el control');
+  });
+
+  test('un LEASE_STALE al aplicar una propuesta reintenta con el seq nuevo', async () => {
+    let applies = 0;
+    const net = fakeFetch((call) => {
+      if (call.url.endsWith('/api/pair/lease')) {
+        return json({ success: true, lease: lease({ seq: 2 }), mine: true });
+      }
+      if (call.method === 'GET') {
+        return json({ success: true, lease: lease({ seq: 5 }), mine: true });
+      }
+      applies += 1;
+      if (applies === 1) {
+        return json({ success: false, code: 'LEASE_STALE', error: 'el testigo cambió' }, 409);
+      }
+      return json({ success: true, ok: true, state: { sessionId: 'sess_f3' } });
+    });
+    const leaseClient = client(net.impl);
+
+    await leaseClient.claim();
+    const result = await leaseClient.applyProposal('prop_2');
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(
+      net.calls.map((call) => `${call.method} ${call.url.replace('http://127.0.0.1:3280', '')}`),
+      [
+        'POST /api/pair/lease',
+        'POST /api/agent/sessions/sess_f3/proposals/prop_2/apply',
+        'GET /api/pair/lease?sessionId=sess_f3',
+        'POST /api/agent/sessions/sess_f3/proposals/prop_2/apply',
+      ],
+      'entre la aplicación vieja y el reintento se relee el estado'
+    );
+    const sent = net.calls.filter((call) => call.url.includes('/proposals/'));
+    assert.deepEqual(sent.map((call) => call.body.seq), [2, 5]);
+    assert.equal(leaseClient.getState().lease?.seq, 5);
+    assert.equal(leaseClient.getState().canWrite, true);
+  });
+
   test('los listeners reciben cada transición y se pueden dar de baja', async () => {
     const net = fakeFetch(() =>
       json({ success: true, lease: lease({ seq: 1 }), mine: true })

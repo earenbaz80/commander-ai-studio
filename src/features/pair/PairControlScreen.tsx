@@ -12,6 +12,13 @@
  * de insistir. La escritura (`canWrite`) la decide el cliente, que sólo la
  * enciende con una confirmación propia.
  *
+ * Con el control confirmado, la pantalla lista las aprobaciones pendientes de
+ * la sesión (`GET /api/agent/sessions/:id`) y las resuelve con
+ * `resolveApproval` (permitir/denegar). Aprobar desde el móvil es aplicar un
+ * diff, así que la decisión viaja firmada con el `seq` del lease y el servidor
+ * la somete a las mismas guardas que el resto de las escrituras; sin control,
+ * los botones quedan desactivados.
+ *
  * La sesión se toma de `?sessionId=` o del formulario. La identidad del
  * dispositivo sale de `GET /api/pair/device` (cookie `HttpOnly`); sin cookie,
  * el host puede seguir leyendo el estado si la petición es loopback.
@@ -19,6 +26,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { deText } from '../../i18n/de';
 import type { Language } from '../../i18n/translations';
+import type { ApprovalRequestV2 } from '../../agent/sessionTypes';
 import {
   createPairLeaseClient,
   type PairLeaseClient,
@@ -58,6 +66,17 @@ function clock(at: number | null, L: Translate): string {
   }
 }
 
+/** Las pendientes del estado v2, con `pendingApproval` como respaldo. */
+function pendingFromState(state: any): ApprovalRequestV2[] {
+  const list =
+    Array.isArray(state?.pendingApprovals) && state.pendingApprovals.length > 0
+      ? state.pendingApprovals
+      : state?.pendingApproval
+        ? [state.pendingApproval]
+        : [];
+  return list.filter((item: any) => item && typeof item.id === 'string' && item.id.length > 0);
+}
+
 function statusText(state: PairLeaseClientState, L: Translate): string {
   if (state.phase === 'syncing') return L('Sincronizando con el host…', 'Syncing with the host…');
   if (state.phase === 'error')
@@ -78,8 +97,12 @@ export function PairControlScreen({ sessionId: preset, lang = 'es' }: PairContro
   const [deviceNote, setDeviceNote] = useState<string | null>(null);
   const [deviceChecked, setDeviceChecked] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [approvals, setApprovals] = useState<ApprovalRequestV2[]>([]);
+  const [approvalNote, setApprovalNote] = useState<string | null>(null);
   const clientRef = useRef<PairLeaseClient | null>(null);
   const targetRef = useRef('');
+  /** Última sesión pedida: una respuesta vieja no puede pisar la actual. */
+  const sessionRef = useRef(sessionId);
 
   // Quién soy para el host: sin este id el ack de un traspaso no se puede
   // atribuir a este dispositivo y la escritura no se habilita.
@@ -143,6 +166,68 @@ export function PairControlScreen({ sessionId: preset, lang = 'es' }: PairContro
       if (clientRef.current === client) clientRef.current = null;
     };
   }, [sessionId, deviceChecked, deviceId]);
+
+  // Las aprobaciones se leen del estado de la sesión, que es de lectura libre;
+  // resolverlas sí exige el control y lo firma el cliente del lease.
+  const loadApprovals = useCallback(async () => {
+    const target = sessionId;
+    if (!target) return;
+    try {
+      const response = await fetch(`/api/agent/sessions/${encodeURIComponent(target)}`, {
+        credentials: 'same-origin',
+      });
+      const data: any = await response.json().catch(() => null);
+      if (sessionRef.current !== target) return;
+      if (!response.ok || !data?.success) {
+        setApprovals([]);
+        setApprovalNote(
+          translate(
+            lang,
+            'No se pudo leer la sesión para ver sus aprobaciones.',
+            'Could not read the session to see its approvals.'
+          )
+        );
+        return;
+      }
+      setApprovals(pendingFromState(data.state));
+    } catch {
+      if (sessionRef.current !== target) return;
+      setApprovals([]);
+      setApprovalNote(
+        translate(lang, 'Sin conexión con el host.', 'No connection to the host.')
+      );
+    }
+  }, [sessionId, lang]);
+
+  useEffect(() => {
+    sessionRef.current = sessionId;
+    setApprovals([]);
+    setApprovalNote(null);
+    if (sessionId) void loadApprovals();
+  }, [sessionId, loadApprovals]);
+
+  const decide = async (approval: ApprovalRequestV2, decision: 'allow' | 'deny') => {
+    const client = clientRef.current;
+    if (!client || busy) return;
+    setBusy(`approval:${approval.id}`);
+    setApprovalNote(null);
+    try {
+      const result = await client.resolveApproval(approval.id, { decision });
+      if (!result.ok) {
+        setApprovalNote(`${result.error.code ?? 'ERROR'} · ${result.error.message}`);
+        return;
+      }
+      setApprovals((current) => current.filter((item) => item.id !== approval.id));
+      setApprovalNote(
+        decision === 'allow'
+          ? translate(lang, `Aprobaste ${approval.tool}.`, `You approved ${approval.tool}.`)
+          : translate(lang, `Denegaste ${approval.tool}.`, `You denied ${approval.tool}.`)
+      );
+      if (result.state.canWrite) client.startRenewal();
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const run = useCallback(
     async (label: string, action: (client: PairLeaseClient) => Promise<PairLeaseClientResult>) => {
@@ -311,7 +396,14 @@ export function PairControlScreen({ sessionId: preset, lang = 'es' }: PairContro
                 data-testid="pair-refresh"
                 className="nc-button text-xs"
                 disabled={disabled}
-                onClick={() => run('refresh', (client) => client.refresh())}
+                onClick={() =>
+                  run('refresh', async (client) => {
+                    const result = await client.refresh();
+                    // El panel de aprobaciones se relee con el control.
+                    void loadApprovals();
+                    return result;
+                  })
+                }
               >
                 {L('Actualizar estado', 'Refresh state')}
               </button>
@@ -396,6 +488,95 @@ export function PairControlScreen({ sessionId: preset, lang = 'es' }: PairContro
                   {L('Ceder control', 'Hand over control')}
                 </button>
               </div>
+            )}
+          </section>
+        )}
+
+        {sessionId && (
+          <section
+            data-testid="pair-approvals"
+            className="nc-panel space-y-3 p-4"
+            aria-live="polite"
+          >
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-sm font-bold text-[var(--nc-text-accent)]">
+                {L('Aprobaciones pendientes', 'Pending approvals')}
+              </h2>
+              <button
+                type="button"
+                data-testid="pair-approvals-refresh"
+                className="nc-button text-xs"
+                disabled={busy !== null}
+                onClick={() => void loadApprovals()}
+              >
+                {L('Actualizar', 'Refresh')}
+              </button>
+            </div>
+
+            {approvals.length === 0 && (
+              <p data-testid="pair-approvals-empty" className="text-xs text-[var(--nc-text-dim)]">
+                {L('No hay aprobaciones pendientes.', 'No pending approvals.')}
+              </p>
+            )}
+
+            {approvals.map((approval) => {
+              const path = (approval.input as any)?.path;
+              const target = typeof path === 'string' && path ? path : null;
+              return (
+                <article
+                  key={approval.id}
+                  data-testid={`pair-approval-${approval.id}`}
+                  className="space-y-2 border-2 border-[var(--nc-border-mid)] bg-[var(--nc-bg-main)] p-2"
+                >
+                  <p className="font-mono text-xs text-[var(--nc-text)]">
+                    {approval.tool}
+                    {target ? ` · ${target}` : ''}
+                  </p>
+                  {approval.diff && (
+                    <pre
+                      data-testid={`pair-approval-diff-${approval.id}`}
+                      className="max-h-40 overflow-auto border border-[var(--nc-border-dark)] bg-[var(--nc-bg-panel)] p-1 font-mono text-[11px] text-[var(--nc-text)]"
+                    >
+                      {approval.diff}
+                    </pre>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      data-testid={`pair-approval-allow-${approval.id}`}
+                      className="nc-button text-xs"
+                      disabled={disabled || !canWrite}
+                      onClick={() => void decide(approval, 'allow')}
+                    >
+                      {L('Aprobar', 'Approve')}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid={`pair-approval-deny-${approval.id}`}
+                      className="nc-button text-xs"
+                      disabled={disabled || !canWrite}
+                      onClick={() => void decide(approval, 'deny')}
+                    >
+                      {L('Denegar', 'Deny')}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+
+            {approvals.length > 0 && !canWrite && (
+              <p className="text-[11px] text-[var(--nc-text-dim)]">
+                {L(
+                  'Reclamá el control para decidir: aprobar aplica el cambio en el host.',
+                  'Claim control to decide: approving applies the change on the host.'
+                )}
+              </p>
+            )}
+
+            {approvalNote && (
+              <p data-testid="pair-approval-note" role="status" className="text-xs text-[var(--nc-text-accent)]">
+                {approvalNote}
+              </p>
             )}
           </section>
         )}
