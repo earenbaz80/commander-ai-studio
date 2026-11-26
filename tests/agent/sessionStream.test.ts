@@ -31,6 +31,14 @@ class FakeSink {
   }
 }
 
+/** Sink con el buffer lleno: `write` siempre devuelve false. */
+class FullSink extends FakeSink {
+  write(chunk: string): boolean {
+    super.write(chunk);
+    return false;
+  }
+}
+
 function source(state: SessionStateV2, buffer: SessionEventBuffer) {
   return {
     id: state.id,
@@ -187,5 +195,64 @@ describe('parseStreamCursor', () => {
     expect(parseStreamCursor('-1', undefined)).toBeNull();
     expect(parseStreamCursor('abc', undefined)).toBeNull();
     expect(parseStreamCursor('1.5', undefined)).toBeNull();
+  });
+});
+
+
+describe('attachSessionStream · vida de la conexion', () => {
+  it('cierra sin gone cuando no hay eventos en la ventana de inactividad', () => {
+    vi.useFakeTimers();
+    const state = createSessionState({ id: 'sess_idle', goal: 'idle', cwd: '/workspace' });
+    const buffer = new SessionEventBuffer(state.id);
+    const sink = new FakeSink();
+    const cleanup = attachSessionStream(source(state, buffer), 0, sink, {
+      keepAliveMs: 1_000,
+      idleMs: 5_000,
+    });
+
+    vi.advanceTimersByTime(4_000);
+    expect(sink.ended).toBe(false);
+    expect(sink.text()).toContain(': keep-alive');
+
+    vi.advanceTimersByTime(2_000);
+    expect(sink.ended).toBe(true);
+    // Sin `gone`: la sesion sigue viva y el cliente reconecta con su cursor.
+    expect(sink.text()).not.toContain('event: gone');
+    cleanup();
+  });
+
+  it('un evento reinicia la ventana de inactividad', () => {
+    vi.useFakeTimers();
+    const state = createSessionState({ id: 'sess_idle_event', goal: 'idle', cwd: '/workspace' });
+    const buffer = new SessionEventBuffer(state.id);
+    const sink = new FakeSink();
+    const cleanup = attachSessionStream(source(state, buffer), 0, sink, {
+      keepAliveMs: 1_000,
+      idleMs: 5_000,
+    });
+
+    vi.advanceTimersByTime(4_000);
+    buffer.publish({ type: 'status', text: 'sigo' });
+    vi.advanceTimersByTime(4_000);
+    expect(sink.ended).toBe(false);
+
+    vi.advanceTimersByTime(2_000);
+    expect(sink.ended).toBe(true);
+    cleanup();
+  });
+
+  it('corta al cliente que no drena: dos frames con el socket lleno', () => {
+    const state = createSessionState({ id: 'sess_stall', goal: 'stall', cwd: '/workspace' });
+    const buffer = new SessionEventBuffer(state.id);
+    const sink = new FullSink();
+    const cleanup = attachSessionStream(source(state, buffer), 0, sink, { idleMs: 0 });
+
+    buffer.publish({ type: 'status', text: 'uno' });
+    expect(sink.ended).toBe(false);
+
+    buffer.publish({ type: 'status', text: 'dos' });
+    expect(sink.ended).toBe(true);
+    expect(sink.text()).not.toContain('event: gone');
+    cleanup();
   });
 });

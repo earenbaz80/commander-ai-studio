@@ -40,16 +40,24 @@ export const PAIR_RATE_GLOBAL_ENV: Record<PairRateScope, string> = {
   stream: 'COMMANDER_PAIR_RATE_STREAM_GLOBAL_MAX',
 };
 
+/**
+ * Topes por minuto. Los de stream salen de medir el cliente, no de un número
+ * redondo: reconecta con backoff de 1 s a 8 s, o sea ~10 aperturas por minuto y
+ * por pestaña, y una sesión puede estar abierta en tres pestañas del teléfono
+ * más la del escritorio. 60 deja margen para eso y para una pestaña recargándose
+ * (30 era el tope exacto de tres pestañas reconectando: sin margen); el global
+ * (600) permite cinco clientes a tope sin que uno consuma el cupo de los demás.
+ */
 export const PAIR_RATE_DEFAULT_MAX: Record<PairRateScope, number> = {
   redeem: 10,
   approval: 60,
-  stream: 30,
+  stream: 60,
 };
 
 export const PAIR_RATE_DEFAULT_GLOBAL_MAX: Record<PairRateScope, number> = {
   redeem: 60,
   approval: 600,
-  stream: 300,
+  stream: 600,
 };
 
 function positiveInt(raw: unknown, fallback: number): number {

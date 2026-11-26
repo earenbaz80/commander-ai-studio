@@ -430,6 +430,10 @@ export async function spawnServer(options: SpawnServerOptions = {}): Promise<Ser
       COMMANDER_PAIR_RATE_APPROVAL_GLOBAL_MAX: '20000',
       COMMANDER_PAIR_RATE_STREAM_MAX: '20000',
       COMMANDER_PAIR_RATE_STREAM_GLOBAL_MAX: '20000',
+      // Cupo de streams vivos: holgado por la misma razón (un solo caller
+      // para toda la corrida); el caso de 429 levanta su propio server.
+      COMMANDER_PAIR_STREAM_ACTIVE_MAX: '64',
+      COMMANDER_PAIR_STREAM_ACTIVE_GLOBAL_MAX: '128',
       ...(options.env || {}),
       PORT: '0',
       NODE_ENV: 'production',
