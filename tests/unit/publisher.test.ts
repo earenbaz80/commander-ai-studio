@@ -98,6 +98,68 @@ describe('publisher', () => {
     expect(fs.readFileSync(path.join(firstDir, 'assets', 'app.js'), 'utf8')).toContain('primera');
   });
 
+  it('no filtra la salida de la build en el error', async () => {
+    const secret = 'credencial-de-build-que-no-sale';
+    fs.writeFileSync(
+      path.join(project, 'package.json'),
+      JSON.stringify({
+        name: 'demo',
+        scripts: { build: `node -e "console.error('${secret}'); process.exit(1)"` },
+      }),
+      'utf8'
+    );
+
+    const error = await createRelease(
+      project,
+      { outputDir: 'dist', build: true },
+      publishDir
+    ).then(
+      () => null,
+      (reason: Error) => reason
+    );
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error?.message).toMatch(/npm run build falló/);
+    expect(error?.message).not.toContain(secret);
+  });
+
+  it('redacta secretos en el log de una build exitosa que va al panel', async () => {
+    const previous = process.env.G3_BUILD_SECRET;
+    const secret = 'secreto-impreso-por-la-build';
+    process.env.G3_BUILD_SECRET = secret;
+
+    try {
+      fs.writeFileSync(
+        path.join(project, 'package.json'),
+        JSON.stringify({
+          name: 'demo',
+          scripts: {
+            build:
+              `node -e "console.log('compilando modulos'); ` +
+              `console.log(process.env.G3_BUILD_SECRET); ` +
+              `console.log('sbp_' + 'ABCDEFGH12345678')"`,
+          },
+        }),
+        'utf8'
+      );
+
+      const result = await createRelease(
+        project,
+        { outputDir: 'dist', build: true },
+        publishDir
+      );
+
+      // El diagnóstico sigue ahí, pero sin los valores sensibles.
+      expect(result.buildLog).toContain('compilando modulos');
+      expect(result.buildLog).toContain('[redactado]');
+      expect(result.buildLog).not.toContain(secret);
+      expect(result.buildLog).not.toContain('sbp_ABCDEFGH12345678');
+    } finally {
+      if (previous === undefined) delete process.env.G3_BUILD_SECRET;
+      else process.env.G3_BUILD_SECRET = previous;
+    }
+  });
+
   it('rechaza salidas fuera del proyecto o sin index.html', async () => {
     await expect(createRelease(project, { outputDir: '../fuera' }, publishDir)).rejects.toThrow(
       /dentro del proyecto/

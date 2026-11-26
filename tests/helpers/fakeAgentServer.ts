@@ -60,7 +60,8 @@ export type FakeScenario =
   | 't4-red-always'
   | 't1-bugfix'
   | 'risky-shell'
-  | 'llm-error';
+  | 'llm-error'
+  | 'empty-turn';
 
 export interface FakeRequest {
   method: string;
@@ -178,6 +179,7 @@ const SCENARIOS: FakeScenario[] = [
   't1-bugfix',
   'risky-shell',
   'llm-error',
+  'empty-turn',
 ];
 
 function fakeProposalDiff(prefix: string, lines: number): string {
@@ -513,6 +515,10 @@ function turnFor(scenario: FakeScenario, turn: number): ModelTurn {
     case 'truncated':
       // Primer turno cortado por presupuesto; el reintento sí responde.
       return turn === 1 ? { text: '', functionCalls: [] } : { text: FINAL_TEXT, functionCalls: [] };
+    case 'empty-turn':
+      // Turno vacío del proveedor: éxito con texto vacío y sin tool calls.
+      // El CLI no debe inventar una respuesta ni persistirla (G1-EMPTY-TURN).
+      return { text: '', functionCalls: [] };
     case 'truncated-always':
       return { text: '', functionCalls: [] };
     case 'risky-shell':

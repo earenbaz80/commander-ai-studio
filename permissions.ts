@@ -16,6 +16,7 @@
 import fs from 'fs';
 import path from 'path';
 import { normalizeRules, type PermissionRule } from './src/agent/permissionRules';
+import { normalizeMcpToolRules, type McpToolPolicyRule } from './src/agent/mcpToolPolicy';
 
 export type AgentMode = 'build' | 'plan' | 'readonly';
 
@@ -30,6 +31,8 @@ export interface Permissions {
    * archivo del proyecto para que el CLI evalúe exactamente las mismas.
    */
   rules: PermissionRule[];
+  /** Política MCP por servidor y tool (allow/ask/deny). */
+  mcpToolRules: McpToolPolicyRule[];
   /** Marca de la importación única desde localStorage. */
   rulesImportedAt?: number;
 }
@@ -40,6 +43,7 @@ export const DEFAULT_PERMISSIONS: Permissions = {
   deniedTools: [],
   files: { read: [], write: [] },
   rules: [],
+  mcpToolRules: [],
 };
 
 /** Tools que modifican el filesystem o el repo. */
@@ -171,6 +175,7 @@ export function normalizePermissions(input: unknown): Permissions {
   const read = Array.isArray(p.files?.read) ? p.files!.read.map(String).slice(0, 200) : [];
   const write = Array.isArray(p.files?.write) ? p.files!.write.map(String).slice(0, 200) : [];
   const rules = normalizeRules(p.rules);
+  const mcpToolRules = normalizeMcpToolRules(p.mcpToolRules);
   const importedAt = Number(p.rulesImportedAt);
   return {
     mode,
@@ -178,6 +183,7 @@ export function normalizePermissions(input: unknown): Permissions {
     deniedTools,
     files: { read, write },
     rules,
+    mcpToolRules,
     ...(Number.isFinite(importedAt) && importedAt > 0 ? { rulesImportedAt: importedAt } : {}),
   };
 }

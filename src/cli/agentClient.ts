@@ -54,6 +54,11 @@ import {
 } from '../agent/outputBudget';
 import { MAX_VERIFY_REFUSALS, VerifyGate } from '../agent/verifyGate';
 import { DEFAULT_PERMISSION_RULES, decide } from '../agent/permissionRules';
+import {
+  createPluginLifecycle,
+  type PluginCloseOutcome,
+  type RunPluginLifecycle,
+} from '../agent/pluginLifecycle';
 
 /**
  * Nombre heredado del contrato. A partir de F1-01 es el evento v2 completo
@@ -82,6 +87,8 @@ export interface RunAgentOptions {
   onEvent?: (event: CliEventV2) => void;
   /** Id fijo de sesión; los tests y los goldens lo usan para ser deterministas. */
   sessionId?: string;
+  /** Lifecycle ya construido (tests); por defecto habla con el servidor. */
+  lifecycle?: RunPluginLifecycle;
   /** Objetivo original de la sesión; en resume/fork `task` es el turno nuevo. */
   goal?: string;
   /** Estado persistido que se continúa (resume/fork). */
@@ -1102,6 +1109,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   let state: SessionStateV2 | null = resumed;
   let syncEnabled = Boolean(resumed);
   let cancelled = false;
+  let lifecycle: RunPluginLifecycle | null = null;
 
   // Las corridas normales del CLI dejan una sesión reanudable. Los tests
   // directos/goldens fijan `sessionId` y no habilitan `persistSession`, así que
@@ -1119,19 +1127,31 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const sequencer = new EventSequencer(sessionId, state?.steps.length ?? 0);
   const onEvent = opts.onEvent ?? (() => {});
   const emit = (payload: CliEventPayload) => onEvent(sequencer.next(payload));
-  const done = (
+  const done = async (
     answer: string,
     steps: number,
-    invalid?: RunInvalidation
-  ): RunAgentResult => ({
-    answer,
-    steps,
-    sessionId: sequencer.sessionId,
-    seq: sequencer.lastSeq,
-    ...(state ? { state } : {}),
-    ...(cancelled ? { cancelled: true } : {}),
-    ...(invalid ? { invalid } : {}),
-  });
+    invalid?: RunInvalidation,
+    close?: PluginCloseOutcome,
+  ): Promise<RunAgentResult> => {
+    // Todos los caminos de salida pasan por aquí: el terminal se emite una vez.
+    if (lifecycle) {
+      await lifecycle.close(
+        close ??
+          (cancelled
+            ? { kind: 'stopped', reason: 'user' }
+            : { kind: 'error', error: 'la corrida terminó sin respuesta final' }),
+      );
+    }
+    return {
+      answer,
+      steps,
+      sessionId: sequencer.sessionId,
+      seq: sequencer.lastSeq,
+      ...(state ? { state } : {}),
+      ...(cancelled ? { cancelled: true } : {}),
+      ...(invalid ? { invalid } : {}),
+    };
+  };
   const maxSteps = Math.max(1, opts.maxSteps ?? 25);
   const approvedForSession = new Set<string>();
   // shell.run ejecutado → id de la aprobación que lo permitió (o 'session').
@@ -1161,11 +1181,36 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     state.model = model;
     state.mode = mode;
   }
+  // A partir de aquí el CLI ya conoce sesión, objetivo y modelo: el lifecycle
+  // del proyecto se emite contra el servidor que ejecuta las tools.
+  lifecycle =
+    opts.lifecycle ??
+    createPluginLifecycle({
+      baseUrl: opts.serverUrl,
+      context: { sessionId, root: opts.cwd, goal, model },
+    });
+  await lifecycle.start();
   const history: string[] = resumed
     ? (resumed.turns || []).map((turn) => `${turn.role.toUpperCase()}: ${turn.text}`)
     : [];
   if (resumed) history.push(`USER: ${opts.task}`);
   let steps = 0;
+
+  const callModelWithLifecycle = async (step: number) => {
+    await lifecycle?.beforeModel(step);
+    try {
+      const turn = await callModel(opts, history, (text) => emit({ type: 'chunk', text }));
+      await lifecycle?.afterModel(step, true);
+      return turn;
+    } catch (error) {
+      await lifecycle?.afterModel(
+        step,
+        false,
+        error instanceof Error ? error.message : String(error),
+      );
+      throw error;
+    }
+  };
 
   const sync = async () => {
     if (!state || !syncEnabled) return;
@@ -1256,9 +1301,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     let calls: ToolCall[] = [];
     let streamed = false;
     try {
-      ({ thought, calls, streamed } = await callModel(opts, history, (text) =>
-        emit({ type: 'chunk', text })
-      ));
+      ({ thought, calls, streamed } = await callModelWithLifecycle(steps));
     } catch (e) {
       if (opts.signal?.aborted) {
         await markCancelled();
@@ -1272,7 +1315,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         state.updatedAt = Date.now();
         await sync();
       }
-      return done('', steps);
+      return done('', steps, undefined, { kind: 'error', error: text });
     }
 
     if (thought) {
@@ -1311,7 +1354,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
             await sync();
           }
           emit({ type: 'answer', text });
-          return done(text, steps);
+          return done(text, steps, undefined, { kind: 'error', error: text });
         }
         const text =
           'Política de test obligatorio: edita un archivo de test y ejecuta `node --test` después ' +
@@ -1348,7 +1391,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
             await sync();
           }
           emit({ type: 'answer', text: motivo });
-          return done(motivo, steps);
+          return done(motivo, steps, undefined, { kind: 'error', error: motivo });
         }
         const text = rojo && evidence
           ? `Gate de verificación: \`${evidence.command}\` sigue en rojo (exit ${evidence.exitCode ?? 'desconocido'}) después de tu última edición. No cierres: corrige el fallo y vuelve a ejecutar la verificación.${evidence.output ? `\n${evidence.output}` : ''}`
@@ -1358,7 +1401,27 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         await addStep({ type: 'thought', title: 'Gate de verificación', content: text, status: 'failed' });
         continue;
       }
-      const answer = thought || '(el modelo no devolvió respuesta)';
+      // Turno vacío del proveedor: sin pensamiento, sin tool calls y sin plan.
+      // No se guarda un turno `assistant` con texto sintético: la reanudación
+      // siguiente lo leería como una respuesta que el modelo nunca dio y el
+      // estado diría `completed` sobre una corrida que no cerró
+      // (docs/parity/issues/G1-EMPTY-TURN.md, punto 3).
+      if (!thought.trim()) {
+        const text =
+          'Turno vacío: el modelo no devolvió texto ni tool calls. No se guarda una respuesta ' +
+          'sintética y la corrida queda sin respuesta final.';
+        emit({ type: 'error', text });
+        await addStep({ type: 'thought', title: 'Turno vacío', content: text, status: 'failed' });
+        if (state) {
+          state.answer = text;
+          state.status = 'failed';
+          state.error = text;
+          state.updatedAt = Date.now();
+          await sync();
+        }
+        return done('', steps, undefined, { kind: 'error', error: text });
+      }
+      const answer = thought;
       addTurn({ role: 'assistant', text: answer });
       await addStep({ type: 'thought', title: 'Finalizado', content: answer, status: 'completed' });
       if (state) {
@@ -1368,7 +1431,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         await sync();
       }
       emit({ type: 'answer', text: answer });
-      return done(thought, steps);
+      return done(thought, steps, undefined, { kind: 'done', answer: thought });
     }
 
     history.push(`ASISTENTE: ${thought}`);
@@ -1442,7 +1505,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
             await sync();
           }
           emit({ type: 'answer', text });
-          return done(text, steps);
+          return done(text, steps, undefined, { kind: 'error', error: text });
         }
         // La sesión sigue, que `maxSteps` ya acota el resto.
         const summary = repeat.message;
@@ -1871,7 +1934,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         await sync();
       }
       emit({ type: 'answer', text: answer });
-      return done(answer, steps);
+      return done(answer, steps, undefined, { kind: 'done', answer });
     }
   }
 
@@ -1883,5 +1946,5 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     state.updatedAt = Date.now();
     await sync();
   }
-  return done('', steps);
+  return done('', steps, undefined, { kind: 'error', error: text });
 }

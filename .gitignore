@@ -115,3 +115,6 @@ release-x64/
 # Restos de ejecuciones locales
 *.pid
 pty-validacion-*.png
+
+# Datos locales de la app de ejemplo (PL3)
+examples/pl3-backend-app/.data/

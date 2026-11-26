@@ -10,6 +10,8 @@
  * No ejecuta nada ni habla con el LLM: sólo anota lo que `executeTask` ya sabe.
  */
 
+import type { WorktreeCleanupResult } from './worktrees';
+
 export type SubAgentStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
 /**
@@ -44,6 +46,8 @@ export interface SubAgentRecord {
   calls?: SubAgentCall[];
   /** Títulos de los pasos del hijo, en orden. Sale en `/subagents`. */
   stepTitles?: string[];
+  /** Cómo quedó la limpieza de su worktree; `ok:false` explica la fuga. */
+  worktreeCleanup?: WorktreeCleanupResult;
 }
 
 /**
@@ -193,7 +197,7 @@ export function startSubAgent(input: { id: string; parentSessionId: string; goal
 /** Cierra un subagente con su resultado. Idempotente: el primero gana. */
 export function finishSubAgent(
   id: string,
-  patch: { ok: boolean; answer?: string; error?: string; steps?: number; cancelled?: boolean; calls?: SubAgentCall[]; stepTitles?: string[] }
+  patch: { ok: boolean; answer?: string; error?: string; steps?: number; cancelled?: boolean; calls?: SubAgentCall[]; stepTitles?: string[]; worktreeCleanup?: WorktreeCleanupResult }
 ): void {
   const record = records.get(id);
   if (!record || record.status !== 'running') return;
@@ -204,6 +208,7 @@ export function finishSubAgent(
   if (typeof patch.steps === 'number') record.steps = patch.steps;
   if (patch.calls) record.calls = patch.calls;
   if (patch.stepTitles) record.stepTitles = patch.stepTitles;
+  if (patch.worktreeCleanup) record.worktreeCleanup = patch.worktreeCleanup;
   notify(record.parentSessionId);
 }
 

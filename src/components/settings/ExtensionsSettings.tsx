@@ -871,26 +871,45 @@ export const ExtensionsSettings: React.FC<ExtensionsSettingsProps> = ({ lang = '
                 {t('Sin plugins instalados.', 'No plugins installed.', 'Keine Plugins installiert.')}
               </p>
             )}
-            {filteredPlugins.map((p) => (
-              <div key={p.id} className={rowClass} role="listitem">
-                <Puzzle className="w-3 h-3 text-[var(--nc-text-accent)] shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[10px] font-bold truncate">{p.name || p.id}</div>
-                  <div className="text-[9px] opacity-70 truncate font-mono">
-                    {p.id} · v{p.version || '—'}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void removePlugin(p.id)}
-                  className="p-0.5 text-[var(--nc-danger)] hover:text-red-300 shrink-0"
-                  title={t('Desinstalar', 'Uninstall', 'Deinstallieren')}
-                  aria-label={`${t('Desinstalar', 'Uninstall', 'Deinstallieren')} ${p.id}`}
+            {filteredPlugins.map((p) => {
+              const permissions =
+                Array.isArray(p.permissions) && p.permissions.length > 0
+                  ? p.permissions.map((permission: unknown) => String(permission)).join(', ')
+                  : '—';
+              return (
+                <div
+                  key={p.id}
+                  className={rowClass}
+                  role="listitem"
+                  data-testid={`plugin-row-${p.id}`}
                 >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
-            ))}
+                  <Puzzle className="w-3 h-3 text-[var(--nc-text-accent)] shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[10px] font-bold truncate">{p.name || p.id}</div>
+                    <div className="text-[9px] opacity-70 truncate font-mono">
+                      {p.id} · v{p.version || '—'}
+                    </div>
+                    <div
+                      className="text-[9px] opacity-60 font-mono break-all leading-tight"
+                      data-testid={`plugin-meta-${p.id}`}
+                    >
+                      API {p.apiVersion ?? '—'} ·{' '}
+                      {t('permisos', 'permissions', 'Berechtigungen')}: {permissions} ·{' '}
+                      {t('checksum', 'checksum', 'Prüfsumme')}: {p.checksum || '—'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void removePlugin(p.id)}
+                    className="p-0.5 text-[var(--nc-danger)] hover:text-red-300 shrink-0"
+                    title={t('Desinstalar', 'Uninstall', 'Deinstallieren')}
+                    aria-label={`${t('Desinstalar', 'Uninstall', 'Deinstallieren')} ${p.id}`}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

@@ -74,6 +74,41 @@ function pasoCon(pasos: string[], ...marcadores: string[]): string {
   return encontrados[0];
 }
 
+/**
+ * Comandos de un paso, en orden: la línea `run:` o cada línea de un bloque
+ * `run: |`. El bloque se reconoce por indentación (8 espacios el `run: |`,
+ * 10 el contenido) para no confundir un comentario con el comando.
+ */
+function comandosDe(paso: string): string[] {
+  const comandos: string[] = [];
+  let bloque = false;
+  for (const linea of paso.split('\n')) {
+    if (/^ {8}run: \|$/.test(linea)) {
+      bloque = true;
+      continue;
+    }
+    if (bloque) {
+      if (/^ {10}\S/.test(linea)) {
+        comandos.push(linea.trim());
+        continue;
+      }
+      bloque = false;
+    }
+    const recortada = linea.trim();
+    if (/^ {8}run: \S/.test(linea)) comandos.push(recortada.slice('run: '.length));
+  }
+  return comandos;
+}
+
+/**
+ * Igual que la comparación por línea del `run:`: el comando base identifica al
+ * paso aunque agregue argumentos (`-- --reporter=json …`), y `npm run test:node`
+ * no cae en `npm run test` porque se compara la línea completa.
+ */
+function esComando(paso: string, comando: string): boolean {
+  return comandosDe(paso).some((c) => c === comando || c.startsWith(`${comando} --`));
+}
+
 const watch = leer(WATCH);
 const ci = leer(CI);
 const release = leer(RELEASE);
@@ -185,14 +220,7 @@ test('CI: el gate de producción va antes del lint y node:test antes de Vitest',
   // `npm run test` porque la comparación es por línea completa, no por prefijo
   // suelto.
   const posicion = (comando: string) => {
-    const i = pasos.findIndex((p) =>
-      p
-        .split('\n')
-        .some((l) => {
-          const linea = l.trim();
-          return linea === `run: ${comando}` || linea.startsWith(`run: ${comando} --`);
-        })
-    );
+    const i = pasos.findIndex((p) => esComando(p, comando));
     assert.ok(i >= 0, `falta el paso «${comando}»`);
     return i;
   };
@@ -313,11 +341,7 @@ test('CI: el job de lógica corre sólo el proyecto node y en paralelo', () => {
   const pasos = pasosDe(job);
   // Los argumentos del reporter no cambian qué corre: el script sigue siendo
   // `test:logic`, con su `--project node` dentro.
-  const esRun = (paso: string, comando: string) =>
-    paso.split('\n').some((l) => {
-      const linea = l.trim();
-      return linea === `run: ${comando}` || linea.startsWith(`run: ${comando} --`);
-    });
+  const esRun = esComando;
 
   const logica = pasos.find((p) => esRun(p, 'npm run test:logic'));
   assert.ok(logica, 'el job de lógica corre `npm run test:logic`');
@@ -364,15 +388,15 @@ test('CI: una guardia construye y empaqueta el CLI', () => {
     paso.split('\n').some((l) => l.trim() === `run: ${comando}`);
 
   // `prepack` construye el bundle, pero sin un job que empaquete nadie lo
-  // ejecuta: el `bin`, `files` o el banner podían romperse en silencio.
-  const build = pasos.findIndex((p) => esRun(p, 'npm run build:cli'));
+  // ejecuta: el `bin`, `files` o el banner podían romperse en silencio. El
+  // guardián construye la UI antes de `npm pack`; un `build:cli` separado
+  // fallaría en un checkout limpio porque todavía no existe `dist/`.
   const pack = pasos.findIndex((p) => esRun(p, 'npm run check:cli-package'));
-  assert.ok(build >= 0, 'falta el paso que construye el bundle del CLI');
-  assert.ok(pack >= 0, 'falta el paso que empaqueta y prueba el CLI');
-  assert.ok(build < pack, 'el bundle se construye antes de empaquetarlo');
+  assert.ok(pack >= 0, 'falta el paso que construye, empaqueta y prueba el CLI');
 
   // El script es el que mide: si se vacía, el job queda verde sin comprobar nada.
   const guion = leer('scripts/check-cli-package.mjs');
+  assert.match(guion, /npm\(\['run', 'build'\]\)/, 'el guardián construye la UI antes de empacar');
   assert.match(guion, /'pack'/, 'el script corre npm pack');
   assert.match(guion, /cli-dist\/commander\.mjs/, 'comprueba el bundle en el tarball');
   assert.match(guion, /--version/, 'ejecuta el bundle empaquetado');
@@ -480,7 +504,7 @@ test('CI: cada suite deja sus conteos en el resumen del job', () => {
   // deja de escribirlo, la tabla queda vacía y nadie se entera.
   const nodeTest = pasos.find((p) => p.split('\n').some((l) => l.trim() === 'run: npm run test:node'));
   assert.ok(nodeTest?.includes('TEST_NODE_JUNIT'), 'node:test deja el reporte JUnit');
-  const vitest = pasos.find((p) => p.split('\n').some((l) => l.trim().startsWith('run: npm run test --')));
+  const vitest = pasos.find((p) => esComando(p, 'npm run test'));
   assert.ok(
     vitest?.includes('--reporter=json') && vitest.includes('--outputFile'),
     'Vitest deja el reporte JSON'
@@ -502,4 +526,35 @@ test('CI: cada suite deja sus conteos en el resumen del job', () => {
     /GITHUB_STEP_SUMMARY/,
     'el script escribe en el archivo que Actions muestra como resumen'
   );
+});
+
+test('CI: un Vitest en rojo deja su informe como artefacto', () => {
+  // El log del paso no se puede leer sin sesión en el repo: un `exit code 1`
+  // sin test nombrado no dice qué rompió. El informe JSON y la salida del
+  // reporter tienen que sobrevivir a la corrida.
+  for (const [job, comando] of [
+    ['lint-and-test', 'npm run test'],
+    ['logic', 'npm run test:logic'],
+  ] as const) {
+    const pasos = pasosDe(jobDe(ci, job));
+    const vitest = pasos.filter((p) => esComando(p, comando));
+    assert.equal(vitest.length, 1, `${job}: un solo paso de Vitest`);
+    // Sin `pipefail` el `| tee` devuelve 0 y el job queda verde en falso.
+    assert.ok(vitest[0].includes('set -o pipefail'), `${job}: conserva el código de salida real`);
+    assert.ok(
+      vitest[0].includes('tee .ci/vitest-output.log'),
+      `${job}: guarda la salida del reporter`
+    );
+
+    const artefacto = pasos.filter(
+      (p) => p.includes('upload-artifact') && p.includes('.ci/vitest.json')
+    );
+    assert.equal(artefacto.length, 1, `${job}: sube el informe JSON`);
+    // Subirlo siempre gastaría almacenamiento en cada corrida verde.
+    assert.ok(artefacto[0].includes('if: failure()'), `${job}: sólo se sube cuando falla`);
+    assert.ok(
+      artefacto[0].includes('.ci/vitest-output.log'),
+      `${job}: sube también la salida del reporter`
+    );
+  }
 });

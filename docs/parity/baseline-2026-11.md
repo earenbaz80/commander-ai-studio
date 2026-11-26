@@ -2,9 +2,9 @@
 
 > **Estado:** `F0 CERRADO — G0 CERRADA`. GitHub verificado (OAuth y Actions) el 2026-11-10; Vercel y Linear fuera de alcance por decisión. La corrida del 2026-11-07 se conserva como historial.
 > **Corrida:** 2026-11-07, 08:05 UTC (histórica).
-> **Baseline vigente:** 2026-11-11, 24 corridas con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` sobre `c3ffb0b*` (árbol sucio); 8/24, 0 timeouts y 0 inválidas. El detalle está en §6.
+> **Baseline vigente:** 2026-11-11, 24 corridas con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` sobre `c3ffb0b*` (árbol sucio; ese hash no resuelve tras la reescritura y no tiene equivalente en el historial actual); 8/24, 0 timeouts y 0 inválidas. El detalle está en §6.
 > **Revisión:** `f7822ed` en `main` (remoto `github.com/earenbaz80/commander-ai-studio`), con 115 entradas sin commitear al inicio de la corrida —este documento y la nota del roadmap se añaden después, también sin commitear—. El commit por sí solo **no** identifica el árbol medido.
-> **Alcance:** criterios de aceptación de la Fase 0 de [ROADMAP_PARITY.md](../../ROADMAP_PARITY.md), con el alcance ajustado el **2026-11-10**: Vercel y Linear quedan **fuera de alcance por decisión explícita** (sólo hay cuenta de GitHub). La decisión y sus recibos están en [receipts/F0-LOCAL-2026-11-10.md](receipts/F0-LOCAL-2026-11-10.md).
+> **Alcance:** criterios de aceptación de la fase **F0** de [ROADMAP.md](../../ROADMAP.md) §3, con el alcance ajustado el **2026-11-10**: Vercel y Linear quedan **fuera de alcance por decisión explícita** (sólo hay cuenta de GitHub). La decisión y sus recibos están en [receipts/F0-LOCAL-2026-11-10.md](receipts/F0-LOCAL-2026-11-10.md).
 
 ## 1. Resumen
 
@@ -93,7 +93,7 @@ Higiene de secretos:
 
 ## 6. Línea base de las 10 tareas canónicas
 
-**Baseline vigente (2026-11-11).** 24 corridas: 2 por tarea y 3 en T1, T7, T8 y T9, con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` en `http://127.0.0.1:3283`, commit `c3ffb0b*` (árbol sucio) y el arnés de `evals/`. El id NIM válido es el doble prefijo; los ids de models.dev `meta/llama-3.3-70b-instruct` (410) y `nemotron-3.5-lightning:free` (404) no fueron accesibles con esta clave. No hubo timeouts, cuota agotada, mocks ni errores de API.
+**Baseline vigente (2026-11-11).** 24 corridas: 2 por tarea y 3 en T1, T7, T8 y T9, con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` en `http://127.0.0.1:3283`, commit `c3ffb0b*` (árbol sucio, sin equivalente en el historial actual) y el arnés de `evals/`. El id NIM válido es el doble prefijo; los ids de models.dev `meta/llama-3.3-70b-instruct` (410) y `nemotron-3.5-lightning:free` (404) no fueron accesibles con esta clave. No hubo timeouts, cuota agotada, mocks ni errores de API.
 
 | ID | Tarea | Criterio de éxito | Corridas | Resultado |
 | --- | --- | --- | --- | --- |
@@ -112,7 +112,7 @@ Higiene de secretos:
 
 ### Historial: intento DeepSeek
 
-**Método ejecutado (2026-11-11).** 24 corridas: 2 por tarea y 3 en T1, T7, T8 y T9, con `lmstudio/deepseek-r1-distill-qwen-14b` en `http://127.0.0.1:3280`, commit `c3ffb0b*` (árbol sucio) y el arnés de `evals/`. Se registraron éxito, pasos, tool calls, duración y fallos; no hubo lectura de tokens/coste.
+**Método ejecutado (2026-11-11).** 24 corridas: 2 por tarea y 3 en T1, T7, T8 y T9, con `lmstudio/deepseek-r1-distill-qwen-14b` en `http://127.0.0.1:3280`, commit `c3ffb0b*` (árbol sucio, sin equivalente en el historial actual) y el arnés de `evals/`. Se registraron éxito, pasos, tool calls, duración y fallos; no hubo lectura de tokens/coste.
 
 Este intento (3/24, 0/21 con modelo) quedó **inválido como referencia** por falta de tool-calling nativo y se conserva como historial; no cuenta para G0.
 

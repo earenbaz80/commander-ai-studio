@@ -407,10 +407,10 @@ Ejecuta una tool del agente en el servidor.
 
 ## 🔌 Endpoints de Plugins
 
-Un plugin instalado desde la UI vive como manifiesto en `.commander/plugins/<id>.manifest.json`; el runtime ejecuta además `.commander/plugins/<id>/index.js`.
+Un plugin instalado desde la UI vive como manifiesto en `.commander/plugins/<id>.manifest.json`; el runtime ejecuta además `.commander/plugins/<id>/index.js`. El manifiesto de instalación guarda el `checksum` sha256 de los archivos descargados.
 
 ### `GET /api/plugins?root=`
-Lista los manifiestos instalados: `{success, plugins: [{id, name, version, entr}]}`.
+Lista los manifiestos instalados y los plugins locales con `index.js`/`plugin.json`: `{success, plugins: [{id, name, version, apiVersion, permissions, checksum, source, marketplace, components}]}`. `checksum` es el sha256 de los archivos descargados al instalar (null en un plugin local); `apiVersion` y `permissions` salen de `plugin.json` cuando existe.
 
 ### `POST /api/plugins`
 **Body:** `{id, name?, version?, entrypoint?, root?}`. El `id` es un nombre de archivo (`[A-Za-z0-9._-]`, sin `..`); cualquier otra cosa responde 400.
@@ -418,8 +418,15 @@ Lista los manifiestos instalados: `{success, plugins: [{id, name, version, entr}
 ### `DELETE /api/plugins/:id?root=`
 Borra el manifiesto y el `.zip` del plugin, con el mismo filtro de `id`.
 
+### `POST /api/plugins/lifecycle`
+**Body:** `{hook, context}`. Lo usan el bucle del navegador y el del CLI, que no corren dentro de `AgentSession`: `hook` es `sessionStart`, `beforeModel`, `afterModel`, `sessionEnd`, `stop` o `error`, y `context` lleva `sessionId`, `root` (obligatorio), `goal`, `model` más los campos del hook (`turn`, `ok`, `answer`, `reason`, `error`). Ejecuta el mismo runtime de plugins y responde `{success, ran, errors}`; los hooks son observacionales.
+
 ### Hooks del runtime
-`beforeTool(ctx)` y `afterTool(ctx)` en `.commander/plugins/<id>/index.js` (ESM). `beforeTool` devuelve `{input}` para reemplazar la entrada; `afterTool` devuelve `{result}`. `ctx` incluye `toolId`, `input`, `root` y, en `afterTool`, `result`. Si un hook lanza, la tool se ejecuta igual y el fallo aparece en `data.pluginErrors`.
+Los hooks viven en `.commander/plugins/<id>/index.js` (ESM) y corren en orden alfabético por id, cada uno con un timeout de 5 s. `plugin.json`, junto al módulo, declara `apiVersion` y `permissions` (`lifecycle`, `tools`): se valida antes de importar, una mayor distinta de 1 se rechaza sin ejecutar código y un hook sin permiso no se despacha; sin manifiesto el plugin se carga como legado. El lifecycle es `sessionStart`, `beforeModel`, `afterModel`, `beforeTool`, `afterTool`, `sessionEnd`, `stop` y `error`.
+
+`beforeTool` devuelve `{input}` para reemplazar la entrada; `afterTool` devuelve `{result}`. Sus `ctx` incluyen `toolId`, `input`, `root` y, en `afterTool`, `result`. Los hooks de sesión reciben `sessionId`, `root`, `goal` y `model`; los de modelo añaden `phase`, `turn` y `ok`/`error` al volver. `sessionEnd` recibe `answer`, `stop` recibe `reason` y `error` recibe el mensaje. `sessionEnd` es el cierre normal; `stop` y `error` son alternativos.
+
+Si un hook lanza o se cuelga, la corrida sigue: el fallo queda en `getPluginErrors()` y los hooks de tool también lo adjuntan a `data.pluginErrors`. `examples/plugins/reference-plugin` registra el lifecycle completo en `.commander/reference-plugin.log`.
 
 ---
 

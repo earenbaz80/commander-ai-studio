@@ -10,8 +10,7 @@ GitHub muestra los `.html` como código en el visor de archivos: el roadmap rend
 
 - [Referencia de API](docs/API.md): endpoints de IA, agente, plugins y seguridad.
 - [LM Studio](docs/API.md#lm-studio): generación, carga automática del modelo y aviso de contexto en la UI.
-- [Plan de paridad](ROADMAP_PARITY.md): comparación con OpenCode, Antigravity y Freebuff, fases y criterios de aceptación.
-- [Roadmap de evolución](ROADMAP.md): resumen de paridad, plataforma y UX, con estado, puertas y secuencia.
+- [Roadmap](ROADMAP.md): el único roadmap del proyecto — paridad F0–F6, plataforma PL0–PL7 y UX 1.0, con estado, criterios, puertas y secuencia.
 
 ## Run Locally
 
@@ -27,16 +26,28 @@ Requiere Node.js 22.13+ (el backend usa `node:sqlite`).
 `npm run build:cli` empaqueta `bin/commander.ts` en `cli-dist/commander.mjs`
 (esbuild, ~5 MB con todo el JS inlineado; quedan externos `node-pty`,
 `playwright` y `vite`, que llegan por `npm` o por el repo). El `bin` del
-paquete apunta ahí y `prepack` lo regenera:
+paquete apunta ahí y `prepack` lo regenera. La UI es obligatoria: si falta
+`dist/index.html`, `build:cli` corta con un mensaje que pide `npm run build`
+en vez de dejar un tarball sin `cli-dist/dist`.
 
-- `npm pack` deja un tarball de ~1,1 MB con `cli-dist/`, `package.json` y este README.
+- `npm run build && npm pack` deja un tarball de ~2,36 MB con `cli-dist/` (CLI, servidor y UI), `package.json` y este README. `check:cli-package` ya hace ese build antes de empacar.
 - `npm i -g ./commander-ai-studio-2.5.1.tgz` instala `commander` (`--version`,
   `doctor`, `agent`, `repl`, `config`, `session`, `mcp`, `skills`, `completion`).
+- `commander serve` funciona desde el paquete instalado: sirve la UI de
+  `cli-dist/dist` sin depender del repo ni del cwd del operador.
 
-`serve`, `build` y `serve --dev` siguen siendo del repo: necesitan `dist/`,
-`public/` y `vite`, que no viajan en el tarball. Publicar en el registro exige
-quitar `private: true` y decidir si el paquete arrastra las dependencias de la
-app (hoy `npm i -g` instala las 33 `dependencies`, no sólo las del CLI).
+`commander build` y `commander serve --dev` siguen siendo del repo: necesitan
+las fuentes y `vite`. Fuera de un checkout del Studio cortan con un motivo en
+vez de ejecutar el `npm run build`/`dev` del cwd.
+
+La distribución sin registro npm es manual: `npm run build && npm pack` deja un
+`.tgz` que se comparte o se instala directamente. No hay publicación en npm ni
+asset automático en GitHub Releases. Para instalar el tarball:
+
+```bash
+npm i -g ./commander-ai-studio-2.5.1.tgz
+commander serve
+```
 
 ### Avatares
 
@@ -247,7 +258,7 @@ scrypt + salt, los tokens se guardan sólo como SHA-256 y las respuestas llevan
 [docs/API.md](docs/API.md#backend-multiinquilino).
 
 Es el backend local de Commander: no aprovisiona bindings para apps publicadas
-(eso sigue en la Fase 3 de [ROADMAP_PLATFORM.md](ROADMAP_PLATFORM.md)). La vista
+(eso sigue en **PL3** de [ROADMAP.md](ROADMAP.md) §4). La vista
 **Workbench → Backend** permite crear o iniciar sesión, gestionar registros y
 subir, descargar y borrar archivos contra `/api/backend`; el token vive en
 `sessionStorage` y se borra al cerrar sesión.
@@ -293,20 +304,40 @@ Las listas blancas de `allowedTools` escritas antes de estas tools no las incluy
 
 Un plugin es un módulo ESM en `.commander/plugins/<id>/index.js` (o `index.mjs`) con ganchos opcionales. Se carga desde el proyecto que estás trabajando, se recarga solo cuando cambia el fichero y no hace falta reiniciar el servidor.
 
+Junto al módulo, `plugin.json` declara la API y los permisos:
+
+```json
+{ "apiVersion": 1, "permissions": ["lifecycle", "tools"] }
+```
+
+Con manifiesto, el runtime lo valida **antes de importar** el módulo: una `apiVersion` mayor distinta de la soportada rechaza el plugin sin ejecutar una línea, y sólo se despachan los hooks cuyo permiso está declarado (`lifecycle` para sesión/modelo, `tools` para `beforeTool`/`afterTool`). Sin `plugin.json` el plugin se carga como legado con todos sus hooks.
+
 ```js
 export default {
+  sessionStart: (ctx) => console.log('arranca', ctx.sessionId),
+  beforeModel: (ctx) => console.log('turno', ctx.turn),
+  afterModel: (ctx) => console.log('respuesta', ctx.ok),
   // Puede reemplazar la entrada devolviendo { input }.
   beforeTool: (ctx) => ({ input: { ...ctx.input, path: String(ctx.input.path || '').trim() } }),
   // Puede reemplazar el resultado devolviendo { result }.
   afterTool: (ctx) => ({ result: { ...ctx.result, data: { ...ctx.result.data, plugin: ctx.toolId } } }),
+  sessionEnd: (ctx) => console.log('cierra', ctx.answer),
+  stop: (ctx) => console.log('cancelado', ctx.reason),
+  error: (ctx) => console.error('falló', ctx.error),
 };
 ```
 
-`ctx` trae `toolId`, `input` y `root`; en `afterTool` también `result`. Los hooks corren dentro del proceso del servidor con sus mismos permisos: son código de confianza, como un script de `package.json`. Un hook que lanza no rompe la tool —el fallo se adjunta a `data.pluginErrors`— y un plugin que no compila tampoco impide cargar los demás.
+Los hooks de tool reciben `toolId`, `input` y `root`; `afterTool` añade `result`. Los de sesión reciben `sessionId`, `root`, `goal` y `model`; `beforeModel`/`afterModel` añaden `phase`, `turn` y, al cerrar, `ok`/`error`. `sessionEnd` recibe `answer`, `stop` recibe `reason` y `error` recibe el mensaje.
+
+El lifecycle corre en orden alfabético por id de plugin. `sessionEnd` es el cierre normal; `stop` y `error` son cierres alternativos. Cada hook tiene un timeout de 5 s y un fallo o un cuelgue no rompe la corrida: los errores quedan en `getPluginErrors()` y los hooks de tool también se adjuntan a `data.pluginErrors`. Los hooks corren dentro del proceso del servidor con sus mismos permisos: son código de confianza, como un script de `package.json`. Un plugin que no compila tampoco impide cargar los demás.
+
+El bucle del servidor (`AgentSession`) ejecuta los hooks en proceso. El del navegador (`AgentLoop`) y el del CLI (`runAgent`) ejecutan el agente fuera del servidor y mandan cada hook a `POST /api/plugins/lifecycle`, que reutiliza ese mismo runtime: `sessionStart` antes del primer modelo, `beforeModel`/`afterModel` por llamada y un único cierre (`sessionEnd`, `stop` o `error`). Un fallo de red o un servidor sin plugins no cambia la corrida; cada petición se corta a los 15 s para que un servidor colgado no frene el modelo. Configuración → Extensiones → Plugins muestra la API, los permisos y el checksum de cada plugin instalado, incluidos los locales.
+
+`examples/plugins/reference-plugin` es el plugin de referencia: registra todos los hooks en `.commander/reference-plugin.log` sin alterar nada. Incluye `plugin.json` con la API 1 y ambos permisos.
 
 ### Catálogo de plugins (marketplaces de Claude)
 
-Configuración → Extensiones → Plugins lista los plugins publicados en `.claude-plugin/marketplace.json` de `anthropics/claude-plugins-official` y `anthropics/claude-code` (se puede cambiar con `COMMANDER_PLUGIN_MARKETPLACES=owner/repo,...`). El catálogo se lee por `raw.githubusercontent.com`, así que abre aunque la API de GitHub esté limitada; se cachea 10 minutos.
+Configuración → Extensiones → Plugins lista los plugins publicados en `.claude-plugin/marketplace.json` de `anthropics/claude-plugins-official` y `anthropics/claude-code` (se puede cambiar con `COMMANDER_PLUGIN_MARKETPLACES=owner/repo,...`). El catálogo se lee por `raw.githubusercontent.com`, así que abre aunque la API de GitHub esté limitada; se cachea 10 minutos. Si una entrada publica `checksum` (`sha256:…`), la instalación lo compara con la descarga antes de escribir nada y responde 409 si no coincide; el valor queda en el manifiesto y `GET /api/plugins` lo devuelve.
 
 Instalar no guarda un zip opaco: trae los archivos del plugin y los convierte en piezas nativas —`.md` de `commands/` y `agents/` a `skills/plugins/<id>/commands` y `skills/plugins/<id>/agents` con front matter, y `.mcp.json` a los servidores de la config—, deja una copia en `.commander/plugins/<id>/files/` y apunta lo escrito en `.commander/plugins/<id>.manifest.json`. Cada plugin va en su propia carpeta para que `skills/plugins/` pueda ignorarse en bloque sin ocultar las skills del proyecto. Desinstalar borra exactamente esas rutas, la copia y el manifiesto; los servidores MCP que añadió salen de la config.
 
@@ -495,6 +526,6 @@ Si algún día se distribuyera a terceros, haría falta un certificado de firma 
 
 ## Empaquetado
 
-`npm run build:all` encadena tipos, Vite, los bundles del servidor y `electron-builder`. Desde el CLI, `commander build --electron` corre ese mismo pipeline; sin la bandera, `commander build` hace sólo `npm run build` (tipos + Vite). El paquete lleva `node-pty` como `extraResources` (no recompilado: es N-API y su prebuild sirve para Node y Electron) y un hook `afterPack` recorta sus prebuilds a la plataforma y arquitectura compiladas.
+`npm run build:all` encadena tipos, Vite, los bundles del servidor y `electron-builder`. Desde un checkout, el CLI `commander build --electron` corre ese mismo pipeline; sin la bandera, `commander build` hace sólo `npm run build` (tipos + Vite). El paquete lleva `node-pty` como `extraResources` (no recompilado: es N-API y su prebuild sirve para Node y Electron) y un hook `afterPack` recorta sus prebuilds a la plataforma y arquitectura compiladas.
 
 Un tag que no pase `scripts/check-signing.cjs --require` no publica: es la única forma de que un instalador sin firmar no llegue a nadie por descuido.

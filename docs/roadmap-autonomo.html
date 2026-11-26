@@ -83,12 +83,12 @@
   <div><b>Reglas de marcado.</b> Un paso llega a 100 % sólo con evidencia en el árbol o una corrida real (test, recibo, instalación comprobada). <span class="mark done">[x]</span> cerrado · <span class="mark partial">[~]</span> en curso · <span class="mark todo">[ ]</span> sin empezar.</div>
   <div style="margin-top:6px"><b>Cómo se actualiza.</b> Los datos viven en el bloque <code>&lt;script id="plan"&gt;</code> de este archivo (peso y % por paso). Al cerrar un paso se sube su <code>progress</code> y se anota la evidencia; los porcentajes de fase y el global se recalculan ponderados al abrir la página.</div>
   <div style="margin-top:6px"><b>Publicado en.</b> <a href="https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html">earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html</a> — versión gráfica de este documento.</div>
-  <div style="margin-top:6px"><b>Fuentes.</b> docs/parity/baseline-2026-11.md · docs/parity/dogfooding-g1-d5.md · tests/agentLoop.test.ts · tests/cli/verifyGate.test.ts · tests/cli/defaultPermissions.test.ts · npm run build:cli.</div>
+  <div style="margin-top:6px"><b>Fuentes.</b> docs/parity/baseline-2026-11.md · docs/parity/dogfooding-g1-d5.md · docs/parity/receipts/G1-T10-15-2026-11-23.md · tests/agentLoop.test.ts · tests/cli/verifyGate.test.ts · tests/cli/defaultPermissions.test.ts · npm run build:cli.</div>
 </footer>
 
 <script type="application/json" id="plan">
 {
-  "updated": "2026-11-21",
+  "updated": "2026-11-23",
   "phases": [
     {
       "id": "F0",
@@ -104,7 +104,7 @@
         { "id": "F0-7", "title": "Multi-proveedor y multi-modelo intercambiables", "weight": 1, "progress": 100, "evidence": "src/agent/providers.ts · evals con Gemini/NVIDIA/Qwen locales" },
         { "id": "F0-8", "title": "Presupuesto y compactación de contexto (lecturas que sobreviven)", "weight": 1, "progress": 100, "evidence": "contextBudget.ts · outputBudget.ts · tests de compactación" },
         { "id": "F0-9", "title": "Subagentes: spawn_agents ≤6, 6 plantillas, worktree, allowlist y contrato de cierre", "weight": 2, "progress": 100, "evidence": "src/agent/tools/{task,spawnAgents}.ts · subagentTemplates.ts · tests/agent/subagents.test.ts" },
-        { "id": "F0-10", "title": "CLI instalable (bundle + bin + prepack + tarball verificado)", "weight": 2, "progress": 95, "evidence": "scripts/build-cli.mjs · tarball 1,1 MB · commander --version/doctor desde instalación global · guardián en CI (build:cli + npm pack + smoke) · sin private y con deps mínimas, npm i -g real instala 3 paquetes · falta publicar en npm" }
+        { "id": "F0-10", "title": "CLI instalable (bundle + bin + prepack + tarball verificado)", "weight": 2, "progress": 100, "evidence": "scripts/build-cli.mjs · tarball 2,36 MB con la UI · commander --version/doctor desde instalación global · guardián en CI (build:cli + npm pack + smoke) · sin private y con deps mínimas, npm i -g real instala 3 paquetes · distribución manual del tarball (`npm run build && npm pack`) · check:cli-package (2026-11-21)" }
       ]
     },
     {
@@ -112,10 +112,10 @@
       "name": "F1 · Fiabilidad medida",
       "goal": "Que la autonomía se pueda demostrar: subagentes que cierran bien, baseline y gate en todas las superficies.",
       "steps": [
-        { "id": "F1-1", "title": "T10: dos subagentes en paralelo que cierran bien (allowlist + worktree)", "weight": 3, "progress": 35, "evidence": "0/15 corridas (0 passed en evals/baseline-results.jsonl); G1-T10-09 0/6 sobre 0d8567d: los hijos cerraron 0/6 (max_tokens=4096 truncó al hijo A en 3, 2 timeouts y 1 fuga de hijo-b.txt); re-medición 2026-11-21 sobre 0407784 con max_tokens=8192: 0/3, hijo A aún truncado en 1/3, sin fuga y con worktrees limpios · recibo G1-T10-09-2026-11-20; falta que el hijo A cierre con texto" },
+        { "id": "F1-1", "title": "T10: dos subagentes en paralelo que cierran bien (allowlist + worktree)", "weight": 3, "progress": 70, "evidence": "0/3 en las 24 (0/9 con las extras); 24 líneas T10 de diagnóstico y 3 passed en esa serie; la tanda G1-T10-15 dio 6/6 con los siete checks fuera de las 24 tras cerrar G1-SUBAGENT-CLOSE · recibo G1-T10-15-2026-11-23; T10 no es regla de puerta y falta confirmarlo en las 24" },
         { "id": "F1-2", "title": "Baseline de 24 corridas en verde sostenido", "weight": 3, "progress": 30, "evidence": "F0: 8/24 (T1 3/3, T7 3/3, T3 y T5 1/2, resto 0)" },
         { "id": "F1-3", "title": "Gate de verificación también en escritorio y servidor", "weight": 2, "progress": 100, "evidence": "`refusalForClosing` en src/agent/verifyGate.ts · servidor (agentSession.ts) y escritorio (src/agent/loop.ts) alimentan el gate con ediciones y shell.run, ambos dialectos · tests/agentVerifyGate.api.test.ts, agentLoop.test.ts y agentTaskIntegration.test.ts · 6276e6e" },
-        { "id": "F1-4", "title": "Dogfooding G1 cerrado (5 días, 24 corridas comparadas)", "weight": 2, "progress": 60, "evidence": "D5 4/4 passed; G1 NO CERRADA por p95 de aprobación y T10 · recibo G1-DOGFOOD-2026-11-12" },
+        { "id": "F1-4", "title": "Dogfooding G1 ejecutado (5 días, 24 corridas comparadas)", "weight": 2, "progress": 60, "evidence": "D5 4/4 passed; G1 NO CERRADA con la única regla del p95 en rojo · T10 0/3 en las 24, declarado fuera de la puerta · recibo G1-DOGFOOD-2026-11-12 · bloque de medición de aprobación fuera del roadmap por decisión del 2026-11-23: no se ejecuta y G1 sigue abierta" },
         { "id": "F1-5", "title": "Reparación autónoma rojo→verde sin intervención humana", "weight": 2, "progress": 40, "evidence": "el gate devuelve la salida real y bloquea el cierre; falta medir cuántas corridas llegan solas al verde" },
         { "id": "F1-6", "title": "Arnés determinista de escenarios T1–T10 en CI", "weight": 1, "progress": 100, "evidence": "evals/harness.ts · evals/scenarios.ts · tests/evalsScenarios.test.ts" }
       ]
@@ -123,11 +123,11 @@
     {
       "id": "F2",
       "name": "F2 · Distribución del CLI",
-      "goal": "Que cualquiera pueda instalarlo y usarlo sin clonar el repo.",
+      "goal": "Que se pueda instalar y usar sin clonar el repo.",
       "steps": [
-        { "id": "F2-1", "title": "Publicar en el registro de npm", "weight": 2, "progress": 85, "evidence": "sin private, deps mínimas y tarball de 1,1 MB · falta cuenta npm y versión" },
+        { "id": "F2-1", "title": "Distribuir el tarball del CLI manualmente", "weight": 2, "progress": 100, "evidence": "`npm run build && npm pack` deja `commander-ai-studio-2.5.1.tgz` (2,36 MB, 49 archivos) · instalación global verificada · sin registro npm ni asset automático en GitHub Releases" },
         { "id": "F2-2", "title": "Paquete adelgazado (sólo dependencias del CLI)", "weight": 2, "progress": 100, "evidence": "dependencies = node-pty; npm i -g instala 3 paquetes (antes 273)" },
-        { "id": "F2-3", "title": "commander serve / build desde el paquete instalado", "weight": 1, "progress": 0, "evidence": "necesitan dist/, public/ y vite, que no viajan en el tarball" },
+        { "id": "F2-3", "title": "commander serve desde el paquete instalado", "weight": 1, "progress": 100, "evidence": "assets viajan en cli-dist/dist (public incluido por Vite) · tarball 2,36 MB / 49 archivos · serve instalado: health 200, `/` 200 y asset 200 · `build` desde el tarball no forma parte de F2-3: `build` y `serve --dev` se acotan a un checkout y cortan con motivo en 3 cwd sin checkout, sin escribir el marcador de delegación · check:cli-package (2026-11-21)" },
         { "id": "F2-4", "title": "Extensión de VS Code funcional (no scaffold)", "weight": 1, "progress": 25, "evidence": "vscode-extension/ lanza el CLI headless; no es un IDE integrado" }
       ]
     },

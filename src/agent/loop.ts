@@ -1,4 +1,5 @@
 import { uid } from './id';
+import { RunPluginLifecycle, type PluginCloseOutcome, type PluginLifecycleContext } from './pluginLifecycle';
 import type { AgentOrchestrator } from './orchestrator';
 import type { AgentTask } from './types';
 import { callAgentLLM, callAgentLLMTools } from './llm';
@@ -91,6 +92,9 @@ export interface AgentLLMClient {
   callTools: typeof callAgentLLMTools;
 }
 
+/** Construye el lifecycle de una corrida; la app pasa el emisor HTTP. */
+export type AgentLifecycleFactory = (context: PluginLifecycleContext) => RunPluginLifecycle;
+
 export const defaultAgentLLMClient: AgentLLMClient = {
   callJson: callAgentLLM,
   callTools: callAgentLLMTools,
@@ -117,11 +121,22 @@ export class AgentLoop {
    * bucle del CLI: acá se podía cerrar «listo» sin correr nada tras editar.
    */
   private verifyGate = new VerifyGate();
+  private lifecycleFactory?: AgentLifecycleFactory;
+  private lifecycle: RunPluginLifecycle | null = null;
+  private lifecycleTail: Promise<void> = Promise.resolve();
+  private lifecycleClosing: PluginCloseOutcome | null = null;
+  private modelTurns = 0;
 
-  constructor(orchestrator: AgentOrchestrator, model?: string, llmClient: AgentLLMClient = defaultAgentLLMClient) {
+  constructor(
+    orchestrator: AgentOrchestrator,
+    model?: string,
+    llmClient: AgentLLMClient = defaultAgentLLMClient,
+    lifecycleFactory?: AgentLifecycleFactory,
+  ) {
     this.orchestrator = orchestrator;
     this.model = model;
     this.llm = llmClient;
+    this.lifecycleFactory = lifecycleFactory;
   }
 
   /**
@@ -201,28 +216,39 @@ export class AgentLoop {
     // modelo: sin reiniciarlo, una corrida nueva hereda los fallos de la anterior.
     this.noProgressSteps = 0;
     this.verifyGate = new VerifyGate();
-    // Sin hilo propio cuando la corrida ya pertenece a una conversación (la
-    // auditoría del chat): crear uno por corrida llenaba el historial de sesiones
-    // tituladas con el prompt entero, una por pulsación.
-    if (task.persistThread !== false) {
-      void (async () => {
-        try {
-          await serverPersistence.createThread({ id: task.id, projectPath: task.cwd, title: task.goal.slice(0, 80), model: this.model });
-          await serverPersistence.appendMessage(task.id, { requestId: `goal-${task.id}`, role: 'user', parts: { goal: task.goal, cwd: task.cwd }, ts: Date.now() });
-        } catch { /* ignore */ }
-      })();
+    this.modelTurns = 0;
+    this.lifecycleClosing = null;
+    await this.beginLifecycle(task);
+    try {
+      // Sin hilo propio cuando la corrida ya pertenece a una conversación (la
+      // auditoría del chat): crear uno por corrida llenaba el historial de sesiones
+      // tituladas con el prompt entero, una por pulsación.
+      if (task.persistThread !== false) {
+        void (async () => {
+          try {
+            await serverPersistence.createThread({ id: task.id, projectPath: task.cwd, title: task.goal.slice(0, 80), model: this.model });
+            await serverPersistence.appendMessage(task.id, { requestId: `goal-${task.id}`, role: 'user', parts: { goal: task.goal, cwd: task.cwd }, ts: Date.now() });
+          } catch { /* ignore */ }
+        })();
+      }
+      // Pre-vuelo ANTES de orchestrator.start() (que reinicia el log de steps).
+      const { rules, mcpParts } = await this.prepare();
+      this.orchestrator.start(task, task.plan);
+      this.orchestrator.addThought('Inicio', `Objetivo: ${task.goal}\nCWD: ${task.cwd}`);
+      if (rules) {
+        this.orchestrator.addThought('Reglas repo', `Cargado ${rules.file} (${rules.text.length} chars)`);
+      }
+      if (mcpParts.length > 0) {
+        this.orchestrator.addThought('MCP', `Servidores activos: ${mcpParts.length}`);
+      }
+      await this.runStepSafely();
+    } catch (error: any) {
+      // Un fallo de pre-vuelo después de `sessionStart` también cierra.
+      if (this.lifecycle) this.failLifecycle(error);
+      throw error;
+    } finally {
+      await this.whenLifecycleSettled();
     }
-    // Pre-vuelo ANTES de orchestrator.start() (que reinicia el log de steps).
-    const { rules, mcpParts } = await this.prepare();
-    this.orchestrator.start(task, task.plan);
-    this.orchestrator.addThought('Inicio', `Objetivo: ${task.goal}\nCWD: ${task.cwd}`);
-    if (rules) {
-      this.orchestrator.addThought('Reglas repo', `Cargado ${rules.file} (${rules.text.length} chars)`);
-    }
-    if (mcpParts.length > 0) {
-      this.orchestrator.addThought('MCP', `Servidores activos: ${mcpParts.length}`);
-    }
-    await this.step();
   }
 
   /**
@@ -241,24 +267,119 @@ export class AgentLoop {
     this.noProgressSteps = 0;
     this.verifyGate = new VerifyGate();
     const { rules, mcpParts } = await this.prepare();
+    this.modelTurns = 0;
+    this.lifecycleClosing = null;
+    // Si el usuario detuvo la corrida durante el pre-vuelo, no hay nada que
+    // reanudar y tampoco se emite `sessionStart`.
+    if (!this.running) return;
     if (!this.orchestrator.resume()) {
       this.running = false;
       return;
     }
-    this.orchestrator.addThought('Continuación', `Retomando «${task.goal}» tras una interrupción (${used} pasos previos)`);
-    if (rules) {
-      this.orchestrator.addThought('Reglas repo', `Cargado ${rules.file} (${rules.text.length} chars)`);
+    await this.beginLifecycle(this.task);
+    try {
+      this.orchestrator.addThought('Continuación', `Retomando «${task.goal}» tras una interrupción (${used} pasos previos)`);
+      if (rules) {
+        this.orchestrator.addThought('Reglas repo', `Cargado ${rules.file} (${rules.text.length} chars)`);
+      }
+      if (mcpParts.length > 0) {
+        this.orchestrator.addThought('MCP', `Servidores activos: ${mcpParts.length}`);
+      }
+      await this.runStepSafely();
+    } catch (error: any) {
+      if (this.lifecycle) this.failLifecycle(error);
+      throw error;
+    } finally {
+      await this.whenLifecycleSettled();
     }
-    if (mcpParts.length > 0) {
-      this.orchestrator.addThought('MCP', `Servidores activos: ${mcpParts.length}`);
-    }
-    await this.step();
   }
 
   stop() {
     this.running = false;
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     this.orchestrator.stop();
+    const outcome = this.lifecycleClosing ?? { kind: 'stopped' as const, reason: 'user' as const };
+    this.lifecycleClosing = null;
+    this.closeLifecycle(outcome);
+  }
+
+  /** Construye y arranca el lifecycle de una corrida. */
+  private async beginLifecycle(task: AgentTask): Promise<void> {
+    const lifecycle = this.lifecycleFactory
+      ? this.lifecycleFactory({
+          sessionId: task.id,
+          root: task.cwd,
+          goal: task.goal,
+          model: this.model || '',
+        })
+      : null;
+    this.lifecycle = lifecycle;
+    if (!lifecycle) return;
+    // El arranque espera al cierre de una corrida anterior: `resume` puede
+    // ocurrir mientras el terminal previo todavía está en vuelo.
+    const started = this.lifecycleTail.then(() => lifecycle.start());
+    this.lifecycleTail = started.catch(() => { /* nunca rompe la corrida */ });
+    await started;
+  }
+
+  /** `stop()` es síncrono: el cierre se encola y nunca bloquea la UI. */
+  private closeLifecycle(outcome: PluginCloseOutcome): void {
+    const lifecycle = this.lifecycle;
+    if (!lifecycle) return;
+    this.lifecycle = null;
+    // Se encadena, no se reemplaza: si el cierre anterior sigue en vuelo, este
+    // espera su turno y `whenLifecycleSettled()` espera a los dos.
+    this.lifecycleTail = this.lifecycleTail
+      .then(() => lifecycle.close(outcome))
+      .catch(() => { /* nunca rompe la corrida */ });
+  }
+
+  /** Espera al hook terminal (tests y cierre ordenado). */
+  async whenLifecycleSettled(): Promise<void> {
+    await this.lifecycleTail;
+  }
+
+  /** Un fallo inesperado del paso también cierra el lifecycle. */
+  private async runStepSafely(): Promise<void> {
+    try {
+      await this.step();
+    } catch (error: any) {
+      this.failLifecycle(error);
+      throw error;
+    }
+  }
+
+  private failLifecycle(error: unknown): void {
+    this.lifecycleClosing = { kind: 'error', error: String((error as any)?.message || error) };
+    this.stop();
+  }
+
+  /** Envuelve una llamada al modelo con `beforeModel`/`afterModel`. */
+  private async modelCall<T>(call: () => Promise<T>): Promise<T> {
+    const turn = ++this.modelTurns;
+    await this.lifecycle?.beforeModel(turn);
+    try {
+      const result = await call();
+      await this.lifecycle?.afterModel(turn, true);
+      return result;
+    } catch (error: any) {
+      await this.lifecycle?.afterModel(turn, false, String(error?.message || error));
+      throw error;
+    }
+  }
+
+  /** `callTools` con su par beforeModel/afterModel pegado a la llamada real. */
+  private callToolsWithLifecycle(
+    ...args: Parameters<AgentLLMClient['callTools']>
+  ): ReturnType<AgentLLMClient['callTools']> {
+    return this.modelCall(() => this.llm.callTools(...args));
+  }
+
+  /** `callJson` con su par beforeModel/afterModel pegado a la llamada real. */
+  private callJsonWithLifecycle(
+    ...args: Parameters<AgentLLMClient['callJson']>
+  ): ReturnType<AgentLLMClient['callJson']> {
+    return this.modelCall(() => this.llm.callJson(...args));
   }
 
   private async loadRepoRules(): Promise<{ file: string; text: string } | null> {
@@ -332,6 +453,10 @@ export class AgentLoop {
       if (this.noProgressSteps >= 8) {
         this.addThoughtCapped('Límite de pasos', '8 pasos seguidos sin cambios: se detiene para evitar bucle.');
         this.pushTurn('user', 'CORTE: llevas 8 pasos sin producir ningún cambio en el workspace. Detente y reporta qué bloquea el avance, o pide instrucciones al usuario.');
+        this.lifecycleClosing = {
+          kind: 'error',
+          error: '8 pasos seguidos sin cambios: se detiene para evitar bucle.',
+        };
         this.stop();
       }
     }
@@ -431,6 +556,7 @@ export class AgentLoop {
     const text = String(decision.text ?? '');
     this.addThoughtCapped('Gate de verificación', text);
     if (decision.fatal) {
+      this.lifecycleClosing = { kind: 'error', error: text };
       this.stop();
       return true;
     }
@@ -440,7 +566,14 @@ export class AgentLoop {
 
   private async stepOnce() {
     if (!this.running || !this.task) return;
+    // Una intención de cierre de un turno que fue bloqueado no sobrevive al
+    // siguiente: el gate de verificación puede devolver el control al modelo.
+    this.lifecycleClosing = null;
     if (this.orchestrator.getState().steps.length >= this.task.maxSteps) {
+      this.lifecycleClosing = {
+        kind: 'error',
+        error: `Se alcanzó el límite de ${this.task.maxSteps} pasos sin respuesta final.`,
+      };
       this.stop();
       return;
     }
@@ -465,7 +598,11 @@ export class AgentLoop {
     }
 
     if (this.running) {
-      this.timer = setTimeout(() => this.step(), 400);
+      // Los pasos programados no pasan por `start()`: sin este cierre, un fallo
+      // del modelo en el segundo turno dejaba la corrida y el lifecycle abiertos.
+      this.timer = setTimeout(() => {
+        void this.runStepSafely().catch(() => { /* el cierre ya quedó registrado */ });
+      }, 400);
     }
   }
   private async runParallel(calls: { tool: string; input: unknown }[]) {
@@ -483,7 +620,7 @@ export class AgentLoop {
     if (!this.task) return;
     let native;
     try {
-      native = await this.llm.callTools(
+      native = await this.callToolsWithLifecycle(
         {
           goal: this.task.goal,
           cwd: this.task.cwd,
@@ -542,6 +679,10 @@ export class AgentLoop {
       // Sin calls = respuesta final, salvo que falte verificar la última edición.
       this.pushTurn('model', native.thought || '(sin salida)');
       if (this.blockClosingForVerification()) return;
+      this.lifecycleClosing = {
+        kind: 'done',
+        answer: native.thought || 'Objetivo completado.',
+      };
       this.addThoughtCapped('Finalizado', native.thought || 'Objetivo completado.');
       this.stop();
       return;
@@ -551,6 +692,10 @@ export class AgentLoop {
     const budget = this.toolBudget();
     if (budget <= 0) {
       this.pushTurn('model', native.thought || '(sin salida)');
+      this.lifecycleClosing = {
+        kind: 'error',
+        error: 'Se agotó el presupuesto de pasos antes de ejecutar las tools.',
+      };
       this.stop();
       return;
     }
@@ -575,7 +720,7 @@ export class AgentLoop {
 
   private async stepJson(recentSteps: any[], plan: any[]) {
     if (!this.task) return;
-    const llmRes = await this.llm.callJson(
+    const llmRes = await this.callJsonWithLifecycle(
       {
         goal: this.task.goal,
         cwd: this.task.cwd,
@@ -607,6 +752,7 @@ export class AgentLoop {
     }
 
     if (llmRes.finish) {
+      this.lifecycleClosing = { kind: 'done', answer: llmRes.answer || '' };
       if (llmRes.answer) {
         if (this.blockClosingForVerification()) return;
         this.addThoughtCapped('Finalizado', llmRes.answer);
@@ -628,6 +774,10 @@ export class AgentLoop {
     // Presupuesto: no ejecutar tools si no caben call+result dentro de maxSteps
     const budget = this.toolBudget();
     if (budget <= 0) {
+      this.lifecycleClosing = {
+        kind: 'error',
+        error: 'Se agotó el presupuesto de pasos antes de ejecutar las tools.',
+      };
       this.stop();
       return;
     }
@@ -650,6 +800,7 @@ export class AgentLoop {
       }
     } else {
       this.addThoughtCapped('Sin acción', 'LLM no propuso toolCalls ni finish. Forzando detención segura.');
+      this.lifecycleClosing = { kind: 'error', error: 'LLM no propuso toolCalls ni finish.' };
       this.stop();
       return;
     }

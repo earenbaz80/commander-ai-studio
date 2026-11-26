@@ -1,6 +1,6 @@
 # Dogfooding G1 — plan de 5 días y 24 corridas CLI-first
 
-> **Estado:** **D5 ejecutado el 2026-11-12** con sus **4 corridas `passed`**: `G1-D5-01` y `G1-D5-02` (T7, 9/9), `G1-D5-03` (T8, 3/3) y `G1-D5-04` (T9, 8/8). 28 corridas válidas ejecutadas —las 24 planificadas más 4 repeticiones—, **17 `passed`**. Agregado en §5.3 y recibo emitido: [G1-DOGFOOD-2026-11-12](receipts/G1-DOGFOOD-2026-11-12.md) → **NO CERRADO** (p95 de aprobación fuera del umbral y cierre de T10 abierto, ya con issue). G1 sigue **NO CERRADA**.
+> **Estado:** **D5 ejecutado el 2026-11-12** con sus **4 corridas `passed`**: `G1-D5-01` y `G1-D5-02` (T7, 9/9), `G1-D5-03` (T8, 3/3) y `G1-D5-04` (T9, 8/8). 28 corridas válidas ejecutadas —las 24 planificadas más 4 repeticiones—, **17 `passed`**. Agregado en §5.3 y recibo emitido: [G1-DOGFOOD-2026-11-12](receipts/G1-DOGFOOD-2026-11-12.md) → **NO CERRADO** con el p95 de aprobación fuera del umbral y el cierre de T10 abierto, ya con issue. T10 quedó después **declarado `failed`** con `G1-T10-13` (1/3) e issue abierto, **fuera de la puerta**; G1 sigue **NO CERRADA** por el p95.
 > **Días ejecutados:** [D1](dogfooding-g1-d1.md) · [D2](dogfooding-g1-d2.md) · [D3](dogfooding-g1-d3.md) · [D4](dogfooding-g1-d4.md) · [D5](dogfooding-g1-d5.md); cada hoja trae su resultado y su handoff.
 > **Base:** [runbook G1/F0](runbook-g1-f0.md) §5 (procedimiento y criterios), [baseline F0](baseline-2026-11.md) §6 (referencia 8/24) y [calibración de aprobación](g1-approval-calibration.md) (p95 15 151 ms, provisional).
 > **Regla de honestidad:** una corrida que no se ejecutó no se estima. Si falta modelo, servidor o decisión humana, el estado es `bloqueado` o `invalid`, nunca `passed`.
@@ -360,7 +360,7 @@ Parar el dogfooding y no declarar nada si:
 Sólo con el recibo y el diario D1–D5:
 
 1. Actualizar [backlog-f1.md](backlog-f1.md) §7: sustituir `NO CERRADO` por `CERRADO` **sólo** si §7.1 está completo; enlazar el recibo; anotar límites.
-2. Actualizar la matriz de `ROADMAP_PARITY.md` y la tabla de puertas de `ROADMAP.md` §4 con el mismo estado.
+2. Actualizar la tabla de puertas de `ROADMAP.md` §2 y el estado de F1 en §3 con el mismo estado.
 3. Si falla: dejar `NO CERRADO`, abrir los fixes y repetir las corridas afectadas. No se maquilla un fallo como «paridad parcial».
 
 ## 12. Riesgos operativos

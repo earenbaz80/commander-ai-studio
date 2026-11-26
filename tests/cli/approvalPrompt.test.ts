@@ -408,6 +408,45 @@ describe('menú interactivo de aprobaciones', () => {
     assert.equal(await pending, 'allow');
   });
 
+  test('el aviso se reprograma si el timer se adelanta al umbral', async () => {
+    // Node no garantiza el retardo mínimo: el timer puede dispararse una
+    // fracción antes de los 30 s y entonces el texto todavía no aplica. El
+    // aviso único no puede perderse por eso. Se fuerza ese adelanto con el
+    // primer `setTimeout` del prompt.
+    const realSetTimeout = globalThis.setTimeout;
+    let forced = false;
+    globalThis.setTimeout = ((fn: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => {
+      if (!forced) {
+        forced = true;
+        return realSetTimeout(fn, 0, ...args);
+      }
+      return realSetTimeout(fn, ms, ...args);
+    }) as unknown as typeof setTimeout;
+
+    try {
+      const input = new FakeInput();
+      const output = new FakeOutput();
+      const { pending } = askTracked(
+        approval('apr_aviso_adelantado', { expiresAt: Date.now() + APPROVAL_EXPIRY_WARNING_MS + 80 }),
+        input,
+        output
+      );
+
+      await new Promise((resolve) => realSetTimeout(resolve, 400));
+      assert.equal(forced, true, 'el aviso usó un timer');
+      assert.equal(
+        (output.text.match(/la aprobación caduca en/g) ?? []).length,
+        1,
+        'el aviso adelantado se reprograma y se emite una sola vez'
+      );
+
+      input.emit('data', 'a');
+      assert.equal(await pending, 'allow');
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+    }
+  });
+
   test('el timer del aviso no dispara después de decidir', async () => {
     const input = new FakeInput();
     const output = new FakeOutput();

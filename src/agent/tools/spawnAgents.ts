@@ -7,7 +7,7 @@ export interface SpawnAgentsInput {
   /** Opcional: la app lo rellena con la sesión que registró en el servidor. */
   parentSessionId?: string;
 }
-export interface SpawnAgentsOutput { results: { index: number; ok: boolean; answer?: string; error?: string }[]; spawned: number; capped: boolean; }
+export interface SpawnAgentsOutput { results: { index: number; ok: boolean; answer?: string; error?: string; worktreeCleanup?: { ok: boolean; error?: string; cause?: string; recovered?: boolean } }[]; spawned: number; capped: boolean; }
 
 export const spawnAgentsTool: ToolDefinition<SpawnAgentsInput, SpawnAgentsOutput> = {
   id: 'spawn_agents',

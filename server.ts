@@ -19,7 +19,7 @@ import { addRoot, listRoots, removeRoot, removableRoots, resolveProjectPath } fr
 import { enforceTool, getPermissions, setPermissions } from './permissions';
 import { mergeRuleSets, normalizeRules } from './src/agent/permissionRules';
 // `listSessions` ya lo exporta `sessionWorkspace` (sesiones de UI): se aliasa.
-import { createSession, forkSession, getOrLoadSession, listSessions as listAgentSessions, removeSession, stopSession } from './agentSession';
+import { createSession, forkSession, getOrLoadSession, latestSessionId, listSessions as listAgentSessions, removeSession, stopSession } from './agentSession';
 import { isValidSessionId } from './src/agent/sessionStore';
 import { decodeSessionState, type ApprovalDecision } from './src/agent/sessionTypes';
 import { normalizeOpenAIToolCalls, THINKING_OFF_PARAMS } from './src/agent/providers';
@@ -43,6 +43,30 @@ import { executeLocalHfModel, mapGeminiModel } from './localModels';
 import { countProviderTokens, estimateContextTokens } from './src/lib/contextFit';
 import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList, apiKeyMiddleware, getApiKey as getRequestApiKey } from './apiKeys';
 import { isAllowedHost, allowedHostsFromEnv } from './hostGuard';
+import { issuePairToken, pairTokenTtlMs, redeemPairToken } from './src/pair/pairTokens';
+import { isLoopbackPeer, pairAllowedOrigins, pairOriginRejection } from './src/pair/pairOrigin';
+import {
+  MAX_PAIR_DEVICES,
+  PAIR_DEVICE_COOKIE,
+  issuePairDevice,
+  listPairDevices,
+  pairDeviceCookie,
+  pairDeviceLimitReached,
+  resolvePairDevice,
+  revokePairDevice,
+} from './src/pair/pairDevices';
+import {
+  DESKTOP_CONTROLLER,
+  PAIR_LEASE_RENEW_MS,
+  claimPairLease,
+  dropPairLeasesForDevice,
+  pairLeaseAudit,
+  readPairLease,
+  releasePairLease,
+  renewPairLease,
+  requestPairTransfer,
+  transferPairLease,
+} from './src/pair/pairLease';
 import { CONTENT_SECURITY_POLICY } from './security';
 import { clearStrataLocalApiKey, getConfig, getConfigPath, getEnvProviderIds, getGlobalConfigPath, getProviderFileConfig, getProviderSecret, loadConfig, removeOpenAiCompatibleProvider, removeProviderConfig } from './src/config/index';
 import { PROVIDER_SPECS, NVIDIA_DEFAULT_MODEL, buildProviderList, customProviderSpecs, describeProvider, getAllProviderCatalog, getProviderCatalog } from './src/providers/registry';
@@ -62,6 +86,7 @@ import { mergeStrataToolCallFragment, normalizeStrataToolCalls } from './src/lib
 import { StrataLifecycleManager } from './src/lib/strataLifecycle';
 import { deleteStrataApiKey, getStrataApiKey, normalizeStrataApiKey, saveStrataApiKey } from './src/lib/strataKeyStore';
 import { redactStrataSecret } from './src/lib/strataRedaction';
+import { redactSecrets } from './secretRedaction';
 import {
   classifyStrataFailure,
   fetchStrataWithRetry,
@@ -101,6 +126,9 @@ import { createDeployRouter } from './deploy/routes';
 import { createBrowserRouter } from './browserRoutes';
 import { createIntegrationsRouter } from './src/integrations/router';
 import { createTenantBackendRouter } from './backend/routes';
+import { createBackendRouter } from './deploy/backend/routes';
+import { injectBackendEnv } from './deploy/backend/releaseEnv';
+import { createConfiguredBackendAdapter } from './deploy/backend/configuredAdapter';
 import { safeFetch } from './ssrf';
 import {
   LocalModelDownloadManager,
@@ -176,8 +204,18 @@ app.use((_req, _res, next) => {
 // /api/health queda exento: un pico de sondeo no puede dejar sin margen a
 // una mutación, ni una ráfaga de acciones bloquear el health del agente.
 const RATE_WINDOW_MS = 60_000;
-const RATE_READ_MAX = 1200;
-const RATE_WRITE_MAX = 300;
+/**
+ * Presupuesto por IP y minuto. En producción son 300 escrituras; la suite
+ * comparte un solo server entre decenas de archivos y ese volumen no es el de
+ * una UI, así que el arnés sube el tope por entorno (`COMMANDER_RATE_WRITE_MAX`)
+ * en lugar de repartir los tests o desactivar el límite.
+ */
+function rateLimitFromEnv(name: string, fallback: number): number {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
+}
+const RATE_READ_MAX = rateLimitFromEnv('COMMANDER_RATE_READ_MAX', 1200);
+const RATE_WRITE_MAX = rateLimitFromEnv('COMMANDER_RATE_WRITE_MAX', 300);
 const RATE_EXEMPT = new Set(['/api/health']);
 const globalRate = new Map<string, { read: number; write: number; reset: number }>();
 app.use((_req, _res, next) => {
@@ -593,6 +631,372 @@ app.post('/api/agent/sessions', (req, res) => {
     });
   } catch (e: any) { res.status(400).json({ success: false, error: e?.message }); }
 });
+// --- Emparejamiento (F3) ---------------------------------------------------
+// Enlace de un solo uso para abrir la misma sesión en otro dispositivo. En este
+// paso sólo existen la emisión (loopback) y el canje con guarda de `Origin`; la
+// cookie de dispositivo, la lista de dispositivos y el lease son los criterios
+// siguientes de F3, y `--remote` no se toca mientras G2 siga sin veredicto.
+const PAIR_NO_STORE = { 'Cache-Control': 'no-store', Vary: 'Origin' };
+
+function pairOrigins(req: any): string[] {
+  return pairAllowedOrigins(req.socket?.localPort, CORS_ALLOW);
+}
+
+// Emisión: sólo desde la máquina host. El CLI no manda `Origin`; una página
+// ajena sí, y cae en la guarda. Un navegador no puede omitirlo, así que el
+// hueco de «sin Origin» no es alcanzable desde la web.
+app.post('/api/pair/issue', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  if (!isLoopbackPeer(req.socket?.remoteAddress)) {
+    return res.status(403).json({ success: false, error: 'el emparejamiento se emite sólo desde loopback' });
+  }
+  const rejection = pairOriginRejection({
+    origin: req.headers.origin,
+    secFetchSite: req.headers['sec-fetch-site'],
+    allowedOrigins: pairOrigins(req),
+    allowMissingOrigin: true,
+  });
+  if (rejection) return res.status(403).json({ success: false, error: rejection });
+
+  const requested = req.body?.sessionId;
+  let sessionId: string | null = null;
+  if (requested !== undefined && requested !== null && String(requested).trim() !== '') {
+    const id = String(requested).trim();
+    if (!isValidSessionId(id)) return res.status(400).json({ success: false, error: 'id inválido' });
+    if (!getOrLoadSession(id)) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    sessionId = id;
+  } else {
+    // La más reciente de todas: memoria y store persistido. Tras reiniciar el
+    // server el registro en memoria está vacío y las sesiones siguen en disco;
+    // mirar sólo la memoria daría 409 aunque hubiera sesiones para emparejar.
+    const latest = latestSessionId();
+    if (!latest) {
+      return res
+        .status(409)
+        .json({ success: false, error: 'no hay sesiones: pasá --session <id> o creá una primero' });
+    }
+    sessionId = latest;
+  }
+
+  const { token, expiresAt } = issuePairToken(sessionId);
+  return res.json({ success: true, token, sessionId, expiresAt, ttlMs: pairTokenTtlMs() });
+});
+
+// Canje: exige `Origin` exacto. El token se consume sólo después de esa guarda,
+// así un intento cross-site no quema el enlace del dueño.
+app.post('/api/pair/redeem', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  const rejection = pairOriginRejection({
+    origin: req.headers.origin,
+    secFetchSite: req.headers['sec-fetch-site'],
+    allowedOrigins: pairOrigins(req),
+  });
+  if (rejection) return res.status(403).json({ success: false, error: rejection });
+
+  // El tope se mira antes de canjear: consumir el token para después responder
+  // 409 dejaría al operador sin enlace. Revocar uno y generar otro es barato.
+  if (pairDeviceLimitReached()) {
+    return res.status(409).json({
+      success: false,
+      error: `límite de ${MAX_PAIR_DEVICES} dispositivos: revocá uno antes de emparejar otro`,
+    });
+  }
+
+  const result = redeemPairToken(req.body?.token);
+  if (!result.ok) {
+    if (result.reason === 'used') {
+      return res
+        .status(401)
+        .json({ success: false, error: 'enlace ya usado: generá uno nuevo en la máquina host' });
+    }
+    // Caducado, desconocido y basura responden igual: no se filtra si existió.
+    return res.status(410).json({ success: false, error: 'enlace inválido o caducado' });
+  }
+
+  const session = getOrLoadSession(result.sessionId);
+  if (!session) {
+    return res.status(410).json({ success: false, error: 'la sesión emparejada ya no existe' });
+  }
+
+  // Credencial del dispositivo: opaca, `HttpOnly` y `SameSite=Strict`. El token
+  // en claro sólo viaja en esta cabecera; en el cuerpo va el id del registro.
+  const issued = issuePairDevice({ userAgent: req.headers['user-agent'] });
+  if (!issued.ok) {
+    return res.status(409).json({
+      success: false,
+      error: `límite de ${MAX_PAIR_DEVICES} dispositivos: revocá uno antes de emparejar otro`,
+    });
+  }
+  res.setHeader(
+    'Set-Cookie',
+    pairDeviceCookie(issued.token, { secure: req.protocol === 'https' })
+  );
+  return res.json({
+    success: true,
+    session: { id: session.id, status: session.getStatus(), goal: session.getGoal() },
+    device: { id: issued.device.id, createdAt: issued.device.createdAt, expiresAt: issued.device.expiresAt },
+  });
+});
+
+// ── Dispositivos emparejados ────────────────────────────────────────────────
+// Registro y revocación (§6.2). La lista y la baja son operaciones del host:
+// sólo loopback, y la baja exige `Origin` exacto como cualquier mutación.
+app.get('/api/pair/devices', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  if (!isLoopbackPeer(req.socket?.remoteAddress)) {
+    return res.status(403).json({ success: false, error: 'la lista de dispositivos se lee sólo desde loopback' });
+  }
+  return res.json({ success: true, devices: listPairDevices(), maxDevices: MAX_PAIR_DEVICES });
+});
+
+app.delete('/api/pair/devices/:id', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  if (!isLoopbackPeer(req.socket?.remoteAddress)) {
+    return res.status(403).json({ success: false, error: 'la revocación se hace sólo desde loopback' });
+  }
+  const rejection = pairOriginRejection({
+    origin: req.headers.origin,
+    secFetchSite: req.headers['sec-fetch-site'],
+    allowedOrigins: pairOrigins(req),
+  });
+  if (rejection) return res.status(403).json({ success: false, error: rejection });
+
+  const revoked = revokePairDevice(req.params.id);
+  if (!revoked) return res.status(404).json({ success: false, error: 'dispositivo no encontrado' });
+  // Revocar devuelve el control al escritorio: un dispositivo perdido no puede
+  // quedarse con el lease de ninguna sesión.
+  dropPairLeasesForDevice(req.params.id);
+  return res.json({ success: true, device: revoked });
+});
+
+// Quién soy para el cliente emparejado. Caducada, revocada y desconocida
+// responden igual (401, mismo cuerpo): no se filtra si un id existió.
+app.get('/api/pair/device', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  const checked = resolvePairDevice((req as any).cookies?.[PAIR_DEVICE_COOKIE]);
+  if (!checked.ok) {
+    return res.status(401).json({ success: false, error: 'dispositivo no autorizado' });
+  }
+  return res.json({ success: true, device: checked.device });
+});
+
+// ── Control lease ───────────────────────────────────────────────────────────
+// Un solo escritor por sesión (§6.4). Leer es libre para cualquier dispositivo
+// emparejado; escribir sin el lease da 409 `LEASE_HELD`, y el traspaso sólo
+// cambia de dueño cuando el escritor actual lo acepta y el nuevo ve el `ack`.
+function pairLeaseSession(req: any, res: any): string | null {
+  const raw = String(req.query?.sessionId ?? req.body?.sessionId ?? '').trim();
+  if (!raw || !isValidSessionId(raw)) {
+    res.status(400).json({ success: false, error: 'id inválido' });
+    return null;
+  }
+  if (!getOrLoadSession(raw)) {
+    res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    return null;
+  }
+  return raw;
+}
+
+function pairLeaseOriginRejection(req: any): string | null {
+  return pairOriginRejection({
+    origin: req.headers.origin,
+    secFetchSite: req.headers['sec-fetch-site'],
+    allowedOrigins: pairOrigins(req),
+  });
+}
+
+/** Dispositivo del request; `DESKTOP_CONTROLLER` sólo si se permite y es loopback. */
+function pairLeaseCaller(req: any, res: any, options: { allowDesktop?: boolean } = {}): string | null {
+  const cookie = (req as any).cookies?.[PAIR_DEVICE_COOKIE];
+  if (!cookie) {
+    if (options.allowDesktop && isLoopbackPeer(req.socket?.remoteAddress)) return DESKTOP_CONTROLLER;
+    res.status(401).json({ success: false, error: 'dispositivo no autorizado' });
+    return null;
+  }
+  const checked = resolvePairDevice(cookie);
+  if (!checked.ok) {
+    res.status(401).json({ success: false, error: 'dispositivo no autorizado' });
+    return null;
+  }
+  return checked.device.id;
+}
+
+const PAIR_LEASE_REJECTIONS: Record<string, { code: string; error: string }> = {
+  held: { code: 'LEASE_HELD', error: 'la sesión la escribe otro dispositivo: pedí el traspaso' },
+  stale: { code: 'LEASE_STALE', error: 'el control cambió: recargá el estado antes de reintentar' },
+  owner: { code: 'LEASE_OWNED', error: 'ya tenés el control de esta sesión' },
+  'no-request': { code: 'LEASE_NO_REQUEST', error: 'no hay un traspaso pendiente que aceptar' },
+  'invalid-target': {
+    code: 'LEASE_TARGET_UNAVAILABLE',
+    error: 'el dispositivo destino no existe o está revocado',
+  },
+};
+
+function pairLeaseRejection(res: any, reason: string): any {
+  const entry = PAIR_LEASE_REJECTIONS[reason] ?? {
+    code: 'LEASE_HELD',
+    error: 'control no disponible',
+  };
+  return res.status(409).json({ success: false, code: entry.code, error: entry.error });
+}
+
+/**
+ * Escritura de sesión con lease (§6.4): un dispositivo emparejado escribe sólo
+ * si es el dueño y manda el `seq` vigente. Vale para toda mutación que escriba
+ * de verdad:
+ *
+ *   • el turno de usuario (`POST /api/agent/sessions/:id/message`);
+ *   • la resolución de una aprobación (`…/approvals/:approvalId`), porque
+ *     aprobar es aplicar un diff;
+ *   • el checkpoint del CLI (`PUT …/state`), que pisa el estado persistido;
+ *   • el fork que arranca el bucle (`POST …/fork` con `run: true`): copiar no
+ *     escribe, pero la copia que corre sí;
+ *   • cancelar la tanda (`POST …/cancel`), que cambia el estado de la sesión;
+ *   • aplicar una propuesta (`POST …/proposals/:proposalId/apply`), salvo con
+ *     `dryRun`, que no toca el disco.
+ *
+ * No se aplica a las lecturas, al fork sin `run` ni a borrar la sesión: borrar
+ * es limpieza y no una escritura de contenido, y quien la creó debe poder
+ * retirarla sin pedir el control. En las rutas guardadas, mientras el lease está
+ * en el escritorio, los clientes locales (sin cookie) siguen escribiendo como
+ * siempre; un dispositivo que aún no reclamó recibe 409 `LEASE_HELD`, y con el
+ * control en otro dispositivo toda escritura ajena —incluida la del escritorio—
+ * también, para que el escritor sea uno solo. El `seq` viejo da 409
+ * `LEASE_STALE`: un mensaje en vuelo no revive un control ya cedido.
+ */
+function pairLeaseWriteDenied(req: any, res: any, sessionId: string): boolean {
+  const cookie = (req as any).cookies?.[PAIR_DEVICE_COOKIE];
+  let caller = DESKTOP_CONTROLLER;
+  if (cookie) {
+    const checked = resolvePairDevice(cookie);
+    if (!checked.ok) {
+      res.status(401).json({ success: false, error: 'dispositivo no autorizado' });
+      return true;
+    }
+    caller = checked.device.id;
+  }
+  const lease = readPairLease(sessionId);
+  if (lease.deviceId === DESKTOP_CONTROLLER) {
+    if (caller === DESKTOP_CONTROLLER) return false;
+    pairLeaseRejection(res, 'held');
+    return true;
+  }
+  if (lease.deviceId !== caller) {
+    pairLeaseRejection(res, 'held');
+    return true;
+  }
+  const seq = Number(req.body?.seq);
+  if (!Number.isInteger(seq) || seq !== lease.seq) {
+    pairLeaseRejection(res, 'stale');
+    return true;
+  }
+  return false;
+}
+
+app.get('/api/pair/lease', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  const sessionId = pairLeaseSession(req, res);
+  if (!sessionId) return;
+  const caller = pairLeaseCaller(req, res, { allowDesktop: true });
+  if (!caller) return;
+  const lease = readPairLease(sessionId);
+  return res.json({
+    success: true,
+    lease,
+    mine: lease.deviceId === caller,
+    desktop: caller === DESKTOP_CONTROLLER,
+    renewMs: PAIR_LEASE_RENEW_MS,
+  });
+});
+
+app.post('/api/pair/lease', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  const rejection = pairLeaseOriginRejection(req);
+  if (rejection) return res.status(403).json({ success: false, error: rejection });
+  const sessionId = pairLeaseSession(req, res);
+  if (!sessionId) return;
+  const deviceId = pairLeaseCaller(req, res);
+  if (!deviceId) return;
+  const result = claimPairLease(sessionId, deviceId);
+  if (!result.ok) return pairLeaseRejection(res, result.reason);
+  return res.json({ success: true, lease: result.lease, mine: true, renewMs: PAIR_LEASE_RENEW_MS });
+});
+
+app.post('/api/pair/lease/renew', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  const rejection = pairLeaseOriginRejection(req);
+  if (rejection) return res.status(403).json({ success: false, error: rejection });
+  const sessionId = pairLeaseSession(req, res);
+  if (!sessionId) return;
+  const deviceId = pairLeaseCaller(req, res);
+  if (!deviceId) return;
+  const seq = Number(req.body?.seq);
+  if (!Number.isInteger(seq)) return res.status(400).json({ success: false, error: 'seq requerido' });
+  const result = renewPairLease(sessionId, deviceId, seq);
+  if (!result.ok) return pairLeaseRejection(res, result.reason);
+  return res.json({ success: true, lease: result.lease, mine: true, renewMs: PAIR_LEASE_RENEW_MS });
+});
+
+app.post('/api/pair/lease/request', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  const rejection = pairLeaseOriginRejection(req);
+  if (rejection) return res.status(403).json({ success: false, error: rejection });
+  const sessionId = pairLeaseSession(req, res);
+  if (!sessionId) return;
+  const deviceId = pairLeaseCaller(req, res);
+  if (!deviceId) return;
+  const result = requestPairTransfer(sessionId, deviceId);
+  if (!result.ok) return pairLeaseRejection(res, result.reason);
+  return res.json({ success: true, lease: result.lease, pending: result.lease.pending !== null });
+});
+
+app.post('/api/pair/lease/transfer', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  const rejection = pairLeaseOriginRejection(req);
+  if (rejection) return res.status(403).json({ success: false, error: rejection });
+  const sessionId = pairLeaseSession(req, res);
+  if (!sessionId) return;
+  const deviceId = pairLeaseCaller(req, res);
+  if (!deviceId) return;
+  const seq = Number(req.body?.seq);
+  if (!Number.isInteger(seq)) return res.status(400).json({ success: false, error: 'seq requerido' });
+  const toDeviceId = req.body?.toDeviceId === undefined ? undefined : String(req.body.toDeviceId);
+  const result = transferPairLease(sessionId, deviceId, { seq, toDeviceId });
+  if (!result.ok) return pairLeaseRejection(res, result.reason);
+  return res.json({ success: true, lease: result.lease, ack: result.ack, renewMs: PAIR_LEASE_RENEW_MS });
+});
+
+app.post('/api/pair/lease/release', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  const rejection = pairLeaseOriginRejection(req);
+  if (rejection) return res.status(403).json({ success: false, error: rejection });
+  const sessionId = pairLeaseSession(req, res);
+  if (!sessionId) return;
+  const deviceId = pairLeaseCaller(req, res);
+  if (!deviceId) return;
+  const seq = req.body?.seq === undefined ? undefined : Number(req.body.seq);
+  if (seq !== undefined && !Number.isInteger(seq)) {
+    return res.status(400).json({ success: false, error: 'seq inválido' });
+  }
+  const result = releasePairLease(sessionId, deviceId, { seq });
+  if (!result.ok) return pairLeaseRejection(res, result.reason);
+  return res.json({ success: true, lease: result.lease });
+});
+
+// Historial de control: visible en el escritorio (§6.4). Sin secretos.
+app.get('/api/pair/lease/audit', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  if (!isLoopbackPeer(req.socket?.remoteAddress)) {
+    return res.status(403).json({ success: false, error: 'el historial de control se lee sólo desde loopback' });
+  }
+  if (req.query?.sessionId !== undefined) {
+    const sessionId = pairLeaseSession(req, res);
+    if (!sessionId) return;
+    return res.json({ success: true, entries: pairLeaseAudit(sessionId) });
+  }
+  return res.json({ success: true, entries: pairLeaseAudit() });
+});
+
 app.get('/api/agent/sessions', (_req, res) => {
   try {
     res.json({ success: true, sessions: listAgentSessions() });
@@ -625,7 +1029,11 @@ app.post('/api/agent/sessions/:id/proposals/:proposalId/apply', (req, res) => {
     }
     const session = getOrLoadSession(id);
     if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
-    const result = session.applyProposal(proposalId, { dryRun: req.body?.dryRun === true });
+    const dryRun = req.body?.dryRun === true;
+    // Aplicar escribe el archivo y crea el checkpoint; `dryRun` sólo simula, así
+    // que se lee sin control como cualquier consulta.
+    if (!dryRun && pairLeaseWriteDenied(req, res, id)) return;
+    const result = session.applyProposal(proposalId, { dryRun });
     const status = result.ok
       ? 200
       : result.code === 'PROPOSAL_NOT_FOUND'
@@ -682,6 +1090,7 @@ app.post('/api/agent/sessions/:id/message', (req, res) => {
     if (!isValidSessionId(id)) return res.status(400).json({ success: false, error: 'id inválido' });
     const session = getOrLoadSession(id);
     if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    if (pairLeaseWriteDenied(req, res, id)) return;
     const text = String(req.body?.text ?? req.body?.message ?? '').trim();
     if (!text) return res.status(400).json({ success: false, error: 'text requerido' });
     if (text.length > 20_000) return res.status(400).json({ success: false, error: 'text demasiado largo (>20000)' });
@@ -704,6 +1113,7 @@ app.post('/api/agent/sessions/:id/approvals/:approvalId', (req, res) => {
     }
     const session = getOrLoadSession(id);
     if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    if (pairLeaseWriteDenied(req, res, id)) return;
     const decision = String(req.body?.decision || '');
     if (decision !== 'allow' && decision !== 'deny' && decision !== 'allow-session') {
       return res.status(400).json({ success: false, error: 'decision inválida' });
@@ -730,6 +1140,9 @@ app.post('/api/agent/sessions/:id/fork', (req, res) => {
     const b = req.body || {};
     const text = String(b.text ?? b.message ?? '').trim();
     if (text.length > 20_000) return res.status(400).json({ success: false, error: 'text demasiado largo (>20000)' });
+    // Copiar no escribe; arrancar la copia sí pone otro bucle a escribir sobre
+    // el mismo workspace, así que el fork con `run` exige el control de la fuente.
+    if (b.run === true && pairLeaseWriteDenied(req, res, id)) return;
     const session = forkSession(id);
     if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
     if (text) session.addMessage(text);
@@ -753,6 +1166,9 @@ app.put('/api/agent/sessions/:id/state', (req, res) => {
     const session = getOrLoadSession(id);
     if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
     if (session.isRunning()) return res.status(409).json({ success: false, error: 'la sesión está en ejecución' });
+    // El checkpoint del CLI reemplaza el estado persistido: es una escritura y
+    // compite con el escritor que tenga el control.
+    if (pairLeaseWriteDenied(req, res, id)) return;
     const state = decodeSessionState(req.body?.state ?? req.body);
     if (!state || state.id !== id) {
       return res.status(400).json({ success: false, error: 'estado inválido o de otra sesión' });
@@ -786,6 +1202,9 @@ app.post('/api/agent/sessions/:id/cancel', async (req, res) => {
     if (!isValidSessionId(id)) return res.status(400).json({ success: false, error: 'id inválido' });
     const session = getOrLoadSession(id);
     if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    // Parar la tanda cambia el estado de la sesión: es una escritura y no puede
+    // venir de un cliente que no tiene el control.
+    if (pairLeaseWriteDenied(req, res, id)) return;
     // Cancelar sólo a los hijos dejaría al bucle padre gastando tokens: la
     // sesión autoritativa se para también.
     const parentCancelled = session.getStatus() === 'running' || session.getStatus() === 'idle';
@@ -1100,6 +1519,9 @@ app.put('/api/permissions', (req, res) => {
       },
       // Las reglas por patrón tienen su propio endpoint; el panel no las pisa.
       rules: current.rules,
+      // La política MCP se puede editar por la misma API de permisos y tampoco
+      // se pierde cuando el panel guarda sólo el modo o los globs.
+      mcpToolRules: "mcpToolRules" in patch ? patch.mcpToolRules : current.mcpToolRules,
       ...(current.rulesImportedAt ? { rulesImportedAt: current.rulesImportedAt } : {}),
     };
     res.json({ success: true, root, permissions: setPermissions(root, next) });
@@ -1535,7 +1957,12 @@ async function probeOpenAiCompatibility(baseURL: string, apiKey?: string): Promi
       compatible: false,
       status: 'unreachable',
       models: [],
-      error: error?.name === 'TimeoutError' ? 'sin respuesta en 8 s' : error?.message || 'no se pudo conectar',
+      // `fetch` repite la URL en el error: un `baseUrl` con credenciales
+      // (`https://usuario:clave@host`) devolvería la clave al cliente.
+      error:
+        error?.name === 'TimeoutError'
+          ? 'sin respuesta en 8 s'
+          : redactSecrets(error?.message || 'no se pudo conectar'),
     };
   }
 }
@@ -2407,11 +2834,16 @@ app.delete('/api/providers/:id', (req, res) => {
 // Monta el router de MCP bajo /api/mcp
 import { mcpRouter } from './src/mcp/index.js';
 import { pluginMarketRouter } from './src/plugins/marketplace.js';
+import { pluginLifecycleRouter } from './src/plugins/lifecycleApi.js';
+import { listPluginFiles, parsePluginApiVersion, readPluginManifestSummary } from './pluginsRuntime.js';
 import { uninstallInstalledPlugin } from './src/plugins/uninstall.js';
 app.use('/api/mcp', mcpRouter);
 // Catálogo de plugins (marketplace.json) bajo el mismo prefijo: sus rutas
 // `/discover` e `/install-from-marketplace` no chocan con las de arriba.
 app.use('/api/plugins', pluginMarketRouter);
+// Hooks de lifecycle para el bucle del navegador y el del CLI, que no corren
+// dentro de `AgentSession`: la ruta reutiliza el mismo runtime de plugins.
+app.use('/api/plugins', pluginLifecycleRouter);
 
 // ==================== PLUGINS ECOSISTEMA ====================
 // Rutas basicas para discovery, instalacion y listado de plugins.
@@ -2441,23 +2873,50 @@ app.get('/api/plugins', (req, res) => {
     if (!fs.existsSync(p)) return res.json({ success: true, plugins: [] });
 
     const files = fs.readdirSync(p);
+    // Plugins locales (carpeta con `index.js` y `plugin.json`): el runtime los
+    // ejecuta, así que también son instalaciones que la UI debe poder revisar.
+    // `listPluginFiles` sólo localiza la entrada; no importa el módulo.
+    const local = new Map(listPluginFiles(root).map((plugin) => [plugin.id, plugin.file]));
+    const localManifest = (id: string) => {
+      const file = local.get(id);
+      return file ? readPluginManifestSummary(file) : null;
+    };
+    const asPermissions = (value: unknown): string[] | null =>
+      Array.isArray(value)
+        ? value.filter((permission): permission is string => typeof permission === 'string')
+        : null;
+
     const plugins: any[] = [];
     for (const file of files) {
       if (!file.endsWith('.manifest.json')) continue;
       const fallbackId = file.replace(/\.manifest\.json$/, '');
       try {
         const manifest = JSON.parse(fs.readFileSync(path.join(p, file), 'utf8'));
+        const id = manifest.id || fallbackId;
+        const localMeta = localManifest(id);
         plugins.push({
-          id: manifest.id || fallbackId,
-          name: manifest.name || fallbackId,
-          version: manifest.version ?? null,
+          id,
+          name: localMeta?.name || manifest.name || fallbackId,
+          version: localMeta?.version ?? manifest.version ?? null,
+          apiVersion: localMeta?.apiVersion ?? parsePluginApiVersion(manifest.apiVersion),
+          permissions: localMeta?.permissions ?? asPermissions(manifest.permissions),
+          checksum: typeof manifest.checksum === 'string' ? manifest.checksum : null,
           source: manifest.source || 'marketplace',
           marketplace: manifest.marketplace || null,
           components: manifest.components || null,
           installedAt: manifest.installedAt || null,
         });
       } catch {
-        plugins.push({ id: fallbackId, name: fallbackId, version: null, source: 'manifest' });
+        const localMeta = localManifest(fallbackId);
+        plugins.push({
+          id: fallbackId,
+          name: localMeta?.name || fallbackId,
+          version: localMeta?.version ?? null,
+          apiVersion: localMeta?.apiVersion ?? null,
+          permissions: localMeta?.permissions ?? null,
+          checksum: null,
+          source: 'manifest',
+        });
       }
     }
 
@@ -2466,7 +2925,36 @@ app.get('/api/plugins', (req, res) => {
       if (!file.endsWith('.zip')) continue;
       const id = file.replace(/\.zip$/, '');
       if (listed.has(id)) continue;
-      plugins.push({ id, name: id, version: null, source: 'zip' });
+      const localMeta = localManifest(id);
+      plugins.push({
+        id,
+        name: localMeta?.name || id,
+        version: localMeta?.version ?? null,
+        apiVersion: localMeta?.apiVersion ?? null,
+        permissions: localMeta?.permissions ?? null,
+        checksum: null,
+        source: 'zip',
+      });
+      listed.add(id);
+    }
+
+    // Un plugin local sin manifiesto de instalación (p. ej. el de referencia)
+    // también se puede revisar y desinstalar desde Configuración → Extensiones.
+    for (const [id] of local) {
+      if (listed.has(id)) continue;
+      const manifest = localManifest(id);
+      plugins.push({
+        id,
+        name: manifest?.name || id,
+        version: manifest?.version ?? null,
+        apiVersion: manifest?.apiVersion ?? null,
+        permissions: manifest?.permissions ?? null,
+        checksum: null,
+        source: 'local',
+        marketplace: null,
+        components: null,
+        installedAt: null,
+      });
     }
 
     plugins.sort((a, b) => String(a.name).localeCompare(String(b.name)));
@@ -2805,6 +3293,11 @@ function publishProjectRoot(value: unknown): string {
   return resolveProjectPath('.', raw).abs;
 }
 
+/**
+ * Errores de publicación. Sólo se devuelve `message` porque sus fuentes no
+ * adjuntan contenido: el estado y el entorno usan mensajes fijos ante un JSON
+ * inválido, y la build ya no incluye su salida (podría traer código o valores).
+ */
 function publishError(res: any, error: any) {
   return res.status(400).json({ success: false, error: error?.message || 'Publicación falló' });
 }
@@ -2830,6 +3323,8 @@ app.post('/api/publish/preview', async (req, res) => {
       outputDir: outputDir || undefined,
       build: body.build === true,
     });
+    // Las credenciales rotadas van al entorno de la release, no a la respuesta.
+    await injectBackendEnv({ root, releaseId: result.release.id, environment: 'preview' });
     return res.json({ success: true, ...result });
   } catch (error: any) {
     return publishError(res, error);
@@ -2847,6 +3342,8 @@ app.post('/api/publish/production', async (req, res) => {
       : current.preview?.id;
     if (!releaseId) throw new Error('No hay una release en preview para promover');
     const status = await promoteRelease(root, releaseId, 'production');
+    // Producción recibe su propio entorno: no hereda el archivo de preview.
+    await injectBackendEnv({ root, releaseId, environment: 'production' });
     return res.json({ success: true, status });
   } catch (error: any) {
     return publishError(res, error);
@@ -2858,6 +3355,14 @@ app.post('/api/publish/rollback', async (req, res) => {
   try {
     const root = publishProjectRoot(req.body?.root);
     const status = await rollbackProduction(root);
+    // El entorno vuelve con la release restaurada.
+    if (status.production) {
+      await injectBackendEnv({
+        root,
+        releaseId: status.production.id,
+        environment: 'production',
+      });
+    }
     return res.json({ success: true, status });
   } catch (error: any) {
     return publishError(res, error);
@@ -2874,6 +3379,13 @@ app.use(
 // La misma sesión de Playwright que usan las tools del agente, expuesta al panel.
 app.use('/api/browser', createBrowserRouter());
 app.use('/api/integrations', createIntegrationsRouter());
+
+// Gestión del backend de las apps publicadas (PL3): aprovisionar bindings y
+// consultar su estado. Sin proveedor elegido, el único adaptador es el doble en
+// memoria y sólo existe con `COMMANDER_BACKEND_FAKE=1`; sin la bandera la ruta
+// responde deshabilitada y no finge un backend. Va antes del router
+// multiinquilino, que ocupa `/api/backend` completo con su propio catch-all.
+app.use('/api/backend/manage', createBackendRouter(createConfiguredBackendAdapter()));
 
 // Backend de datos multiinquilino: auth bearer, registros y archivos aislados
 // por inquilino. Se monta antes del estático/Vite para que ninguna ruta SPA
@@ -4853,7 +5365,7 @@ app.get('/api/lmstudio/models', async (req, res) => {
       models: saved.models,
       cached: saved.models.length > 0,
       updatedAt: saved.updatedAt,
-      error: e?.message || 'LM Studio no responde',
+      error: redactSecrets(e?.message || 'LM Studio no responde'),
     });
   }
 });
@@ -4877,7 +5389,7 @@ app.post('/api/lmstudio/models', async (req, res) => {
       models: saved.models,
       cached: saved.models.length > 0,
       updatedAt: saved.updatedAt,
-      error: e?.message || 'LM Studio no responde',
+      error: redactSecrets(e?.message || 'LM Studio no responde'),
     });
   }
 });
@@ -4924,7 +5436,7 @@ app.post('/api/lmstudio/generate', async (req, res) => {
       // esto solo vería `loading: false` y no podría explicar el fallo.
       lmStudioLoadErrors.set(target, {
         model: target,
-        error: error instanceof Error ? error.message : String(error || 'Error desconocido'),
+        error: redactSecrets(error instanceof Error ? error.message : String(error || 'Error desconocido')),
         failedAt: Date.now(),
       });
       throw error;
@@ -4987,7 +5499,7 @@ app.post('/api/lmstudio/generate', async (req, res) => {
       },
     });
   } catch (e: any) {
-    return res.json({ ok: false, error: e?.message || 'LM Studio generate falló' });
+    return res.json({ ok: false, error: redactSecrets(e?.message || 'LM Studio generate falló') });
   }
 });
 
@@ -5000,6 +5512,11 @@ app.get('/api/ollama/models', async (req, res) => {
   const host = String(
     req.query.host || getRequestApiKey(req, 'OLLAMA_HOST') || process.env.OLLAMA_HOST || 'http://localhost:11434'
   );
+  // `OLLAMA_HOST` admite credenciales en la URL (`https://usuario:clave@host`).
+  // El modal sólo pinta el host y no lo reescribe, y `fetch` rechaza esas URLs
+  // repitiéndolas en el error: el host y el mensaje salen redactados, con el
+  // host y el puerto a la vista para diagnosticar.
+  const hostVisible = redactSecrets(host);
   try {
     const response = await fetch(`${host}/api/tags`, {
       method: 'GET',
@@ -5010,9 +5527,14 @@ app.get('/api/ollama/models', async (req, res) => {
     const models = Array.isArray(data?.models)
       ? data.models.map((m: any) => (typeof m === 'string' ? m : (m?.name || m?.model))).filter(Boolean)
       : [];
-    res.json({ success: response.ok, models, host, error: response.ok ? undefined : ('HTTP ' + response.status) });
+    res.json({
+      success: response.ok,
+      models,
+      host: hostVisible,
+      error: response.ok ? undefined : ('HTTP ' + response.status),
+    });
   } catch (error: any) {
-    res.json({ success: false, models: [], host, error: error?.message || 'unreachable' });
+    res.json({ success: false, models: [], host: hostVisible, error: redactSecrets(error?.message || 'unreachable') });
   }
 });
 
@@ -5020,6 +5542,9 @@ app.get('/api/ollama/health', async (req, res) => {
   const host = String(
     req.query.host || getRequestApiKey(req, 'OLLAMA_HOST') || process.env.OLLAMA_HOST || 'http://localhost:11434'
   );
+  // Misma regla que `/api/ollama/models`: el host va redactado porque el
+  // cliente no lo reutiliza, y el mensaje de `fetch` también lo repite.
+  const hostVisible = redactSecrets(host);
   try {
     const response = await fetch(`${host}/api/tags`, {
       method: 'GET',
@@ -5030,9 +5555,21 @@ app.get('/api/ollama/health', async (req, res) => {
     const models = Array.isArray(data?.models)
       ? data.models.map((m: any) => (typeof m === 'string' ? m : (m?.name || m?.model))).filter(Boolean)
       : [];
-    res.json({ success: response.ok, ok: response.ok, models, host, error: response.ok ? undefined : ('HTTP ' + response.status) });
+    res.json({
+      success: response.ok,
+      ok: response.ok,
+      models,
+      host: hostVisible,
+      error: response.ok ? undefined : ('HTTP ' + response.status),
+    });
   } catch (error: any) {
-    res.json({ success: false, ok: false, models: [], host, error: error?.message || 'unreachable' });
+    res.json({
+      success: false,
+      ok: false,
+      models: [],
+      host: hostVisible,
+      error: redactSecrets(error?.message || 'unreachable'),
+    });
   }
 });
 
@@ -5090,9 +5627,9 @@ app.post('/api/ollama/pull', async (req, res) => {
     res.end();
   } catch (error: any) {
     if (!res.headersSent) {
-      return res.json({ ok: false, error: error.message || 'Pull failed' });
+      return res.json({ ok: false, error: redactSecrets(error.message || 'Pull failed') });
     } else {
-      res.write(`data: ${JSON.stringify({ ok: false, error: error.message })}\n\n`);
+      res.write(`data: ${JSON.stringify({ ok: false, error: redactSecrets(error.message) })}\n\n`);
       res.end();
     }
   }
@@ -5118,7 +5655,7 @@ app.post('/api/ollama/delete', async (req, res) => {
 
     return res.json({ ok: true, success: true });
   } catch (error: any) {
-    return res.json({ ok: false, error: error.message || 'Delete failed' });
+    return res.json({ ok: false, error: redactSecrets(error.message || 'Delete failed') });
   }
 });
 
@@ -5447,7 +5984,7 @@ app.get('/api/ollama/library', async (req, res) => {
     // Also try to get library models (Ollama doesn't have a public library API, so we return local)
     return res.json({ success: true, models: data.models || [] });
   } catch (error: any) {
-    return res.json({ ok: false, error: error.message || 'Ollama no disponible' });
+    return res.json({ ok: false, error: redactSecrets(error.message || 'Ollama no disponible') });
   }
 });
 
@@ -5489,7 +6026,7 @@ app.post('/api/ollama/generate', async (req, res) => {
       },
     });
   } catch (error: any) {
-    return res.json({ ok: false, error: error.message || 'Ollama generate falló' });
+    return res.json({ ok: false, error: redactSecrets(error.message || 'Ollama generate falló') });
   }
 });
 

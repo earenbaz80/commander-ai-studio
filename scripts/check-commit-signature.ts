@@ -17,6 +17,19 @@
  *   npm run check:commit-signature -- --range origin/main..HEAD
  *   npm run check:commit-signature -- --message-file .git/COMMIT_EDITMSG   (hook)
  *
+ * Los merge commits no se revisan: GitHub fabrica uno por PR (`Merge … into …`)
+ * con la identidad del mantenedor, no la del repo, así que revisarlo hace fallar
+ * CI sin que la rama tenga nada que corregir.
+ *
+ * El committer `GitHub <noreply@github.com>` sí se acepta: es la identidad
+ * sintética que la plataforma escribe al hacer squash o rebase de un PR. Es
+ * sólo el committer; el autor sigue teniendo que ser la firma canónica.
+ *
+ * La identidad se lee con `%aN`/`%aE` y `%cN`/`%cE`, que aplican `.mailmap`: un
+ * commit hecho desde la web de GitHub firma con el login (`earenbaz80`) y el
+ * correo del autor, y el `.mailmap` lo canoniza a la firma única. Sin
+ * `.mailmap` (repos temporales de los tests) se lee la identidad cruda.
+ *
  * Sale 1 con los commits y el motivo; 0 si todas las firmas son la del autor.
  */
 import { execFileSync } from 'node:child_process';
@@ -67,7 +80,24 @@ export function firmasEnMensaje(mensaje: string): Hallazgo[] {
 
 export type Identidad = { nombre: string; email: string };
 
-/** `null` si autor y committer son la firma; si no, el desvío. */
+/**
+ * Committer sintético de un squash o rebase de GitHub. No es una firma humana:
+ * la plataforma lo escribe al reescribir el commit y el autor sigue siendo el
+ * del PR. Se acepta sólo en el papel de committer.
+ */
+export const COMMITTER_PLATAFORMA: Identidad = {
+  nombre: 'GitHub',
+  email: 'noreply@github.com',
+} as const;
+
+function esCommitterDePlataforma(quien: Identidad): boolean {
+  return (
+    quien.nombre === COMMITTER_PLATAFORMA.nombre &&
+    quien.email.toLowerCase() === COMMITTER_PLATAFORMA.email
+  );
+}
+
+/** `null` si autor y committer son la firma (o el committer es GitHub); si no, el desvío. */
 export function desvioDeIdentidad(autor: Identidad, committer: Identidad): string | null {
   const compara = (quien: Identidad, papel: string): string | null => {
     if (quien.nombre !== FIRMA.nombre) {
@@ -78,7 +108,10 @@ export function desvioDeIdentidad(autor: Identidad, committer: Identidad): strin
     }
     return null;
   };
-  return compara(autor, 'autor') ?? compara(committer, 'committer');
+  return (
+    compara(autor, 'autor') ??
+    (esCommitterDePlataforma(committer) ? null : compara(committer, 'committer'))
+  );
 }
 
 const CAMPO = '\u001f';
@@ -91,10 +124,14 @@ type CommitRevisado = {
   mensaje: string;
 };
 
-/** Lee los commits del rango (por defecto, toda la historia de HEAD). */
-export function commitsDelRango(rango: string): CommitRevisado[] {
-  const formato = `%H${CAMPO}%an${CAMPO}%ae${CAMPO}%cn${CAMPO}%ce${CAMPO}%B${REGISTRO}`;
-  const salida = execFileSync('git', ['log', `--format=${formato}`, rango], {
+/**
+ * Lee los commits del rango (por defecto, toda la historia de HEAD), sin merges.
+ * El `cwd` permite probarlo contra un repo temporal.
+ */
+export function commitsDelRango(rango: string, cwd = process.cwd()): CommitRevisado[] {
+  const formato = `%H${CAMPO}%aN${CAMPO}%aE${CAMPO}%cN${CAMPO}%cE${CAMPO}%B${REGISTRO}`;
+  const salida = execFileSync('git', ['log', '--no-merges', `--format=${formato}`, rango], {
+    cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     maxBuffer: 64 * 1024 * 1024,
@@ -166,7 +203,8 @@ function principal(): void {
     for (const p of problemas) console.error(p);
     console.error(
       `[check:commit-signature] la única firma es ${FIRMA.nombre} <${FIRMA.email}>; ` +
-        'quita los trailers o corrige la identidad antes de commitear.'
+        'quita los trailers o corrige la identidad antes de commitear ' +
+        '(el committer de squash/rebase de GitHub es la única excepción).'
     );
     process.exitCode = 1;
     return;

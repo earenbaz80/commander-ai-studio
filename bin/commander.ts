@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { program } from 'commander';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import path from 'path';
 import fs from 'fs';
 import { loadConfig, writeConfig, getConfigPath, getProviderConfig } from '../src/config/index.js';
@@ -12,8 +12,15 @@ import { createInputGate, type InputGateSource } from '../src/cli/stdinGate.js';
 import { ApprovalQueue } from '../src/cli/approvals.js';
 import { GEMINI_DEFAULT_MODEL } from '../src/config/geminiModels.js';
 import { resolveBindHost } from '../src/lib/bindHost.js';
-import { buildSpawnArgs } from '../src/cli/buildCommand.js';
-import { DEV_SCRIPT_PORT, devPortNotice, portFlagRequested } from '../src/cli/serveCommand.js';
+import { buildSpawnArgs, planStudioBuild } from '../src/cli/buildCommand.js';
+import {
+  DEV_SCRIPT_PORT,
+  devPortNotice,
+  planDevServe,
+  portFlagRequested,
+  resolveDistDir,
+  resolveServerEntry,
+} from '../src/cli/serveCommand.js';
 
 function parseSessionMode(value: unknown): SessionMode | undefined {
   return value === 'build' || value === 'plan' || value === 'readonly' ? value : undefined;
@@ -73,28 +80,59 @@ program
     // se normalizan los alias.
     const host = resolveBindHost(opts.host ?? serverConfig.host);
 
-    // `serve --dev` delega en `npm run dev`: el hijo hereda `HOST`, pero no
-    // `--port`, porque el script fija `PORT` en DEV_SCRIPT_PORT.
+    // `serve --dev` levanta el Studio desde las fuentes: sólo vale en un
+    // checkout. El hijo hereda `HOST`, pero no `--port`, porque el script fija
+    // `PORT` en DEV_SCRIPT_PORT.
     const dev = Boolean(opts.dev);
-    const announcedPort = dev ? DEV_SCRIPT_PORT : port;
-    console.log(
-      `[commander] Starting ${dev ? 'dev ' : ''}server on http://${host}:${announcedPort}` +
-        (dev ? ' (npm run dev)' : '')
-    );
-
     process.env.HOST = host;
 
     if (dev) {
+      // Sin la guarda, `npm run dev` corría en el cwd y arrancaba el proyecto
+      // del usuario (o fallaba con el `Missing script` de npm).
+      const plan = planDevServe({ packageRoot: path.resolve(__dirname, '..') });
+      if (!plan.ok) {
+        console.error(plan.reason);
+        process.exitCode = 1;
+        return;
+      }
+      console.log(
+        `[commander] Starting dev server on http://${host}:${plan.port} (npm run ${plan.script} en ${plan.cwd})`
+      );
       const portNotice = devPortNotice(opts.port, portFlagRequested(process.argv.slice(2)));
       if (portNotice) console.warn(portNotice);
       const { spawn } = await import('child_process');
-      const vite = spawn('npm', ['run', 'dev'], { stdio: 'inherit', shell: true });
+      const vite = spawn('npm', ['run', plan.script], {
+        cwd: plan.cwd,
+        stdio: 'inherit',
+        shell: true,
+      });
       vite.on('exit', (code) => process.exit(code ?? 0));
     } else {
+      console.log(`[commander] Starting server on http://${host}:${port}`);
       process.env.PORT = String(port);
+      // `serve` sin `--dev` siempre sirve el build, aunque el entorno traiga
+      // NODE_ENV=development: en desarrollo el servidor monta Vite por
+      // middleware y el paquete instalado no lleva vite. Para Vite está
+      // `serve --dev`, que corre `npm run dev` desde el checkout.
+      process.env.NODE_ENV = 'production';
+      // El paquete instalado trae `cli-dist/server.mjs`; el repo, `server.ts`.
+      // Se importa la ruta resuelta (URL file:// para Windows) en vez de un
+      // especificador fijo, que esbuild inlineaba y ataba el paquete al repo.
+      const entry = resolveServerEntry(__dirname);
+      if (!entry) {
+        console.error(
+          '[commander] no encontré el servidor: falta cli-dist/server.mjs en el paquete o server.ts en el repo'
+        );
+        process.exitCode = 1;
+        return;
+      }
+      // La UI viaja en `cli-dist/dist` del paquete; en el repo es `dist/` de la
+      // raíz. Sin esto el servidor empaquetado la busca desde el cwd y da 404.
+      const distDir = resolveDistDir({ cliDir: __dirname });
+      if (distDir) process.env.COMMANDER_DIST = distDir;
       // `server.ts` arranca su bootstrap al importarse; llamar además a
       // `startServer()` abría un segundo listen y fallaba con EADDRINUSE.
-      await import('../server.js');
+      await import(pathToFileURL(entry).href);
     }
   });
 
@@ -103,8 +141,24 @@ program
   .description('Build for production (--electron empaqueta la app de escritorio)')
   .option('--electron', 'Empaquetar la app de escritorio: build:all (tipos, Vite, servidor, updater y electron-builder)')
   .action(async (opts) => {
+    // El build corre en la raíz del paquete, no en el cwd: `npm run build` en
+    // un proyecto ajeno compilaba otra cosa y el error no lo explicaba.
+    const plan = planStudioBuild({
+      electron: Boolean(opts.electron),
+      packageRoot: path.resolve(__dirname, '..'),
+    });
+    if (!plan.ok) {
+      console.error(plan.reason);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`[commander] building ${plan.script} en ${plan.cwd}`);
     const { spawn } = await import('child_process');
-    const build = spawn('npm', buildSpawnArgs(opts), { stdio: 'inherit', shell: true });
+    const build = spawn('npm', buildSpawnArgs(opts), {
+      cwd: plan.cwd,
+      stdio: 'inherit',
+      shell: true,
+    });
     build.on('exit', (code) => process.exit(code ?? 0));
   });
 
@@ -179,6 +233,25 @@ configCmd
     const defaultConfig = CommanderConfigSchema.parse({});
     fs.writeFileSync(existingPath, JSON.stringify(defaultConfig, null, 2), 'utf-8');
     console.log(`Created ${target} config at ${existingPath}`);
+  });
+
+program
+  .command('pair')
+  .description('Emparejar un dispositivo: enlace de un solo uso, lista y revocación (sólo loopback)')
+  .option('-s, --server <url>', 'Commander server URL', process.env.COMMANDER_SERVER || 'http://127.0.0.1:3280')
+  .option('--session <id>', 'Sesión a emparejar (por defecto, la más reciente)')
+  .option('--devices', 'Listar los dispositivos emparejados en vez de emitir un enlace')
+  .option('--revoke <id>', 'Revocar el dispositivo indicado (dev_…)')
+  .option('--json', 'Imprimir el resultado como JSON')
+  .action(async (opts) => {
+    const { runPairCommand } = await import('../src/cli/pairCommand.js');
+    process.exitCode = await runPairCommand({
+      serverUrl: String(opts.server),
+      sessionId: opts.session ? String(opts.session) : undefined,
+      json: Boolean(opts.json),
+      devices: Boolean(opts.devices),
+      revoke: opts.revoke === undefined ? undefined : String(opts.revoke),
+    });
   });
 
 program

@@ -47,6 +47,7 @@ const SERVER_FILES = [
   'browserRoutes.ts',
   'src/integrations/router.ts',
   'backend/routes.ts',
+  'deploy/backend/routes.ts',
 ];
 
 /**

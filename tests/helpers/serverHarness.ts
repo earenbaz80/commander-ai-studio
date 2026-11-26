@@ -28,7 +28,7 @@ import net from 'node:net';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 /** Ruta del repo, calculada desde este archivo: los tests corren desde cualquier cwd. */
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -37,6 +37,14 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const BOOT_TIMEOUT_MS = 90_000;
 /** Ya anunciado el puerto, `/api/health` debería contestar casi de inmediato. */
 const READY_TIMEOUT_MS = 30_000;
+/**
+ * Margen de una petición ya servida. Antes eran 30 s y en un runner cargado
+ * (Chromium de T6, compilaciones en paralelo) una petición legítima podía
+ * abortar: el test veía «sin respuesta del server» en vez del estado que estaba
+ * midiendo y la sesión quedaba viva por saltarse la limpieza. 90 s, igual que
+ * el arranque, dejan que la petición termine; un server caído igual se delata.
+ */
+const REQUEST_TIMEOUT_MS = 90_000;
 
 /**
  * Canal de control para pedirle el server al padre.
@@ -81,6 +89,11 @@ export interface ServerHarness {
   baseUrl: string;
   /** Base de datos temporal del hijo (borrada al parar). */
   dbPath: string;
+  /**
+   * Directorio de publicación del hijo, donde caen las releases y su entorno.
+   * Vacío si el arnés no lo conoce (p. ej. un server ya arrancado a mano).
+   */
+  publishDir: string;
   /** Log del server, para entender un fallo. */
   logs: () => string;
   stop: () => Promise<void>;
@@ -99,6 +112,8 @@ export interface HttpResult {
   body: any;
   /** Cuerpo crudo, para mensajes de error legibles. */
   raw: string;
+  /** Cabeceras de la respuesta (`set-cookie` llega como lista). */
+  headers: Record<string, string | string[] | undefined>;
 }
 
 /**
@@ -152,11 +167,13 @@ function makeRequest(baseUrl: string) {
             const raw = Buffer.concat(chunks).toString('utf8');
             let parsed: any = null;
             try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; }
-            resolve({ status: res.statusCode ?? 0, body: parsed, raw });
+            resolve({ status: res.statusCode ?? 0, body: parsed, raw, headers: res.headers });
           });
         }
       );
-      req.setTimeout(30_000, () => req.destroy(new Error('sin respuesta del server en 30s')));
+      req.setTimeout(REQUEST_TIMEOUT_MS, () =>
+        req.destroy(new Error(`sin respuesta del server en ${REQUEST_TIMEOUT_MS / 1000}s`))
+      );
       req.on('error', reject);
       if (payload) req.write(payload);
       req.end();
@@ -188,7 +205,7 @@ export async function startServer(): Promise<ServerHarness> {
  * resto recibe la misma URL ya lista.
  */
 async function acquireShared(control: string): Promise<ServerHarness> {
-  const reply = await new Promise<{ baseUrl: string; dbPath: string }>((resolve, reject) => {
+  const reply = await new Promise<{ baseUrl: string; dbPath: string; publishDir: string }>((resolve, reject) => {
     const sep = control.lastIndexOf(':');
     const host = control.slice(0, sep) || '127.0.0.1';
     const port = Number(control.slice(sep + 1));
@@ -232,7 +249,11 @@ async function acquireShared(control: string): Promise<ServerHarness> {
       settled = true;
       clearTimeout(timer);
       socket.destroy();
-      resolve({ baseUrl: String(msg.baseUrl), dbPath: String(msg.dbPath ?? '') });
+      resolve({
+        baseUrl: String(msg.baseUrl),
+        dbPath: String(msg.dbPath ?? ''),
+        publishDir: String(msg.publishDir ?? ''),
+      });
     });
     socket.on('error', (e: NodeJS.ErrnoException) =>
       fail(
@@ -255,6 +276,7 @@ async function acquireShared(control: string): Promise<ServerHarness> {
   return {
     baseUrl: reply.baseUrl,
     dbPath: reply.dbPath,
+    publishDir: reply.publishDir,
     logs: () => `(server compartido en ${reply.baseUrl}; su log lo imprime quien lo arrancó)`,
     stop: async () => { /* no es nuestro: lo para el padre */ },
     request: makeRequest(reply.baseUrl),
@@ -308,7 +330,14 @@ export async function createServerBroker(onBoot?: (srv: ServerHarness) => void):
       requests++;
       try {
         const srv = await ensure();
-        socket.end(`${JSON.stringify({ ok: true, baseUrl: srv.baseUrl, dbPath: srv.dbPath })}\n`);
+        socket.end(
+          `${JSON.stringify({
+            ok: true,
+            baseUrl: srv.baseUrl,
+            dbPath: srv.dbPath,
+            publishDir: srv.publishDir,
+          })}\n`
+        );
       } catch (e: any) {
         // Un arranque fallido no debe envenenar el siguiente intento.
         pending = null;
@@ -350,8 +379,29 @@ export async function createServerBroker(onBoot?: (srv: ServerHarness) => void):
   };
 }
 
+export interface SpawnServerOptions {
+  /**
+   * cwd del hijo; por defecto, el repo. `commander.json` se busca desde el cwd
+   * hacia arriba, así que un cwd temporal da al server una config aislada: lo
+   * necesita un endpoint que ejecuta lo que la config tenga dentro (p. ej. los
+   * comandos de `/api/mcp/health`, que si no serían los del operador).
+   */
+  cwd?: string;
+  /** Variables extra del hijo. Las del arnés (PORT, base, NODE_ENV) mandan. */
+  env?: Record<string, string>;
+}
+
 /** Arranca un server propio. Lo usa el padre del runner y el modo sin compartir. */
-export async function spawnServer(): Promise<ServerHarness> {
+export async function spawnServer(options: SpawnServerOptions = {}): Promise<ServerHarness> {
+  const serverCwd = options.cwd ?? repoRoot;
+  // `--import tsx` se resuelve desde el cwd: con otro cwd hay que darle la ruta.
+  const [tsxLoader, serverEntry] =
+    serverCwd === repoRoot
+      ? ['tsx', 'server.ts']
+      : [
+          pathToFileURL(path.join(repoRoot, 'node_modules/tsx/dist/loader.mjs')).href,
+          path.join(repoRoot, 'server.ts'),
+        ];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-http-'));
   const dbPath = path.join(dir, 'studio.db');
   const publishDir = path.join(dir, 'publish');
@@ -363,10 +413,11 @@ export async function spawnServer(): Promise<ServerHarness> {
   // Vite dentro, el primer re-optimizado de dependencias bloqueaba el proceso
   // decenas de segundos y una petición de test moría por timeout en mitad de
   // la suite; la superficie `/api/*` es la misma en los dos modos.
-  const child = spawn(process.execPath, ['--import', 'tsx', 'server.ts'], {
-    cwd: repoRoot,
+  const child = spawn(process.execPath, ['--import', tsxLoader, serverEntry], {
+    cwd: serverCwd,
     env: {
       ...process.env,
+      ...(options.env || {}),
       PORT: '0',
       NODE_ENV: 'production',
       COMMANDER_DB_PATH: dbPath,
@@ -377,6 +428,21 @@ export async function spawnServer(): Promise<ServerHarness> {
       COMMANDER_PUBLISH_DIR: publishDir,
       // Las sesiones del agente (F1-02) tampoco.
       COMMANDER_AGENT_SESSIONS_DIR: path.join(dir, 'agent-sessions'),
+      // La auditoría del lease (F3) tampoco puede caer en el .commander real.
+      COMMANDER_PAIR_LEASE_AUDIT_FILE: path.join(dir, 'pair', 'lease-audit.jsonl'),
+      // El tope de escrituras por IP protege a una UI, no a la suite: decenas
+      // de archivos comparten este server y sus POST legítimos agotaban las
+      // 300/min, que aparecian como 429 en un test ajeno (y en las corridas de
+      // agente, que escribe por HTTP). Se sube sólo aquí.
+      COMMANDER_RATE_WRITE_MAX: '20000',
+      // Los dispositivos de pair (F3) también se acumulan entre archivos: el
+      // tope de 5 es para una persona, no para una corrida que canjea enlaces
+      // en varios casos. Igual que el rate limit, se sube sólo en el arnés.
+      COMMANDER_PAIR_MAX_DEVICES: '200',
+      // El doble del backend gestionado (PL3) sólo se enciende en el arnés: en
+      // producción la bandera no se define y `/api/backend/manage` responde
+      // deshabilitado. Es memoria del proceso, sin credenciales ni red.
+      COMMANDER_BACKEND_FAKE: '1',
       // Aunque el shell tenga credenciales, la suite nunca debe publicar en
       // una cuenta Vercel real. Los tests del adaptador usan un servidor local.
       VERCEL_TOKEN: '',
@@ -427,6 +493,7 @@ export async function spawnServer(): Promise<ServerHarness> {
         return {
           baseUrl,
           dbPath,
+          publishDir,
           logs: () => tail(log),
           request: makeRequest(baseUrl),
           stop: async () => {

@@ -18,6 +18,7 @@ import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import type { DeploymentRecord, RemoteDeploymentState } from './deploy/types';
+import { redactSecrets } from './secretRedaction';
 
 export type PublishEnvironment = 'preview' | 'production';
 
@@ -75,6 +76,7 @@ export interface CreateReleaseOptions {
 export interface CreateReleaseResult {
   release: ReleaseMeta;
   status: PublishStatus;
+  /** Salida de la build con valores sensibles redactados; va al panel. */
   buildLog: string;
 }
 
@@ -87,7 +89,7 @@ const PROJECT_DIRS_TO_SKIP = new Set(['.git', '.commander', 'node_modules', '.ne
 
 const locks = new Map<string, Promise<unknown>>();
 
-function publishBaseDir(baseDir?: string): string {
+export function publishBaseDir(baseDir?: string): string {
   return path.resolve(
     baseDir || process.env.COMMANDER_PUBLISH_DIR || path.join(process.cwd(), '.commander', 'publish')
   );
@@ -342,18 +344,21 @@ async function runBuild(root: string): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     let output = '';
     let settled = false;
+    const buildEnv = { ...process.env, CI: '1' };
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       if (error) reject(error);
-      else resolve(tail(output));
+      // Se sanea el log completo y después se recorta: al revés, el corte
+      // podría dejar media credencial fuera del alcance de los patrones.
+      else resolve(tail(redactSecrets(output, buildEnv)));
     };
     // El comando es fijo y el script lo define el propio proyecto: publicar con
     // "construir" es una acción explícita del usuario, no una entrada libre.
     const child = spawn('npm', ['run', 'build'], {
       cwd: root,
-      env: { ...process.env, CI: '1' },
+      env: buildEnv,
       shell: true,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -363,11 +368,18 @@ async function runBuild(root: string): Promise<string> {
     child.once('error', (error) => finish(error));
     child.once('close', (code) => {
       if (code === 0) finish();
-      else finish(new Error(`npm run build falló (código ${code})\n${tail(output)}`));
+      // La salida puede contener código fuente, rutas o valores impresos por la
+      // build; el mensaje viaja por `/api/publish/*` y a la UI, así que no se
+      // adjunta. El diagnóstico queda en la consola del proyecto que construye.
+      else finish(new Error(`npm run build falló (código ${code}); la salida de la build no se devuelve`));
     });
     const timer = setTimeout(() => {
       try { child.kill(); } catch { /* ya terminó */ }
-      finish(new Error(`npm run build excedió ${BUILD_TIMEOUT_MS / 60000} minutos\n${tail(output)}`));
+      finish(
+        new Error(
+          `npm run build excedió ${BUILD_TIMEOUT_MS / 60000} minutos; la salida de la build no se devuelve`
+        )
+      );
     }, BUILD_TIMEOUT_MS);
   });
 }

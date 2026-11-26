@@ -9,6 +9,8 @@ import {
   getMcpAuthStatus,
   logoutMcp,
 } from './oauth.js';
+import { redactSecrets } from '../../secretRedaction.js';
+import { uninstallMcpServer } from './uninstall.js';
 
 /**
  * MCP Registry API endpoints (Express Router).
@@ -118,19 +120,12 @@ mcpRouter.post('/uninstall', (req, res) => {
       return res.status(400).json({ error: 'name (string) is required' });
     }
 
-    const tools = getToolsConfig();
-    if (!tools.mcp?.servers || !tools.mcp.servers[name]) {
+    // La baja se persiste con `null` (ver `uninstall.ts`): borrar en memoria y
+    // reenviar `tools` no sobrevive al `deepMerge` de `writeConfig`.
+    const result = uninstallMcpServer(name);
+    if (!result.removed) {
       return res.json({ success: true, message: `No server named "${name}"` });
     }
-
-    delete tools.mcp.servers[name];
-
-    // Si no quedan servidores, desactiva MCP para no dejar config vacía.
-    if (Object.keys(tools.mcp.servers).length === 0) {
-      tools.mcp.enabled = false;
-    }
-
-    writeConfig({ tools }, 'project');
 
     res.json({ success: true, name, message: `Server "${name}" unregistered` });
   } catch (err) {
@@ -138,6 +133,43 @@ mcpRouter.post('/uninstall', (req, res) => {
     res.status(500).json({ error: 'Failed to uninstall MCP server' });
   }
 });
+
+/**
+ * Registra en `servers` los servidores de los JSON de una carpeta.
+ *
+ * El mensaje de un `JSON.parse` fallido incluye un fragmento del archivo, y un
+ * archivo MCP puede llevar `env` con tokens. Por eso el error de cada entrada
+ * es fijo y sólo nombra el archivo.
+ */
+export function importMcpServersFromDir(
+  importPath: string,
+  servers: Record<string, unknown>
+): { imported: number; errors: string[] } {
+  let imported = 0;
+  const errors: string[] = [];
+  for (const entry of fs.readdirSync(importPath)) {
+    const fullPath = path.join(importPath, entry);
+    if (!fs.statSync(fullPath).isFile()) continue;
+    if (!entry.endsWith('.json') && !entry.endsWith('.mcp.json')) continue;
+    try {
+      const content = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+      if (content.mcpServers) {
+        for (const [name, cfg] of Object.entries(content.mcpServers)) {
+          servers[name] = cfg;
+          imported++;
+        }
+      } else if (content.command) {
+        // Formato individual: { command, args, env }
+        const name = entry.replace(/\.(json|mcp\.json)$/, '');
+        servers[name] = content;
+        imported++;
+      }
+    } catch {
+      errors.push(`${entry}: configuración JSON inválida`);
+    }
+  }
+  return { imported, errors };
+}
 
 /**
  * Importa servidores MCP desde una carpeta externa (ej. .config/mcp o similar).
@@ -157,35 +189,7 @@ mcpRouter.post('/import', (req, res) => {
     const tools = getToolsConfig();
     const mcp = getMcp(tools);
     mcp.enabled = true;
-    let imported = 0;
-    const errors: string[] = [];
-    try {
-      const entries = fs.readdirSync(importPath);
-      for (const entry of entries) {
-        const fullPath = path.join(importPath, entry);
-        if (!fs.statSync(fullPath).isFile()) continue;
-        if (entry.endsWith('.json') || entry.endsWith('.mcp.json')) {
-          try {
-            const content = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
-            if (content.mcpServers) {
-              for (const [name, cfg] of Object.entries(content.mcpServers)) {
-                mcp.servers![name] = cfg as any;
-                imported++;
-              }
-            } else if (content.command) {
-              // Formato individual: { command, args, env }
-              const name = entry.replace(/\.(json|mcp\.json)$/, '');
-              mcp.servers![name] = content as any;
-              imported++;
-            }
-          } catch (e) {
-            errors.push(`${entry}: ${e instanceof Error ? e.message : String(e)}`);
-          }
-        }
-      }
-    } catch (e) {
-      errors.push(`lectura directorio: ${e instanceof Error ? e.message : String(e)}`);
-    }
+    const { imported, errors } = importMcpServersFromDir(importPath, mcp.servers!);
     writeConfig({ tools }, 'project');
     res.json({ success: true, imported, errors });
   } catch (err) {
@@ -430,6 +434,46 @@ mcpRouter.post('/:name/call', async (req, res) => {
 });
 
 /**
+ * Prepara el stdout de un servidor MCP para el health check.
+ *
+ * Se sanea el texto completo antes de recortarlo: si se cortara primero, un
+ * secreto que empieza cerca del límite quedaría a medias en la respuesta. El
+ * resto del arranque sigue visible para diagnosticar.
+ */
+export function mcpHealthOutput(stdout: string | Buffer | null | undefined): string | null {
+  if (!stdout) return null;
+  const text = Buffer.isBuffer(stdout) ? stdout.toString('utf8') : String(stdout);
+  return redactSecrets(text).slice(0, 200);
+}
+
+/**
+ * Mensaje del fallo de un servidor MCP para el health check.
+ *
+ * `spawnSync` valida `command` y `args` y, cuando no puede, lanza un error que
+ * repite el valor recibido (`Received '…'`): un byte nulo en un comando o en un
+ * argumento devolvería ese contenido de la config a la respuesta. Se corta en
+ * ese punto —el motivo y el índice del argumento siguen legibles— y se sanean
+ * los secretos que pudieran venir en el resto del mensaje.
+ */
+export function mcpHealthError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const echoed = raw.search(/\.\s+Received\b/);
+  return redactSecrets(echoed === -1 ? raw : raw.slice(0, echoed + 1));
+}
+
+/**
+ * Detalle del 500 de `/health`.
+ *
+ * Hoy sólo puede llegar aquí la validación de la config, y el mensaje de Zod
+ * lleva rutas, tipos y valores permitidos, nunca el valor recibido. Se sanea
+ * igual que el resto de errores de proveedor: si un mensaje futuro repite una
+ * credencial, no viaja en la respuesta.
+ */
+export function mcpHealthDetails(err: unknown): string {
+  return redactSecrets(String(err));
+}
+
+/**
  * Health check: intenta ejecutar brevemente cada comando registrado.
  */
 mcpRouter.get('/health', async (_req, res) => {
@@ -452,14 +496,14 @@ mcpRouter.get('/health', async (_req, res) => {
           name,
           command: c.command,
           status: r.status === 0 ? 'healthy' : 'unreachable',
-          output: r.stdout ? r.stdout.toString().slice(0, 200) : null,
+          output: mcpHealthOutput(r.stdout),
         };
       } catch (err) {
         return {
           name,
           command: c.command,
           status: 'unknown' as const,
-          error: err instanceof Error ? err.message : String(err),
+          error: mcpHealthError(err),
         };
       }
     });
@@ -472,7 +516,7 @@ mcpRouter.get('/health', async (_req, res) => {
     res.json({ status: 'ready', total: results.length, summary, servers: results });
   } catch (err) {
     console.error('[MCP] health failed:', err);
-    res.status(500).json({ error: 'Health check failed', details: String(err) });
+    res.status(500).json({ error: 'Health check failed', details: mcpHealthDetails(err) });
   }
 });
 

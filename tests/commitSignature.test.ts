@@ -8,8 +8,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
+  COMMITTER_PLATAFORMA,
   FIRMA,
   commitsDelRango,
   desvioDeIdentidad,
@@ -78,6 +80,22 @@ test('firma: autor y committer tienen que ser la única firma', () => {
     desvioDeIdentidad({ ...FIRMA, email: FIRMA.email.toUpperCase() }, { ...FIRMA }),
     null
   );
+
+  // GitHub pone su propia identidad como committer en squash y rebase; el
+  // autor sigue siendo el del PR, así que la guardia mira ahí.
+  assert.equal(
+    desvioDeIdentidad({ ...FIRMA }, { nombre: 'GitHub', email: 'noreply@github.com' }),
+    null
+  );
+  assert.match(
+    String(desvioDeIdentidad({ ...FIRMA }, { nombre: 'GitHub', email: 'noreply@example.com' })),
+    /committer/
+  );
+  assert.match(
+    String(desvioDeIdentidad({ nombre: 'Otra Persona', email: FIRMA.email }, COMMITTER_PLATAFORMA)),
+    /autor/,
+    'el committer de plataforma no excusa un autor ajeno'
+  );
 });
 
 test('firma: `.mailmap` y `AGENTS.md` coinciden con la firma del script', () => {
@@ -104,6 +122,104 @@ test('firma: todo el historial del repo pasa el chequeo', (t) => {
     commits.map(problemaDe).filter((p) => p !== null),
     []
   );
+});
+
+test('firma: los merge commits no se revisan y el resto sigue igual', () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'firma-merge-'));
+  const git = (args: string[]): string =>
+    execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+
+  try {
+    git(['init', '-q', '-b', 'main']);
+    git(['config', 'user.name', 'earenbaz80']);
+    git(['config', 'user.email', 'earenbaz80@users.noreply.github.com']);
+
+    const commit = (archivo: string, mensaje: string): void => {
+      fs.writeFileSync(path.join(repo, archivo), `${mensaje}\n`);
+      git(['add', archivo]);
+      git(['commit', '-q', '-m', mensaje]);
+    };
+
+    commit('base.txt', 'base');
+    git(['checkout', '-q', '-b', 'lado']);
+    commit('lado.txt', 'lado');
+    git(['checkout', '-q', 'main']);
+    commit('main.txt', 'main');
+    git(['merge', '--no-ff', '-q', 'lado', '-m', "Merge branch 'lado'"]);
+
+    const merge = git(['rev-parse', 'HEAD']).trim();
+    // El merge de GitHub lleva la identidad del mantenedor, no la del repo:
+    // revisarlo hace fallar CI sin que haya nada que corregir en la rama.
+    const revisados = commitsDelRango('HEAD', repo);
+    assert.equal(revisados.length, 3, 'los tres commits normales, sin el merge');
+    assert.ok(!revisados.some((c) => c.hash === merge), 'el merge no se revisa');
+    assert.match(git(['log', '-1', '--format=%an', merge]), /earenbaz80/);
+
+    // Ignorar merges no apaga la guardia: los commits normales siguen fallando.
+    assert.deepEqual(
+      revisados.map(problemaDe).filter((p) => p === null),
+      []
+    );
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test('firma: un squash de GitHub (committer de plataforma) pasa', () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'firma-squash-'));
+  const git = (args: string[]): string =>
+    execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+
+  try {
+    git(['init', '-q', '-b', 'main']);
+    git(['config', 'user.name', FIRMA.nombre]);
+    git(['config', 'user.email', FIRMA.email]);
+    fs.writeFileSync(path.join(repo, 'a.txt'), 'a\n');
+    git(['add', 'a.txt']);
+    // Un squash de GitHub: autor original, committer de la plataforma.
+    execFileSync('git', ['commit', '-q', '-m', 'feat(cli): algo'], {
+      cwd: repo,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GIT_COMMITTER_NAME: COMMITTER_PLATAFORMA.nombre,
+        GIT_COMMITTER_EMAIL: COMMITTER_PLATAFORMA.email,
+      },
+    });
+
+    const [commit] = commitsDelRango('HEAD', repo);
+    assert.equal(commit.autor.email, FIRMA.email);
+    assert.equal(commit.committer.nombre, COMMITTER_PLATAFORMA.nombre);
+    assert.equal(problemaDe(commit), null);
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test('firma: `.mailmap` canoniza el login que firma la web de GitHub', () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'firma-mailmap-'));
+  const git = (args: string[]): string =>
+    execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+
+  try {
+    git(['init', '-q', '-b', 'main']);
+    // La web de GitHub firma con el login y el correo del autor.
+    git(['config', 'user.name', 'earenbaz80']);
+    git(['config', 'user.email', FIRMA.email]);
+    fs.writeFileSync(
+      path.join(repo, '.mailmap'),
+      `${FIRMA.nombre} <${FIRMA.email}> earenbaz80 <${FIRMA.email}>\n`
+    );
+    fs.writeFileSync(path.join(repo, 'LICENSE'), 'MIT\n');
+    git(['add', '.mailmap', 'LICENSE']);
+    git(['commit', '-q', '-m', 'Add MIT License to the project']);
+
+    const [commit] = commitsDelRango('HEAD', repo);
+    assert.equal(commit.autor.nombre, FIRMA.nombre, 'el login se lee canonizado');
+    assert.equal(problemaDe(commit), null);
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
 });
 
 test('firma: un commit con trailer se reporta con su hash y el motivo', () => {

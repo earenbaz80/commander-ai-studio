@@ -28,6 +28,7 @@ const pluginsDir = () => path.join(root, PLUGINS_DIR);
 const manifestDe = (id: string) => path.join(pluginsDir(), `${id}.manifest.json`);
 const zipDe = (id: string) => path.join(pluginsDir(), `${id}.zip`);
 const rootQuery = () => `?root=${encodeURIComponent(root)}`;
+const CHECKSUM = `sha256:${'a'.repeat(64)}`;
 
 before(async () => {
   srv = await startServer();
@@ -130,6 +131,9 @@ test('GET /api/plugins lista los plugins instalados desde un marketplace', async
       id,
       name: 'Market Demo',
       version: '1.2.3',
+      apiVersion: 1,
+      permissions: ['lifecycle', 'tools'],
+      checksum: CHECKSUM,
       marketplace: 'anthropics/claude-plugins-official',
       components: { commands: ['commit'], agents: ['helper'], skills: [], mcp: ['demo'] },
       written: [],
@@ -147,8 +151,42 @@ test('GET /api/plugins lista los plugins instalados desde un marketplace', async
   assert.ok(found, `el plugin ${id} debía aparecer en la lista`);
   assert.equal(found.name, 'Market Demo');
   assert.equal(found.version, '1.2.3');
+  assert.equal(found.apiVersion, 1, 'la versión de API del manifiesto se lista');
+  assert.deepEqual(found.permissions, ['lifecycle', 'tools'], 'los permisos se listan');
+  assert.equal(found.checksum, CHECKSUM, 'el checksum de la instalación se lista');
   assert.equal(found.marketplace, 'anthropics/claude-plugins-official');
   assert.deepEqual(found.components.commands, ['commit']);
+});
+
+test('GET /api/plugins lista un plugin local con su manifiesto', async () => {
+  // Los plugins locales viven en `.commander/plugins/<id>/` y los carga el
+  // runtime; antes no aparecían en la lista y su API/permisos no se podían
+  // revisar desde Configuración → Extensiones.
+  const id = `local-${Date.now()}`;
+  const dir = path.join(pluginsDir(), id);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'plugin.json'),
+    JSON.stringify({
+      apiVersion: 1,
+      permissions: ['lifecycle'],
+      name: 'Local Demo',
+      version: '0.4.0',
+    }),
+    'utf8'
+  );
+  fs.writeFileSync(path.join(dir, 'index.js'), 'export default {};', 'utf8');
+
+  const res = await srv.request('GET', `/api/plugins${rootQuery()}`);
+  assert.equal(res.status, 200, res.raw);
+  const found = (res.body.plugins || []).find((plugin: any) => plugin.id === id);
+  assert.ok(found, `el plugin local ${id} debía aparecer en la lista`);
+  assert.equal(found.name, 'Local Demo');
+  assert.equal(found.version, '0.4.0');
+  assert.equal(found.apiVersion, 1);
+  assert.deepEqual(found.permissions, ['lifecycle']);
+  assert.equal(found.checksum, null, 'un plugin local no tiene checksum de catálogo');
+  assert.equal(found.source, 'local');
 });
 
 test('DELETE /api/plugins/:id borra las skills y agentes que copió el plugin', async () => {
@@ -207,4 +245,86 @@ test('DELETE /api/plugins/:id borra las skills y agentes que copió el plugin', 
   assert.equal(fs.existsSync(path.join(pluginsDir(), id)), false, 'la copia del plugin se borra');
   assert.equal(fs.existsSync(manifestDe(id)), false, 'el manifiesto se borra');
   assert.ok((res.body.removed || []).length >= 4, 'la respuesta detalla lo borrado');
+});
+
+test('POST /api/plugins/lifecycle ejecuta los hooks del proyecto', async () => {
+  // El bucle del navegador y el del CLI no cargan plugins: mandan el hook a
+  // esta ruta, que reutiliza el mismo runtime que `AgentSession`.
+  const id = `lifecycle-${Date.now()}`;
+  const dir = path.join(pluginsDir(), id);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'plugin.json'),
+    JSON.stringify({ apiVersion: 1, permissions: ['lifecycle'] }),
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(dir, 'index.js'),
+    [
+      "import fs from 'node:fs';",
+      "import path from 'node:path';",
+      `const LOG = path.join(${JSON.stringify(root)}, 'lifecycle-hooks.log');`,
+      'const record = (hook, ctx) => fs.appendFileSync(LOG, `${hook}:${ctx.sessionId}\\n`, "utf8");',
+      'export default {',
+      "  sessionStart: (ctx) => record('sessionStart', ctx),",
+      "  beforeModel: (ctx) => record('beforeModel', ctx),",
+      "  afterModel: (ctx) => record('afterModel', ctx),",
+      "  sessionEnd: (ctx) => record('sessionEnd', ctx),",
+      "  stop: (ctx) => record('stop', ctx),",
+      "  error: (ctx) => record('error', ctx),",
+      '};',
+    ].join('\n'),
+    'utf8'
+  );
+
+  const context = { sessionId: 'sess_http', root, goal: 'lifecycle', model: 'gemini-2.5-flash' };
+  const calls: Array<[string, Record<string, unknown>]> = [
+    ['sessionStart', {}],
+    ['beforeModel', { phase: 'before', turn: 1 }],
+    ['afterModel', { phase: 'after', turn: 1, ok: false, error: 'boom' }],
+    ['sessionEnd', { answer: 'listo' }],
+    ['stop', { reason: 'user' }],
+    ['error', { error: 'boom' }],
+  ];
+
+  for (const [hook, extra] of calls) {
+    const res = await srv.request('POST', '/api/plugins/lifecycle', {
+      hook,
+      context: { ...context, ...extra },
+    });
+    assert.equal(res.status, 200, res.raw);
+    assert.equal(res.body.success, true);
+    assert.deepEqual(res.body.ran, [id], `el hook ${hook} debía ejecutar el plugin`);
+    assert.deepEqual(res.body.errors, []);
+  }
+
+  const lines = fs
+    .readFileSync(path.join(root, 'lifecycle-hooks.log'), 'utf8')
+    .trim()
+    .split('\n');
+  assert.deepEqual(
+    lines,
+    calls.map(([hook]) => `${hook}:sess_http`),
+    'los hooks salen en el orden en que el bucle los emite'
+  );
+});
+
+test('POST /api/plugins/lifecycle valida hook, context y root', async () => {
+  const badHook = await srv.request('POST', '/api/plugins/lifecycle', {
+    hook: 'no-existe',
+    context: { root },
+  });
+  assert.equal(badHook.status, 400);
+
+  const noContext = await srv.request('POST', '/api/plugins/lifecycle', {
+    hook: 'sessionStart',
+  });
+  assert.equal(noContext.status, 400);
+
+  const noRoot = await srv.request('POST', '/api/plugins/lifecycle', {
+    hook: 'sessionStart',
+    context: { sessionId: 'sess_http' },
+  });
+  assert.equal(noRoot.status, 400);
+  assert.match(String(noRoot.body.error), /root/);
 });

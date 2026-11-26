@@ -2,19 +2,21 @@
 >
 > Issue de paridad de G1, sin número en GitHub: no forma parte del backlog F1 y **no** cambia el criterio de T10 ni los enunciados de dogfooding. Es el defecto que deja T10 en **0/3** después de que el aislamiento de los subagentes ya esté medido y bien.
 
-**Estado:** **Abierto** (recomendación 2026-11-21: mantenerlo) — contrato de cierre aplicado y con test; transcripción del hijo expuesta en `/subagents` y corregida tras `G1-D5-10`; routing del proveedor y cierre explícito del hijo en el último turno aplicados tras `G1-T10-01`; seis re-mediciones extra, dos intentos de T10, la re-medición `G1-T10-06` (2/6 con seis tandas y el padre sin cerrar) y `G1-T10-08`, donde la guarda de racha ya cerró el padre a la segunda tanda (4/6), sin cerrarlo. La decisión sobre «listo» quedó reemplazada por el criterio de siete checks de la actualización del 2026-11-21: el check 3 usa el contrato y ya no pide esa palabra. Desde el 2026-11-20 el cierre del hijo en dialecto JSON también pide el turno final: un `finish` sin `answer` y un turno sin `toolCalls` ya no terminan en `done` sin `Finalizado` (ver «Cierre del hijo en dialecto JSON»).
+**Estado:** **Cerrado** (2026-11-23) — T10 sigue **0/3 en las 24** y **0/9** con las extras; el cierre se apoya en **6/6 con los siete checks** fuera de las 24 ([`G1-T10-15`](../receipts/G1-T10-15-2026-11-23.md)) y deja declarado el riesgo residual de la causa `prunable` (§ «Cierre»). Historial: contrato de cierre aplicado y con test; transcripción del hijo expuesta en `/subagents` y corregida tras `G1-D5-10`; routing del proveedor y cierre explícito del hijo en el último turno aplicados tras `G1-T10-01`; seis re-mediciones extra, dos intentos de T10, la re-medición `G1-T10-06` (2/6 con seis tandas y el padre sin cerrar) y `G1-T10-08`, donde la guarda de racha ya cerró el padre a la segunda tanda (4/6), sin cerrarlo. La decisión sobre «listo» quedó reemplazada por el criterio de siete checks de la actualización del 2026-11-21: el check 3 usa el contrato y ya no pide esa palabra. Desde el 2026-11-20 el cierre del hijo en dialecto JSON también pide el turno final: un `finish` sin `answer` y un turno sin `toolCalls` ya no terminan en `done` sin `Finalizado` (ver «Cierre del hijo en dialecto JSON»).
 
-**Plan de re-medición:** [`T10-REMEASURE-PLAN-2026-11-17.md`](../T10-REMEASURE-PLAN-2026-11-17.md). `G1-T10-01` del 2026-11-17 quedó **inválido** por un fallo de routing/`LLM HTTP 500` y `G1-T10-02` quedó **cancelado** con tres tandas de `spawn_agents` (ver abajo); `G1-T10-06`, con el cierre por `maxSteps` ya aplicado, tampoco cerró T10 (2/6 y seis tandas), así que sigue sin haber una medición válida de una sola tanda. No se ejecutó CAL4H y el umbral de **15 151 ms** no se tocó.
+**Plan de re-medición:** [`T10-REMEASURE-PLAN-2026-11-17.md`](../T10-REMEASURE-PLAN-2026-11-17.md). `G1-T10-01` del 2026-11-17 quedó **inválido** por un fallo de routing/`LLM HTTP 500` y `G1-T10-02` quedó **cancelado** con tres tandas de `spawn_agents` (ver abajo); `G1-T10-06`, con el cierre por `maxSteps` ya aplicado, tampoco cerró T10 (2/6 y seis tandas); `G1-T10-12` midió tres corridas de una sola tanda (2/3) y `G1-T10-13`, la vigente, dio **1/3**. No hay un 3/3, así que T10 queda declarado `failed`. No se ejecutó CAL4H y el umbral de **15 151 ms** no se tocó.
 
 **Por qué.** El criterio de T10 (`runT10` en [`evals/scenarios.ts`](../../../evals/scenarios.ts), copiado en [D4 §4.6](../dogfooding-g1-d4.md#46-evaluar-t10)) pide tres cosas del texto de los hijos: que los dos vuelvan `ok:true` **con respuesta que diga «listo»**, que **algún hijo informe la denegación de `shell.run`**, y que el padre responda «2». El aislamiento se cumple entero —dos hijos, un solo worktree, árbol principal limpio, sin `hijo-*.txt` fuera del worktree—; lo que no llega nunca es el texto: los dos hijos responden, literalmente y en las tres corridas, **«Objetivo completado.»**.
 
 Eso no es un detalle de redacción: el criterio mide si el hijo sabe y cuenta lo que le pasó. Un cierre genérico deja al padre sin información y convierte `spawn_agents` en una caja que devuelve `ok:true` sin decir qué hizo, así que el operador no puede distinguir «escribió el archivo y se le denegó el shell» de «no hizo nada».
 
-## Actualización 2026-11-21 — `G1-T10-12` (2/3) y criterio vigente
+## Actualización 2026-11-21 — declaración de T10 con `G1-T10-13` (1/3)
 
 > Esta sección manda sobre el resto del documento, que queda como historial de las mediciones anteriores (incluida la exigencia de «listo» y los seis checks).
 
-**Re-medición:** 3 corridas sobre `199f393` con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` y el arnés actualizado ([recibo `G1-T10-12`](../receipts/G1-T10-12-2026-11-21.md)). Resultado **2/3**, 0 timeouts, 0 inválidas:
+**Declaración (2026-11-21): T10 queda `failed` y declarado, con este issue abierto.** La evidencia vigente es [`G1-T10-13`](../receipts/G1-T10-13-2026-11-21.md): **1/3** sobre `360f8c2`, no el 2/3 de `G1-T10-12`. T10 sigue **0/3 en las 24** y **no es regla de puerta**: G1 sólo se cierra con el p95 de `CAL4H`; este issue puede quedar abierto en el recibo de cierre.
+
+**Medición previa (`G1-T10-12`):** 3 corridas sobre `199f393` con `nvidia/nvidia/nemotron-3.5-lightning-30b-a3b` y el arnés actualizado ([recibo `G1-T10-12`](../receipts/G1-T10-12-2026-11-21.md)). Resultado **2/3**, 0 timeouts, 0 inválidas:
 
 | Corrida | Duración | Checks | Detalle |
 | --- | ---: | ---: | --- |
@@ -39,11 +41,11 @@ Eso no es un detalle de redacción: el criterio mide si el hijo sabe y cuenta lo
 
 **Estado del defecto: se recomienda mantenerlo abierto.**
 
-- El **2/3 no es un cierre**: T10-2 volvió a cerrar en hueco (`Archivos: ninguno`) y el padre no confirmó la cuenta. El contrato funciona cuando el modelo lo cumple, no de forma consistente.
+- El **2/3 no fue un cierre**: T10-2 volvió a cerrar en hueco (`Archivos: ninguno`) y el padre no confirmó la cuenta. El contrato funciona cuando el modelo lo cumple, no de forma consistente.
 - Una tanda posterior de 3 corridas sobre `360f8c2`, ya con el check 5 estricto ([recibo `G1-T10-13`](../receipts/G1-T10-13-2026-11-21.md)), dio **1/3**: T10-2 pasó 7/7 con `Denegado: shell.run` real, pero T10-1 y T10-3 fallaron por cierres huecos y turnos vacíos. El defecto sigue siendo reproducible.
 - El **check 7** de esa tanda pasó por artefacto («dos tandas seguidas»). Corregido en `4afda76` con `confirmsTwoChildren` y el test `tests/unit/t10ParentCount.test.ts`, que usa la respuesta real de T10-3. El 1/3 y el 2/3 medidos no cambian.
-- **T10 sigue 0/3 en las 24** y esa referencia no se reescribe; el 2/3 es evidencia fuera de ellas y no mueve la tasa ni el estado de G1.
-- G1 no depende de cerrar este issue: sigue **NO CERRADO** por el p95 de aprobación y CAL4H.
+- **T10 sigue 0/3 en las 24** y esa referencia no se reescribe; las mediciones 2/3 y 1/3 son evidencia fuera de ellas y no mueven la tasa ni el estado de G1.
+- G1 no depende de cerrar este issue: sigue **NO CERRADO** por el p95 de aprobación, con el bloque `CAL4H` en pausa desde el 2026-11-23.
 
 **Criterio de cierre de este issue:**
 
@@ -101,7 +103,7 @@ Detalle y comandos: [hoja de D5 §4](../dogfooding-g1-d5.md).
 
 ## Pendiente
 
-**Estado operativo:** `G1-T10-01` quedó **inválido** por `LLM HTTP 500` y `G1-T10-02` **cancelado** por tandas múltiples (ver abajo); un intento válido de **una sola tanda**, con el código del cierre explícito, sigue **pendiente de operador**. No se ejecutó CAL4H y el umbral no se modifica.
+**Estado operativo:** `G1-T10-01` quedó **inválido** por `LLM HTTP 500` y `G1-T10-02` **cancelado** por tandas múltiples (ver abajo). La tanda vigente `G1-T10-13` ya se midió sobre `360f8c2` (**1/3**, 24 líneas y 3 `passed`); no hay un 3/3, así que T10 queda declarado `failed` y este issue abierto. No se ejecutó CAL4H y el umbral no se modifica.
 
 **Re-medir:** otra corrida extra **fuera de las 24**, guardando el `task` exacto de cada hijo y su respuesta literal vía `GET /api/agent/sessions/:id/subagents`, como pide [plan §3.1](../dogfooding-g1.md). El criterio **no** se relaja: «listo» y la denegación siguen siendo obligatorios. Ojo a un detalle: el contrato pide informar la denegación, pero **no** obliga a la palabra «listo», así que la comprobación `/listo/i` de `runT10` puede seguir en rojo aunque el hijo informe bien; si pasa eso, se decide con la medición delante y no se maquilla el prompt para aprobar un test.
 
@@ -287,10 +289,87 @@ El contrato de cierre y el turno sin tools ya estaban aplicados, pero el dialect
 - **Verificación:** con el `agentSession.ts` anterior el caso dirigido falla 5/5 con «El subagente terminó sin respuesta final»; con el arreglo pasa 10/10. El escenario T10 determinista del arnés (`tests/evalsScenarios.test.ts`) usa un guion que cierra bien, así que pasa 10/10 y **no** ejerce este camino: no es una medición de T10.
 - **Sin efecto sobre el criterio:** `runT10` sigue exigiendo «listo» y la denegación informada, y las cifras medidas no cambian (0/9 corridas y `G1-T10-08` 4/6); esto sólo evita que un hijo se pierda por no cerrar.
 
+## Re-medición `G1-T10-14` (2026-11-23): cero cierres huecos, 2/3
+
+Corrida de **diagnóstico fuera de las 24** con el arnés (`evals/baseline.ts --only T10 --runs 3`), commit **`9a99a90`** (el arreglo del turno vacío del CLI ya aplicado), servidor propio del arnés en `:3285` y modelo congelado. Recibo: [`G1-T10-14-2026-11-23.md`](../receipts/G1-T10-14-2026-11-23.md).
+| [`receipts/G1-T10-15-2026-11-23.md`](../receipts/G1-T10-15-2026-11-23.md) | Dos tandas sobre `4af10ee`: **6/6** con los checks 6 y 7 en verde y 12 hijos con limpieza verificada; no cambia el 0/3 de las 24 |
+| `.commander/g1/t10-8bfc9cb.log` | tanda con `cause` instrumentado: **2/3**, 6 hijos con limpieza `ok:true`, **0 `recovered` y 0 `cause`**; el rojo es un turno vacío del proveedor, no el worktree |
+| `.commander/g1/t10-4af10ee.log`, `.commander/g1/t10-4af10ee-b.log` | salidas del arnés de las dos tandas (tres corridas cada una) |
+
+| Corrida | Duración | Checks | Cierres de hijos |
+| --- | ---: | --- | --- |
+| T10-1 | 99 967 ms | **7/7** | A y B con `Archivos:`/`Denegado:` |
+| T10-2 | 127 163 ms | **7/7** | A y B con `Archivos:`/`Denegado:` |
+| T10-3 | 80 312 ms | 6/7 (worktree sin limpiar) | A y B con `Archivos:`/`Denegado:` |
+| T10-4 (complementaria, `dirty`) | 103 406 ms | 6/7 (falso negativo del check 7) | A y B con `Archivos:`/`Denegado:` |
+
+- **Cero cierres huecos y cero turnos vacíos:** 8 de 8 hijos cerraron con `ok:true`, las dos líneas del contrato y su archivo; los 4 hijos A informaron `shell.run` denegado con la tool nombrada. No apareció «Objetivo completado.» ni «Archivos: ninguno».
+- **No es atribuible al arreglo del turno vacío:** ese arreglo está en `src/cli/agentClient.ts` y `src/agent/` no cambió desde `360f8c2`; los hijos corren por el servidor. La mejora frente al 1/3 de `G1-T10-13` es de la tanda y del modelo.
+- **Dos bordes del criterio, no del producto:** el check 6 cayó en T10-3 por un worktree sin limpiar, y el check 7 rechazó «Total de hijos que terminaron: 2» (falso negativo del regex). El criterio no se toca.
+### Cambio aplicado para el check 7 (2026-11-23)
+
+El check 7 falló en `T10-4` con esta respuesta literal del padre: «…**Total de hijos que terminaron: 2**.». `confirmsTwoChildren` sólo aceptaba el contador al principio (`^2[.!]?$`) o delante de «hijos» (`2 hijos`); acá viene **detrás de una etiqueta** y envuelto en énfasis Markdown.
+
+**Cambio mínimo, en la función y en ningún otro lado** (`evals/scenarios.ts`): normalizar el énfasis y aceptar la etiqueta con el contador al final.
+
+```diff
+ export function confirmsTwoChildren(answer: unknown): boolean {
+-  const text = String(answer ?? '').trim();
+-  return /^2\s*[.!]?$/.test(text) || /(?:2|dos)\s+(?:hijos?|subagentes?|children)/i.test(text);
++  // El cierre puede venir en negrita o con el contador al final de la etiqueta.
++  const text = String(answer ?? '').replace(/[*_`]+/g, '').trim();
++  return (
++    /^2\s*[.!]?$/.test(text) ||
++    /(?:2|dos)\s+(?:hijos?|subagentes?|children)/i.test(text) ||
++    /(?:hijos?|subagentes?|children)[^
+]{0,80}:\s*(?:2|dos)\s*[.!]?$/i.test(text)
++  );
+ }
+```
+
+**Por qué no relaja el criterio:** sigue exigiendo que el `2` esté atado a una cuenta de hijos. Acepta tres formas y nada más: el contador solo (`2`), delante del sustantivo (`2 hijos`, `dos subagentes`, `2 children`) o detrás de una etiqueta que nombra a los hijos y termina en el número (`… terminaron: 2.`). El número tiene que cerrar la respuesta y la etiqueta no puede cruzar un salto de línea ni superar 80 caracteres.
+
+**Sigue rechazando**, y hay que dejarlo fijado en las pruebas: el cierre por racha de `G1-T10-13` («subagentes fallidos en **dos** tandas seguidas»), `2 pasos`, `Total de pasos: 2`, `1`, la respuesta vacía y `undefined`.
+
+**Pruebas que haría falta agregar** en `tests/unit/t10ParentCount.test.ts` (ya existe y cubre esta función):
+
+- Acepta el caso medido: `'El objetivo ha finalizado. **Total de hijos que terminaron: 2**.'` y también `'Total de subagentes: dos.'`.
+- Sigue rechazando `CIERRE_POR_RACHA`, `'Terminaron 2 pasos.'` y `'Total de pasos: 2'`.
+- El escenario determinista `tests/evalsScenarios.test.ts` no cambia: usa un guion que cierra con `2`, así que debe seguir en verde.
+
+**Alcance:** sólo el evaluador (`confirmsTwoChildren`). No toca el encargo de T10, `maxSteps`, el contrato de cierre, el modelo congelado, el umbral de **15 151 ms** ni el denominador de 24, y **no mueve el 0/3** de las 24: es corrección de un falso negativo del criterio, no un pase nuevo. **Aplicado el 2026-11-23** con sus casos en `tests/unit/t10ParentCount.test.ts`; no mueve el 0/3 ni el resto del criterio.
+
+- **Sin efecto en G1:** T10 sigue **0/3** en las 24 y **0/9** con las extras; esta corrida no suma como pase. CAL4H no se ejecutó y el umbral de **15 151 ms** no se tocó.
+
+## Re-medición `G1-T10-15` (2026-11-23): dos tandas, 6/6 con los checks 6 y 7 en verde
+
+Dos tandas de **diagnóstico fuera de las 24** con el arnés (`evals/baseline.ts --only T10 --runs 3`), commit **`4af10ee`** (la limpieza de worktrees con `removeWorktreeSafe` ya aplicada), servidor propio en `:3280` y modelo congelado. Recibo: [`G1-T10-15-2026-11-23.md`](../receipts/G1-T10-15-2026-11-23.md).
+
+| Tanda | Corridas | Checks | Worktrees sin limpiar | Cierres de hijos |
+| --- | ---: | --- | ---: | --- |
+| A | 3 | **7/7** en las tres | 0 | 6 de 6 con `Archivos:`/`Denegado:` |
+| B | 3 | **7/7** en las tres | 0 | 6 de 6 con `Archivos:`/`Denegado:` |
+
+- **6 de 6 `passed`**, p50 102 336 ms, sin timeouts: el check 6 no volvió a caer y el check 7 aceptó `2` en las seis.
+- **12 de 12 hijos** con `ok:true`, las dos líneas del contrato y `worktreeCleanup: {"ok":true}`; ninguno necesitó `recovered`. El caso de recuperación lo cubre `tests/unit/worktreeCleanup.test.ts`.
+- **No mueve el 0/3 de las 24** ni el 0/9: las filas llevan `subset: true` y fuera de la tanda T10 sigue 0 de 6. Tampoco toca el p95 ni el umbral de **15 151 ms**.
+- **No cierra el issue:** seis corridas verdes no demuestran que la causa raíz desaparezca; el arreglo hace visible y recuperable la limpieza.
+
+## Cierre (2026-11-23): 6/6 en dos tandas y riesgo residual de los worktrees `prunable`
+
+- **Criterio de cierre cumplido:** dos tandas de diagnóstico fuera de las 24 sobre `4af10ee` ([recibo `G1-T10-15`](../receipts/G1-T10-15-2026-11-23.md)) dieron **6/6 `passed` con 7/7 checks**, los doce hijos con el contrato `Archivos:`/`Denegado:` y doce `worktreeCleanup` en `ok:true`; el check 6 y el check 7 quedaron en verde en las seis corridas. El criterio de T10 no se relajó.
+- **No mueve el 0/3 ni el umbral:** las seis filas llevan `subset: true`; T10 sigue **0/3 en las 24** y **0/9** con las extras, y el p95 de **15 151 ms** y el denominador de 24 no se tocaron.
+- **Riesgo residual declarado:** la causa original de la entrada `prunable` (directorio ausente con registro vivo) **no se reprodujo** en ninguna tanda. Lo que hay es la mitigación: `removeWorktreeSafe` verifica el registro, poda y reintenta (`4af10ee`), y desde `8bfc9cb` conserva el motivo del primer `remove` en `cause` aunque recupere; `tests/unit/worktreeCleanup.test.ts` (**5/5**) fuerza el fallo parcial, pero la prueba simula el estado, no demuestra cuál lo produjo en producción.
+- **Medición con la instrumentación (`8bfc9cb`):** una tanda fuera de las 24 dio **2/3** — T10-2 y T10-3 con 7/7, T10-1 con el hijo B en turno vacío del proveedor (`G1-EMPTY-TURN`, no la limpieza) —, con **6 hijos**, **0 `recovered` y 0 `cause`**. Confirma que no reapareció bajo esas condiciones; no descarta la causa.
+- **Sin efecto en G1:** G1 sigue **abierta** por el p95 de aprobación; CAL4H no se ejecutó y el umbral no se modificó.
+
 ## Evidencia
 
 | Archivo | Qué es |
 | --- | --- |
+| [`receipts/G1-T10-13-2026-11-21.md`](../receipts/G1-T10-13-2026-11-21.md) | Declaración vigente: **1/3** sobre `360f8c2`; 24 líneas T10 y 3 `passed`; T10 fuera de la puerta |
+| [`receipts/G1-T10-14-2026-11-23.md`](../receipts/G1-T10-14-2026-11-23.md) | Re-medición **2/3** sobre `9a99a90` con cero cierres huecos; diagnóstico, no cambia el 0/3 de las 24 |
+| `.commander/g1/G1-T10-14-run4.log` | salida de la corrida complementaria: siete `checks` y `spawns` con la respuesta literal de cada hijo |
 | `.commander/g1/sess_844bc8ee-t10.json` | informe del evaluador de `G1-D4-04`: `children[].answer`, `checks` y `passed` |
 | `.commander/g1/sess_01bb1f7e-t10.json` | ídem de `G1-D4-05` (cancelada por presupuesto) |
 | `.commander/g1/sess_a1be6243-t10.json` | ídem de `G1-D4-05R`, con el aislamiento en verde y las dos comprobaciones de texto en rojo |

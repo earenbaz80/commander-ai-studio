@@ -23,6 +23,12 @@ function deepMerge(target: any, source: any): any {
   for (const key of Object.keys(source)) {
     const srcVal = source[key];
     const tgtVal = target[key];
+    // `null` borra la clave: `writeConfig` fusiona con el fichero y sin esto
+    // una clave eliminada en memoria volvía al guardar (p. ej. un servidor MCP).
+    if (srcVal === null) {
+      delete result[key];
+      continue;
+    }
     if (srcVal && typeof srcVal === 'object' && !Array.isArray(srcVal) &&
         tgtVal && typeof tgtVal === 'object' && !Array.isArray(tgtVal)) {
       result[key] = deepMerge(tgtVal, srcVal);
@@ -51,7 +57,10 @@ function loadConfigFile(filePath: string): Partial<CommanderConfig> {
     const content = fs.readFileSync(filePath, 'utf-8');
     return JSON.parse(content);
   } catch (e) {
-    console.warn(`[config] Failed to load ${filePath}:`, e instanceof Error ? e.message : e);
+    // El mensaje del parser incluye un fragmento del archivo, y la config puede
+    // contener API keys: se registra el motivo, nunca el contenido.
+    const reason = e instanceof SyntaxError ? 'JSON inválido' : 'no se pudo leer';
+    console.warn(`[config] No se pudo cargar ${filePath}: ${reason}`);
     return {};
   }
 }

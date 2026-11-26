@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 /**
  * Empaquetado del CLI.
@@ -22,6 +25,30 @@ test('el paquete declara el ejecutable `commander` y publica sólo el bundle', (
 test('`prepack` construye el CLI antes de empaquetar', () => {
   assert.equal(pkg.scripts?.['build:cli'], 'node scripts/build-cli.mjs');
   assert.equal(pkg.scripts?.prepack, 'npm run build:cli');
+});
+
+test('`build:cli` falla claro sin `dist/index.html` y no deja un bundle sin UI', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'commander-cli-sin-dist-'));
+  try {
+    // El script usa rutas relativas al cwd, así que un temporal sin `dist/`
+    // reproduce el clon limpio sin tocar el `dist/` real del repo.
+    const script = path.resolve('scripts/build-cli.mjs');
+    const result = spawnSync(process.execPath, [script], {
+      cwd: tmp,
+      encoding: 'utf8',
+    });
+
+    assert.equal(result.status, 1, `esperaba exit 1; stderr: ${result.stderr}`);
+    assert.match(result.stderr, /falta dist\/index\.html/);
+    assert.match(result.stderr, /npm run build/);
+    assert.equal(
+      fs.existsSync(path.join(tmp, 'cli-dist')),
+      false,
+      'no debe quedar `cli-dist` a medias cuando falta la UI'
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test('el bundle conserva el shebang y añade un require real para los CJS', () => {
