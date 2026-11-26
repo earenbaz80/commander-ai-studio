@@ -311,6 +311,102 @@ describe('cliente web del lease', () => {
     assert.equal(net.calls.at(-1)?.body.seq, 2);
   });
 
+  test('la escritura de sesión viaja con el seq del lease', async () => {
+    const net = fakeFetch((call) => {
+      if (call.url.endsWith('/api/pair/lease')) {
+        return json({ success: true, lease: lease({ seq: 6 }), mine: true });
+      }
+      return json({ success: true, state: { sessionId: 'sess_f3' } }, 202);
+    });
+    const leaseClient = client(net.impl);
+
+    await leaseClient.claim();
+    const result = await leaseClient.sendMessage({ text: 'hola' });
+
+    assert.equal(result.ok, true);
+    const write = net.calls.at(-1)!;
+    assert.equal(write.method, 'POST');
+    assert.equal(write.url, 'http://127.0.0.1:3280/api/agent/sessions/sess_f3/message');
+    assert.deepEqual(write.body, { text: 'hola', seq: 6 });
+    assert.equal(write.credentials, 'same-origin', 'la cookie del dispositivo viaja');
+    assert.equal(leaseClient.getState().canWrite, true, 'una escritura aceptada confirma el control');
+  });
+
+  test('un LEASE_STALE refresca el estado y reintenta con el seq nuevo', async () => {
+    let writes = 0;
+    const net = fakeFetch((call) => {
+      if (call.url.endsWith('/api/pair/lease')) {
+        return json({ success: true, lease: lease({ seq: 4 }), mine: true });
+      }
+      if (call.method === 'GET') {
+        return json({ success: true, lease: lease({ seq: 7 }), mine: true });
+      }
+      writes += 1;
+      if (writes === 1) {
+        return json({ success: false, code: 'LEASE_STALE', error: 'el control cambió' }, 409);
+      }
+      return json({ success: true, state: { sessionId: 'sess_f3' } }, 202);
+    });
+    const leaseClient = client(net.impl);
+
+    await leaseClient.claim();
+    const result = await leaseClient.sendMessage({ text: 'hola' });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(
+      net.calls.map((call) => `${call.method} ${call.url.replace('http://127.0.0.1:3280', '')}`),
+      [
+        'POST /api/pair/lease',
+        'POST /api/agent/sessions/sess_f3/message',
+        'GET /api/pair/lease?sessionId=sess_f3',
+        'POST /api/agent/sessions/sess_f3/message',
+      ],
+      'entre la escritura vieja y el reintento se relee el estado'
+    );
+    const messages = net.calls.filter((call) => call.url.endsWith('/message'));
+    assert.equal(messages[0].body.seq, 4);
+    assert.equal(messages[1].body.seq, 7, 'reintenta con el seq que devolvió el refresh');
+    assert.equal(leaseClient.getState().lease?.seq, 7);
+    assert.equal(leaseClient.getState().canWrite, true);
+  });
+
+  test('un LEASE_STALE con el control en otro dispositivo no reintenta', async () => {
+    const net = fakeFetch((call) => {
+      if (call.url.endsWith('/api/pair/lease')) {
+        return json({ success: true, lease: lease({ seq: 4 }), mine: true });
+      }
+      if (call.method === 'GET') {
+        return json({ success: true, lease: lease({ deviceId: 'dev_b', seq: 8 }), mine: false });
+      }
+      return json({ success: false, code: 'LEASE_STALE', error: 'el control cambió' }, 409);
+    });
+    const leaseClient = client(net.impl);
+
+    await leaseClient.claim();
+    const result = await leaseClient.sendMessage({ text: 'hola' });
+
+    if (result.ok) assert.fail('sin el control no se escribe');
+    assert.equal(result.error.code, 'LEASE_STALE');
+    assert.equal(
+      net.calls.filter((call) => call.url.endsWith('/message')).length,
+      1,
+      'sin reintento: el control ya es de otro'
+    );
+    assert.equal(leaseClient.getState().lease?.deviceId, 'dev_b', 'el estado quedó refrescado');
+    assert.equal(leaseClient.getState().canWrite, false);
+  });
+
+  test('sin lease conocido la escritura no sale a la red', async () => {
+    const net = fakeFetch(() => json({ success: true, lease: lease(), mine: true }));
+    const leaseClient = client(net.impl);
+
+    const result = await leaseClient.sendMessage({ text: 'hola' });
+
+    if (result.ok) assert.fail('sin seq no se escribe');
+    assert.equal(result.error.code, 'LEASE_NO_STATE');
+    assert.equal(net.calls.length, 0);
+  });
+
   test('los listeners reciben cada transición y se pueden dar de baja', async () => {
     const net = fakeFetch(() =>
       json({ success: true, lease: lease({ seq: 1 }), mine: true })
