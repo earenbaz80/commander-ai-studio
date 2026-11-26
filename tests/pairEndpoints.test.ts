@@ -117,9 +117,15 @@ describe('POST /api/pair/issue', () => {
     // `pairLatestSession.test.ts` con su propio server vacío.
     assert.match(String(res.body.sessionId), /^[A-Za-z0-9][A-Za-z0-9_-]*$/);
     assert.equal(res.body.ttlMs, 300_000);
+    // El server es otro proceso: si el reloj de la máquina se ajusta entre
+    // `before` y la lectura del server (NTP, despertar del equipo), el mismo
+    // TTL de 5 min cae corrido. La ventana tolera ese desfasaje; el valor
+    // exacto lo fija `pairTokens.test.ts` inyectando `now`.
+    const skewMs = 60_000;
     assert.ok(
-      res.body.expiresAt >= before + 300_000 && res.body.expiresAt <= after + 300_000,
-      `expiresAt fuera de la ventana de 5 min: ${res.body.expiresAt}`
+      res.body.expiresAt >= before + 300_000 - skewMs &&
+        res.body.expiresAt <= after + 300_000 + skewMs,
+      `expiresAt fuera de la ventana de 5 min (±${skewMs / 1000}s): ${res.body.expiresAt}`
     );
   });
 
