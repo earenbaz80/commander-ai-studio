@@ -18,8 +18,8 @@ No promete fechas; los esfuerzos son órdenes de magnitud. Una fase o un criteri
 | **Total** | **16** | **4/13 en alcance** | **67/95 (71 %)** |
 
 - **4 fases cerradas:** F0, PL0, UX 1.0 y F2.
-- **6 parciales:** F1, F3, PL2, PL3, PL5 y PL6.
-- **3 pendientes:** F4, F5 y PL4.
+- **7 parciales:** F1, F3, F4, PL2, PL3, PL5 y PL6.
+- **2 pendientes:** F5 y PL4.
 - **Fuera del cómputo:** PL1 (fuera de alcance hasta G3) y F6/PL7 (opcionales).
 - **Puertas:** G0 cerrada; G1 abierta (dogfooding ejecutado; **no retiene fases**, §2.1); G2 no iniciada con revisión propuesta y sin firma; G3 no iniciada.
 
@@ -120,7 +120,7 @@ Continuar la misma sesión desde el móvil o el navegador con la misma política
 
 **Qué falta para G2.** El recorrido T1–T12 está hecho y propone **pasa con condiciones, limitado a loopback**. Faltan la firma humana (residuales A3/A5 y parámetros abiertos), las condiciones C1, C2, C7 y C8 y el proveedor TLS de G3. Sin firma no se publica `--remote`: los seis criterios marcados no cierran la fase.
 
-### F4 · Editor y ecosistema — Pendiente · P1 · 12–15 d · 6/11
+### F4 · Editor y ecosistema — Parcial · 6/11 · P1 · 12–15 d
 
 **Alcance 4A (extensión VS Code).** Compilar e instalar el `.vsix`, arrancar/reutilizar el servidor embebido sin exigir `npx` en producción, webview de chat con streaming, modelo/modo, selección de código como contexto, plan y approvals con diff; abrir archivo/línea desde un resultado de tool, mostrar diagnósticos del editor y conservar la misma sesión del escritorio, sin duplicar el bucle del agente.
 
