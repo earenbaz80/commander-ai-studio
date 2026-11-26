@@ -313,17 +313,17 @@ Los cuatro son de diagnóstico o de producto: ninguno tiene número en GitHub, n
 
 ## 7. Vista gráfica y mapeo de etiquetas
 
-El roadmap visual numera sus cinco bloques `F0`–`F4`, y esas etiquetas **no** son las fases `F0`–`F6` de §3 ni las `PL0`–`PL7` de §4: coinciden en la letra y no en el contenido. Para citar un paso se escribe el id completo (`F2-4`, `F4-1`) y se dice de qué documento sale.
+El roadmap visual numera sus cinco bloques `V0`–`V4` y sus 27 pasos `V0-1`…`V4-3`; la `V` es de *vista*, justamente para no compartir letra con las fases. Esas etiquetas **no** son las fases `F0`–`F6` de §3, ni las `PL0`–`PL7` de §4, ni los issues `F1-01`…`F1-14` de §6: agrupan por otro criterio. Para citar un paso se escribe el id completo (`V2-4`, `V4-1`) y se dice de qué documento sale.
 
 | Bloque del visual | Qué cubre aquí | Colisión a vigilar |
 | --- | --- | --- |
-| **F0 · Núcleo del agente** (`F0-1`…`F0-10`) | Paridad **F0** (verdad y línea base) y **F1** (núcleo de agente y CLI) | El `F0` del visual no es el `F0` de paridad: el visual reparte en diez pasos lo que aquí son dos fases con G0 y G1 |
-| **F1 · Fiabilidad medida** (`F1-1`…`F1-6`) | Paridad **F1** y puerta **G1** | No es una fase nueva: mide F1 y su puerta |
-| **F2 · Distribución del CLI** (`F2-1`…`F2-3`) | Sin fase equivalente: entrega del paquete (criterio de F1 y contrato de PL0) | El `F2` del visual no es el `F2` de paridad (artifacts de verificación) |
-| **F2-4 · Extensión de VS Code** | Paridad **F4** (4A) | El paso `F2-4` cuelga de `F2` pero su fase es `F4` |
-| **F3 · Continuidad de superficies** (`F3-1`…`F3-4`) | Paridad **F3**; la parte de hosting queda sujeta a **PL1** y a G3 | Coincide en tema, no en criterios: aquí no hay G2 |
-| **F4 · Plataforma** (`F4-2`, `F4-3`) | `F4-2` (marketplace) es la apuesta **F6**/PL6; `F4-3` (coste y tokens) no tiene fase | El `F4` del visual no es el `F4` de paridad (editor) |
-| **F4-1 · Backend de las apps publicadas** | Plataforma **PL3**, con **PL4** detrás | El paso `F4-1` no es la fase `F4` de paridad: es `PL3` |
+| **V0 · Núcleo del agente** (`V0-1`…`V0-10`) | Paridad **F0** (verdad y línea base) y **F1** (núcleo de agente y CLI) | `V0` no es una fase: el visual reparte en diez pasos lo que aquí son dos fases con G0 y G1 |
+| **V1 · Fiabilidad medida** (`V1-1`…`V1-6`) | Paridad **F1** y puerta **G1** | No es una fase nueva: mide F1 y su puerta |
+| **V2 · Distribución del CLI** (`V2-1`…`V2-3`) | Sin fase equivalente: entrega del paquete (criterio de F1 y contrato de PL0) | No hay fase `V2`: la entrega vive como criterio, no como fase |
+| **V2-4 · Extensión de VS Code** | Paridad **F4** (4A) | El paso `V2-4` cuelga de `V2` pero su fase es `F4` |
+| **V3 · Continuidad de superficies** (`V3-1`…`V3-4`) | Paridad **F3**; la parte de hosting queda sujeta a **PL1** y a G3 | Coincide en tema, no en criterios: aquí no hay G2 |
+| **V4 · Plataforma** (`V4-2`, `V4-3`) | `V4-2` (marketplace) es la apuesta **F6**/PL6; `V4-3` (coste y tokens) no tiene fase | `V4` es plataforma; la fase **F4** es el editor (VS Code, hooks, plugins y MCP) |
+| **V4-1 · Backend de las apps publicadas** | Plataforma **PL3**, con **PL4** detrás | El paso `V4-1` no es la fase `F4` de paridad: es `PL3` |
 
 La página no es un segundo roadmap: es la vista publicada de este archivo, con pesos por paso y su evidencia. Se actualiza en el bloque `<script id="plan">` de `docs/roadmap-autonomo.html`.
 
