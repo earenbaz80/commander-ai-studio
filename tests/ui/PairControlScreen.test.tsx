@@ -298,6 +298,9 @@ describe('pantalla /pair', () => {
     // Sin el control, aprobar aplicaría un diff desde un dispositivo de sólo lectura.
     expect(screen.getByTestId('pair-approval-allow-apr_1')).toBeDisabled();
 
+    // El panel de aprobaciones se pinta antes que el lease: reclamar exige
+    // esperar a que exista el control (si no, en un runner rápido no hay botón).
+    await waitFor(() => expect(screen.getByTestId('pair-claim')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('pair-claim'));
     await waitFor(() => expect(screen.getByTestId('pair-approval-allow-apr_1')).toBeEnabled());
 

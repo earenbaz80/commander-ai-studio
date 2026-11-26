@@ -107,6 +107,11 @@ describe('pantalla /pair/session', () => {
     // Sin control no se escribe: el compositor está desactivado.
     expect(screen.getByTestId('pair-session-send')).toBeDisabled();
 
+    // El estado de la sesión llega antes que el lease: reclamar necesita que el
+    // cliente ya exista y haya leído el control.
+    await waitFor(() =>
+      expect(screen.getByTestId('pair-session-lease').textContent).toContain('Sólo lectura')
+    );
     fireEvent.click(screen.getByTestId('pair-session-claim'));
     await waitFor(() => expect(screen.getByTestId('pair-session-lease').textContent).toContain('Escribís'));
 
@@ -184,6 +189,9 @@ describe('pantalla /pair/session', () => {
     expect(screen.getByTestId('pair-session-approval-diff-apr_9').textContent).toContain('+hola');
     expect(screen.getByTestId('pair-session-allow-apr_9')).toBeDisabled();
 
+    await waitFor(() =>
+      expect(screen.getByTestId('pair-session-lease').textContent).not.toContain('Leyendo')
+    );
     fireEvent.click(screen.getByTestId('pair-session-claim'));
     await waitFor(() => expect(screen.getByTestId('pair-session-allow-apr_9')).toBeEnabled());
 
