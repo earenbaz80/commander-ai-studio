@@ -477,6 +477,117 @@ describe('control lease contra el server', () => {
       cleanupDir(created.cwd);
     }
   });
+
+  test('fork con run, checkpoint, cancel y aplicar una propuesta exigen el control', async () => {
+    const origin = { headers: { Origin: srv.baseUrl } };
+
+    // Fuente idle: copiar no escribe, arrancar la copia sí.
+    const source = await createSession('Lease: fork con run (F3)');
+    const forkOwner = await pairDevice(source);
+    const claimed = await claim(source, forkOwner.cookie);
+    const fork = (body: object) =>
+      srv.request('POST', `/api/agent/sessions/${source}/fork`, body, origin);
+
+    // El escritorio no puede poner otro bucle a escribir mientras un dispositivo
+    // tiene el control, ni siquiera copiando su propia sesión.
+    const deniedFork = await fork({ run: true });
+    assert.equal(deniedFork.status, 409, deniedFork.raw);
+    assert.equal(deniedFork.body.code, 'LEASE_HELD');
+
+    // Copiar sin `run` no escribe: sigue permitido y la copia queda idle.
+    const copy = await fork({});
+    assert.equal(copy.status, 201, copy.raw);
+    assert.equal(copy.body.session.status, 'idle');
+
+    // El checkpoint del CLI reemplaza el estado persistido: misma guarda.
+    const state = await getState(srv, source);
+    const tampered = { ...state, answer: 'checkpoint sin control' };
+    const putState = (cookie: string | null, body: object = {}) => {
+      const headers: Record<string, string> = { Origin: srv.baseUrl };
+      if (cookie) headers.Cookie = cookie;
+      return srv.request(
+        'PUT',
+        `/api/agent/sessions/${source}/state`,
+        { state: tampered, ...body },
+        { headers }
+      );
+    };
+
+    const deniedState = await putState(null);
+    assert.equal(deniedState.status, 409, deniedState.raw);
+    assert.equal(deniedState.body.code, 'LEASE_HELD');
+    // El dueño con un seq viejo tampoco: el testigo vigente es el que manda.
+    const staleState = await putState(forkOwner.cookie, { seq: claimed.seq - 1 });
+    assert.equal(staleState.status, 409, staleState.raw);
+    assert.equal(staleState.body.code, 'LEASE_STALE');
+    assert.equal(
+      (await getState(srv, source)).answer ?? null,
+      state.answer ?? null,
+      'sin lease no se pisa el estado'
+    );
+
+    // Con el testigo vigente el checkpoint entra.
+    const saved = await putState(forkOwner.cookie, { seq: claimed.seq });
+    assert.equal(saved.status, 200, saved.raw);
+    assert.equal((await getState(srv, source)).answer, 'checkpoint sin control');
+
+    // Aplicar escribe archivos; `dryRun` sólo simula y se puede consultar sin
+    // control, así que con un id inexistente la guarda no lo frena.
+    const apply = (body: object) =>
+      srv.request(
+        'POST',
+        `/api/agent/sessions/${source}/proposals/prop_inexistente_f3/apply`,
+        body,
+        origin
+      );
+    const deniedApply = await apply({});
+    assert.equal(deniedApply.status, 409, deniedApply.raw);
+    assert.equal(deniedApply.body.code, 'LEASE_HELD');
+    const dry = await apply({ dryRun: true });
+    assert.equal(dry.status, 404, dry.raw);
+
+    // Cancelar cambia el estado de una sesión en marcha (aquí, esperando una
+    // aprobación): el escritorio no puede pararla sin el control.
+    const provider = await startScriptedProvider([
+      { tool: 'fs.write', args: { path: 'cancelado.txt', content: 'no' } },
+      { text: 'Fin.' },
+    ]);
+    const running = await createApprovalSession(srv, provider, {
+      goal: 'Lease: cancelar con lease (F3)',
+      approvalTimeoutMs: 30_000,
+    });
+    try {
+      const approval = await waitForApproval(srv, running.id);
+      const runnerOwner = await pairDevice(running.id);
+      const runnerClaim = await claim(running.id, runnerOwner.cookie);
+
+      const cancel = async (cookie: string | null, body: object = {}) => {
+        const headers: Record<string, string> = { Origin: srv.baseUrl };
+        if (cookie) headers.Cookie = cookie;
+        return srv.request('POST', `/api/agent/sessions/${running.id}/cancel`, body, { headers });
+      };
+
+      const deniedCancel = await cancel(null);
+      assert.equal(deniedCancel.status, 409, deniedCancel.raw);
+      assert.equal(deniedCancel.body.code, 'LEASE_HELD');
+      const stillRunning = await getState(srv, running.id);
+      assert.equal(stillRunning.status, 'running', 'sin lease no se para la tanda');
+      assert.equal(stillRunning.pendingApproval?.id, approval.id);
+
+      const staleCancel = await cancel(runnerOwner.cookie, { seq: runnerClaim.seq - 1 });
+      assert.equal(staleCancel.status, 409, staleCancel.raw);
+      assert.equal(staleCancel.body.code, 'LEASE_STALE');
+
+      // El dueño con el seq vigente sí la para.
+      const stopped = await cancel(runnerOwner.cookie, { seq: runnerClaim.seq });
+      assert.equal(stopped.status, 200, stopped.raw);
+      assert.equal(stopped.body.parentCancelled, true);
+      assert.notEqual((await getState(srv, running.id)).status, 'running');
+    } finally {
+      await provider.close();
+      cleanupDir(running.cwd);
+    }
+  });
 });
 
 describe('control lease (módulo)', () => {
@@ -584,6 +695,15 @@ describe('control lease (módulo)', () => {
         pairLeaseAudit('sess_real').map((row) => row.action),
         ['claimed'],
         'y se relee del disco en vez de darse por vacío'
+      );
+
+      // Un evento posterior se suma al historial real, no lo reescribe vacío.
+      assert.equal(claimPairLease('sess_nueva', 'dev_nueva', { now: 2_000, ttlMs: 1_000 }).ok, true);
+      const survivors = fs.readFileSync(defaultFile, 'utf8').trim().split('\n');
+      assert.equal(survivors.length, 2, 'el evento nuevo se agrega al historial que ya estaba');
+      assert.deepEqual(
+        survivors.map((line) => JSON.parse(line).sessionId),
+        ['sess_real', 'sess_nueva']
       );
     } finally {
       process.chdir(previousCwd);

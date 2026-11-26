@@ -842,12 +842,24 @@ function pairLeaseRejection(res: any, reason: string): any {
 
 /**
  * Escritura de sesión con lease (§6.4): un dispositivo emparejado escribe sólo
- * si es el dueño y manda el `seq` vigente. Vale para las dos mutaciones que
- * cambian la sesión de verdad: el turno de usuario
- * (`POST /api/agent/sessions/:id/message`) y la resolución de una aprobación
- * (`POST /api/agent/sessions/:id/approvals/:approvalId`), porque aprobar es
- * aplicar un diff. En ambas, mientras el lease está en el escritorio, los
- * clientes locales (sin cookie) siguen escribiendo como siempre; un dispositivo que aún no reclamó recibe 409 `LEASE_HELD`, y con el
+ * si es el dueño y manda el `seq` vigente. Vale para toda mutación que escriba
+ * de verdad:
+ *
+ *   • el turno de usuario (`POST /api/agent/sessions/:id/message`);
+ *   • la resolución de una aprobación (`…/approvals/:approvalId`), porque
+ *     aprobar es aplicar un diff;
+ *   • el checkpoint del CLI (`PUT …/state`), que pisa el estado persistido;
+ *   • el fork que arranca el bucle (`POST …/fork` con `run: true`): copiar no
+ *     escribe, pero la copia que corre sí;
+ *   • cancelar la tanda (`POST …/cancel`), que cambia el estado de la sesión;
+ *   • aplicar una propuesta (`POST …/proposals/:proposalId/apply`), salvo con
+ *     `dryRun`, que no toca el disco.
+ *
+ * No se aplica a las lecturas, al fork sin `run` ni a borrar la sesión: borrar
+ * es limpieza y no una escritura de contenido, y quien la creó debe poder
+ * retirarla sin pedir el control. En las rutas guardadas, mientras el lease está
+ * en el escritorio, los clientes locales (sin cookie) siguen escribiendo como
+ * siempre; un dispositivo que aún no reclamó recibe 409 `LEASE_HELD`, y con el
  * control en otro dispositivo toda escritura ajena —incluida la del escritorio—
  * también, para que el escritor sea uno solo. El `seq` viejo da 409
  * `LEASE_STALE`: un mensaje en vuelo no revive un control ya cedido.
@@ -1017,7 +1029,11 @@ app.post('/api/agent/sessions/:id/proposals/:proposalId/apply', (req, res) => {
     }
     const session = getOrLoadSession(id);
     if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
-    const result = session.applyProposal(proposalId, { dryRun: req.body?.dryRun === true });
+    const dryRun = req.body?.dryRun === true;
+    // Aplicar escribe el archivo y crea el checkpoint; `dryRun` sólo simula, así
+    // que se lee sin control como cualquier consulta.
+    if (!dryRun && pairLeaseWriteDenied(req, res, id)) return;
+    const result = session.applyProposal(proposalId, { dryRun });
     const status = result.ok
       ? 200
       : result.code === 'PROPOSAL_NOT_FOUND'
@@ -1124,6 +1140,9 @@ app.post('/api/agent/sessions/:id/fork', (req, res) => {
     const b = req.body || {};
     const text = String(b.text ?? b.message ?? '').trim();
     if (text.length > 20_000) return res.status(400).json({ success: false, error: 'text demasiado largo (>20000)' });
+    // Copiar no escribe; arrancar la copia sí pone otro bucle a escribir sobre
+    // el mismo workspace, así que el fork con `run` exige el control de la fuente.
+    if (b.run === true && pairLeaseWriteDenied(req, res, id)) return;
     const session = forkSession(id);
     if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
     if (text) session.addMessage(text);
@@ -1147,6 +1166,9 @@ app.put('/api/agent/sessions/:id/state', (req, res) => {
     const session = getOrLoadSession(id);
     if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
     if (session.isRunning()) return res.status(409).json({ success: false, error: 'la sesión está en ejecución' });
+    // El checkpoint del CLI reemplaza el estado persistido: es una escritura y
+    // compite con el escritor que tenga el control.
+    if (pairLeaseWriteDenied(req, res, id)) return;
     const state = decodeSessionState(req.body?.state ?? req.body);
     if (!state || state.id !== id) {
       return res.status(400).json({ success: false, error: 'estado inválido o de otra sesión' });
@@ -1180,6 +1202,9 @@ app.post('/api/agent/sessions/:id/cancel', async (req, res) => {
     if (!isValidSessionId(id)) return res.status(400).json({ success: false, error: 'id inválido' });
     const session = getOrLoadSession(id);
     if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    // Parar la tanda cambia el estado de la sesión: es una escritura y no puede
+    // venir de un cliente que no tiene el control.
+    if (pairLeaseWriteDenied(req, res, id)) return;
     // Cancelar sólo a los hijos dejaría al bucle padre gastando tokens: la
     // sesión autoritativa se para también.
     const parentCancelled = session.getStatus() === 'running' || session.getStatus() === 'idle';
