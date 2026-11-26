@@ -513,4 +513,73 @@ describe('stream de la sesión', () => {
     expect(screen.queryByTestId('pair-session-approval-apr_9')).toBeNull();
     expect(decisions).toBe(1);
   });
+
+  test('una aprobación que falla se cuenta en el chat y no como alerta del lease', async () => {
+    const approval = {
+      id: 'apr_404',
+      sessionId: 'sess_f3',
+      tool: 'fs.write',
+      input: { path: 'src/nuevo.ts' },
+      diff: '--- /dev/null\n+++ b/src/nuevo.ts\n+hola\n',
+      createdAt: 1_000,
+      expiresAt: 61_000,
+    };
+    stubNet((url, method) => {
+      if (url.endsWith('/api/pair/device')) return device;
+      if (url.includes('/api/pair/lease?')) {
+        return { body: { success: true, lease: lease({ seq: 3 }), mine: true, renewMs: 30_000 } };
+      }
+      if (url.endsWith('/api/pair/lease') && method === 'POST') {
+        return {
+          body: {
+            success: true,
+            lease: lease({ deviceId: 'dev_me', seq: 3, expiresAt: 61_000 }),
+            mine: true,
+            renewMs: 30_000,
+          },
+        };
+      }
+      if (url.endsWith('/api/agent/sessions/sess_f3/approvals/apr_404') && method === 'POST') {
+        return {
+          status: 404,
+          body: { success: false, code: 'APPROVAL_NOT_FOUND', error: 'aprobación no encontrada' },
+        };
+      }
+      if (url.endsWith('/api/agent/sessions/sess_f3')) {
+        return {
+          body: {
+            success: true,
+            running: true,
+            state: {
+              id: 'sess_f3',
+              status: 'running',
+              turns: [],
+              plan: [],
+              pendingApproval: approval,
+              pendingApprovals: [approval],
+            },
+          },
+        };
+      }
+      return { status: 404, body: {} };
+    });
+
+    render(<PairSessionScreen sessionId="sess_f3" streamRetryMs={0} />);
+    await waitFor(() => expect(screen.getByTestId('pair-session-approval-apr_404')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByTestId('pair-session-lease').textContent).not.toContain('Leyendo')
+    );
+    fireEvent.click(screen.getByTestId('pair-session-claim'));
+    await waitFor(() => expect(screen.getByTestId('pair-session-allow-apr_404')).toBeEnabled());
+
+    fireEvent.click(screen.getByTestId('pair-session-allow-apr_404'));
+
+    // El fallo se cuenta una sola vez, en el chat.
+    await waitFor(() =>
+      expect(screen.getByTestId('pair-session-note').textContent).toContain('APPROVAL_NOT_FOUND')
+    );
+    expect(screen.queryByTestId('pair-session-lease-error')).toBeNull();
+    // La decisión no se aplicó: la aprobación sigue pendiente y se puede reintentar.
+    expect(screen.getByTestId('pair-session-approval-apr_404')).toBeInTheDocument();
+  });
 });
