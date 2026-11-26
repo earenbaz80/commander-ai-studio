@@ -56,6 +56,29 @@ export interface PairOriginInput {
  * Motivo del rechazo, o `null` si la petición pasa. El texto va tal cual al
  * cliente: no revela si un token existe ni nada del almacén.
  */
+/**
+ * ¿La cookie de dispositivo sale `Secure`? (§6.2 del modelo de amenazas)
+ *
+ * `req.protocol` no alcanza detrás de un túnel: Express no confía en el proxy
+ * por defecto y sigue viendo `http` aunque el cliente hable HTTPS. Por eso
+ * además se mira `X-Forwarded-Proto`, pero **sólo desde un peer de loopback**:
+ * el túnel termina TLS y reenvía al server local. Fuera de loopback esa
+ * cabecera la escribe cualquiera, así que no se cree y la cookie queda en
+ * `Secure` sólo si el TLS es directo.
+ */
+export function pairCookieSecure(input: {
+  protocol?: unknown;
+  forwardedProto?: unknown;
+  remoteAddress?: unknown;
+}): boolean {
+  if (String(input.protocol ?? '').trim().toLowerCase() === 'https') return true;
+  const forwarded = Array.isArray(input.forwardedProto)
+    ? input.forwardedProto[0]
+    : input.forwardedProto;
+  const first = String(forwarded ?? '').split(',')[0].trim().toLowerCase();
+  return first === 'https' && isLoopbackPeer(input.remoteAddress);
+}
+
 export function pairOriginRejection(input: PairOriginInput): string | null {
   const site = typeof input.secFetchSite === 'string' ? input.secFetchSite.trim().toLowerCase() : '';
   if (site === 'cross-site') return 'Sec-Fetch-Site cross-site no permitido';
