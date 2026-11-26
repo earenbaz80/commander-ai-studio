@@ -83,12 +83,12 @@
   <div><b>Reglas de marcado.</b> Un paso llega a 100 % sólo con evidencia en el árbol o una corrida real (test, recibo, instalación comprobada). <span class="mark done">[x]</span> cerrado · <span class="mark partial">[~]</span> en curso · <span class="mark todo">[ ]</span> sin empezar.</div>
   <div style="margin-top:6px"><b>Cómo se actualiza.</b> Los datos viven en el bloque <code>&lt;script id="plan"&gt;</code> de este archivo (peso y % por paso). Al cerrar un paso se sube su <code>progress</code> y se anota la evidencia; los porcentajes de fase y el global se recalculan ponderados al abrir la página.</div>
   <div style="margin-top:6px"><b>Publicado en.</b> <a href="https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html">earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html</a> — versión gráfica de este documento.</div>
-  <div style="margin-top:6px"><b>Fuentes.</b> docs/parity/baseline-2026-11.md · docs/parity/dogfooding-g1-d5.md · docs/parity/receipts/G1-T10-15-2026-11-23.md · tests/agentLoop.test.ts · tests/cli/verifyGate.test.ts · tests/cli/defaultPermissions.test.ts · npm run build:cli.</div>
+  <div style="margin-top:6px"><b>Fuentes.</b> docs/parity/baseline-2026-11.md · docs/parity/dogfooding-g1-d5.md · docs/parity/receipts/G1-T10-15-2026-11-23.md · docs/parity/receipts/G2-REVIEW-2026-11-25.md · tests/agentLoop.test.ts · tests/cli/verifyGate.test.ts · tests/cli/defaultPermissions.test.ts · tests/pair*.test.ts · npm run build:cli.</div>
 </footer>
 
 <script type="application/json" id="plan">
 {
-  "updated": "2026-11-23",
+  "updated": "2026-11-26",
   "phases": [
     {
       "id": "F0",
@@ -136,10 +136,10 @@
       "name": "F3 · Continuidad de superficies",
       "goal": "Misma tarea en terminal, escritorio, web y móvil, con sandbox y repos conectados.",
       "steps": [
-        { "id": "F3-1", "title": "Web/nube: sesiones accesibles fuera de la máquina", "weight": 2, "progress": 30, "evidence": "API de sesiones + SSE existen; `serve --host` y `server.host` hacen bind real (con aviso de exposición) · 058cfb4 · tests/unit/bindHost.test.ts; falta hosting, auth y TLS para exponerla" },
+        { "id": "F3-1", "title": "Web/nube: sesiones accesibles fuera de la máquina", "weight": 2, "progress": 60, "evidence": "pair local completo: enlace de un uso (5 min, hash en memoria), cookie de dispositivo con revocación y `Secure` tras túnel, control lease con `ack` y fencing por `seq`, pantalla /pair/session por SSE con `Last-Event-ID` y tope por frame, rate limit, cupo de streams vivos y auditoría de emisión/canje/baja · 905710b…d1b8eaa · tests/pair*.test.ts; sólo loopback: el canje rechaza el `Origin` de la LAN y `--remote` no existe · falta hosting, TLS y la firma de G2" },
         { "id": "F3-2", "title": "Sandbox de ejecución aislado por sesión (remoto)", "weight": 2, "progress": 10, "evidence": "worktrees aislados y vm para code.run; no hay contenedor ni ejecución remota" },
         { "id": "F3-3", "title": "Conectar repositorio de GitHub (OAuth + clonar/abrir)", "weight": 2, "progress": 25, "evidence": "OAuth GitHub y github.pr/github.comment reales; no hay clonar ni abrir repo desde la app" },
-        { "id": "F3-4", "title": "App móvil para seguir o retomar sesiones", "weight": 2, "progress": 5, "evidence": "sólo metas PWA y scripts capacitor:add; no hay proyecto Android/iOS" }
+        { "id": "F3-4", "title": "App móvil para seguir o retomar sesiones", "weight": 2, "progress": 15, "evidence": "`/pair/session` sigue la misma sesión desde un navegador móvil con plan y approvals (`src/features/pair/PairSessionScreen.tsx`, `tests/pairSessionStreamEndpoint.test.ts`); no hay proyecto Android/iOS ni vista verificada a 390×844" }
       ]
     },
     {

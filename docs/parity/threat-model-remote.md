@@ -2,7 +2,7 @@
 
 > **Fecha:** 2026-11-25
 > **Estado:** borrador versionado, **sin revisión**. G2 sigue **no iniciada**: este documento es el insumo que la revisión tiene que aprobar, no la aprobación.
-> **Qué desbloquea:** sólo G2. F3 (`commander pair`, cliente web/PWA, control lease) sigue en **0/8** y no se declara hecha por tener este modelo.
+> **Qué desbloquea:** sólo G2. F3 (`commander pair`, cliente web/PWA, control lease) está **parcial (6/8)** y no se declara hecha por tener este modelo ni por los seis criterios que ya tienen test.
 > **Qué no es:** no es un recibo, no declara verificado ningún control, no habilita `--remote` en una release y **no cierra ninguna casilla de F3**.
 > **Referencias:** [ROADMAP](../../ROADMAP.md) §2 (G2), §3 (F3) y §11 (riesgos) · [bindHost](../../src/lib/bindHost.ts) · [F1 approvals](../../ROADMAP.md) §3.F1 · [issues de G1](issues/README.md).
 
@@ -147,10 +147,10 @@ Cada amenaza tiene control **y** criterio de aceptación verificable. La columna
 - **Acceso al stream**: exige cookie de dispositivo válida, o peer de loopback sin cookie (UI local y CLI). Un cookie presente pero revocado da 401 aunque venga de loopback, para que la revocación aplique sin esperar la caducidad.
 - **Contadores en memoria, por proceso**: no se persisten ni se comparten. El atacante no puede reiniciar el servidor, el horizonte es de un minuto y persistirlos agregaría una escritura a disco alcanzable sin cookie —justo la superficie que el limitador cierra—. Si algún día hubiera varios procesos sobre el mismo puerto, lo correcto es dividir el presupuesto, no coordinar estado.
 - **Detrás del túnel** el servidor ve `127.0.0.1`: el presupuesto “por caller” colapsa en uno solo y se vuelve un segundo global. En canje no cambia nada (sólo fallos); en approvals y stream es conservador y se acepta. `X-Forwarded-For` **no** se lee; hacerlo exigiría un proxy confiable con allowlist.
-- **Tamaño máximo** de evento y de frame de artifact; el excedente se rechaza, no se trunca en silencio.
+- **Tamaño máximo por frame SSE:** 512 KB (`MAX_STREAM_EVENT_BYTES`, ajustable con `COMMANDER_STREAM_EVENT_MAX_BYTES`). El evento que no cabe se rechaza con `event: error` y `code: STREAM_EVENT_TOO_LARGE`, **sin `id`** para que el cursor del cliente no avance sobre algo que no recibió; el `resync` entra en el mismo tope. Nada se trunca en silencio.
 - **Sesión inactiva:** el stream se cierra tras un periodo de inactividad y el cliente debe reautenticarse con la cookie viva.
 - **Redacción:** todo payload hacia el cliente pasa por la lista blanca de campos y por las reglas de redacción de F1. Ni `.env`, ni claves de proveedor, ni tokens OAuth/MCP llegan al cliente web, a la URL, a los logs o a los artifacts.
-- **Auditoría:** buffer persistente con `deviceId`, acción, resultado y hora; sin secretos. Es la evidencia para el criterio de revocación de F3.
+- **Auditoría:** dos JSONL con tope de 200 entradas, sin secretos: `.commander/pair/lease-audit.jsonl` (adquisición, renovación, traspaso, caducidad y revocación del control) y `.commander/pair/audit.jsonl` (emisión del enlace, canje y baja de dispositivo, con el motivo del fallo). Se leen desde loopback (`GET /api/pair/lease/audit` y `GET /api/pair/audit`), nunca desde el cliente emparejado.
 
 ### 6.7 Streaming y reconexión
 
@@ -190,7 +190,7 @@ G2 se cierra cuando exista una revisión que, sobre este documento:
 
 **Lo que no cierra G2:** este documento, que exista el endpoint de pair, que los tests de Origin/caducidad estén en verde, o que el cliente web funcione en loopback. G2 es una **decisión de revisión**, no un artefacto.
 
-**Preparación de la revisión:** [`receipts/G2-REVIEW-2026-11-25.md`](receipts/G2-REVIEW-2026-11-25.md) — checklist de estos ocho criterios con lo verificable hoy en el árbol y lo que sólo se sabrá al implementar el pair; sin veredicto.
+**Preparación de la revisión:** [`receipts/G2-REVIEW-2026-11-25.md`](receipts/G2-REVIEW-2026-11-25.md) — recorrido T1–T12 sobre el código del pair, tres hallazgos y **veredicto propuesto** (pasa con condiciones, limitado a loopback), sin firma; la mitad remota sigue abierta hasta G3.
 
 ## 9. Riesgos residuales y decisiones abiertas
 
@@ -202,7 +202,7 @@ G2 se cierra cuando exista una revisión que, sobre este documento:
 | QR en pantalla compartida | Residual | Aviso en la UI al generar el enlace; no hay control técnico |
 | Múltiples dispositivos | Propuesto (5) | Decidir si se permite expulsar al más antiguo automáticamente |
 | Identidad | Limitación | No hay usuario: la cookie **es** la identidad; un navegador comprometido actúa como el operador (A5) |
-| Auditoría | Propuesto | Persistencia y retención; hoy no existe |
+| Auditoría | Parcial | El control lease ya audita en `.commander/pair/lease-audit.jsonl` (200 entradas, relectura al arrancar, sin secretos); faltan la emisión, el canje y la baja de dispositivo, y la política de retención |
 | Reloj y expiración | Abierto | La caducidad la evalúa el servidor, nunca el cliente |
 
 ## 10. Mantenimiento
