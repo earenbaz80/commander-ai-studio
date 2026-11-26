@@ -20,6 +20,12 @@ import {
 
 export const MAX_STREAM_EVENTS = 1_000;
 export const DEFAULT_STREAM_KEEPALIVE_MS = 15_000;
+/**
+ * Sin eventos durante este lapso el stream se cierra solo (`end`, sin `gone`) y
+ * el cliente reconecta con `Last-Event-ID`. Así un teléfono que se durmió deja
+ * de ocupar un cupo de concurrencia sin que nadie lo cierre a mano.
+ */
+export const DEFAULT_STREAM_IDLE_MS = 10 * 60_000;
 
 export type SessionGoneReason = 'completed' | 'failed' | 'cancelled' | 'deleted';
 
@@ -147,25 +153,23 @@ export interface SessionStreamSink {
 
 export interface AttachSessionStreamOptions {
   keepAliveMs?: number;
+  /**
+   * Cierra el stream si no hubo **eventos** en este lapso (el keep-alive no
+   * cuenta como actividad). `0` lo desactiva.
+   */
+  idleMs?: number;
 }
 
-function writeEvent(res: SessionStreamSink, event: CliEventV2): void {
-  res.write(`id: ${event.seq}\nevent: ${event.type}\ndata: ${encodeEvent(event)}\n\n`);
+function frameEvent(event: CliEventV2): string {
+  return `id: ${event.seq}\nevent: ${event.type}\ndata: ${encodeEvent(event)}\n\n`;
 }
 
-function writeResync(res: SessionStreamSink, state: SessionStateV2, seq: number): void {
-  res.write(`id: ${seq}\nevent: resync\ndata: ${JSON.stringify(state)}\n\n`);
+function frameResync(state: SessionStateV2, seq: number): string {
+  return `id: ${seq}\nevent: resync\ndata: ${JSON.stringify(state)}\n\n`;
 }
 
-function writeGone(
-  res: SessionStreamSink,
-  sessionId: string,
-  reason: SessionGoneReason,
-  seq: number
-): void {
-  res.write(
-    `id: ${seq}\nevent: gone\ndata: ${JSON.stringify({ sessionId, reason })}\n\n`
-  );
+function frameGone(sessionId: string, reason: SessionGoneReason, seq: number): string {
+  return `id: ${seq}\nevent: gone\ndata: ${JSON.stringify({ sessionId, reason })}\n\n`;
 }
 
 function terminalReason(status: SessionStatusV2): SessionGoneReason | null {
@@ -185,6 +189,14 @@ export function streamKeepAliveMs(): number {
   return Number.isFinite(configured) && configured >= 50
     ? Math.floor(configured)
     : DEFAULT_STREAM_KEEPALIVE_MS;
+}
+
+/** Ventana de inactividad; `0` la desactiva (sólo para pruebas). */
+export function streamIdleMs(): number {
+  const configured = Number(process.env.COMMANDER_STREAM_IDLE_MS);
+  return Number.isFinite(configured) && configured >= 0
+    ? Math.floor(configured)
+    : DEFAULT_STREAM_IDLE_MS;
 }
 
 /**
@@ -211,6 +223,10 @@ export function attachSessionStream(
   let timer: ReturnType<typeof setInterval> | null = null;
   let unsubscribeEvent: (() => void) | null = null;
   let unsubscribeGone: (() => void) | null = null;
+  let lastEventAt = Date.now();
+  let lastKeepAliveAt = lastEventAt;
+  /** Escrituras seguidas con el buffer lleno: el cliente dejó de leer. */
+  let stalled = 0;
 
   const cleanup = () => {
     if (timer) {
@@ -223,11 +239,42 @@ export function attachSessionStream(
     unsubscribeGone = null;
   };
 
+  /**
+   * Cierra sin anunciar `gone`: la sesión sigue viva y el cliente reconecta con
+   * `Last-Event-ID`. Es la salida del corte por inactividad y por consumidor
+   * lento; `finish` queda para las sesiones que terminaron de verdad.
+   */
+  const closeQuietly = () => {
+    if (closed) return;
+    closed = true;
+    cleanup();
+    try {
+      if (!res.writableEnded) res.end();
+    } catch {
+      /* ya cerrado */
+    }
+  };
+
+  /** Escribe un frame y vigila la presión del socket (`write` === false). */
+  const send = (frame: string, isEvent = true): void => {
+    if (closed) return;
+    let drained: unknown;
+    try {
+      drained = res.write(frame);
+    } catch {
+      closeQuietly();
+      return;
+    }
+    if (isEvent) lastEventAt = Date.now();
+    stalled = drained === false ? stalled + 1 : 0;
+    if (stalled >= 2) closeQuietly();
+  };
+
   const finish = (reason: SessionGoneReason) => {
     if (closed) return;
     closed = true;
     try {
-      writeGone(res, source.id, reason, buffer.lastSeq);
+      res.write(frameGone(source.id, reason, buffer.lastSeq));
     } catch {
       /* el socket ya no está */
     }
@@ -240,9 +287,9 @@ export function attachSessionStream(
   };
 
   if (resync) {
-    writeResync(res, state, buffer.lastSeq);
+    send(frameResync(state, buffer.lastSeq));
   } else {
-    for (const event of replay.events) writeEvent(res, event);
+    for (const event of replay.events) send(frameEvent(event));
   }
 
   const gone = buffer.goneReason ?? terminalReason(state.status);
@@ -251,24 +298,29 @@ export function attachSessionStream(
     return cleanup;
   }
 
-  unsubscribeEvent = buffer.subscribe((event) => {
-    if (closed) return;
-    try {
-      writeEvent(res, event);
-    } catch {
-      cleanup();
-    }
-  });
+  unsubscribeEvent = buffer.subscribe((event) => send(frameEvent(event)));
   unsubscribeGone = buffer.subscribeGone(finish);
 
+  const idleMs = options.idleMs ?? streamIdleMs();
+  const keepAliveMs = options.keepAliveMs ?? streamKeepAliveMs();
+  // Un solo timer para las dos cosas: despierta lo necesario para revisar la
+  // inactividad y manda el keep-alive cuando toca.
+  const tickMs = Math.max(25, idleMs > 0 ? Math.min(keepAliveMs, idleMs) : keepAliveMs);
   timer = setInterval(() => {
     if (closed) return;
+    const now = Date.now();
+    if (idleMs > 0 && now - lastEventAt >= idleMs) {
+      closeQuietly();
+      return;
+    }
+    if (now - lastKeepAliveAt < keepAliveMs) return;
+    lastKeepAliveAt = now;
     try {
       res.write(': keep-alive\n\n');
     } catch {
-      cleanup();
+      closeQuietly();
     }
-  }, options.keepAliveMs ?? streamKeepAliveMs());
+  }, tickMs);
   // No mantener el proceso del servidor vivo sólo por un stream ocioso.
   (timer as unknown as { unref?: () => void }).unref?.();
 

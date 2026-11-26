@@ -335,8 +335,15 @@ export function createPairLeaseClient(options: PairLeaseClientOptions): PairLeas
     return { ok: true, state: snapshot(state) };
   }
 
+  /**
+   * Fallo de una escritura de sesión (turno, aprobación, propuesta).
+   *
+   * No es un problema del control: la pantalla ya lo cuenta en el chat con
+   * `sessionNote`. `lastError` queda para reclamo, renovación y traspaso, que
+   * son los que alimentan la alerta del panel del lease; si una aprobación
+   * fallaba, el mismo error salía dos veces (nota y alerta).
+   */
   function failWrite(error: PairLeaseError): PairLeaseWriteResult {
-    update({ lastError: error });
     return { ok: false, error, state: snapshot(state) };
   }
 

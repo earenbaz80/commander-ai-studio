@@ -18,9 +18,17 @@
  * traduce ni se resume: se pinta como `CÓDIGO · mensaje`, porque es la señal de
  * que hay que pedir el traspaso en vez de insistir.
  *
- * El estado de la sesión se relee al entrar, después de cada escritura y cada
- * `pollMs` (3 s por defecto; 0 lo desactiva), así que la respuesta del agente y
- * las aprobaciones nuevas aparecen sin recargar la página.
+ * El estado se lee al entrar y después se sigue por el **stream SSE** de la
+ * sesión (`GET /api/agent/sessions/:id/stream`) con `Last-Event-ID`, no por
+ * polling: si la red cae, el cliente reconecta desde el último `seq` visto, el
+ * servidor reemite lo que falte o manda un `resync` con el estado completo, y
+ * la pantalla recupera turnos, plan y aprobaciones sin recargar la página. Un
+ * `gone` cierra la sesión y no se reintenta.
+ *
+ * Una aprobación ya decidida en esta pantalla se recuerda en `decided`: aunque
+ * un `resync` atrasado la volviera a listar, no se ofrece otra vez y no se
+ * reenvía la decisión. La idempotencia del servidor sigue siendo la última
+ * palabra.
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { deText } from '../../i18n/de';
@@ -35,14 +43,15 @@ import {
   type PairLeaseClient,
   type PairLeaseClientState,
 } from '../../pair/pairLeaseClient';
+import { PairSessionStream, type PairStreamStatus } from '../../pair/pairSessionStream';
 
 export interface PairSessionScreenProps {
   /** Para enlaces internos y tests; si falta se lee `?sessionId=` de la URL. */
   sessionId?: string;
   /** Idioma de la pantalla; por defecto espanol, como el resto de la app. */
   lang?: Language;
-  /** Refresco del estado en ms; 0 lo desactiva (tests y embebidos). */
-  pollMs?: number;
+  /** Base del backoff de reconexión del stream; 0 deja un solo intento (tests). */
+  streamRetryMs?: number;
 }
 
 type Translate = (es: string, en: string) => string;
@@ -98,7 +107,7 @@ function turnClass(role: SessionTurnV2['role']): string {
 export function PairSessionScreen({
   sessionId: preset,
   lang = 'es',
-  pollMs = 3_000,
+  streamRetryMs = 1_000,
 }: PairSessionScreenProps) {
   const L: Translate = (es, en) => translate(lang, es, en);
   const initial = (preset ?? readSessionFromUrl()).trim();
@@ -112,8 +121,13 @@ export function PairSessionScreen({
   const [deviceNote, setDeviceNote] = useState<string | null>(null);
   const [deviceChecked, setDeviceChecked] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [streamStatus, setStreamStatus] = useState<PairStreamStatus>('closed');
   const clientRef = useRef<PairLeaseClient | null>(null);
   const sessionRef = useRef(sessionId);
+  /** Aprobaciones ya resueltas acá: un `resync` atrasado no las vuelve a ofrecer. */
+  const decidedRef = useRef<Set<string>>(new Set());
+  const loadInFlight = useRef(false);
+  const loadQueued = useRef(false);
 
   // Quién soy para el host: sin este id el ack de un traspaso no se puede
   // atribuir a este dispositivo y la escritura no se habilita.
@@ -177,18 +191,68 @@ export function PairSessionScreen({
     }
   }, [sessionId, lang]);
 
+  /**
+   * Relee el estado autoritativo sin acumular peticiones: si ya hay una en
+   * vuelo, la siguiente se hace al terminar. Los eventos del stream llegan en
+   * ráfaga durante una corrida y no deben abrir un GET por cada uno.
+   */
+  const scheduleLoad = useCallback(() => {
+    if (loadInFlight.current) {
+      loadQueued.current = true;
+      return;
+    }
+    loadInFlight.current = true;
+    void (async () => {
+      try {
+        await loadSession();
+        while (loadQueued.current) {
+          loadQueued.current = false;
+          await loadSession();
+        }
+      } finally {
+        loadInFlight.current = false;
+      }
+    })();
+  }, [loadSession]);
+
   useEffect(() => {
     sessionRef.current = sessionId;
     setSession(null);
     setSessionNote(null);
-    if (!sessionId) return;
+    decidedRef.current = new Set();
+    if (!sessionId) {
+      setStreamStatus('closed');
+      return;
+    }
     void loadSession();
-    if (!pollMs || pollMs <= 0) return;
-    const timer = setInterval(() => {
-      void loadSession();
-    }, pollMs);
-    return () => clearInterval(timer);
-  }, [sessionId, loadSession, pollMs]);
+
+    const stream = new PairSessionStream({
+      url: `/api/agent/sessions/${encodeURIComponent(sessionId)}/stream`,
+      retryMs: streamRetryMs,
+      onStatus: (status) => {
+        if (sessionRef.current === sessionId) setStreamStatus(status);
+      },
+      onFrame: (frame) => {
+        if (sessionRef.current !== sessionId) return;
+        // La sesión terminó: se cierra y se relee una vez el estado final.
+        if (frame.event === 'gone') {
+          scheduleLoad();
+          return;
+        }
+        // `resync` trae el `SessionStateV2` completo: es el mismo contrato que
+        // devuelve el GET, así que reemplaza el estado sin otra petición.
+        if (frame.event === 'resync' && frame.data && typeof frame.data === 'object') {
+          setSession(frame.data as SessionView);
+          return;
+        }
+        scheduleLoad();
+      },
+    });
+    stream.start();
+    return () => {
+      stream.close();
+    };
+  }, [sessionId, loadSession, scheduleLoad, streamRetryMs]);
 
   useEffect(() => {
     if (!sessionId || !deviceChecked) return;
@@ -289,6 +353,7 @@ export function PairSessionScreen({
         setSessionNote(`${result.error.code ?? 'ERROR'} · ${result.error.message}`);
         return;
       }
+      decidedRef.current.add(approval.id);
       const verb =
         decision === 'deny'
           ? L('Denegaste', 'You denied')
@@ -305,7 +370,7 @@ export function PairSessionScreen({
 
   const turns = session?.turns ?? [];
   const plan = session?.plan ?? [];
-  const approvals = pendingFromState(session);
+  const approvals = pendingFromState(session).filter((approval) => !decidedRef.current.has(approval.id));
   const canWrite = Boolean(leaseState?.canWrite);
   const disabled = busy !== null;
   const leaseError = leaseState?.lastError ?? null;
@@ -323,6 +388,17 @@ export function PairSessionScreen({
           <p data-testid="pair-session-status" className="text-xs text-[var(--nc-text-dim)]">
             {session ? `${session.status ?? 'idle'} · ${sessionId}` : sessionId}
           </p>
+          {sessionId && (
+            <p data-testid="pair-session-stream" className="text-[11px] text-[var(--nc-text-dim)]">
+              {streamStatus === 'open'
+                ? L('En vivo (SSE)', 'Live (SSE)')
+                : streamStatus === 'connecting'
+                  ? L('Conectando el stream…', 'Connecting the stream…')
+                  : streamStatus === 'reconnecting'
+                    ? L('Reconectando…', 'Reconnecting…')
+                    : L('Stream cerrado', 'Stream closed')}
+            </p>
+          )}
         </header>
 
         <form onSubmit={connect} className="nc-panel flex flex-col gap-2 p-3 sm:flex-row sm:items-end">
@@ -433,7 +509,9 @@ export function PairSessionScreen({
                   <p className="text-[10px] uppercase tracking-wider text-[var(--nc-text-dim)]">
                     {turn.role}
                   </p>
-                  <p className="whitespace-pre-wrap text-xs">{turn.text}</p>
+                  {/* `break-words`: un turno con una URL o un token largo no debe
+                      arrastrar el ancho de la página en el móvil. */}
+                  <p className="whitespace-pre-wrap break-words text-xs">{turn.text}</p>
                 </li>
               ))}
             </ol>
@@ -501,11 +579,15 @@ export function PairSessionScreen({
                     <span className="font-mono text-[10px] uppercase text-[var(--nc-text-dim)]">
                       {item.status}
                     </span>
-                    <span className={item.status === 'done' ? 'line-through text-[var(--nc-text-dim)]' : ''}>
+                    <span
+                      className={`min-w-0 break-words ${item.status === 'done' ? 'line-through text-[var(--nc-text-dim)]' : ''}`}
+                    >
                       {item.text}
                     </span>
                     {item.files && item.files.length > 0 && (
-                      <span className="font-mono text-[10px] text-[var(--nc-text-dim)]">
+                      // Las rutas no tienen espacios: sin `break-all` una sola
+                      // entrada estira el panel más allá del viewport.
+                      <span className="min-w-0 break-all font-mono text-[10px] text-[var(--nc-text-dim)]">
                         {item.files.join(', ')}
                       </span>
                     )}
@@ -537,7 +619,7 @@ export function PairSessionScreen({
                   data-testid={`pair-session-approval-${approval.id}`}
                   className="space-y-2 border-2 border-[var(--nc-border-mid)] bg-[var(--nc-bg-main)] p-2"
                 >
-                  <p className="font-mono text-xs">
+                  <p className="break-all font-mono text-xs">
                     {approval.tool}
                     {target ? ` · ${target}` : ''}
                   </p>
