@@ -509,7 +509,9 @@ export function PairSessionScreen({
                   <p className="text-[10px] uppercase tracking-wider text-[var(--nc-text-dim)]">
                     {turn.role}
                   </p>
-                  <p className="whitespace-pre-wrap text-xs">{turn.text}</p>
+                  {/* `break-words`: un turno con una URL o un token largo no debe
+                      arrastrar el ancho de la página en el móvil. */}
+                  <p className="whitespace-pre-wrap break-words text-xs">{turn.text}</p>
                 </li>
               ))}
             </ol>
@@ -577,11 +579,15 @@ export function PairSessionScreen({
                     <span className="font-mono text-[10px] uppercase text-[var(--nc-text-dim)]">
                       {item.status}
                     </span>
-                    <span className={item.status === 'done' ? 'line-through text-[var(--nc-text-dim)]' : ''}>
+                    <span
+                      className={`min-w-0 break-words ${item.status === 'done' ? 'line-through text-[var(--nc-text-dim)]' : ''}`}
+                    >
                       {item.text}
                     </span>
                     {item.files && item.files.length > 0 && (
-                      <span className="font-mono text-[10px] text-[var(--nc-text-dim)]">
+                      // Las rutas no tienen espacios: sin `break-all` una sola
+                      // entrada estira el panel más allá del viewport.
+                      <span className="min-w-0 break-all font-mono text-[10px] text-[var(--nc-text-dim)]">
                         {item.files.join(', ')}
                       </span>
                     )}
@@ -613,7 +619,7 @@ export function PairSessionScreen({
                   data-testid={`pair-session-approval-${approval.id}`}
                   className="space-y-2 border-2 border-[var(--nc-border-mid)] bg-[var(--nc-bg-main)] p-2"
                 >
-                  <p className="font-mono text-xs">
+                  <p className="break-all font-mono text-xs">
                     {approval.tool}
                     {target ? ` · ${target}` : ''}
                   </p>
