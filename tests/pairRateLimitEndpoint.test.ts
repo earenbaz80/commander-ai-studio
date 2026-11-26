@@ -2,25 +2,32 @@
  * Rate limit del pair en approvals y stream contra el server compartido (F3,
  * T12 del modelo de amenazas remoto).
  *
- * El presupuesto por caller se cuenta por **dispositivo**, y cada caso canjea el
- * suyo: agotar el de este archivo no toca a ningún otro. Los topes los fija el
- * arnés (`COMMANDER_PAIR_RATE_APPROVAL_MAX` / `..._STREAM_MAX`), lo bastante
- * bajos para cortar en pocas peticiones y sin rozar al resto de la suite.
+ * El presupuesto se cuenta por caller: con cookie, por dispositivo; sin cookie,
+ * por IP. Acá cada caso canjea su propio dispositivo, pero los topes son
+ * variables de entorno del proceso y el server compartido es uno solo para toda
+ * la corrida: bajarlos ahí dejaba en 429 a los archivos que hablan sin cookie
+ * (misma IP). Por eso este archivo levanta su server con topes de prueba, igual
+ * que la caducidad del enlace.
  *
- * El canje tiene su propio archivo (`pairRedeemRateLimitEndpoint.test.ts`)
- * porque su bucket es por IP, compartida por toda la corrida: ahí se levanta un
- * server propio con topes de prueba, igual que la caducidad del enlace.
+ * El canje y el presupuesto global viven en `pairRedeemRateLimitEndpoint.test.ts`.
  */
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { startServer, type ServerHarness } from './helpers/serverHarness.js';
+import { spawnServer, type ServerHarness } from './helpers/serverHarness.js';
 
 let srv: ServerHarness;
 let sessionId: string;
 
 before(async () => {
-  srv = await startServer();
+  srv = await spawnServer({
+    env: {
+      COMMANDER_PAIR_RATE_APPROVAL_MAX: '6',
+      COMMANDER_PAIR_RATE_APPROVAL_GLOBAL_MAX: '20000',
+      COMMANDER_PAIR_RATE_STREAM_MAX: '20',
+      COMMANDER_PAIR_RATE_STREAM_GLOBAL_MAX: '20000',
+    },
+  });
   const created = await srv.request('POST', '/api/agent/sessions', { goal: 'Rate limit de pair (F3)' });
   assert.equal(created.status, 200, created.raw);
   sessionId = String(created.body.session.id);

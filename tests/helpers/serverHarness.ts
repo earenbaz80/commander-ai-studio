@@ -417,17 +417,18 @@ export async function spawnServer(options: SpawnServerOptions = {}): Promise<Ser
     cwd: serverCwd,
     env: {
       ...process.env,
-      // Rate limit del pair (F3): el canje cuenta sólo fallos y su bucket es por
-      // IP, compartida por toda la corrida, así que queda alto. Approvals y
-      // stream se cuentan por dispositivo: cada caso canjea el suyo, de modo que
-      // un tope bajo es determinista y no roza a otros archivos. Van antes de
-      // `options.env` para que un archivo pueda bajarlos con su propio server
-      // (el canje y el global se prueban así, como el TTL del enlace).
+      // Rate limit del pair (F3): todos holgados. Approvals y stream se cuentan
+      // por caller, y sin cookie el caller es la IP del escritorio: la misma
+      // para decenas de archivos. Un tope bajo acá dejaba en 429 a tests que no
+      // tienen nada que ver (approvalChannel, approvalEndpoints), así que los
+      // casos de 429 levantan su propio server con topes de prueba, igual que
+      // el TTL del enlace. Van antes de `options.env` para que un archivo pueda
+      // ajustarlos con su propio server.
       COMMANDER_PAIR_RATE_REDEEM_MAX: '200',
       COMMANDER_PAIR_RATE_REDEEM_GLOBAL_MAX: '20000',
-      COMMANDER_PAIR_RATE_APPROVAL_MAX: '6',
+      COMMANDER_PAIR_RATE_APPROVAL_MAX: '20000',
       COMMANDER_PAIR_RATE_APPROVAL_GLOBAL_MAX: '20000',
-      COMMANDER_PAIR_RATE_STREAM_MAX: '20',
+      COMMANDER_PAIR_RATE_STREAM_MAX: '20000',
       COMMANDER_PAIR_RATE_STREAM_GLOBAL_MAX: '20000',
       ...(options.env || {}),
       PORT: '0',
@@ -451,10 +452,6 @@ export async function spawnServer(options: SpawnServerOptions = {}): Promise<Ser
       // tope de 5 es para una persona, no para una corrida que canjea enlaces
       // en varios casos. Igual que el rate limit, se sube sólo en el arnés.
       COMMANDER_PAIR_MAX_DEVICES: '200',
-      // Rate limit del pair (F3): el canje cuenta sólo fallos y su bucket es por
-      // IP, compartida por toda la corrida, así que queda alto. Approvals y
-      // stream se cuentan por dispositivo: cada caso canjea el suyo, de modo que
-      // un tope bajo es determinista y no roza a otros archivos.
       // El doble del backend gestionado (PL3) sólo se enciende en el arnés: en
       // producción la bandera no se define y `/api/backend/manage` responde
       // deshabilitado. Es memoria del proceso, sin credenciales ni red.
