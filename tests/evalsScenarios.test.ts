@@ -216,6 +216,20 @@ test('T6 · un timeout se registra como timeout, no como fallo de browser', asyn
   }
 });
 
+/**
+ * Presupuesto del timeout, medido con el navegador ya abierto: arranca cuando
+ * llega el resultado del `browser open`, no al crear la sesión.
+ *
+ * Antes corría desde el arranque, así que en un runner cargado el lanzamiento
+ * de Chromium se comía el presupuesto entero y el caso fallaba por el motivo
+ * equivocado (vencía tarde y terminaba en `'error'`). Ahora el tramo medido es
+ * el que el caso afirma —el proveedor deja la petición colgada— y el arranque
+ * queda fuera del reloj.
+ */
+const BROWSER_TIMEOUT_CASE_MS = 8_000;
+/** Tope para que el navegador llegue a abrirse; no cuenta contra el presupuesto. */
+const BROWSER_OPEN_WAIT_MS = 120_000;
+
 test('T6 · el timeout después de abrir cierra también la sesión de Playwright', async () => {
   const hanging = await startBrowserOpenThenHangingProvider();
   try {
@@ -223,17 +237,22 @@ test('T6 · el timeout después de abrir cierra también la sesión de Playwrigh
       baseUrl: srv.baseUrl,
       model: 'custom/eval',
       keys: keysFor(hanging),
-      timeoutMs: 8_000,
+      timeoutMs: BROWSER_TIMEOUT_CASE_MS,
+      budgetStartsOn: (step) => step.type === 'tool_result' && step.toolId === 'browser',
+      budgetMaxWaitMs: BROWSER_OPEN_WAIT_MS,
     });
+    // Si la espera del navegador falla, el caso ya falló: esto evita además un
+    // rechazo sin manejar de la corrida que sigue en vuelo.
+    running.catch(() => { /* el caso ya falló */ });
 
     // No se espera al timeout: se comprueba que el navegador llegó a abrirse.
-    const opened = await waitForBrowserSessions();
+    const opened = await waitForBrowserSessions(BROWSER_OPEN_WAIT_MS);
     assert.ok(opened.length > 0, 'el navegador no llegó a abrirse antes del timeout');
 
     const outcome = await running;
     assert.equal(outcome.stopReason, 'timeout');
     assert.equal(outcome.timedOut, true);
-    assert.match(outcome.error ?? '', /no terminó en 8000ms/);
+    assert.match(outcome.error ?? '', new RegExp(`no terminó en ${BROWSER_TIMEOUT_CASE_MS}ms`));
 
     const listed = await srv.request('GET', '/api/browser/sessions');
     assert.deepEqual(

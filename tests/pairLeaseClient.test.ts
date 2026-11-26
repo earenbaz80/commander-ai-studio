@@ -407,6 +407,86 @@ describe('cliente web del lease', () => {
     assert.equal(net.calls.length, 0);
   });
 
+  test('la decisión de una aprobación viaja con el seq del lease', async () => {
+    const net = fakeFetch((call) => {
+      if (call.url.endsWith('/api/pair/lease')) {
+        return json({ success: true, lease: lease({ seq: 6 }), mine: true });
+      }
+      return json({ success: true, decision: 'allow', state: { sessionId: 'sess_f3' } });
+    });
+    const leaseClient = client(net.impl);
+
+    await leaseClient.claim();
+    const result = await leaseClient.resolveApproval('apr_1', { decision: 'allow', reason: 'panel' });
+
+    assert.equal(result.ok, true);
+    const write = net.calls.at(-1)!;
+    assert.equal(write.method, 'POST');
+    assert.equal(
+      write.url,
+      'http://127.0.0.1:3280/api/agent/sessions/sess_f3/approvals/apr_1'
+    );
+    assert.deepEqual(write.body, { decision: 'allow', reason: 'panel', seq: 6 });
+    assert.equal(write.credentials, 'same-origin', 'la cookie del dispositivo viaja');
+    assert.equal(leaseClient.getState().canWrite, true, 'aprobar confirma el control');
+  });
+
+  test('un LEASE_STALE al aprobar refresca el estado y reintenta con el seq nuevo', async () => {
+    let decisions = 0;
+    const net = fakeFetch((call) => {
+      if (call.url.endsWith('/api/pair/lease')) {
+        return json({ success: true, lease: lease({ seq: 4 }), mine: true });
+      }
+      if (call.method === 'GET') {
+        return json({ success: true, lease: lease({ seq: 7 }), mine: true });
+      }
+      decisions += 1;
+      if (decisions === 1) {
+        return json({ success: false, code: 'LEASE_STALE', error: 'el control cambió' }, 409);
+      }
+      return json({ success: true, decision: 'deny', state: { sessionId: 'sess_f3' } });
+    });
+    const leaseClient = client(net.impl);
+
+    await leaseClient.claim();
+    const result = await leaseClient.resolveApproval('apr_2', {
+      decision: 'deny',
+      reason: 'sin revisar',
+    });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(
+      net.calls.map((call) => `${call.method} ${call.url.replace('http://127.0.0.1:3280', '')}`),
+      [
+        'POST /api/pair/lease',
+        'POST /api/agent/sessions/sess_f3/approvals/apr_2',
+        'GET /api/pair/lease?sessionId=sess_f3',
+        'POST /api/agent/sessions/sess_f3/approvals/apr_2',
+      ],
+      'entre la decisión vieja y el reintento se relee el estado'
+    );
+    const sent = net.calls.filter((call) => call.url.includes('/approvals/'));
+    assert.equal(sent[0].body.seq, 4);
+    assert.equal(sent[1].body.seq, 7, 'reintenta con el seq que devolvió el refresh');
+    assert.deepEqual(
+      sent[1].body,
+      { decision: 'deny', reason: 'sin revisar', seq: 7 },
+      'el reintento conserva la decisión'
+    );
+    assert.equal(leaseClient.getState().canWrite, true);
+  });
+
+  test('sin lease conocido la aprobación no sale a la red', async () => {
+    const net = fakeFetch(() => json({ success: true, lease: lease(), mine: true }));
+    const leaseClient = client(net.impl);
+
+    const result = await leaseClient.resolveApproval('apr_3', { decision: 'allow' });
+
+    if (result.ok) assert.fail('sin seq no se aprueba');
+    assert.equal(result.error.code, 'LEASE_NO_STATE');
+    assert.equal(net.calls.length, 0);
+  });
+
   test('los listeners reciben cada transición y se pueden dar de baja', async () => {
     const net = fakeFetch(() =>
       json({ success: true, lease: lease({ seq: 1 }), mine: true })

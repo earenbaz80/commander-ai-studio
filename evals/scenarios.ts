@@ -42,6 +42,15 @@ export interface ScenarioOptions {
   timeoutMs?: number;
   /** Observa los pasos según van llegando, igual que `runTask`. */
   onStep?: (step: AgentStep) => void;
+  /**
+   * El presupuesto `timeoutMs` empieza a contar cuando llega un paso que cumpla
+   * esto (p. ej. el resultado del `browser open`). Así un timeout mide el tramo
+   * que le importa y no un arranque que depende de la carga del runner.
+   * `budgetMaxWaitMs` acota la espera a ese paso.
+   */
+  budgetStartsOn?: (step: AgentStep) => boolean;
+  /** Tope de la espera al paso de `budgetStartsOn`; sin él, `timeoutMs`. */
+  budgetMaxWaitMs?: number;
 }
 
 export interface SessionState {
@@ -55,6 +64,15 @@ export interface SessionState {
   turns: Array<{ role: string; text: string; ts: number }>;
   pendingApproval?: { id: string } | null;
 }
+
+/**
+ * Margen de cada petición del escenario. Con 30 s, un runner cargado abortaba
+ * por ejemplo un `GET` del estado: el abort no es un `ScenarioTimeoutError`, así
+ * que el escenario lo reportaba como `'error'` (y se saltaba la limpieza que
+ * cancela y borra la sesión) en vez del vencimiento del presupuesto del caso.
+ * 90 s dejan que la petición termine y que el presupuesto del caso decida.
+ */
+export const EVAL_REQUEST_TIMEOUT_MS = 90_000;
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
 
@@ -104,7 +122,7 @@ async function api(
   method: string,
   route: string,
   body?: unknown,
-  timeoutMs = 30_000
+  timeoutMs = EVAL_REQUEST_TIMEOUT_MS
 ): Promise<any> {
   const res = await fetch(`${baseUrl}${route}`, {
     method,
@@ -147,17 +165,48 @@ async function cancelAndDeleteSession(baseUrl: string, id: string): Promise<void
 async function waitForTerminal(
   baseUrl: string,
   id: string,
-  opts: { timeoutMs: number; onStep?: (step: AgentStep) => void }
+  opts: {
+    timeoutMs: number;
+    onStep?: (step: AgentStep) => void;
+    startWhen?: (step: AgentStep) => boolean;
+    maxWaitMs?: number;
+  }
 ): Promise<SessionState> {
-  const deadline = Date.now() + opts.timeoutMs;
+  const capAt = Date.now() + (opts.maxWaitMs ?? opts.timeoutMs);
+  // Con `startWhen` el presupuesto todavía no corre: la espera al paso que lo
+  // arranca no puede comerse el timeout que el caso mide.
+  let deadlineAt = opts.startWhen ? Number.POSITIVE_INFINITY : Date.now() + opts.timeoutMs;
   const seen = new Set<string>();
   let last: SessionState | null = null;
-  while (Date.now() < deadline) {
-    last = await getState(baseUrl, id);
+  /** Abandonar por tiempo cierra la sesión antes de fallar. */
+  const abandonment = async (): Promise<Error> => {
+    await cancelAndDeleteSession(baseUrl, id);
+    const observed = `(último estado: ${last?.status ?? 'sin estado'})`;
+    return Number.isFinite(deadlineAt)
+      ? new ScenarioTimeoutError(id, `la sesión ${id} no terminó en ${opts.timeoutMs}ms ${observed}`)
+      : new Error(
+          `la sesión ${id} no llegó al paso que arranca el presupuesto en ` +
+            `${opts.maxWaitMs ?? opts.timeoutMs}ms ${observed}`
+        );
+  };
+  while (Date.now() < Math.min(deadlineAt, capAt)) {
+    try {
+      last = await getState(baseUrl, id);
+    } catch (e) {
+      // Una petición que falla cuando el presupuesto ya venció no convierte el
+      // caso en `'error'`: lo que ocurrió es el timeout que el caso mide (en un
+      // runner cargado la lectura puede llegar después del vencimiento). Antes
+      // de vencer sí es un fallo real y se propaga.
+      if (Date.now() < Math.min(deadlineAt, capAt)) throw e;
+      throw await abandonment();
+    }
     for (const step of last.steps) {
       if (seen.has(step.id)) continue;
       seen.add(step.id);
       opts.onStep?.(step);
+      if (!Number.isFinite(deadlineAt) && opts.startWhen?.(step)) {
+        deadlineAt = Date.now() + opts.timeoutMs;
+      }
     }
     if (last.pendingApproval?.id) {
       // La baseline no tiene UI: una aprobación pendiente colgaría el turno
@@ -176,12 +225,7 @@ async function waitForTerminal(
   }
   // Ningún escenario debe dejar una sesión viva cuando abandona por tiempo:
   // primero se detiene el bucle y después se borra el estado persistido.
-  await cancelAndDeleteSession(baseUrl, id);
-  throw new ScenarioTimeoutError(
-    id,
-    `la sesión ${id} no terminó en ${opts.timeoutMs}ms ` +
-      `(último estado: ${last?.status ?? 'sin estado'})`
-  );
+  throw await abandonment();
 }
 
 async function runSession(
@@ -210,6 +254,8 @@ async function runSession(
     // margen del escenario sólo aplica cuando no se pidió otro.
     timeoutMs: opts.timeoutMs ?? input.timeoutMs ?? resolveTaskBudget({ live: true, timeoutMs: opts.timeoutMs }),
     onStep: opts.onStep,
+    startWhen: opts.budgetStartsOn,
+    maxWaitMs: opts.budgetMaxWaitMs,
   });
 }
 

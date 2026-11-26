@@ -13,12 +13,13 @@
  *   verificarlo: `ack.deviceId` y `ack.seq` tienen que coincidir con el lease
  *   devuelto. Sin ack válido el traspaso se considera fallido y se sigue en
  *   lectura, aunque el servidor haya cambiado el dueño.
- * - `sendMessage()` escribe en la sesión con el `seq` que tiene el estado. Si
- *   el servidor responde `LEASE_STALE` (una renovación en vuelo movió el
- *   testigo) relee el estado y, cuando el control sigue siendo de este
- *   dispositivo, reintenta **una sola vez** con el `seq` nuevo: al dueño
- *   vigente no lo bloquea un `seq` desactualizado. Si el control cambió de
- *   dueño no reintenta; el 409 es la verdad.
+ * - `sendMessage()` y `resolveApproval()` escriben en la sesión con el `seq`
+ *   que tiene el estado: el turno de usuario y la decisión de una aprobación
+ *   (aprobar es aplicar un diff). Si el servidor responde `LEASE_STALE` (una
+ *   renovación en vuelo movió el testigo) releen el estado y, cuando el control
+ *   sigue siendo de este dispositivo, reintentan **una sola vez** con el `seq`
+ *   nuevo: al dueño vigente no lo bloquea un `seq` desactualizado. Si el
+ *   control cambió de dueño no reintentan; el 409 es la verdad.
  * - Quien recibe el control por un traspaso ajeno lo descubre con `refresh()`,
  *   pero tampoco escribe con eso: `canWrite` sólo se enciende con una
  *   confirmación propia (reclamo, renovación exitosa o escritura aceptada con
@@ -70,6 +71,12 @@ export interface PairLeaseWriteBody {
   text: string;
 }
 
+/** Decisión sobre una aprobación; el `seq` también lo agrega el cliente. */
+export interface PairLeaseApprovalBody {
+  decision: 'allow' | 'deny' | 'allow-session';
+  reason?: string;
+}
+
 export type PairLeaseWriteResult =
   | { ok: true; data: any; state: PairLeaseClientState }
   | { ok: false; error: PairLeaseError; state: PairLeaseClientState };
@@ -99,6 +106,11 @@ export interface PairLeaseClient {
   transfer(options?: { toDeviceId?: string }): Promise<PairLeaseClientResult>;
   /** Escritura de sesión firmada con el `seq` del lease. */
   sendMessage(body: PairLeaseWriteBody): Promise<PairLeaseWriteResult>;
+  /** Decisión de una aprobación firmada con el `seq` del lease. */
+  resolveApproval(
+    approvalId: string,
+    body: PairLeaseApprovalBody
+  ): Promise<PairLeaseWriteResult>;
   release(): Promise<PairLeaseClientResult>;
   dispose(): void;
 }
@@ -309,6 +321,14 @@ export function createPairLeaseClient(options: PairLeaseClientOptions): PairLeas
     });
   }
 
+  function postApproval(approvalId: string, body: PairLeaseApprovalBody, seq: number) {
+    return call(
+      'POST',
+      `/api/agent/sessions/${encodeURIComponent(sessionId)}/approvals/${encodeURIComponent(approvalId)}`,
+      { ...body, seq }
+    );
+  }
+
   /** El servidor aceptó la escritura con este `seq`: el control es nuestro. */
   function confirmWrite(seq: number, data: any): PairLeaseWriteResult {
     verifiedSeq = seq;
@@ -316,7 +336,15 @@ export function createPairLeaseClient(options: PairLeaseClientOptions): PairLeas
     return { ok: true, data, state: snapshot(state) };
   }
 
-  async function sendMessage(body: PairLeaseWriteBody): Promise<PairLeaseWriteResult> {
+  /**
+   * Escritura firmada con el `seq` del lease. Ante `LEASE_STALE` se relee el
+   * estado y, si el control sigue siendo propio, se reintenta una sola vez con
+   * el `seq` nuevo; si cambió de dueño, el 409 es la verdad. Lo comparten el
+   * turno y la aprobación porque el servidor exige el mismo testigo en ambas.
+   */
+  async function writeSigned(
+    send: (seq: number) => ReturnType<typeof call>
+  ): Promise<PairLeaseWriteResult> {
     const seq = state.lease?.seq;
     if (typeof seq !== 'number') {
       return failWrite({
@@ -325,7 +353,7 @@ export function createPairLeaseClient(options: PairLeaseClientOptions): PairLeas
         message: 'no hay lease que firmar: pedí el estado primero',
       });
     }
-    const first = await postMessage(body, seq);
+    const first = await send(seq);
     if (first.ok) return confirmWrite(seq, first.data);
     if (first.error.code !== 'LEASE_STALE') return failWrite(first.error);
 
@@ -337,9 +365,20 @@ export function createPairLeaseClient(options: PairLeaseClientOptions): PairLeas
     if (!refreshed.state.mine) return failWrite(first.error);
     const freshSeq = refreshed.state.lease?.seq;
     if (typeof freshSeq !== 'number' || freshSeq === seq) return failWrite(first.error);
-    const second = await postMessage(body, freshSeq);
+    const second = await send(freshSeq);
     if (second.ok) return confirmWrite(freshSeq, second.data);
     return failWrite(second.error);
+  }
+
+  function sendMessage(body: PairLeaseWriteBody): Promise<PairLeaseWriteResult> {
+    return writeSigned((seq) => postMessage(body, seq));
+  }
+
+  function resolveApproval(
+    approvalId: string,
+    body: PairLeaseApprovalBody
+  ): Promise<PairLeaseWriteResult> {
+    return writeSigned((seq) => postApproval(approvalId, body, seq));
   }
 
   async function tick(): Promise<void> {
@@ -459,6 +498,7 @@ export function createPairLeaseClient(options: PairLeaseClientOptions): PairLeas
     requestTransfer,
     transfer,
     sendMessage,
+    resolveApproval,
     release,
     dispose() {
       stopRenewal();

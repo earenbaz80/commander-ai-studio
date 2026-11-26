@@ -37,6 +37,14 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const BOOT_TIMEOUT_MS = 90_000;
 /** Ya anunciado el puerto, `/api/health` debería contestar casi de inmediato. */
 const READY_TIMEOUT_MS = 30_000;
+/**
+ * Margen de una petición ya servida. Antes eran 30 s y en un runner cargado
+ * (Chromium de T6, compilaciones en paralelo) una petición legítima podía
+ * abortar: el test veía «sin respuesta del server» en vez del estado que estaba
+ * midiendo y la sesión quedaba viva por saltarse la limpieza. 90 s, igual que
+ * el arranque, dejan que la petición termine; un server caído igual se delata.
+ */
+const REQUEST_TIMEOUT_MS = 90_000;
 
 /**
  * Canal de control para pedirle el server al padre.
@@ -163,7 +171,9 @@ function makeRequest(baseUrl: string) {
           });
         }
       );
-      req.setTimeout(30_000, () => req.destroy(new Error('sin respuesta del server en 30s')));
+      req.setTimeout(REQUEST_TIMEOUT_MS, () =>
+        req.destroy(new Error(`sin respuesta del server en ${REQUEST_TIMEOUT_MS / 1000}s`))
+      );
       req.on('error', reject);
       if (payload) req.write(payload);
       req.end();
