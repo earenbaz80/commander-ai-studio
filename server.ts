@@ -46,6 +46,13 @@ import { isAllowedHost, allowedHostsFromEnv } from './hostGuard';
 import { issuePairToken, pairTokenTtlMs, redeemPairToken } from './src/pair/pairTokens';
 import { isLoopbackPeer, pairAllowedOrigins, pairOriginRejection } from './src/pair/pairOrigin';
 import {
+  PairRateLimiter,
+  pairRateBudgets,
+  pairRateWindowMs,
+  type PairRateResult,
+  type PairRateScope,
+} from './src/pair/pairRateLimit';
+import {
   MAX_PAIR_DEVICES,
   PAIR_DEVICE_COOKIE,
   issuePairDevice,
@@ -642,6 +649,50 @@ function pairOrigins(req: any): string[] {
   return pairAllowedOrigins(req.socket?.localPort, CORS_ALLOW);
 }
 
+// ── Rate limit del pair ─────────────────────────────────────────────────────
+// §6.6 del modelo de amenazas: presupuesto por caller (dispositivo emparejado,
+// o IP antes de canjear) y global por ventana, en canje, approvals y stream
+// (T2 y T12). El canje cuenta sólo fallos: un enlace válido nunca queda fuera
+// por los intentos ajenos. Los topes viven en `COMMANDER_PAIR_RATE_*`.
+const pairRate = new PairRateLimiter({ windowMs: pairRateWindowMs() });
+
+/**`device:<id>` si la cookie vale; si no, `ip:<addr>` (canje y escritorio). */
+function pairRateCallerKey(req: any): string {
+  const cookie = (req as any).cookies?.[PAIR_DEVICE_COOKIE];
+  if (cookie) {
+    const checked = resolvePairDevice(cookie);
+    if (checked.ok) return `device:${checked.device.id}`;
+  }
+  const ip = String(req.ip || req.socket?.remoteAddress || 'local');
+  return `ip:${ip}`;
+}
+
+/** 429 con `Retry-After` en segundos: lo que falta de la ventana, mínimo 1. */
+function pairRateRejection(res: any, scope: PairRateScope, decision: PairRateResult): any {
+  if (decision.ok) return res;
+  const budgets = pairRateBudgets(scope);
+  const max = decision.scope === 'global' ? budgets.global : budgets.caller;
+  res.set(PAIR_NO_STORE);
+  res.setHeader('Retry-After', String(decision.retryAfterSec));
+  return res.status(429).json({
+    success: false,
+    ok: false,
+    code: 'PAIR_RATE_LIMITED',
+    scope: decision.scope,
+    max,
+    retryAfterSec: decision.retryAfterSec,
+    error: `demasiadas peticiones (${max} por minuto): reintentá en ${decision.retryAfterSec} s`,
+  });
+}
+
+/** Cuenta el intento y corta con 429 si el caller o el global se agotaron. */
+function pairRateGuard(req: any, res: any, scope: PairRateScope): boolean {
+  const decision = pairRate.take(scope, pairRateCallerKey(req), pairRateBudgets(scope));
+  if (decision.ok) return false;
+  pairRateRejection(res, scope, decision);
+  return true;
+}
+
 // Emisión: sólo desde la máquina host. El CLI no manda `Origin`; una página
 // ajena sí, y cae en la guarda. Un navegador no puede omitirlo, así que el
 // hueco de «sin Origin» no es alcanzable desde la web.
@@ -704,6 +755,11 @@ app.post('/api/pair/redeem', (req, res) => {
 
   const result = redeemPairToken(req.body?.token);
   if (!result.ok) {
+    // Fuerza bruta (T2): sólo los fallos gastan presupuesto, así el dueño no
+    // queda fuera del canje por los intentos de otro y el token válido sigue
+    // entrando aunque la ventana esté agotada.
+    const decision = pairRate.take('redeem', pairRateCallerKey(req), pairRateBudgets('redeem'));
+    if (!decision.ok) return pairRateRejection(res, 'redeem', decision);
     if (result.reason === 'used') {
       return res
         .status(401)
@@ -1066,6 +1122,9 @@ app.get('/api/agent/sessions/:id/stream', (req, res) => {
     if (after === null) {
       return res.status(400).json({ success: false, error: 'cursor inválido' });
     }
+    // Reconectar en bucle es la vía barata para saturar el server (T12): el
+    // límite se mira antes de abrir el SSE, para poder responder 429 con JSON.
+    if (pairRateGuard(req, res, 'stream')) return;
 
     res.status(200);
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -1113,6 +1172,9 @@ app.post('/api/agent/sessions/:id/approvals/:approvalId', (req, res) => {
     }
     const session = getOrLoadSession(id);
     if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    // Un bucle de approvals (T12) gasta presupuesto antes de mirar el lease o
+    // la decisión: el trabajo de validar también cuesta.
+    if (pairRateGuard(req, res, 'approval')) return;
     if (pairLeaseWriteDenied(req, res, id)) return;
     const decision = String(req.body?.decision || '');
     if (decision !== 'allow' && decision !== 'deny' && decision !== 'allow-session') {

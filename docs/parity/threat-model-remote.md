@@ -33,6 +33,7 @@
 | Motor de approvals | F1 (`agentSession.ts`, `approvalEndpoints`) | El `deny` no se salta con `allow-session`; la aprobación es por paso |
 | Tokens de pair | `src/pair/pairTokens.ts`, `src/pair/pairOrigin.ts`, `src/pair/pairLink.ts` | 256 bits, TTL 5 min, hash en memoria, un solo uso; canje con `Origin` exacto y `Sec-Fetch-Site` (T1–T4) |
 | Cookie de dispositivo | `src/pair/pairDevices.ts` | Identificador opaco de 256 bits, hash en memoria, `HttpOnly; SameSite=Strict; Path=/` (+`Secure` en HTTPS), 30 días renovados por uso, registro con `id`/`createdAt`/`lastSeenAt`/`userAgent`/`revokedAt`, tope de 5 activos, revocación idempotente (T6, T7) |
+| Rate limit del pair | `src/pair/pairRateLimit.ts`, `server.ts` (`pairRateGuard`) | Ventana fija de 60 s con presupuesto por caller y global en canje, approvals y stream; 429 con `Retry-After`; el canje sólo cuenta fallos (T2, T12) |
 
 Ningún control de §6 se afirma implementado: son **requisitos de diseño** con parámetros propuestos que la implementación de F3 debe cumplir y probar. Donde hay un número, es una propuesta a fijar en el código, no una medición.
 
@@ -140,6 +141,7 @@ Cada amenaza tiene control **y** criterio de aceptación verificable. La columna
 ### 6.6 Límites, auditoría y redacción
 
 - **Rate limit** por dispositivo y global en canje, approvals y stream; respuesta 429 con `Retry-After`.
+  Implementado en `src/pair/pairRateLimit.ts` con ventana fija de 60 s y dos contadores por alcance: **caller** (el dispositivo emparejado o, antes de canjear, la IP) y **global** del proceso. El canje **sólo cuenta fallos** —un enlace válido entra aunque la ventana esté agotada—, para que la fuerza bruta de un tercero no deje al dueño sin poder emparejar; approvals y stream cuentan cada intento. El 429 lleva `Retry-After` en segundos (lo que falta de la ventana, nunca menos de 1) y `Cache-Control: no-store`. Topes por defecto por minuto: canje 10 por IP / 60 global, approvals 60 por dispositivo / 600 global, stream 30 por dispositivo / 300 global. Se ajustan con `COMMANDER_PAIR_RATE_REDEEM_MAX`, `_REDEEM_GLOBAL_MAX`, `_APPROVAL_MAX`, `_APPROVAL_GLOBAL_MAX`, `_STREAM_MAX`, `_STREAM_GLOBAL_MAX` y `COMMANDER_PAIR_RATE_WINDOW_MS`.
 - **Tamaño máximo** de evento y de frame de artifact; el excedente se rechaza, no se trunca en silencio.
 - **Sesión inactiva:** el stream se cierra tras un periodo de inactividad y el cliente debe reautenticarse con la cookie viva.
 - **Redacción:** todo payload hacia el cliente pasa por la lista blanca de campos y por las reglas de redacción de F1. Ni `.env`, ni claves de proveedor, ni tokens OAuth/MCP llegan al cliente web, a la URL, a los logs o a los artifacts.
