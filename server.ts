@@ -842,9 +842,12 @@ function pairLeaseRejection(res: any, reason: string): any {
 
 /**
  * Escritura de sesión con lease (§6.4): un dispositivo emparejado escribe sólo
- * si es el dueño y manda el `seq` vigente. Mientras el lease está en el
- * escritorio, los clientes locales (sin cookie) siguen escribiendo como
- * siempre; un dispositivo que aún no reclamó recibe 409 `LEASE_HELD`, y con el
+ * si es el dueño y manda el `seq` vigente. Vale para las dos mutaciones que
+ * cambian la sesión de verdad: el turno de usuario
+ * (`POST /api/agent/sessions/:id/message`) y la resolución de una aprobación
+ * (`POST /api/agent/sessions/:id/approvals/:approvalId`), porque aprobar es
+ * aplicar un diff. En ambas, mientras el lease está en el escritorio, los
+ * clientes locales (sin cookie) siguen escribiendo como siempre; un dispositivo que aún no reclamó recibe 409 `LEASE_HELD`, y con el
  * control en otro dispositivo toda escritura ajena —incluida la del escritorio—
  * también, para que el escritor sea uno solo. El `seq` viejo da 409
  * `LEASE_STALE`: un mensaje en vuelo no revive un control ya cedido.
@@ -1094,6 +1097,7 @@ app.post('/api/agent/sessions/:id/approvals/:approvalId', (req, res) => {
     }
     const session = getOrLoadSession(id);
     if (!session) return res.status(404).json({ success: false, error: 'sesión no encontrada' });
+    if (pairLeaseWriteDenied(req, res, id)) return;
     const decision = String(req.body?.decision || '');
     if (decision !== 'allow' && decision !== 'deny' && decision !== 'allow-session') {
       return res.status(400).json({ success: false, error: 'decision inválida' });

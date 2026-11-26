@@ -29,6 +29,14 @@ import {
   renewPairLease,
   resetPairLeasesForTests,
 } from '../src/pair/pairLease.js';
+import {
+  cleanupDir,
+  createApprovalSession,
+  getState,
+  startScriptedProvider,
+  waitForApproval,
+  waitForState,
+} from './agent/approvalHarness.js';
 
 let srv: ServerHarness;
 
@@ -393,6 +401,81 @@ describe('control lease contra el server', () => {
       (turn: any) => turn.text === 'turno del dispositivo'
     );
     assert.equal(stored.length, 1, 'sólo la petición autorizada añade el turno');
+  });
+
+  test('la aprobación de una sesión también exige el control y el seq vigente', async () => {
+    const provider = await startScriptedProvider([
+      { tool: 'fs.write', args: { path: 'aprobado.txt', content: 'solo con lease' } },
+      { text: 'Fin.' },
+    ]);
+    const created = await createApprovalSession(srv, provider, {
+      goal: 'Lease: aprobacion con lease (F3)',
+      approvalTimeoutMs: 30_000,
+    });
+    try {
+      const approval = await waitForApproval(srv, created.id);
+      const owner = await pairDevice(created.id);
+      const guest = await pairDevice(created.id);
+
+      // Aprobar es aplicar un diff: la ruta lleva la misma guarda que /message.
+      const decide = (cookie: string | null, body: object = {}) => {
+        const headers: Record<string, string> = { Origin: srv.baseUrl };
+        if (cookie) headers.Cookie = cookie;
+        return srv.request(
+          'POST',
+          `/api/agent/sessions/${created.id}/approvals/${encodeURIComponent(approval.id)}`,
+          { decision: 'allow', ...body },
+          { headers }
+        );
+      };
+      const pendingId = async () =>
+        (await getState(srv, created.id)).pendingApproval?.id ?? null;
+
+      // Sin reclamar, el lease está en el escritorio: un dispositivo no aprueba.
+      const unclaimed = await decide(guest.cookie);
+      assert.equal(unclaimed.status, 409, unclaimed.raw);
+      assert.equal(unclaimed.body.code, 'LEASE_HELD');
+      assert.equal(await pendingId(), approval.id, 'la aprobación sigue pendiente');
+
+      const claimed = await claim(created.id, owner.cookie);
+
+      // Otro dispositivo con el seq correcto tampoco: el dueño es uno.
+      const held = await decide(guest.cookie, { seq: claimed.seq });
+      assert.equal(held.status, 409, held.raw);
+      assert.equal(held.body.code, 'LEASE_HELD');
+
+      // El dueño con un seq viejo no revive el control cedido.
+      const stale = await decide(owner.cookie, { seq: claimed.seq - 1 });
+      assert.equal(stale.status, 409, stale.raw);
+      assert.equal(stale.body.code, 'LEASE_STALE');
+
+      // Y el escritorio tampoco mientras un dispositivo tenga el control.
+      const desktop = await decide(null, { seq: claimed.seq });
+      assert.equal(desktop.status, 409, desktop.raw);
+      assert.equal(desktop.body.code, 'LEASE_HELD');
+
+      // Ninguna tentativa rechazada aplicó el diff ni resolvió la aprobación.
+      assert.equal(
+        fs.existsSync(path.join(created.cwd, 'aprobado.txt')),
+        false,
+        'sin lease no se escribe'
+      );
+      assert.equal(await pendingId(), approval.id);
+
+      // Con el testigo vigente la aprobación entra y el turno termina.
+      const accepted = await decide(owner.cookie, { seq: claimed.seq });
+      assert.equal(accepted.status, 200, accepted.raw);
+      assert.equal(accepted.body.decision, 'allow');
+      const state = await waitForState(srv, created.id, ['completed', 'failed'], 30_000);
+      assert.equal(state.status, 'completed', JSON.stringify(state));
+      assert.equal(
+        fs.readFileSync(path.join(created.cwd, 'aprobado.txt'), 'utf8'),
+        'solo con lease'
+      );
+    } finally {
+      await provider.close();
+      cleanupDir(created.cwd);
+    }
   });
 });
 
