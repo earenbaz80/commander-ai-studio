@@ -20,6 +20,8 @@ concurrency:
 jobs:
   lint-and-test:
     name: Lint, Typecheck & Test
+    # 4x lo medido en #289 (5m02s): npm ci en frío, node:test y Vitest.
+    timeout-minutes: 20
     runs-on: windows-latest
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     steps:
@@ -139,6 +141,8 @@ jobs:
   # completo sigue siendo el que gatea el build.
   logic:
     name: Vitest (sólo lógica)
+    # ~9x lo medido (1m45s): es el job de feedback rápido, no el que se estira.
+    timeout-minutes: 15
     runs-on: windows-latest
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     steps:
@@ -179,6 +183,8 @@ jobs:
 
   build:
     name: Build
+    # ~6x lo medido (2m19s) por si el cache de npm viene en frío.
+    timeout-minutes: 15
     needs: lint-and-test
     if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: windows-latest
@@ -208,6 +214,8 @@ jobs:
   # recompilarlo con node-gyp y el build falló sin que ningún test lo notara.
   package:
     name: Package (Electron, --dir)
+    # ~10x lo medido (1m30s): electron-builder es el que puede quedarse esperando.
+    timeout-minutes: 15
     needs: lint-and-test
     if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: windows-latest
@@ -247,7 +255,15 @@ jobs:
 
   e2e:
     name: E2E Tests (Playwright)
-    needs: build
+    # El más largo: 11m10s en #289, con 2m51s de navegadores en frío y 6m13s de
+    # suite. Un reintento (`retries: 1`) puede volver a correrla casi entera, así
+    # que 30 deja margen para el peor caso normal y corta un preview colgado.
+    timeout-minutes: 30
+    # No espera a `build`: su artifact `dist` no lo descarga ningún job y este
+    # job reconstruye la UI por su cuenta (paso `Build (Vite)` más abajo).
+    # Colgarlo del build lo dejaba 2m19s detrás de un producto que ignora; lo
+    # único que necesita es el árbol en verde.
+    needs: lint-and-test
     if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: windows-latest
     steps:
@@ -260,7 +276,22 @@ jobs:
 
       - run: npm ci --ignore-scripts
 
+      # `playwright install --with-deps` es el paso más caro del job (2m51s en
+      # #289) y casi todo se va en el DISM de Media Foundation, no en la
+      # descarga. La clave cuelga del lockfile: subir Playwright o cualquiera de
+      # sus dependencias invalida el cache y el paso vuelve a instalar con deps.
+      # Con cache caliente no se corre el paso; si un test de media fallara justo
+      # así, el culpable es el DISM que no corrió: quitar el `if:` de abajo lo
+      # devuelve sin tocar el cache.
+      - name: Cache de navegadores de Playwright
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+
       - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium firefox
 
       - name: Build (Vite)

@@ -321,9 +321,25 @@ test('Release: el tag debe coincidir con package.json antes del draft', () => {
   assert.match(publica, /draft: true/, 'la release sigue saliendo como borrador');
 });
 
-test('CI: build depende del gate y e2e del build', () => {
+test('CI: build depende del gate y e2e no espera al build', () => {
   assert.match(jobDe(ci, 'build'), /needs: lint-and-test/, 'no se construye sin lint ni tests');
-  assert.match(jobDe(ci, 'e2e'), /needs: build/, 'el e2e usa el build');
+  // El artifact `dist` de `build` no lo descarga ningún job y `e2e` corre su
+  // propio `npm run build`: colgarlo del build eran 2m19s de camino crítico por
+  // un producto que ignora. Lo que necesita es el árbol en verde.
+  assert.match(
+    jobDe(ci, 'e2e'),
+    /needs: lint-and-test/,
+    'el e2e espera los tests, no el empaquetado de dist'
+  );
+  assert.ok(!/needs: build/.test(jobDe(ci, 'e2e')), 'el e2e no vuelve a colgar del build');
+  // Los navegadores son el paso más caro del job: con el cache atado al
+  // lockfile, una subida de Playwright lo invalida y el paso vuelve a instalar.
+  const cache = pasosDe(jobDe(ci, 'e2e')).find((p) => p.includes('actions/cache@'));
+  assert.ok(cache, 'el e2e cachea los navegadores');
+  assert.ok(
+    cache.includes("hashFiles('package-lock.json')") && cache.includes('ms-playwright'),
+    'la clave del cache sigue al lockfile y guarda la carpeta de navegadores'
+  );
   // Lo caro se paga una vez por stack, no una por nivel: build, package y e2e
   // corren en los PRs contra `main` (y en `push`), no en los PRs apilados. Sin
   // esta guarda, correr CI en cada nivel del stack multiplica minutos de runner.
@@ -332,6 +348,28 @@ test('CI: build depende del gate y e2e del build', () => {
       jobDe(ci, job),
       /if: github\.event_name != 'pull_request' \|\| github\.base_ref == 'main'/,
       `\`${job}\` sólo corre en PRs contra \`main\``
+    );
+  }
+});
+
+test('CI: cada job acota su tiempo en el runner', () => {
+  // Sin `timeout-minutes` el default son 360 min: un preview o un merge colgado
+  // se paga en horas de runner Windows. Los topes son holgados a propósito
+  // (≥4x lo medido en #289): la idea es cortar un cuelgue, no fallar por lento.
+  const topes: Record<string, number> = {
+    'lint-and-test': 20,
+    logic: 15,
+    build: 15,
+    package: 15,
+    e2e: 30,
+  };
+  for (const [job, esperado] of Object.entries(topes)) {
+    const declarado = jobDe(ci, job).match(/^ {4}timeout-minutes: (\d+)$/m);
+    assert.ok(declarado, `\`${job}\` declara timeout-minutes`);
+    assert.equal(
+      Number(declarado[1]),
+      esperado,
+      `\`${job}\` acota el runner a ${esperado} min`
     );
   }
 });
