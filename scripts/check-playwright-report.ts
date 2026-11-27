@@ -11,8 +11,11 @@
  *   2. que los proyectos de la suite general tengan los mismos conteos entre sí;
  *   3. que cada archivo de la suite general corra en todos los proyectos;
  *   4. que el E2E del artifact sólo aparezca en Chromium de escritorio;
- *   5. que el caso de C8 traiga el adjunto `c8-steps` con sus 5 pasos;
- *   6. que el reporte esté verde (`unexpected` y `flaky` en cero) y que sus
+ *   5. que el caso de C8 corra una sola vez y traiga el adjunto `c8-steps` con
+ *      sus 5 pasos;
+ *   6. que el artifact traiga además un `index.html` no vacío: el JSON prueba
+ *      que el merge leyó los blobs, no que el reporte HTML se haya generado;
+ *   7. que el reporte esté verde (`unexpected` y `flaky` en cero) y que sus
  *      `stats` cuadren con las filas.
  *
  * El adjunto de C8 se valida por contenido y no por presencia del nombre: un
@@ -109,6 +112,8 @@ export const C8_FILE = 'pairTwoDevices.spec.ts';
 export const C8_ATTACHMENT = 'c8-steps';
 /** Inicio > fs.read > fs.write > Razonamiento > Finalizado. */
 export const C8_STEPS = 5;
+/** El reporte que se abre cuando el job falla; el JSON solo no lo reemplaza. */
+export const HTML_REPORT = 'index.html';
 
 const STATUS_KEYS = ['expected', 'skipped', 'unexpected', 'flaky'] as const;
 
@@ -195,6 +200,18 @@ function validarC8(
 ): { errores: string[]; c8?: C8Steps } {
   const errores: string[] = [];
   const delCaso = rows.filter((row) => row.file === C8_FILE);
+  // Un caso que se cuela en otro proyecto corre dos veces con el mismo nombre
+  // de archivo: el recibo G2 cita una sola ejecución, y los adjuntos se
+  // duplicarían sin que el conteo de proyectos lo delate.
+  if (delCaso.length > 1) {
+    const proyectos = [...new Set(delCaso.map((row) => row.project))].join(', ');
+    return {
+      errores: [
+        `el caso de C8 corre ${delCaso.length} veces (${proyectos}): se espera ` +
+          'una sola ejecución, la que cita el recibo',
+      ],
+    };
+  }
   if (delCaso.length === 0) {
     return {
       errores: [
@@ -380,6 +397,27 @@ export function validarReporte(
   };
 }
 
+/**
+ * El merge produce `html,json`; este gate sólo mira el JSON. Si el HTML sale
+ * vacío o no sale, el artifact queda inservible y el job verde lo taparía.
+ * Se comprueba junto al JSON porque son las dos caras del mismo artifact.
+ */
+export function verificarArtifactHtml(baseDir: string): string[] {
+  const ruta = path.join(baseDir, HTML_REPORT);
+  let tamano: number;
+  try {
+    tamano = fs.statSync(ruta).size;
+  } catch {
+    return [
+      `falta ${HTML_REPORT} en ${baseDir}: el artifact se subiría sin reporte legible`,
+    ];
+  }
+  if (tamano === 0) {
+    return [`${HTML_REPORT} está vacío (0 B): el merge no generó el reporte HTML`];
+  }
+  return [];
+}
+
 /** La línea que se lee en el run sin abrir el artifact. */
 export function lineaResumen(veredicto: Veredicto): string {
   const etiqueta = `**C8 · \`${C8_ATTACHMENT}\`**`;
@@ -425,15 +463,18 @@ function loadReport(): PlaywrightReport {
 }
 
 function principal(): void {
-  const veredicto = validarReporte(loadReport(), path.dirname(REPORT_PATH));
+  const baseDir = path.dirname(REPORT_PATH);
+  const veredicto = validarReporte(loadReport(), baseDir);
+  // El HTML no sale del JSON: se mide en disco y se suma a los mismos problemas.
+  const problemas = [...veredicto.errores, ...verificarArtifactHtml(baseDir)];
   const byStatus = veredicto.porEstado;
   publicar(lineaResumen(veredicto));
 
-  if (veredicto.errores.length > 0) {
+  if (problemas.length > 0) {
     console.error(
-      `[check:playwright-report] ${veredicto.errores.length} problema(s) en ${REPORT_PATH}:`
+      `[check:playwright-report] ${problemas.length} problema(s) en ${REPORT_PATH}:`
     );
-    for (const error of veredicto.errores) console.error(`  - ${error}`);
+    for (const error of problemas) console.error(`  - ${error}`);
     console.error(
       '[check:playwright-report] el artifact no contiene lo esperado: el job debe fallar.'
     );
