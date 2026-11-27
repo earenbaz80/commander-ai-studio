@@ -198,15 +198,12 @@ jobs:
 
       - run: npm ci --ignore-scripts
 
+      # Sin subida de `dist`: ningún job lo descargaba. `package` y `e2e`
+      # reconstruyen la UI por su cuenta (24s en #290) porque además necesitan
+      # sus propios bundles, y consumirlo obligaría a colgar el `e2e` del build
+      # otra vez (+2m10s de camino crítico) para ahorrar 24s.
       - name: Build (Vite)
         run: npm run build
-
-      - name: Upload dist artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: dist
-          path: dist/
-          retention-days: 7
 
   # Empaquetado real, sin instalar nada: `--dir` corre el mismo pipeline que una
   # release (asar, extraResources, módulos nativos) pero no genera instaladores

@@ -323,15 +323,22 @@ test('Release: el tag debe coincidir con package.json antes del draft', () => {
 
 test('CI: build depende del gate y e2e no espera al build', () => {
   assert.match(jobDe(ci, 'build'), /needs: lint-and-test/, 'no se construye sin lint ni tests');
-  // El artifact `dist` de `build` no lo descarga ningún job y `e2e` corre su
-  // propio `npm run build`: colgarlo del build eran 2m19s de camino crítico por
-  // un producto que ignora. Lo que necesita es el árbol en verde.
+  // El `dist` de `build` no lo descarga ningún job y `e2e` corre su propio
+  // `npm run build` (24s medidos en #290): colgarlo del build eran 2m19s de
+  // camino crítico por un producto que ignora. Lo que necesita es el árbol en
+  // verde.
   assert.match(
     jobDe(ci, 'e2e'),
     /needs: lint-and-test/,
     'el e2e espera los tests, no el empaquetado de dist'
   );
   assert.ok(!/needs: build/.test(jobDe(ci, 'e2e')), 'el e2e no vuelve a colgar del build');
+  // Y no se sube: un artifact que nadie descarga sólo gasta almacenamiento y
+  // deja la falsa idea de que el build alimenta a los demás jobs.
+  assert.ok(
+    !pasosDe(jobDe(ci, 'build')).some((paso) => paso.includes('upload-artifact')),
+    'el build no sube un artifact que ningún job descarga'
+  );
   // Los navegadores son el paso más caro del job: con el cache atado al
   // lockfile, una subida de Playwright lo invalida y el paso vuelve a instalar.
   const cache = pasosDe(jobDe(ci, 'e2e')).find((p) => p.includes('actions/cache@'));
