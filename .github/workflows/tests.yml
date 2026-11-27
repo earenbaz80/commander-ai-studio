@@ -181,30 +181,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  build:
-    name: Build
-    # ~6x lo medido (2m19s) por si el cache de npm viene en frío.
-    timeout-minutes: 15
-    needs: lint-and-test
-    if: github.event_name != 'pull_request' || github.base_ref == 'main'
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci --ignore-scripts
-
-      # Sin subida de `dist`: ningún job lo descargaba. `package` y `e2e`
-      # reconstruyen la UI por su cuenta (24s en #290) porque además necesitan
-      # sus propios bundles, y consumirlo obligaría a colgar el `e2e` del build
-      # otra vez (+2m10s de camino crítico) para ahorrar 24s.
-      - name: Build (Vite)
-        run: npm run build
-
+  # Sin job de `build`: `npm run build` es sólo el `vite build`, y `package`
+  # (paso `Build web`) y `e2e` ya lo corren cada uno, junto a lo que de verdad
+  # necesitan (bundles del server/updater, preview). Como job aparte costaba un
+  # `npm ci` y 2m10s de runner por corrida sin adelantar nada: no está en el
+  # camino crítico —el `e2e` manda— ni nadie consume su salida.
   # Empaquetado real, sin instalar nada: `--dir` corre el mismo pipeline que una
   # release (asar, extraResources, módulos nativos) pero no genera instaladores
   # ni publica. Es el paso que se rompió con node-pty: electron-builder intentó

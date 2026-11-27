@@ -321,24 +321,23 @@ test('Release: el tag debe coincidir con package.json antes del draft', () => {
   assert.match(publica, /draft: true/, 'la release sigue saliendo como borrador');
 });
 
-test('CI: build depende del gate y e2e no espera al build', () => {
-  assert.match(jobDe(ci, 'build'), /needs: lint-and-test/, 'no se construye sin lint ni tests');
-  // El `dist` de `build` no lo descarga ningún job y `e2e` corre su propio
-  // `npm run build` (24s medidos en #290): colgarlo del build eran 2m19s de
-  // camino crítico por un producto que ignora. Lo que necesita es el árbol en
-  // verde.
-  assert.match(
-    jobDe(ci, 'e2e'),
-    /needs: lint-and-test/,
-    'el e2e espera los tests, no el empaquetado de dist'
-  );
-  assert.ok(!/needs: build/.test(jobDe(ci, 'e2e')), 'el e2e no vuelve a colgar del build');
-  // Y no se sube: un artifact que nadie descarga sólo gasta almacenamiento y
-  // deja la falsa idea de que el build alimenta a los demás jobs.
-  assert.ok(
-    !pasosDe(jobDe(ci, 'build')).some((paso) => paso.includes('upload-artifact')),
-    'el build no sube un artifact que ningún job descarga'
-  );
+test('CI: no hay un job de build aparte y nada cuelga de él', () => {
+  // `npm run build` es sólo el `vite build`: `package` (paso `Build web`) y
+  // `e2e` ya lo corren cada uno con lo que necesitan (24s medidos en #290), así
+  // que un job aparte costaba un `npm ci` y 2m10s de runner por corrida sin
+  // adelantar el camino crítico, que es el `e2e`.
+  assert.ok(!/^ {2}build:/m.test(ci), 'no queda un job `build` duplicado');
+  assert.ok(!ci.includes('needs: build'), 'ningún job espera un build que ya no existe');
+  for (const job of ['package', 'e2e']) {
+    assert.ok(
+      pasosDe(jobDe(ci, job)).some((paso) => paso.includes('npm run build')),
+      `\`${job}\` construye la UI por su cuenta`
+    );
+  }
+  assert.match(jobDe(ci, 'e2e'), /needs: lint-and-test/, 'el e2e espera los tests');
+  // Sin job que lo consuma, un artifact `dist` sólo gastaría almacenamiento y
+  // sugeriría un acoplamiento que no existe.
+  assert.ok(!ci.includes('name: dist'), 'ningún job sube un artifact dist');
   // Los navegadores son el paso más caro del job: con el cache atado al
   // lockfile, una subida de Playwright lo invalida y el paso vuelve a instalar.
   const cache = pasosDe(jobDe(ci, 'e2e')).find((p) => p.includes('actions/cache@'));
@@ -350,7 +349,7 @@ test('CI: build depende del gate y e2e no espera al build', () => {
   // Lo caro se paga una vez por stack, no una por nivel: build, package y e2e
   // corren en los PRs contra `main` (y en `push`), no en los PRs apilados. Sin
   // esta guarda, correr CI en cada nivel del stack multiplica minutos de runner.
-  for (const job of ['build', 'package', 'e2e']) {
+  for (const job of ['package', 'e2e']) {
     assert.match(
       jobDe(ci, job),
       /if: github\.event_name != 'pull_request' \|\| github\.base_ref == 'main'/,
@@ -366,7 +365,6 @@ test('CI: cada job acota su tiempo en el runner', () => {
   const topes: Record<string, number> = {
     'lint-and-test': 20,
     logic: 15,
-    build: 15,
     package: 15,
     e2e: 30,
   };
