@@ -14,11 +14,11 @@ criterios).
 
 | Dato | Valor |
 | --- | --- |
-| Commit | `bc94f2e01054db7dc9659a3d568130d99b5a78e7` |
+| Commit | `a6af9df86d9c816a704be89a145ddb9698f1eb04` |
 | VSIX | `vscode-extension/commander-ai-studio-0.4.0.vsix` |
-| Tamaño / archivos | 9,27 MB · 92 archivos (`vsce ls`) |
-| SHA-256 | `48ebda727bb6b9525601b493d5bf299c9304838ee19aba33d85e118fdd301c39` |
-| Contenido verificado | `out/*.js`, `cli/commander.mjs`, `cli/server.mjs`, `cli/dist/index.html`, `cli/node_modules/node-pty/prebuilds/win32-x64/` |
+| Tamaño / archivos | 9,29 MB · 92 archivos en el paquete (90 de payload; `vsce ls` no lista los dos de manifiesto) |
+| SHA-256 | `159bb22f8028ab72e96faa3a8f7114849259de3a49859f504a74563d01bc66e5` |
+| Contenido verificado | `out/*.js`, `cli/commander.mjs`, `cli/server.mjs` (con `STREAM_EVENT_TOO_LARGE`, `pairAudit`, `MAX_STREAM_EVENT_BYTES` y `X-Forwarded-Proto`: el bundle es posterior a C3–C6), `cli/dist/index.html`, `cli/node_modules/node-pty/prebuilds/win32-x64/` |
 | Plataforma | **win32-x64** (el prebuild de `node-pty` es el de la máquina que empaqueta) |
 
 Reconstruido desde HEAD con:
@@ -29,10 +29,10 @@ cd vscode-extension && npm run package      # vsce prepublish: compile + bundle:
 ```
 
 Si se cambia código después, se repite entero: el `.vsix` copia `cli-dist/` tal cual y un
-build viejo invalidaría toda la evidencia. La tabla es la foto de ese commit: desde él
-`vscode-extension/src` no cambió, pero el CLI empaquetado sí (C3–C6 del recibo G2), así que
-antes de ejecutar se reconstruye el `.vsix` sobre el HEAD del momento y se actualizan commit,
-tamaño y hash. Medir con el `.vsix` viejo sería medir un servidor anterior a esos cambios.
+build viejo invalidaría toda la evidencia. La tabla es la foto de `a6af9df`, reconstruida el
+2026-11-27 sobre un HEAD que ya incluye C3–C6; si el código vuelve a moverse se reconstruye y
+se actualizan commit, tamaño y hash. El archivo conserva el nombre `0.4.0`, así que lo que
+identifica la build es el hash, no el nombre.
 
 ## 1 · Preparar un VS Code limpio
 
