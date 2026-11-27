@@ -212,6 +212,23 @@ test.describe('C8 · dos dispositivos sobre la misma sesión', () => {
       const shot = path.join(shotDir, 'pair-session-390x844.png');
       await mobile.page.screenshot({ path: shot });
 
+      // La secuencia se imprime y se adjunta al reporte: así el `sessionId`
+      // archivado y los `steps` documentados salen de esta misma corrida y no
+      // hay que reconstruirla después con otra sesión.
+      const stepSummary = (
+        serverSteps as Array<{ type?: string; title?: string; toolId?: string }>
+      ).map((step) =>
+        `${step.type}:${step.title}${step.toolId ? `(${step.toolId})` : ''}`
+      );
+      await testInfo.attach('c8-steps', {
+        body: JSON.stringify(
+          { desktopId, mobileId, steps: stepSummary },
+          null,
+          2
+        ),
+        contentType: 'application/json',
+      });
+
       const png = fs.readFileSync(shot);
       // Cabecera PNG: ancho y alto en big-endian a partir del byte 16.
       const width = png.readUInt32BE(16);
@@ -222,7 +239,8 @@ test.describe('C8 · dos dispositivos sobre la misma sesión', () => {
         contentType: 'image/png',
       });
       console.log(
-        `[c8] sessionId=${created.id} steps=${serverSteps.length} ` +
+        `[c8] sessionId(escritorio)=${desktopId} sessionId(móvil)=${mobileId} ` +
+          `steps=${serverSteps.length} [${stepSummary.join(' > ')}] ` +
           `captura=${shot} (${width}×${height})`
       );
     } finally {
