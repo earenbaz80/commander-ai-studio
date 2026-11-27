@@ -2,7 +2,7 @@
 
 > **Fecha:** 2026-11-25
 > **Estado:** borrador versionado, **sin revisión**. G2 sigue **no iniciada**: este documento es el insumo que la revisión tiene que aprobar, no la aprobación.
-> **Qué desbloquea:** sólo G2. F3 (`commander pair`, cliente web/PWA, control lease) está **parcial (6/8)** y no se declara hecha por tener este modelo ni por los seis criterios que ya tienen test.
+> **Qué desbloquea:** sólo G2. F3 (`commander pair`, cliente web/PWA, control lease) está **parcial (8/8)** y no se declara hecha por tener este modelo ni por los ocho criterios que ya tienen test o corrida (C8, §14 del recibo): falta la firma.
 > **Qué no es:** no es un recibo, no declara verificado ningún control, no habilita `--remote` en una release y **no cierra ninguna casilla de F3**.
 > **Referencias:** [ROADMAP](../../ROADMAP.md) §2 (G2), §3 (F3) y §11 (riesgos) · [bindHost](../../src/lib/bindHost.ts) · [F1 approvals](../../ROADMAP.md) §3.F1 · [issues de G1](issues/README.md).
 
