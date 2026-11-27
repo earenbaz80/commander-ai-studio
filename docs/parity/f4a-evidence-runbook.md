@@ -14,11 +14,11 @@ criterios).
 
 | Dato | Valor |
 | --- | --- |
-| Commit | `a6af9df86d9c816a704be89a145ddb9698f1eb04` |
+| Commit | `528219f7f3b9e0866fd5fd00de726ffdfc66b19e` |
 | VSIX | `vscode-extension/commander-ai-studio-0.4.0.vsix` |
 | Tamaño / archivos | 9,29 MB · 92 archivos en el paquete (90 de payload; `vsce ls` no lista los dos de manifiesto) |
-| SHA-256 | `159bb22f8028ab72e96faa3a8f7114849259de3a49859f504a74563d01bc66e5` |
-| Contenido verificado | `out/*.js`, `cli/commander.mjs`, `cli/server.mjs` (con `STREAM_EVENT_TOO_LARGE`, `pairAudit`, `MAX_STREAM_EVENT_BYTES` y `X-Forwarded-Proto`: el bundle es posterior a C3–C6), `cli/dist/index.html`, `cli/node_modules/node-pty/prebuilds/win32-x64/` |
+| SHA-256 | `e64f0abf264d55a300126fcf49fc2626f2e74cd52134b34dadfec2aeeac67735` |
+| Contenido verificado | `out/*.js`, `cli/commander.mjs`, `cli/server.mjs` (con `STREAM_EVENT_TOO_LARGE`, `pairAudit`, `MAX_STREAM_EVENT_BYTES` y `X-Forwarded-Proto`: el bundle es posterior a C3–C6, y con `<base href` y el fallback `no se pudo leer dist/index.html`: también lleva el arreglo del enlace profundo del pair, `faa40c3`), `cli/dist/index.html`, `cli/node_modules/node-pty/prebuilds/win32-x64/` |
 | Plataforma | **win32-x64** (el prebuild de `node-pty` es el de la máquina que empaqueta) |
 
 Reconstruido desde HEAD con:
@@ -29,10 +29,12 @@ cd vscode-extension && npm run package      # vsce prepublish: compile + bundle:
 ```
 
 Si se cambia código después, se repite entero: el `.vsix` copia `cli-dist/` tal cual y un
-build viejo invalidaría toda la evidencia. La tabla es la foto de `a6af9df`, reconstruida el
-2026-11-27 sobre un HEAD que ya incluye C3–C6; si el código vuelve a moverse se reconstruye y
-se actualizan commit, tamaño y hash. El archivo conserva el nombre `0.4.0`, así que lo que
-identifica la build es el hash, no el nombre.
+build viejo invalidaría toda la evidencia. La tabla es la foto de `528219f`, reconstruida el
+2026-11-27 sobre un HEAD que ya incluye C3–C6, con el enlace profundo del pair ya arreglado
+(`faa40c3`); si el código vuelve a moverse se reconstruye y se actualizan commit, tamaño y
+hash. El archivo conserva el nombre `0.4.0`, así que lo que identifica la build es el hash,
+no el nombre. El `.vsix` anterior, hecho sobre `a6af9df`, no llevaba ese arreglo y se
+descartó.
 
 ## 1 · Preparar un VS Code limpio
 
