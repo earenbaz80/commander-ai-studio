@@ -434,6 +434,10 @@ export async function spawnServer(options: SpawnServerOptions = {}): Promise<Ser
       // para toda la corrida); el caso de 429 levanta su propio server.
       COMMANDER_PAIR_STREAM_ACTIVE_MAX: '64',
       COMMANDER_PAIR_STREAM_ACTIVE_GLOBAL_MAX: '128',
+      // La auditoría de emisión/canje/baja del pair tampoco puede caer en el
+      // `.commander` real. Va antes de `options.env` para que un archivo pueda
+      // apuntarla a su propio archivo y leerla.
+      COMMANDER_PAIR_AUDIT_FILE: path.join(dir, 'pair', 'audit.jsonl'),
       ...(options.env || {}),
       PORT: '0',
       NODE_ENV: 'production',

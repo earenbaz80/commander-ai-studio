@@ -2,7 +2,7 @@
 
 > **Instantánea:** 2026-11-23. **Éste es el único roadmap del proyecto.** Paridad F0–F6, plataforma PL0–PL7 y UX 1.0 viven aquí con sus criterios, su alcance, sus métricas y su evidencia; la comparación con los competidores está en §8 y las reglas de cierre en §9. No hay otros documentos de roadmap: `ROADMAP_PARITY.md`, `ROADMAP_PLATFORM.md` y `ROADMAP_UX.md` se retiraron y sus enlaces vivos apuntan a este archivo.
 >
-> **Vista publicada:** [roadmap autónomo](https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html) — 67 % hacia el multiagente autónomo (2026-11-23), 15 de 27 pasos cerrados, con el avance por paso y su evidencia (fuente: [docs/roadmap-autonomo.html](docs/roadmap-autonomo.html)). Es una vista de este mismo roadmap con su propia numeración; el mapeo está en §7.
+> **Vista publicada:** [roadmap autónomo](https://earenbaz80.github.io/commander-ai-studio/roadmap-autonomo.html) — 69 % hacia el multiagente autónomo (2026-11-26), 15 de 27 pasos cerrados, con el avance por paso y su evidencia (fuente: [docs/roadmap-autonomo.html](docs/roadmap-autonomo.html)). Es una vista de este mismo roadmap con su propia numeración; el mapeo está en §7.
 >
 > **Evidencia:** [baseline F0](docs/parity/baseline-2026-11.md) · [runbook G1/F0](docs/parity/runbook-g1-f0.md) · [recibo F0 local](docs/parity/receipts/F0-LOCAL-2026-11-10.md) · [recibo del dogfooding G1](docs/parity/receipts/G1-DOGFOOD-2026-11-12.md) · [hoja de decisión del p95](docs/parity/g1-approval-gate-decision.md).
 
@@ -12,18 +12,18 @@ No promete fechas; los esfuerzos son órdenes de magnitud. Una fase o un criteri
 
 | Frente | Fases | Cerradas | Criterios en alcance |
 | --- | ---: | ---: | ---: |
-| Paridad | 7 | 1 (F0) | 27/47 |
+| Paridad | 7 | 1 (F0) | 33/47 |
 | Plataforma | 8 | 1 (PL0) | 24/38 |
 | UX | 1 | 1 (UX 1.0) | 10/10 |
-| **Total** | **16** | **4/13 en alcance** | **61/95 (64 %)** |
+| **Total** | **16** | **4/13 en alcance** | **67/95 (71 %)** |
 
 - **4 fases cerradas:** F0, PL0, UX 1.0 y F2.
-- **5 parciales:** F1, PL2, PL3, PL5 y PL6.
-- **4 pendientes:** F3, F4, F5 y PL4.
+- **7 parciales:** F1, F3, F4, PL2, PL3, PL5 y PL6.
+- **2 pendientes:** F5 y PL4.
 - **Fuera del cómputo:** PL1 (fuera de alcance hasta G3) y F6/PL7 (opcionales).
-- **Puertas:** G0 cerrada; G1 abierta (dogfooding ejecutado; **no retiene fases**, §2.1); G2 y G3 no iniciadas.
+- **Puertas:** G0 cerrada; G1 abierta (dogfooding ejecutado; **no retiene fases**, §2.1); G2 no iniciada con revisión propuesta y sin firma; G3 no iniciada.
 
-El 64 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tampoco dice que la app esté al 64 %: dice que 61 de los 95 criterios en alcance tienen evidencia. Cada criterio es una casilla de este documento: cuenta el `[x]` o la cobertura que la fase declara (F2 cerró con sus siete criterios y su verificación en Electron); los `[—]`, las fases opcionales y PL1 quedan fuera del numerador y del denominador. F0 cerró G0 con una baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts y 0 inválidas); la paridad es baja. El dogfooding de G1 se ejecutó el 2026-11-12 (17/28, 60,7 %) y la puerta sigue abierta por una sola regla: el p95 de aprobación.
+El 71 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tampoco dice que la app esté al 71 %: dice que 67 de los 95 criterios en alcance tienen evidencia. Cada criterio es una casilla de este documento: cuenta el `[x]` o la cobertura que la fase declara (F2 cerró con sus siete criterios y su verificación en Electron; F3 suma seis con su test y deja dos abiertas); los `[—]`, las fases opcionales y PL1 quedan fuera del numerador y del denominador. F0 cerró G0 con una baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts y 0 inválidas); la paridad es baja. El dogfooding de G1 se ejecutó el 2026-11-12 (17/28, 60,7 %) y la puerta sigue abierta por una sola regla: el p95 de aprobación.
 
 **El norte no es la cifra, es el producto:** un agente que corre local-first, que pide aprobación con diff antes de escribir, que deja evidencia revisable de lo que hizo y que puede instalarse y publicarse sin cuenta. Lo que sigue a §2 mide cuánto de eso está verificado.
 
@@ -33,10 +33,10 @@ El 64 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tamp
 | --- | --- | --- | --- |
 | **G0** Verdad externa | GitHub verificado + línea base de 24 corridas | **Cerrada** | Baseline NVIDIA válida: 24 corridas, 0 timeouts |
 | **G1** Dogfooding del CLI | 5 días y 24 corridas usando el CLI como superficie principal, sin retroceder frente a F0 | **Abierta** · dogfooding ejecutado; su única regla pendiente salió del roadmap | Sólo la cerraría un recibo humano de `latencyMs`; **no retiene ninguna fase** (§2.1) |
-| **G2** Seguridad remota | Modelo de amenazas y revisión antes de habilitar `--remote` | **No iniciada** | Aprobar el modelo de amenazas remoto ([`docs/parity/threat-model-remote.md`](docs/parity/threat-model-remote.md), versionado; falta la revisión) |
+| **G2** Seguridad remota | Modelo de amenazas y revisión antes de habilitar `--remote` | **No iniciada** · revisión propuesta | Firmar la revisión del modelo ([`docs/parity/threat-model-remote.md`](docs/parity/threat-model-remote.md)), recorrido en [`receipts/G2-REVIEW-2026-11-25.md`](docs/parity/receipts/G2-REVIEW-2026-11-25.md) con veredicto propuesto y sin firma |
 | **G3** Proveedor de plataforma | Proveedor y modelo de costo decididos antes de 5A | **No iniciada** | Decisión explícita de proveedor |
 
-G1 no se cierra por ejecutar el dogfooding ni comparando contra una estimación: le falta que el producto cumpla el presupuesto de aprobación con una muestra humana válida. G2 bloquea F3; G3 bloquea F5A. Ninguna puerta se cierra por compilar o por tener tests con mocks.
+G1 no se cierra por ejecutar el dogfooding ni comparando contra una estimación: le falta que el producto cumpla el presupuesto de aprobación con una muestra humana válida. G2 bloquea `--remote` y con él el cierre de F3; G3 bloquea F5A. Ninguna puerta se cierra por compilar o por tener tests con mocks.
 
 ### 2.1 Regla de cierre (2026-11-23)
 
@@ -101,24 +101,26 @@ Plan, diff, evidencia de tests, informe local, visor, revisión por hunk con aud
 - [x] El informe se abre desde el disco sin red, sin secretos y sin recursos externos.
 - [x] Los artifacts sobreviven a reiniciar la app y siguen siendo locales; no requieren cuenta.
 
-### F3 · Continuidad remota y PWA — Pendiente · espera G2 · P1 · 10–14 d · 0/8
+### F3 · Continuidad remota y PWA — Parcial · 6/8 · espera G2 para `--remote` · P1 · 10–14 d
 
-**Alcance.** `commander pair` con enlace de un solo uso, QR y caducidad de 5 minutos, cookie de sesión de 30 días y `--remote` explícito para exponer fuera de loopback. Cliente web responsive/PWA con sesiones, chat, plan, approvals, artifacts y estado de trabajos; no es un IDE ni un editor de código. **Control lease:** un dispositivo controla la sesión y los demás ven en lectura, con traspaso explícito y auditado. Registro de dispositivos, revocación, auditoría por dispositivo, rate limit, CSRF y `Origin` ajeno → 403. Streaming reanudable: al caer la red el cliente se reconecta y pide el estado, y las approvals son idempotentes.
+**Alcance.** `commander pair` con enlace de un solo uso en el fragmento de la URL (el QR queda pendiente), caducidad de 5 minutos, cookie de sesión de 30 días y `--remote` explícito para exponer fuera de loopback. Cliente web responsive/PWA con sesiones, chat, plan, approvals, artifacts y estado de trabajos; no es un IDE ni un editor de código. **Control lease:** un dispositivo controla la sesión y los demás ven en lectura, con traspaso explícito y auditado. Registro de dispositivos, revocación, auditoría por dispositivo, rate limit, CSRF y `Origin` ajeno → 403. Streaming reanudable: al caer la red el cliente se reconecta y pide el estado, y las approvals son idempotentes.
 
-Continuar la misma sesión desde el móvil o el navegador con la misma política de aprobación, sin convertir a Commander en una nube. Requisito previo: el modelo de amenazas remoto ([`docs/parity/threat-model-remote.md`](docs/parity/threat-model-remote.md)), **versionado y todavía sin revisión**. Cubre T1–T12 —canje y caducidad del enlace, adivinación por fuerza bruta, token en URL/logs, CSRF/Origin ajeno, DNS rebinding, robo y revocación de cookie, dispositivo perdido, dos escritores, repetición de approvals, `--remote` accidental, fuga de secretos y saturación— con sus controles en §6 y una tabla de invariantes (§7) que mapea cada uno a uno de los ocho criterios de abajo. `--remote` no se habilita en una release hasta que esa revisión pase.
+Continuar la misma sesión desde el móvil o el navegador con la misma política de aprobación, sin convertir a Commander en una nube. Requisito previo: el modelo de amenazas remoto ([`docs/parity/threat-model-remote.md`](docs/parity/threat-model-remote.md)), **versionado, recorrido y con veredicto propuesto en [`receipts/G2-REVIEW-2026-11-25.md`](docs/parity/receipts/G2-REVIEW-2026-11-25.md), todavía sin firma**. Cubre T1–T12 con sus controles en §6 y una tabla de invariantes (§7) que mapea cada uno a uno de los ocho criterios de abajo. `--remote` no se habilita en una release hasta que esa revisión se firme.
 
-- [ ] Se inicia una tarea en escritorio, se empareja el móvil, se ve la misma sesión y se aprueba un diff; el escritorio refleja la aprobación sin duplicar pasos.
-- [ ] El enlace caduca a los 5 minutos, no se puede reutilizar y un `Origin` ajeno recibe 403.
-- [ ] El servidor escucha sólo loopback por defecto; sin `--remote`/túnel explícito no hay puerto público.
-- [ ] Revocar un dispositivo invalida su cookie y queda registrado en la auditoría.
-- [ ] Dos clientes no pueden escribir a la vez; el traspaso de control se prueba y no se pierden eventos.
-- [ ] Tras una caída de red, el cliente se reconecta, recupera el estado y no repite una aprobación ya aplicada.
-- [ ] La vista de 390×844 no tiene scroll horizontal y permite aprobar/denegar con el diff visible.
-- [ ] Ningún token de emparejamiento, cookie o secreto aparece en la URL, logs o artifacts.
+**Estado (2026-11-26).** El tramo local del pair está en el árbol y probado: enlace de un solo uso (256 bits, 5 min), cookie de dispositivo con revocación, `commander pair --devices/--revoke`, lease de un solo escritor con traspaso por `ack`, `/pair/session` por SSE reanudable con tope por frame, rate limit, cupo de streams vivos y auditoría de emisión, canje y baja (`src/pair/`, `src/agent/sessionStream.ts`; commits `905710b…d1b8eaa` más el cierre de C3–C6). Funciona **sólo en loopback**: el canje exige un `Origin` de la allowlist, así que un teléfono en la LAN recibe 403 y `--remote` no existe. El recorrido amenaza por amenaza vive en el [recibo G2](docs/parity/receipts/G2-REVIEW-2026-11-25.md); acá quedan sólo las casillas.
 
-**Qué falta para G2.** Una revisión de seguridad con veredicto explícito sobre ese documento (§8 del modelo), no un artefacto más: recorrer T1–T12 aceptando o corrigiendo cada control con su riesgo residual declarado; confirmar que ningún control depende de una autenticación de usuario que no existe; fijar el reparto con el túnel —quién termina TLS y qué cabeceras añade o quita— o dejar escrito que F3 sale sólo en loopback; aprobar los parámetros de §6 (256 bits de entropía, enlace de 5 min, cookie de 30 días, lease de 60 s, 5 dispositivos) o cambiarlos con motivo; declarar la política de logs y auditoría (qué se guarda, cuánto y dónde); y delimitar qué queda fuera del modelo. Sin veredicto «pasa», `--remote` no se publica y F3 queda en el cliente local. Tener el modelo versionado, el endpoint de pair o los tests de Origin/caducidad en verde **no** cierra G2 ni mueve ninguna casilla: F3 sigue en 0/8.
+- [ ] Se inicia una tarea en escritorio, se empareja el móvil, se ve la misma sesión y se aprueba un diff; el escritorio refleja la aprobación sin duplicar pasos. — El código lo permite entre dos navegadores del host; falta la corrida real de dos dispositivos (C8).
+- [x] El enlace caduca a los 5 minutos, no se puede reutilizar y un `Origin` ajeno recibe 403. — `tests/pairTokens.test.ts`, `tests/pairExpiryEndpoint.test.ts`, `tests/pairEndpoints.test.ts`, `tests/pairOrigin.test.ts`.
+- [x] El servidor escucha sólo loopback por defecto; sin `--remote`/túnel explícito no hay puerto público. — `src/lib/bindHost.ts`, `tests/unit/bindHost.test.ts`, `tests/pairEndpoints.test.ts`.
+- [x] Revocar un dispositivo invalida su cookie y queda registrado en la auditoría. — `tests/pairDevice.test.ts` (la cookie muere en el request siguiente) y `tests/pairAuditEndpoint.test.ts` (entrada `revoked` con el `deviceId`).
+- [x] Dos clientes no pueden escribir a la vez; el traspaso de control se prueba y no se pierden eventos. — `tests/pairLease.test.ts`, `tests/pairSessionStreamEndpoint.test.ts`.
+- [x] Tras una caída de red, el cliente se reconecta, recupera el estado y no repite una aprobación ya aplicada. — `tests/unit/pairSessionStream.test.ts`, `tests/pairSessionStreamEndpoint.test.ts`, `tests/agent/approvalChannel.test.ts`.
+- [ ] La vista de 390×844 no tiene scroll horizontal y permite aprobar/denegar con el diff visible. — Sin evidencia visual ni test a ese ancho (C8).
+- [x] Ningún token de emparejamiento, cookie o secreto aparece en la URL, logs o artifacts. — El token viaja sólo en el fragmento (no llega al servidor) y `tests/pairAuditEndpoint.test.ts` comprueba que ni el token ni la cookie aparecen en la auditoría ni en los logs del server.
 
-### F4 · Editor y ecosistema — Pendiente · P1 · 12–15 d · 6/11
+**Qué falta para G2.** El recorrido T1–T12 está hecho y propone **pasa con condiciones, limitado a loopback**. Faltan la firma humana (residuales A3/A5 y parámetros abiertos), las condiciones C1, C2, C7 y C8 y el proveedor TLS de G3. Sin firma no se publica `--remote`: los seis criterios marcados no cierran la fase.
+
+### F4 · Editor y ecosistema — Parcial · 6/11 · P1 · 12–15 d
 
 **Alcance 4A (extensión VS Code).** Compilar e instalar el `.vsix`, arrancar/reutilizar el servidor embebido sin exigir `npx` en producción, webview de chat con streaming, modelo/modo, selección de código como contexto, plan y approvals con diff; abrir archivo/línea desde un resultado de tool, mostrar diagnósticos del editor y conservar la misma sesión del escritorio, sin duplicar el bucle del agente.
 
@@ -311,17 +313,17 @@ Los cuatro son de diagnóstico o de producto: ninguno tiene número en GitHub, n
 
 ## 7. Vista gráfica y mapeo de etiquetas
 
-El roadmap visual numera sus cinco bloques `F0`–`F4`, y esas etiquetas **no** son las fases `F0`–`F6` de §3 ni las `PL0`–`PL7` de §4: coinciden en la letra y no en el contenido. Para citar un paso se escribe el id completo (`F2-4`, `F4-1`) y se dice de qué documento sale.
+El roadmap visual numera sus cinco bloques `V0`–`V4` y sus 27 pasos `V0-1`…`V4-3`; la `V` es de *vista*, justamente para no compartir letra con las fases. Esas etiquetas **no** son las fases `F0`–`F6` de §3, ni las `PL0`–`PL7` de §4, ni los issues `F1-01`…`F1-14` de §6: agrupan por otro criterio. Para citar un paso se escribe el id completo (`V2-4`, `V4-1`) y se dice de qué documento sale.
 
 | Bloque del visual | Qué cubre aquí | Colisión a vigilar |
 | --- | --- | --- |
-| **F0 · Núcleo del agente** (`F0-1`…`F0-10`) | Paridad **F0** (verdad y línea base) y **F1** (núcleo de agente y CLI) | El `F0` del visual no es el `F0` de paridad: el visual reparte en diez pasos lo que aquí son dos fases con G0 y G1 |
-| **F1 · Fiabilidad medida** (`F1-1`…`F1-6`) | Paridad **F1** y puerta **G1** | No es una fase nueva: mide F1 y su puerta |
-| **F2 · Distribución del CLI** (`F2-1`…`F2-3`) | Sin fase equivalente: entrega del paquete (criterio de F1 y contrato de PL0) | El `F2` del visual no es el `F2` de paridad (artifacts de verificación) |
-| **F2-4 · Extensión de VS Code** | Paridad **F4** (4A) | El paso `F2-4` cuelga de `F2` pero su fase es `F4` |
-| **F3 · Continuidad de superficies** (`F3-1`…`F3-4`) | Paridad **F3**; la parte de hosting queda sujeta a **PL1** y a G3 | Coincide en tema, no en criterios: aquí no hay G2 |
-| **F4 · Plataforma** (`F4-2`, `F4-3`) | `F4-2` (marketplace) es la apuesta **F6**/PL6; `F4-3` (coste y tokens) no tiene fase | El `F4` del visual no es el `F4` de paridad (editor) |
-| **F4-1 · Backend de las apps publicadas** | Plataforma **PL3**, con **PL4** detrás | El paso `F4-1` no es la fase `F4` de paridad: es `PL3` |
+| **V0 · Núcleo del agente** (`V0-1`…`V0-10`) | Paridad **F0** (verdad y línea base) y **F1** (núcleo de agente y CLI) | `V0` no es una fase: el visual reparte en diez pasos lo que aquí son dos fases con G0 y G1 |
+| **V1 · Fiabilidad medida** (`V1-1`…`V1-6`) | Paridad **F1** y puerta **G1** | No es una fase nueva: mide F1 y su puerta |
+| **V2 · Distribución del CLI** (`V2-1`…`V2-3`) | Sin fase equivalente: entrega del paquete (criterio de F1 y contrato de PL0) | No hay fase `V2`: la entrega vive como criterio, no como fase |
+| **V2-4 · Extensión de VS Code** | Paridad **F4** (4A) | El paso `V2-4` cuelga de `V2` pero su fase es `F4` |
+| **V3 · Continuidad de superficies** (`V3-1`…`V3-4`) | Paridad **F3**; la parte de hosting queda sujeta a **PL1** y a G3 | Coincide en tema, no en criterios: aquí no hay G2 |
+| **V4 · Plataforma** (`V4-2`, `V4-3`) | `V4-2` (marketplace) es la apuesta **F6**/PL6; `V4-3` (coste y tokens) no tiene fase | `V4` es plataforma; la fase **F4** es el editor (VS Code, hooks, plugins y MCP) |
+| **V4-1 · Backend de las apps publicadas** | Plataforma **PL3**, con **PL4** detrás | El paso `V4-1` no es la fase `F4` de paridad: es `PL3` |
 
 La página no es un segundo roadmap: es la vista publicada de este archivo, con pesos por paso y su evidencia. Se actualiza en el bloque `<script id="plan">` de `docs/roadmap-autonomo.html`.
 
@@ -488,7 +490,7 @@ Una fase termina sólo si:
 
 **Después**
 
-4. F3 (pair/PWA) en cuanto G2 esté aprobada, y F4A (VS Code) en paralelo: ninguna de las dos espera a G1.
+4. F3 está en 6/8 y no espera a G1: cerrar C1, C2, C7 y C8 del [recibo G2](docs/parity/receipts/G2-REVIEW-2026-11-25.md), correr la prueba de dos dispositivos y firmar G2 para habilitar `--remote`; F4A (VS Code) en paralelo.
 5. Decidir proveedor en G3.
 6. F5A (SSR/Workers) y 5B (backend gestionado).
 

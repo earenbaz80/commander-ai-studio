@@ -21,6 +21,24 @@ import {
 export const MAX_STREAM_EVENTS = 1_000;
 export const DEFAULT_STREAM_KEEPALIVE_MS = 15_000;
 /**
+ * Tope de un frame SSE (§6.6). Un turno o una salida de tool enorme se difunde
+ * completo a cada cliente conectado; arriba de esto el evento se **rechaza**
+ * con `event: error` en vez de truncarlo en silencio. El `resync` entra en el
+ * tope como cualquier otro frame: si el estado no cabe, el cliente se entera.
+ * `COMMANDER_STREAM_EVENT_MAX_BYTES` lo baja en pruebas y despliegues
+ * ajustados; por debajo de 1 KB se ignora.
+ */
+export const MAX_STREAM_EVENT_BYTES = 512 * 1024;
+export const STREAM_EVENT_MAX_ENV = 'COMMANDER_STREAM_EVENT_MAX_BYTES';
+export const STREAM_EVENT_TOO_LARGE = 'STREAM_EVENT_TOO_LARGE';
+
+export function streamEventMaxBytes(env: Record<string, string | undefined> = process.env): number {
+  const configured = Number(env[STREAM_EVENT_MAX_ENV]);
+  return Number.isFinite(configured) && configured >= 1024
+    ? Math.floor(configured)
+    : MAX_STREAM_EVENT_BYTES;
+}
+/**
  * Sin eventos durante este lapso el stream se cierra solo (`end`, sin `gone`) y
  * el cliente reconecta con `Last-Event-ID`. Así un teléfono que se durmió deja
  * de ocupar un cupo de concurrencia sin que nadie lo cierre a mano.
@@ -158,6 +176,8 @@ export interface AttachSessionStreamOptions {
    * cuenta como actividad). `0` lo desactiva.
    */
   idleMs?: number;
+  /** Tope de un frame de evento; por defecto, `streamEventMaxBytes()`. */
+  maxEventBytes?: number;
 }
 
 function frameEvent(event: CliEventV2): string {
@@ -170,6 +190,20 @@ function frameResync(state: SessionStateV2, seq: number): string {
 
 function frameGone(sessionId: string, reason: SessionGoneReason, seq: number): string {
   return `id: ${seq}\nevent: gone\ndata: ${JSON.stringify({ sessionId, reason })}\n\n`;
+}
+
+/**
+ * Rechazo de un frame demasiado grande. Va **sin** `id` a propósito: el cursor
+ * del cliente no puede avanzar sobre un evento que no recibió, y el `resync`
+ * sigue siendo el camino para recuperar el estado.
+ */
+function frameEventRejected(eventType: string, bytes: number, max: number): string {
+  return `event: error\ndata: ${JSON.stringify({
+    code: STREAM_EVENT_TOO_LARGE,
+    event: eventType,
+    bytes,
+    max,
+  })}\n\n`;
 }
 
 function terminalReason(status: SessionStatusV2): SessionGoneReason | null {
@@ -227,6 +261,7 @@ export function attachSessionStream(
   let lastKeepAliveAt = lastEventAt;
   /** Escrituras seguidas con el buffer lleno: el cliente dejó de leer. */
   let stalled = 0;
+  const maxEventBytes = options.maxEventBytes ?? streamEventMaxBytes();
 
   const cleanup = () => {
     if (timer) {
@@ -255,17 +290,29 @@ export function attachSessionStream(
     }
   };
 
-  /** Escribe un frame y vigila la presión del socket (`write` === false). */
-  const send = (frame: string, isEvent = true): void => {
+  /** Bytes UTF-8 del frame, sin depender de `Buffer` (esto también corre en el server). */
+  const frameBytes = (frame: string): number => new TextEncoder().encode(frame).length;
+
+  /**
+   * Escribe un frame y vigila la presión del socket (`write` === false).
+   * `eventType` sólo llega en frames de evento: ahí se aplica el tope por frame
+   * y, si no cabe, se rechaza con `event: error` en vez de truncarlo.
+   */
+  const send = (frame: string, eventType?: string): void => {
     if (closed) return;
+    let payload = frame;
+    if (eventType) {
+      const bytes = frameBytes(frame);
+      if (bytes > maxEventBytes) payload = frameEventRejected(eventType, bytes, maxEventBytes);
+    }
     let drained: unknown;
     try {
-      drained = res.write(frame);
+      drained = res.write(payload);
     } catch {
       closeQuietly();
       return;
     }
-    if (isEvent) lastEventAt = Date.now();
+    if (eventType) lastEventAt = Date.now();
     stalled = drained === false ? stalled + 1 : 0;
     if (stalled >= 2) closeQuietly();
   };
@@ -287,9 +334,9 @@ export function attachSessionStream(
   };
 
   if (resync) {
-    send(frameResync(state, buffer.lastSeq));
+    send(frameResync(state, buffer.lastSeq), 'resync');
   } else {
-    for (const event of replay.events) send(frameEvent(event));
+    for (const event of replay.events) send(frameEvent(event), event.type);
   }
 
   const gone = buffer.goneReason ?? terminalReason(state.status);
@@ -298,7 +345,7 @@ export function attachSessionStream(
     return cleanup;
   }
 
-  unsubscribeEvent = buffer.subscribe((event) => send(frameEvent(event)));
+  unsubscribeEvent = buffer.subscribe((event) => send(frameEvent(event), event.type));
   unsubscribeGone = buffer.subscribeGone(finish);
 
   const idleMs = options.idleMs ?? streamIdleMs();

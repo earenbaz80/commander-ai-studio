@@ -44,7 +44,9 @@ import { countProviderTokens, estimateContextTokens } from './src/lib/contextFit
 import { handleApiKeySet, handleApiKeyGet, handleApiKeyDelete, handleApiKeysList, apiKeyMiddleware, getApiKey as getRequestApiKey } from './apiKeys';
 import { isAllowedHost, allowedHostsFromEnv } from './hostGuard';
 import { issuePairToken, pairTokenTtlMs, redeemPairToken } from './src/pair/pairTokens';
-import { isLoopbackPeer, pairAllowedOrigins, pairOriginRejection } from './src/pair/pairOrigin';
+import { isLoopbackPeer, pairAllowedOrigins, pairCookieSecure, pairOriginRejection } from './src/pair/pairOrigin';
+import { pairAudit, recordPairAudit } from './src/pair/pairAudit';
+import { resolvePairStreamAccess } from './src/pair/pairStreamAccess';
 import {
   PairRateLimiter,
   pairRateBudgets,
@@ -670,17 +672,14 @@ const pairStreams = new PairStreamCapacity({
 
 /**
  * Quién abre el stream: dispositivo emparejado (cookie) o el escritorio
- * (loopback sin cookie: la UI local y el CLI). Una cookie presente pero
- * inválida o revocada se rechaza aunque el peer sea loopback, así la revocación
- * surte efecto ya y no cuando caduque.
+ * (loopback sin cookie). La decisión vive en `pairStreamAccess.ts` para poder
+ * probarla sin socket; acá sólo se le pasan la cookie y el peer.
  */
-function pairStreamAccess(req: any): { ok: true; key: string } | { ok: false } {
-  const cookie = (req as any).cookies?.[PAIR_DEVICE_COOKIE];
-  if (cookie) {
-    const checked = resolvePairDevice(cookie);
-    return checked.ok ? { ok: true, key: `device:${checked.device.id}` } : { ok: false };
-  }
-  return isLoopbackPeer(req.socket?.remoteAddress) ? { ok: true, key: 'desktop' } : { ok: false };
+function pairStreamAccess(req: any): ReturnType<typeof resolvePairStreamAccess> {
+  return resolvePairStreamAccess({
+    cookie: (req as any).cookies?.[PAIR_DEVICE_COOKIE],
+    remoteAddress: req.socket?.remoteAddress,
+  });
 }
 
 /**`device:<id>` si la cookie vale; si no, `ip:<addr>` (canje y escritorio). */
@@ -766,6 +765,7 @@ app.post('/api/pair/issue', (req, res) => {
   }
 
   const { token, expiresAt } = issuePairToken(sessionId);
+  recordPairAudit({ action: 'issued', result: 'ok', sessionId });
   return res.json({ success: true, token, sessionId, expiresAt, ttlMs: pairTokenTtlMs() });
 });
 
@@ -783,6 +783,7 @@ app.post('/api/pair/redeem', (req, res) => {
   // El tope se mira antes de canjear: consumir el token para después responder
   // 409 dejaría al operador sin enlace. Revocar uno y generar otro es barato.
   if (pairDeviceLimitReached()) {
+    recordPairAudit({ action: 'redeemed', result: 'error', reason: 'limit' });
     return res.status(409).json({
       success: false,
       error: `límite de ${MAX_PAIR_DEVICES} dispositivos: revocá uno antes de emparejar otro`,
@@ -795,7 +796,13 @@ app.post('/api/pair/redeem', (req, res) => {
     // queda fuera del canje por los intentos de otro y el token válido sigue
     // entrando aunque la ventana esté agotada.
     const decision = pairRate.take('redeem', pairRateCallerKey(req), pairRateBudgets('redeem'));
-    if (!decision.ok) return pairRateRejection(res, 'redeem', decision);
+    if (!decision.ok) {
+      recordPairAudit({ action: 'redeemed', result: 'error', reason: 'rate' });
+      return pairRateRejection(res, 'redeem', decision);
+    }
+    // Un fallo registra el motivo pero nunca el token: es lo que hace auditable
+    // la fuerza bruta sin convertir el archivo en una lista de credenciales.
+    recordPairAudit({ action: 'redeemed', result: 'error', reason: result.reason });
     if (result.reason === 'used') {
       return res
         .status(401)
@@ -807,6 +814,7 @@ app.post('/api/pair/redeem', (req, res) => {
 
   const session = getOrLoadSession(result.sessionId);
   if (!session) {
+    recordPairAudit({ action: 'redeemed', result: 'error', reason: 'no-session' });
     return res.status(410).json({ success: false, error: 'la sesión emparejada ya no existe' });
   }
 
@@ -814,6 +822,7 @@ app.post('/api/pair/redeem', (req, res) => {
   // en claro sólo viaja en esta cabecera; en el cuerpo va el id del registro.
   const issued = issuePairDevice({ userAgent: req.headers['user-agent'] });
   if (!issued.ok) {
+    recordPairAudit({ action: 'redeemed', result: 'error', reason: 'limit' });
     return res.status(409).json({
       success: false,
       error: `límite de ${MAX_PAIR_DEVICES} dispositivos: revocá uno antes de emparejar otro`,
@@ -821,8 +830,20 @@ app.post('/api/pair/redeem', (req, res) => {
   }
   res.setHeader(
     'Set-Cookie',
-    pairDeviceCookie(issued.token, { secure: req.protocol === 'https' })
+    pairDeviceCookie(issued.token, {
+      secure: pairCookieSecure({
+        protocol: req.protocol,
+        forwardedProto: req.headers['x-forwarded-proto'],
+        remoteAddress: req.socket?.remoteAddress,
+      }),
+    })
   );
+  recordPairAudit({
+    action: 'redeemed',
+    result: 'ok',
+    sessionId: session.id,
+    deviceId: issued.device.id,
+  });
   return res.json({
     success: true,
     session: { id: session.id, status: session.getStatus(), goal: session.getGoal() },
@@ -854,11 +875,29 @@ app.delete('/api/pair/devices/:id', (req, res) => {
   if (rejection) return res.status(403).json({ success: false, error: rejection });
 
   const revoked = revokePairDevice(req.params.id);
-  if (!revoked) return res.status(404).json({ success: false, error: 'dispositivo no encontrado' });
+  if (!revoked) {
+    recordPairAudit({ action: 'revoked', result: 'error', reason: 'not-found' });
+    return res.status(404).json({ success: false, error: 'dispositivo no encontrado' });
+  }
+  recordPairAudit({ action: 'revoked', result: 'ok', deviceId: revoked.id });
   // Revocar devuelve el control al escritorio: un dispositivo perdido no puede
   // quedarse con el lease de ninguna sesión.
   dropPairLeasesForDevice(req.params.id);
   return res.json({ success: true, device: revoked });
+});
+
+// Auditoría de emisión, canje y baja (§6.6). Sólo se lee desde el escritorio:
+// son metadatos de seguridad, no un feed para el móvil, y nunca llevan token.
+app.get('/api/pair/audit', (req, res) => {
+  res.set(PAIR_NO_STORE);
+  if (!isLoopbackPeer(req.socket?.remoteAddress)) {
+    return res.status(403).json({ success: false, error: 'la auditoría se lee sólo desde loopback' });
+  }
+  const limit = Number(req.query?.limit);
+  return res.json({
+    success: true,
+    entries: pairAudit(Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : undefined),
+  });
 });
 
 // Quién soy para el cliente emparejado. Caducada, revocada y desconocida
