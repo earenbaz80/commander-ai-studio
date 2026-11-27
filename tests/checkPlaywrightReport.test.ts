@@ -23,6 +23,7 @@ import {
   AGENT_PROJECT,
   HTML_REPORT,
   lineaResumen,
+  lineasConteos,
   validarReporte,
   verificarArtifactHtml,
   type PlaywrightAttachment,
@@ -54,7 +55,8 @@ function adjuntoC8(datos: Record<string, unknown>): PlaywrightAttachment {
  */
 function reporte(
   adjuntos: PlaywrightAttachment[],
-  proyectosC8: string[] = [AGENT_PROJECT]
+  proyectosC8: string[] = [AGENT_PROJECT],
+  saltadosC8: string[] = []
 ): PlaywrightReport {
   return {
     suites: [
@@ -72,16 +74,30 @@ function reporte(
         specs: [
           {
             title: 'C8 · dos dispositivos sobre la misma sesión',
-            tests: proyectosC8.map((projectName) => ({
-              projectName,
-              status: 'expected',
-              results: [{ status: 'passed', attachments: adjuntos }],
-            })),
+            tests: [
+              ...proyectosC8.map((projectName) => ({
+                projectName,
+                status: 'expected',
+                results: [{ status: 'passed', attachments: adjuntos }],
+              })),
+              // `test.skip()` no borra la fila: queda con estado `skipped` y sin
+              // resultados, que es lo que ve el gate en la suite real.
+              ...saltadosC8.map((projectName) => ({
+                projectName,
+                status: 'skipped',
+                results: [],
+              })),
+            ],
           },
         ],
       },
     ],
-    stats: { expected: 1 + proyectosC8.length, skipped: 0, unexpected: 0, flaky: 0 },
+    stats: {
+      expected: 1 + proyectosC8.length,
+      skipped: saltadosC8.length,
+      unexpected: 0,
+      flaky: 0,
+    },
   };
 }
 
@@ -159,6 +175,31 @@ test('check:playwright-report: sin secuencia válida la línea publica el motivo
   assert.ok(!linea.includes(' > '), 'no debe armar una secuencia con los pasos que faltan');
 });
 
+test('check:playwright-report: las filas saltadas de C8 no cuentan como ejecuciones', () => {
+  // El caso se salta a propósito en firefox y mobile-chrome: contar filas, como
+  // hacía la primera versión de la regla, leía el reporte de CI (#290) como «el
+  // caso de C8 corre 3 veces».
+  const veredicto = validarReporte(
+    reporte([adjuntoC8({ steps: PASOS })], [AGENT_PROJECT], ['firefox', 'mobile-chrome'])
+  );
+
+  assert.deepEqual(veredicto.errores, []);
+  assert.equal(veredicto.c8?.pasos.length, C8_STEPS);
+  // Las saltadas no desaparecen: siguen siendo filas y cuentan en el resumen.
+  // Son 4: el E2E del artifact, C8 en chromium y las dos saltadas.
+  assert.equal(veredicto.ejecuciones, 4);
+  assert.equal(veredicto.porEstado.skipped, 2);
+});
+
+test('check:playwright-report: un caso de C8 saltado en todos los proyectos falla', () => {
+  const veredicto = validarReporte(
+    reporte([adjuntoC8({ steps: PASOS })], [], [AGENT_PROJECT, 'firefox'])
+  );
+
+  assert.equal(veredicto.c8, undefined, 'sin ejecución no hay secuencia que citar');
+  assert.match(veredicto.erroresC8.join('\n'), /no corrió en ningún proyecto/);
+});
+
 test('check:playwright-report: el caso de C8 en dos proyectos falla', () => {
   const veredicto = validarReporte(
     reporte([adjuntoC8({ steps: PASOS })], [AGENT_PROJECT, 'mobile-chrome'])
@@ -184,14 +225,21 @@ function dirDeReporte(): string {
   return dir;
 }
 
-/** Corre el gate como CLI sobre un reporte, sin tocar el resumen real. */
-function correrGate(dir: string): { code: number; stdout: string; stderr: string } {
+/**
+ * Corre el gate como CLI sobre un reporte. Con `resumen` apunta
+ * `GITHUB_STEP_SUMMARY` a un archivo temporal; sin él, el test escribiría en el
+ * resumen del job que lo ejecute.
+ */
+function correrGate(
+  dir: string,
+  resumen?: string
+): { code: number; stdout: string; stderr: string } {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PLAYWRIGHT_JSON_PATH: path.join(dir, 'results.json'),
   };
-  // Sin esto el test escribiría en el resumen del job que lo ejecute.
-  delete env.GITHUB_STEP_SUMMARY;
+  if (resumen) env.GITHUB_STEP_SUMMARY = resumen;
+  else delete env.GITHUB_STEP_SUMMARY;
   const guion = path.join(process.cwd(), 'scripts', 'check-playwright-report.ts');
   try {
     const stdout = execFileSync(process.execPath, ['--import', 'tsx', guion], {
@@ -237,6 +285,36 @@ test('check:playwright-report: el CLI falla si el merge no dejó index.html', ()
     assert.ok(!salida.stderr.includes('c8-steps'), 'no debe culpar al adjunto');
     // La línea se publica igual: dice qué sí llegó antes de fallar.
     assert.match(salida.stdout, /5 pasos/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('check:playwright-report: los conteos del veredicto van al resumen', () => {
+  const lineas = lineasConteos(
+    validarReporte(reporte([adjuntoC8({ steps: PASOS })]))
+  );
+
+  assert.deepEqual(lineas, [
+    '- **Ejecuciones**: 2 — expected 2, skipped 0, unexpected 0, flaky 0',
+    '- **Proyectos**: chromium 2',
+  ]);
+});
+
+test('check:playwright-report: el CLI publica pasos y conteos en el resumen del job', () => {
+  const dir = dirDeReporte();
+  const resumen = path.join(dir, 'step-summary.md');
+  try {
+    fs.writeFileSync(path.join(dir, HTML_REPORT), '<!doctype html><title>report</title>', 'utf8');
+    const salida = correrGate(dir, resumen);
+    assert.equal(salida.code, 0, `el gate tiene que pasar: ${salida.stderr}`);
+
+    const escrito = fs.readFileSync(resumen, 'utf8');
+    assert.match(escrito, /### Gate del reporte de Playwright/);
+    // La secuencia del recibo y los conteos que el gate validó, en el mismo sitio.
+    assert.match(escrito, /5 pasos/);
+    assert.match(escrito, /\*\*Ejecuciones\*\*: 2 — expected 2, skipped 0/);
+    assert.match(escrito, /\*\*Proyectos\*\*: chromium 2/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

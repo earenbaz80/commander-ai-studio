@@ -20,8 +20,9 @@
  *
  * El adjunto de C8 se valida por contenido y no por presencia del nombre: un
  * `c8-steps` vacío o con menos pasos deja el recibo G2 citando una secuencia que
- * ya no existe. Como el log del paso no se puede leer sin sesión, la línea con
- * los pasos se vuelca también en `$GITHUB_STEP_SUMMARY`.
+ * ya no existe. Como el log del paso no se puede leer sin sesión, la sección del
+ * resumen lleva la línea con los pasos y los conteos del veredicto (ejecuciones,
+ * `expected` y proyectos).
  *
  * Uso: `npm run check:playwright-report` después de `merge-reports`.
  * `PLAYWRIGHT_JSON_PATH` permite apuntar a otro `results.json` en local.
@@ -200,14 +201,19 @@ function validarC8(
 ): { errores: string[]; c8?: C8Steps } {
   const errores: string[] = [];
   const delCaso = rows.filter((row) => row.file === C8_FILE);
+  // `test.skip()` deja la fila en el reporte con estado `skipped`: el caso se
+  // salta a propósito en firefox y mobile-chrome, así que contar filas lo leía
+  // como tres ejecuciones (run #290). Correr es tener estado distinto de
+  // `skipped`; las saltadas siguen en el reporte y en los conteos del resumen.
+  const ejecutadas = delCaso.filter((row) => row.status !== 'skipped');
   // Un caso que se cuela en otro proyecto corre dos veces con el mismo nombre
   // de archivo: el recibo G2 cita una sola ejecución, y los adjuntos se
   // duplicarían sin que el conteo de proyectos lo delate.
-  if (delCaso.length > 1) {
-    const proyectos = [...new Set(delCaso.map((row) => row.project))].join(', ');
+  if (ejecutadas.length > 1) {
+    const proyectos = [...new Set(ejecutadas.map((row) => row.project))].join(', ');
     return {
       errores: [
-        `el caso de C8 corre ${delCaso.length} veces (${proyectos}): se espera ` +
+        `el caso de C8 corre ${ejecutadas.length} veces (${proyectos}): se espera ` +
           'una sola ejecución, la que cita el recibo',
       ],
     };
@@ -217,6 +223,18 @@ function validarC8(
       errores: [
         `falta el caso de C8 (${C8_FILE}): el reporte no lo incluye, así que la ` +
           'secuencia del recibo G2 no se puede comprobar',
+      ],
+    };
+  }
+  // Todas saltadas: el caso está en el reporte pero no llegó a correr, así que
+  // tampoco hay secuencia que citar. Se nombra el salto en vez de lamentar el
+  // adjunto que nunca iba a existir.
+  if (ejecutadas.length === 0) {
+    const proyectos = [...new Set(delCaso.map((row) => row.project))].join(', ');
+    return {
+      errores: [
+        `el caso de C8 no corrió en ningún proyecto (saltado en ${proyectos}): ` +
+          'el recibo G2 se queda sin la secuencia de esta corrida',
       ],
     };
   }
@@ -432,12 +450,34 @@ export function lineaResumen(veredicto: Veredicto): string {
  * El log del paso no se puede leer sin sesión en el repo: el resumen sí. Si no
  * hay `GITHUB_STEP_SUMMARY` (local), la línea igual sale por stdout.
  */
-function publicar(linea: string): void {
-  console.log(linea);
+/**
+ * Los conteos del veredicto, en el resumen del job. `ci:summary -- e2e` publica
+ * los del reporte crudo; éstos son los que este gate contó y validó, y hasta
+ * ahora sólo se veían abriendo el log del paso.
+ */
+export function lineasConteos(veredicto: Veredicto): string[] {
+  const estados = STATUS_KEYS.map(
+    (clave) => `${clave} ${veredicto.porEstado[clave] ?? 0}`
+  ).join(', ');
+  const proyectos = Object.entries(veredicto.porProyecto)
+    .map(([proyecto, ejecuciones]) => `${proyecto} ${ejecuciones}`)
+    .join(', ');
+  return [
+    `- **Ejecuciones**: ${veredicto.ejecuciones} — ${estados}`,
+    `- **Proyectos**: ${proyectos || '—'}`,
+  ];
+}
+
+function publicar(lineas: string[]): void {
+  console.log(lineas.join('\n'));
   const destino = process.env.GITHUB_STEP_SUMMARY;
   if (!destino) return;
   try {
-    fs.appendFileSync(destino, `### Gate del reporte de Playwright\n\n${linea}\n`, 'utf8');
+    fs.appendFileSync(
+      destino,
+      `### Gate del reporte de Playwright\n\n${lineas.join('\n')}\n`,
+      'utf8'
+    );
   } catch (error) {
     console.error(
       `[check:playwright-report] no se pudo escribir ${destino}: ` +
@@ -468,7 +508,7 @@ function principal(): void {
   // El HTML no sale del JSON: se mide en disco y se suma a los mismos problemas.
   const problemas = [...veredicto.errores, ...verificarArtifactHtml(baseDir)];
   const byStatus = veredicto.porEstado;
-  publicar(lineaResumen(veredicto));
+  publicar([lineaResumen(veredicto), ...lineasConteos(veredicto)]);
 
   if (problemas.length > 0) {
     console.error(
