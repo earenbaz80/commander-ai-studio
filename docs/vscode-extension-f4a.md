@@ -153,6 +153,9 @@ y es un hallazgo de revisión, no una variante aceptable.
 
 ## Evidencia que falta para cerrar los criterios 1 y 2
 
+Protocolo completo, paso a paso y con lo que hay que capturar en cada criterio:
+[`parity/f4a-evidence-runbook.md`](parity/f4a-evidence-runbook.md).
+
 1. Instalar el `.vsix` en un VS Code limpio (sin `commander` global ni `npx`).
 2. Configurar clave y modelo, y correr **leer**, **editar** y **revisar**.
 3. Guardar por tarea: eventos del panel, `GET /api/agent/sessions` (ids) y, tras
