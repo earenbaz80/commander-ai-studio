@@ -7028,9 +7028,31 @@ async function bootstrap() {
       next();
     });
     app.use(express.static(distPath));
+    // El build usa base relativa (`./assets/…`) porque Electron abre el mismo
+    // index.html con `loadFile` desde `file://`. Servido por HTTP en una ruta
+    // profunda (`/pair/session`), esa relativa apunta a `/pair/assets/…`: el
+    // catch-all de abajo devolvía el HTML con `text/html`, el módulo no se
+    // ejecutaba y la pantalla del pair quedaba en blanco. Se fija la base en `/`
+    // al servir por HTTP; el `file://` de Electron no pasa por acá y conserva la
+    // suya.
+    const indexPath = path.join(distPath, 'index.html');
+    const servedIndex = (() => {
+      try {
+        const html = fs.readFileSync(indexPath, 'utf8');
+        return html.includes('<head>')
+          ? html.replace('<head>', '<head>\n    <base href="/" />')
+          : html;
+      } catch {
+        return '';
+      }
+    })();
     // @ts-ignore
-    app.get(/.*/, (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.get(/.*/, (_req, res) => {
+      if (!servedIndex) {
+        res.status(500).type('html').send('no se pudo leer dist/index.html');
+        return;
+      }
+      res.type('html').send(servedIndex);
     });
   } else {
     // Desarrollo: montar Vite como middleware (HMR + API en mismo puerto)

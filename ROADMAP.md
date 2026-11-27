@@ -12,10 +12,10 @@ No promete fechas; los esfuerzos son órdenes de magnitud. Una fase o un criteri
 
 | Frente | Fases | Cerradas | Criterios en alcance |
 | --- | ---: | ---: | ---: |
-| Paridad | 7 | 1 (F0) | 33/47 |
+| Paridad | 7 | 1 (F0) | 35/47 |
 | Plataforma | 8 | 1 (PL0) | 24/38 |
 | UX | 1 | 1 (UX 1.0) | 10/10 |
-| **Total** | **16** | **4/13 en alcance** | **67/95 (71 %)** |
+| **Total** | **16** | **4/13 en alcance** | **69/95 (73 %)** |
 
 - **4 fases cerradas:** F0, PL0, UX 1.0 y F2.
 - **7 parciales:** F1, F3, F4, PL2, PL3, PL5 y PL6.
@@ -23,7 +23,7 @@ No promete fechas; los esfuerzos son órdenes de magnitud. Una fase o un criteri
 - **Fuera del cómputo:** PL1 (fuera de alcance hasta G3) y F6/PL7 (opcionales).
 - **Puertas:** G0 cerrada; G1 abierta (dogfooding ejecutado; **no retiene fases**, §2.1); G2 no iniciada con revisión propuesta y sin firma; G3 no iniciada.
 
-El 71 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tampoco dice que la app esté al 71 %: dice que 67 de los 95 criterios en alcance tienen evidencia. Cada criterio es una casilla de este documento: cuenta el `[x]` o la cobertura que la fase declara (F2 cerró con sus siete criterios y su verificación en Electron; F3 suma seis con su test y deja dos abiertas); los `[—]`, las fases opcionales y PL1 quedan fuera del numerador y del denominador. F0 cerró G0 con una baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts y 0 inválidas); la paridad es baja. El dogfooding de G1 se ejecutó el 2026-11-12 (17/28, 60,7 %) y la puerta sigue abierta por una sola regla: el p95 de aprobación.
+El 73 % cuenta criterios de fase, no esfuerzo, tiempo ni valor de producto. Tampoco dice que la app esté al 73 %: dice que 69 de los 95 criterios en alcance tienen evidencia. Cada criterio es una casilla de este documento: cuenta el `[x]` o la cobertura que la fase declara (F2 cerró con sus siete criterios y su verificación en Electron; F3 suma ocho: seis con test y las dos de C8 con la corrida de dos dispositivos); los `[—]`, las fases opcionales y PL1 quedan fuera del numerador y del denominador. F0 cerró G0 con una baseline NVIDIA válida de 24 corridas (8/24, 0 timeouts y 0 inválidas); la paridad es baja. El dogfooding de G1 se ejecutó el 2026-11-12 (17/28, 60,7 %) y la puerta sigue abierta por una sola regla: el p95 de aprobación.
 
 **El norte no es la cifra, es el producto:** un agente que corre local-first, que pide aprobación con diff antes de escribir, que deja evidencia revisable de lo que hizo y que puede instalarse y publicarse sin cuenta. Lo que sigue a §2 mide cuánto de eso está verificado.
 
@@ -101,24 +101,24 @@ Plan, diff, evidencia de tests, informe local, visor, revisión por hunk con aud
 - [x] El informe se abre desde el disco sin red, sin secretos y sin recursos externos.
 - [x] Los artifacts sobreviven a reiniciar la app y siguen siendo locales; no requieren cuenta.
 
-### F3 · Continuidad remota y PWA — Parcial · 6/8 · espera G2 para `--remote` · P1 · 10–14 d
+### F3 · Continuidad remota y PWA — Parcial · 8/8 · espera G2 para `--remote` · P1 · 10–14 d
 
 **Alcance.** `commander pair` con enlace de un solo uso en el fragmento de la URL (el QR queda pendiente), caducidad de 5 minutos, cookie de sesión de 30 días y `--remote` explícito para exponer fuera de loopback. Cliente web responsive/PWA con sesiones, chat, plan, approvals, artifacts y estado de trabajos; no es un IDE ni un editor de código. **Control lease:** un dispositivo controla la sesión y los demás ven en lectura, con traspaso explícito y auditado. Registro de dispositivos, revocación, auditoría por dispositivo, rate limit, CSRF y `Origin` ajeno → 403. Streaming reanudable: al caer la red el cliente se reconecta y pide el estado, y las approvals son idempotentes.
 
 Continuar la misma sesión desde el móvil o el navegador con la misma política de aprobación, sin convertir a Commander en una nube. Requisito previo: el modelo de amenazas remoto ([`docs/parity/threat-model-remote.md`](docs/parity/threat-model-remote.md)), **versionado, recorrido y con veredicto propuesto en [`receipts/G2-REVIEW-2026-11-25.md`](docs/parity/receipts/G2-REVIEW-2026-11-25.md), todavía sin firma**. Cubre T1–T12 con sus controles en §6 y una tabla de invariantes (§7) que mapea cada uno a uno de los ocho criterios de abajo. `--remote` no se habilita en una release hasta que esa revisión se firme.
 
-**Estado (2026-11-26).** El tramo local del pair está en el árbol y probado: enlace de un solo uso (256 bits, 5 min), cookie de dispositivo con revocación, `commander pair --devices/--revoke`, lease de un solo escritor con traspaso por `ack`, `/pair/session` por SSE reanudable con tope por frame, rate limit, cupo de streams vivos y auditoría de emisión, canje y baja (`src/pair/`, `src/agent/sessionStream.ts`; commits `905710b…d1b8eaa` más el cierre de C3–C6). Funciona **sólo en loopback**: el canje exige un `Origin` de la allowlist, así que un teléfono en la LAN recibe 403 y `--remote` no existe. El recorrido amenaza por amenaza vive en el [recibo G2](docs/parity/receipts/G2-REVIEW-2026-11-25.md); acá quedan sólo las casillas.
+**Estado (2026-11-26).** El tramo local del pair está en el árbol y probado: enlace de un solo uso (256 bits, 5 min), cookie de dispositivo con revocación, `commander pair --devices/--revoke`, lease de un solo escritor con traspaso por `ack`, `/pair/session` por SSE reanudable con tope por frame, rate limit, cupo de streams vivos y auditoría de emisión, canje y baja (`src/pair/`, `src/agent/sessionStream.ts`; commits `905710b…d1b8eaa` más el cierre de C3–C6). Funciona **sólo en loopback**: el canje exige un `Origin` de la allowlist, así que un teléfono en la LAN recibe 403 y `--remote` no existe. La continuidad de superficie ya está medida (C8, [§14 del recibo G2](docs/parity/receipts/G2-REVIEW-2026-11-25.md)): el móvil emparejado aprueba un diff sobre `sess_cdeb8ccd`, el escritorio ve los mismos 5 `steps` sin duplicarlos y la vista a 390×844 muestra las decisiones sin desbordar. El recorrido amenaza por amenaza vive en el [recibo G2](docs/parity/receipts/G2-REVIEW-2026-11-25.md); acá quedan sólo las casillas.
 
-- [ ] Se inicia una tarea en escritorio, se empareja el móvil, se ve la misma sesión y se aprueba un diff; el escritorio refleja la aprobación sin duplicar pasos. — El código lo permite entre dos navegadores del host; falta la corrida real de dos dispositivos (C8).
+- [x] Se inicia una tarea en escritorio, se empareja el móvil, se ve la misma sesión y se aprueba un diff; el escritorio refleja la aprobación sin duplicar pasos. — Recibo G2 §14: el host inicia el turno, el móvil canjea su enlace, reclama el control y pulsa «Aprobar» sobre el diff de `nota.txt`; el servidor aplica la escritura (el archivo queda en disco), el escritorio ve los mismos 5 `steps` y hay un solo `tool_result` de `fs.write` (`tests/e2e/pairTwoDevices.spec.ts`).
 - [x] El enlace caduca a los 5 minutos, no se puede reutilizar y un `Origin` ajeno recibe 403. — `tests/pairTokens.test.ts`, `tests/pairExpiryEndpoint.test.ts`, `tests/pairEndpoints.test.ts`, `tests/pairOrigin.test.ts`.
 - [x] El servidor escucha sólo loopback por defecto; sin `--remote`/túnel explícito no hay puerto público. — `src/lib/bindHost.ts`, `tests/unit/bindHost.test.ts`, `tests/pairEndpoints.test.ts`.
 - [x] Revocar un dispositivo invalida su cookie y queda registrado en la auditoría. — `tests/pairDevice.test.ts` (la cookie muere en el request siguiente) y `tests/pairAuditEndpoint.test.ts` (entrada `revoked` con el `deviceId`).
 - [x] Dos clientes no pueden escribir a la vez; el traspaso de control se prueba y no se pierden eventos. — `tests/pairLease.test.ts`, `tests/pairSessionStreamEndpoint.test.ts`.
 - [x] Tras una caída de red, el cliente se reconecta, recupera el estado y no repite una aprobación ya aplicada. — `tests/unit/pairSessionStream.test.ts`, `tests/pairSessionStreamEndpoint.test.ts`, `tests/agent/approvalChannel.test.ts`.
-- [ ] La vista de 390×844 no tiene scroll horizontal y permite aprobar/denegar con el diff visible. — Sin evidencia visual ni test a ese ancho (C8).
+- [x] La vista de 390×844 no tiene scroll horizontal y permite aprobar/denegar con el diff visible. — Recibo G2 §14: la captura de esa corrida muestra el diff de `nota.txt` con «Aprobar», «Denegar» y «Permitir en la sesión» habilitados a ese ancho, y el spec exige `scrollWidth ≤ 390` ([`evidence/f3-c8-pair-session-390x844.png`](docs/parity/evidence/f3-c8-pair-session-390x844.png)).
 - [x] Ningún token de emparejamiento, cookie o secreto aparece en la URL, logs o artifacts. — El token viaja sólo en el fragmento (no llega al servidor) y `tests/pairAuditEndpoint.test.ts` comprueba que ni el token ni la cookie aparecen en la auditoría ni en los logs del server.
 
-**Qué falta para G2.** El recorrido T1–T12 está hecho y propone **pasa con condiciones, limitado a loopback**. Faltan la firma humana (residuales A3/A5 y parámetros abiertos), las condiciones C1, C2, C7 y C8 y el proveedor TLS de G3. Sin firma no se publica `--remote`: los seis criterios marcados no cierran la fase.
+**Qué falta para G2.** El recorrido T1–T12 está hecho y propone **pasa con condiciones, limitado a loopback**. Faltan la firma humana (residuales A3/A5 y parámetros abiertos), las condiciones C1, C2 y C7 —la evidencia de C8 ya está en §14 del recibo: el móvil aprueba el diff sobre `sess_cdeb8ccd`, 5 `steps` iguales en las dos vistas y la captura a 390×844 con las decisiones— y el proveedor TLS de G3. Sin firma no se publica `--remote`: los ocho criterios marcados no cierran la fase.
 
 ### F4 · Editor y ecosistema — Parcial · 6/11 · P1 · 12–15 d
 
@@ -490,7 +490,7 @@ Una fase termina sólo si:
 
 **Después**
 
-4. F3 está en 6/8 y no espera a G1: cerrar C1, C2, C7 y C8 del [recibo G2](docs/parity/receipts/G2-REVIEW-2026-11-25.md), correr la prueba de dos dispositivos y firmar G2 para habilitar `--remote`; F4A (VS Code) en paralelo.
+4. F3 está en 8/8 y no espera a G1: la prueba de dos dispositivos y la vista a 390×844 ya están corridas (C8, §14 del [recibo G2](docs/parity/receipts/G2-REVIEW-2026-11-25.md)); faltan C1, C2 y C7 y la firma de G2 para habilitar `--remote`; F4A (VS Code) en paralelo.
 5. Decidir proveedor en G3.
 6. F5A (SSR/Workers) y 5B (backend gestionado).
 
