@@ -1,7 +1,8 @@
 /**
- * Falla si el reporte fusionado de Playwright no contiene las dos piezas con las
+ * Falla si el reporte fusionado de Playwright no contiene las piezas con las
  * que CI arma el artifact: el E2E del productor de artifacts
- * (`agentVerificationArtifact.spec.ts`) y la suite general.
+ * (`agentVerificationArtifact.spec.ts`), la suite general y el adjunto con la
+ * secuencia de C8 (`c8-steps`) en el caso de dos dispositivos.
  *
  * Las comprobaciones son derivadas, no una foto congelada: agregar un spec o un
  * caso no obliga a tocar este archivo. Lo que se exige es
@@ -10,8 +11,14 @@
  *   2. que los proyectos de la suite general tengan los mismos conteos entre sí;
  *   3. que cada archivo de la suite general corra en todos los proyectos;
  *   4. que el E2E del artifact sólo aparezca en Chromium de escritorio;
- *   5. que el reporte esté verde (`unexpected` y `flaky` en cero) y que sus
+ *   5. que el caso de C8 traiga el adjunto `c8-steps` con sus 5 pasos;
+ *   6. que el reporte esté verde (`unexpected` y `flaky` en cero) y que sus
  *      `stats` cuadren con las filas.
+ *
+ * El adjunto de C8 se valida por contenido y no por presencia del nombre: un
+ * `c8-steps` vacío o con menos pasos deja el recibo G2 citando una secuencia que
+ * ya no existe. Como el log del paso no se puede leer sin sesión, la línea con
+ * los pasos se vuelca también en `$GITHUB_STEP_SUMMARY`.
  *
  * Uso: `npm run check:playwright-report` después de `merge-reports`.
  * `PLAYWRIGHT_JSON_PATH` permite apuntar a otro `results.json` en local.
@@ -19,30 +26,44 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-interface PlaywrightTest {
-  projectName: string;
-  status: string;
+export interface PlaywrightAttachment {
+  name?: string;
+  contentType?: string;
+  path?: string;
+  /** Contenido en base64 cuando el reporte no dejó archivo en disco. */
+  body?: string;
 }
 
-interface PlaywrightSpec {
+export interface PlaywrightResult {
+  status?: string;
+  attachments?: PlaywrightAttachment[];
+}
+
+export interface PlaywrightTest {
+  projectName: string;
+  status: string;
+  results?: PlaywrightResult[];
+}
+
+export interface PlaywrightSpec {
   title: string;
   tests?: PlaywrightTest[];
 }
 
-interface PlaywrightSuite {
+export interface PlaywrightSuite {
   file?: string;
   specs?: PlaywrightSpec[];
   suites?: PlaywrightSuite[];
 }
 
-interface PlaywrightStats {
+export interface PlaywrightStats {
   expected?: number;
   skipped?: number;
   unexpected?: number;
   flaky?: number;
 }
 
-interface PlaywrightReport {
+export interface PlaywrightReport {
   suites?: PlaywrightSuite[];
   stats?: PlaywrightStats;
 }
@@ -52,15 +73,50 @@ interface Row {
   project: string;
   status: string;
   title: string;
+  attachments: PlaywrightAttachment[];
 }
 
-const REPORT_PATH =
+/** La secuencia que el caso de C8 adjunta al reporte, ya validada. */
+export interface C8Steps {
+  pasos: string[];
+  /** De dónde salió el contenido: el archivo del reporte o el `body` embebido. */
+  origen: string;
+}
+
+/** Lo que el gate decide sobre un reporte, separado del CLI para poder probarlo. */
+export interface Veredicto {
+  errores: string[];
+  ejecuciones: number;
+  porEstado: Record<string, number>;
+  porProyecto: Record<string, number>;
+  proyectos: string[];
+  agentRows: number;
+  generalRows: number;
+  generalFiles: string[];
+  c8?: C8Steps;
+  /** Problemas propios del adjunto de C8, para la línea del resumen. */
+  erroresC8: string[];
+}
+
+export const REPORT_PATH =
   process.env.PLAYWRIGHT_JSON_PATH ??
   path.join('playwright-report', 'results.json');
 
-const AGENT_FILE = 'agentVerificationArtifact.spec.ts';
-const AGENT_PROJECT = 'chromium';
+export const AGENT_FILE = 'agentVerificationArtifact.spec.ts';
+export const AGENT_PROJECT = 'chromium';
+/** El caso de C8 vive en este spec; el adjunto lo escribe el propio test. */
+export const C8_FILE = 'pairTwoDevices.spec.ts';
+export const C8_ATTACHMENT = 'c8-steps';
+/** Inicio > fs.read > fs.write > Razonamiento > Finalizado. */
+export const C8_STEPS = 5;
+
 const STATUS_KEYS = ['expected', 'skipped', 'unexpected', 'flaky'] as const;
+
+function adjuntosDe(test: PlaywrightTest): PlaywrightAttachment[] {
+  // Un test con reintentos deja varios `results`: se juntan todos, porque el
+  // adjunto puede venir del intento que terminó en verde.
+  return (test.results ?? []).flatMap((result) => result.attachments ?? []);
+}
 
 function collect(
   suites: PlaywrightSuite[] | undefined,
@@ -76,6 +132,7 @@ function collect(
           project: test.projectName,
           status: test.status,
           title: spec.title,
+          attachments: adjuntosDe(test),
         });
       }
     }
@@ -99,6 +156,259 @@ function describeCounts(counts: Record<string, number>, keys: string[]): string 
   return keys.map((key) => `${key}=${counts[key] ?? 0}`).join(', ');
 }
 
+/**
+ * Contenido del adjunto. `merge-reports` deja los adjuntos como archivos en el
+ * reporte y guarda la ruta relativa; si el JSON trae el `body` embebido, ése
+ * manda porque no depende de dónde se lea el reporte.
+ */
+function leerAdjunto(
+  adjunto: PlaywrightAttachment,
+  baseDir: string
+): { texto: string; origen: string } | undefined {
+  if (typeof adjunto.body === 'string' && adjunto.body.length > 0) {
+    return {
+      texto: Buffer.from(adjunto.body, 'base64').toString('utf8'),
+      origen: 'body embebido',
+    };
+  }
+  if (!adjunto.path) return undefined;
+
+  // La ruta del reporte es relativa a su carpeta de salida; se prueban las dos
+  // formas para no depender de desde dónde se invoque el script.
+  const candidatas = [path.resolve(baseDir, adjunto.path), path.resolve(adjunto.path)];
+  for (const candidata of candidatas) {
+    try {
+      return {
+        texto: fs.readFileSync(candidata, 'utf8'),
+        origen: path.relative(process.cwd(), candidata) || candidata,
+      };
+    } catch {
+      /* se prueba la siguiente */
+    }
+  }
+  return undefined;
+}
+
+function validarC8(
+  rows: Row[],
+  baseDir: string
+): { errores: string[]; c8?: C8Steps } {
+  const errores: string[] = [];
+  const delCaso = rows.filter((row) => row.file === C8_FILE);
+  if (delCaso.length === 0) {
+    return {
+      errores: [
+        `falta el caso de C8 (${C8_FILE}): el reporte no lo incluye, así que la ` +
+          'secuencia del recibo G2 no se puede comprobar',
+      ],
+    };
+  }
+
+  const adjuntos = delCaso
+    .flatMap((row) => row.attachments)
+    .filter((adjunto) => adjunto.name === C8_ATTACHMENT);
+  if (adjuntos.length === 0) {
+    return {
+      errores: [
+        `el caso de C8 no adjunta ${C8_ATTACHMENT}: el test tiene que ` +
+          '`testInfo.attach` con la secuencia de pasos',
+      ],
+    };
+  }
+
+  const leidos = adjuntos
+    .map((adjunto) => leerAdjunto(adjunto, baseDir))
+    .filter((leido): leido is { texto: string; origen: string } => leido !== undefined);
+  if (leidos.length === 0) {
+    const rutas = adjuntos.map((adjunto) => adjunto.path ?? '(sin ruta)').join(', ');
+    return {
+      errores: [
+        `no se pudo leer el adjunto ${C8_ATTACHMENT} (${rutas}): el archivo no ` +
+          'está en el reporte o la ruta no resuelve',
+      ],
+    };
+  }
+
+  const { texto, origen } = leidos[0];
+  let datos: { steps?: unknown };
+  try {
+    datos = JSON.parse(texto) as { steps?: unknown };
+  } catch (error) {
+    return {
+      errores: [
+        `el adjunto ${C8_ATTACHMENT} no es JSON válido: ` +
+          (error instanceof Error ? error.message : String(error)),
+      ],
+    };
+  }
+
+  if (!Array.isArray(datos.steps)) {
+    return {
+      errores: [`el adjunto ${C8_ATTACHMENT} no trae un arreglo \`steps\``],
+    };
+  }
+
+  const pasos = datos.steps;
+  if (pasos.length !== C8_STEPS) {
+    errores.push(
+      `el adjunto ${C8_ATTACHMENT} trae ${pasos.length} paso(s), se esperan ${C8_STEPS}`
+    );
+  }
+  const vacios = pasos.filter(
+    (paso) => typeof paso !== 'string' || paso.trim() === ''
+  ).length;
+  if (vacios > 0) {
+    errores.push(`el adjunto ${C8_ATTACHMENT} trae ${vacios} paso(s) sin texto`);
+  }
+
+  if (errores.length > 0) return { errores };
+
+  return {
+    errores,
+    c8: { pasos: pasos as string[], origen },
+  };
+}
+
+/** Valida un reporte ya parseado. `baseDir` es donde viven sus adjuntos. */
+export function validarReporte(
+  report: PlaywrightReport,
+  baseDir = path.dirname(REPORT_PATH)
+): Veredicto {
+  const rows: Row[] = [];
+  collect(report.suites, undefined, rows);
+
+  const errores: string[] = [];
+  const stats = report.stats;
+  if (!stats) errores.push('results.json no contiene `stats`');
+
+  const agentRows = rows.filter((row) => row.file === AGENT_FILE);
+  const generalRows = rows.filter((row) => row.file !== AGENT_FILE);
+
+  // 1. Las dos piezas del merge: si una se pierde, el artifact queda incompleto.
+  if (agentRows.length === 0) {
+    errores.push(
+      `falta el E2E del artifact (${AGENT_FILE}): el blob del primer paso no llegó al merge`
+    );
+  }
+  if (generalRows.length === 0) {
+    errores.push('falta la suite general: el blob del segundo paso no llegó al merge');
+  }
+
+  // 2. El E2E del artifact es de Chromium de escritorio, y sólo de ahí.
+  for (const row of agentRows) {
+    if (row.project !== AGENT_PROJECT) {
+      errores.push(
+        `E2E del artifact en ${row.project}: sólo se espera ${AGENT_PROJECT}`
+      );
+    }
+  }
+
+  // 3. La suite general corre entera en cada proyecto, con los mismos conteos:
+  //    un blob perdido deja un proyecto corto.
+  const generalProjects = [...new Set(generalRows.map((row) => row.project))];
+  const allProjects = [...new Set(rows.map((row) => row.project))];
+
+  for (const project of allProjects) {
+    if (!generalProjects.includes(project)) {
+      errores.push(`el proyecto ${project} no tiene ejecuciones de la suite general`);
+    }
+  }
+
+  const generalByProject = countBy(generalRows, (row) => row.project);
+  const projectTotals = generalProjects.map(
+    (project) => generalByProject[project] ?? 0
+  );
+  if (new Set(projectTotals).size > 1) {
+    errores.push(
+      'conteos desparejos entre proyectos de la suite general: ' +
+        describeCounts(generalByProject, generalProjects)
+    );
+  }
+
+  const generalFiles = [...new Set(generalRows.map((row) => row.file))].sort();
+  for (const file of generalFiles) {
+    const byProject = countBy(
+      generalRows.filter((row) => row.file === file),
+      (row) => row.project
+    );
+    const counts = generalProjects.map((project) => byProject[project] ?? 0);
+    const label = describeCounts(byProject, generalProjects);
+    if (counts.some((count) => count === 0)) {
+      errores.push(`el archivo ${file} no corre en todos los proyectos: ${label}`);
+    } else if (new Set(counts).size > 1) {
+      errores.push(`conteos desparejos de ${file} entre proyectos: ${label}`);
+    }
+  }
+
+  // 4. El adjunto de C8: la secuencia del recibo tiene que venir de esta corrida.
+  const c8 = validarC8(rows, baseDir);
+  errores.push(...c8.errores);
+
+  // 5. Reporte verde, y los `stats` del merge cuadrando con lo que hay en el árbol.
+  const byStatus = countBy(rows, (row) => row.status);
+  const byProject = countBy(rows, (row) => row.project);
+
+  for (const status of STATUS_KEYS) {
+    const fromStats = stats?.[status] ?? 0;
+    const fromRows = byStatus[status] ?? 0;
+    if (stats && fromStats !== fromRows) {
+      errores.push(
+        `stats.${status}=${fromStats} no coincide con las filas (${fromRows})`
+      );
+    }
+  }
+  if ((byStatus.unexpected ?? 0) > 0) {
+    errores.push(
+      `${byStatus.unexpected} ejecución(es) fallida(s): el reporte no está verde`
+    );
+  }
+  if ((byStatus.flaky ?? 0) > 0) {
+    errores.push(`${byStatus.flaky} ejecución(es) flaky: el reporte no está verde`);
+  }
+
+  return {
+    errores,
+    ejecuciones: rows.length,
+    porEstado: byStatus,
+    porProyecto: byProject,
+    proyectos: allProjects,
+    agentRows: agentRows.length,
+    generalRows: generalRows.length,
+    generalFiles,
+    c8: c8.c8,
+    erroresC8: c8.errores,
+  };
+}
+
+/** La línea que se lee en el run sin abrir el artifact. */
+export function lineaResumen(veredicto: Veredicto): string {
+  const etiqueta = `**C8 · \`${C8_ATTACHMENT}\`**`;
+  if (veredicto.c8) {
+    const { pasos, origen } = veredicto.c8;
+    return `- ${etiqueta}: ${pasos.length} pasos — ${pasos.join(' > ')} (${origen})`;
+  }
+  return `- ${etiqueta}: ${veredicto.erroresC8[0] ?? 'sin datos en el reporte'}`;
+}
+
+/**
+ * El log del paso no se puede leer sin sesión en el repo: el resumen sí. Si no
+ * hay `GITHUB_STEP_SUMMARY` (local), la línea igual sale por stdout.
+ */
+function publicar(linea: string): void {
+  console.log(linea);
+  const destino = process.env.GITHUB_STEP_SUMMARY;
+  if (!destino) return;
+  try {
+    fs.appendFileSync(destino, `### Gate del reporte de Playwright\n\n${linea}\n`, 'utf8');
+  } catch (error) {
+    console.error(
+      `[check:playwright-report] no se pudo escribir ${destino}: ` +
+        (error instanceof Error ? error.message : String(error))
+    );
+    process.exitCode = 1;
+  }
+}
+
 function loadReport(): PlaywrightReport {
   try {
     return JSON.parse(fs.readFileSync(REPORT_PATH, 'utf8')) as PlaywrightReport;
@@ -114,115 +424,38 @@ function loadReport(): PlaywrightReport {
   }
 }
 
-const report = loadReport();
-const rows: Row[] = [];
-collect(report.suites, undefined, rows);
+function principal(): void {
+  const veredicto = validarReporte(loadReport(), path.dirname(REPORT_PATH));
+  const byStatus = veredicto.porEstado;
+  publicar(lineaResumen(veredicto));
 
-const errors: string[] = [];
-const stats = report.stats;
-if (!stats) errors.push('results.json no contiene `stats`');
-
-const agentRows = rows.filter((row) => row.file === AGENT_FILE);
-const generalRows = rows.filter((row) => row.file !== AGENT_FILE);
-
-// 1. Las dos piezas del merge: si una se pierde, el artifact queda incompleto.
-if (agentRows.length === 0) {
-  errors.push(
-    `falta el E2E del artifact (${AGENT_FILE}): el blob del primer paso no llegó al merge`
-  );
-}
-if (generalRows.length === 0) {
-  errors.push('falta la suite general: el blob del segundo paso no llegó al merge');
-}
-
-// 2. El E2E del artifact es de Chromium de escritorio, y sólo de ahí.
-for (const row of agentRows) {
-  if (row.project !== AGENT_PROJECT) {
-    errors.push(
-      `E2E del artifact en ${row.project}: sólo se espera ${AGENT_PROJECT}`
+  if (veredicto.errores.length > 0) {
+    console.error(
+      `[check:playwright-report] ${veredicto.errores.length} problema(s) en ${REPORT_PATH}:`
     );
-  }
-}
-
-// 3. La suite general corre entera en cada proyecto, con los mismos conteos:
-//    un blob perdido deja un proyecto corto.
-const generalProjects = [...new Set(generalRows.map((row) => row.project))];
-const allProjects = [...new Set(rows.map((row) => row.project))];
-
-for (const project of allProjects) {
-  if (!generalProjects.includes(project)) {
-    errors.push(`el proyecto ${project} no tiene ejecuciones de la suite general`);
-  }
-}
-
-const generalByProject = countBy(generalRows, (row) => row.project);
-const projectTotals = generalProjects.map(
-  (project) => generalByProject[project] ?? 0
-);
-if (new Set(projectTotals).size > 1) {
-  errors.push(
-    'conteos desparejos entre proyectos de la suite general: ' +
-      describeCounts(generalByProject, generalProjects)
-  );
-}
-
-const generalFiles = [...new Set(generalRows.map((row) => row.file))].sort();
-for (const file of generalFiles) {
-  const byProject = countBy(
-    generalRows.filter((row) => row.file === file),
-    (row) => row.project
-  );
-  const counts = generalProjects.map((project) => byProject[project] ?? 0);
-  const label = describeCounts(byProject, generalProjects);
-  if (counts.some((count) => count === 0)) {
-    errors.push(`el archivo ${file} no corre en todos los proyectos: ${label}`);
-  } else if (new Set(counts).size > 1) {
-    errors.push(`conteos desparejos de ${file} entre proyectos: ${label}`);
-  }
-}
-
-// 4. Reporte verde, y los `stats` del merge cuadrando con lo que hay en el árbol.
-const byStatus = countBy(rows, (row) => row.status);
-const byProject = countBy(rows, (row) => row.project);
-
-for (const status of STATUS_KEYS) {
-  const fromStats = stats?.[status] ?? 0;
-  const fromRows = byStatus[status] ?? 0;
-  if (stats && fromStats !== fromRows) {
-    errors.push(
-      `stats.${status}=${fromStats} no coincide con las filas (${fromRows})`
+    for (const error of veredicto.errores) console.error(`  - ${error}`);
+    console.error(
+      '[check:playwright-report] el artifact no contiene lo esperado: el job debe fallar.'
     );
+    process.exit(1);
   }
-}
-if ((byStatus.unexpected ?? 0) > 0) {
-  errors.push(
-    `${byStatus.unexpected} ejecución(es) fallida(s): el reporte no está verde`
+
+  console.log(
+    `[check:playwright-report] OK: ${veredicto.ejecuciones} ejecuciones ` +
+      `(${byStatus.expected ?? 0} expected, ${byStatus.skipped ?? 0} skipped, ` +
+      `${byStatus.unexpected ?? 0} failed, ${byStatus.flaky ?? 0} flaky).`
   );
-}
-if ((byStatus.flaky ?? 0) > 0) {
-  errors.push(
-    `${byStatus.flaky} ejecución(es) flaky: el reporte no está verde`
+  console.log(
+    `[check:playwright-report] proyectos: ${describeCounts(
+      veredicto.porProyecto,
+      veredicto.proyectos
+    )}; ` +
+      `E2E del artifact=${veredicto.agentRows} (${AGENT_PROJECT}); ` +
+      `suite general=${veredicto.generalRows} en ${veredicto.generalFiles.length} archivo(s).`
   );
 }
 
-if (errors.length > 0) {
-  console.error(
-    `[check:playwright-report] ${errors.length} problema(s) en ${REPORT_PATH}:`
-  );
-  for (const error of errors) console.error(`  - ${error}`);
-  console.error(
-    '[check:playwright-report] el artifact no contiene lo esperado: el job debe fallar.'
-  );
-  process.exit(1);
+// Sólo corre como CLI: los tests pueden importar `validarReporte` sin ejecutarlo.
+if (process.argv[1] && /check-playwright-report\.(ts|js)$/.test(process.argv[1])) {
+  principal();
 }
-
-console.log(
-  `[check:playwright-report] OK: ${rows.length} ejecuciones ` +
-    `(${byStatus.expected ?? 0} expected, ${byStatus.skipped ?? 0} skipped, ` +
-    `${byStatus.unexpected ?? 0} failed, ${byStatus.flaky ?? 0} flaky).`
-);
-console.log(
-  `[check:playwright-report] proyectos: ${describeCounts(byProject, allProjects)}; ` +
-    `E2E del artifact=${agentRows.length} (${AGENT_PROJECT}); ` +
-    `suite general=${generalRows.length} en ${generalFiles.length} archivo(s).`
-);
