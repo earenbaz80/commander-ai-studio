@@ -15,8 +15,11 @@
  *      sus 5 pasos;
  *   6. que el artifact traiga además un `index.html` no vacío: el JSON prueba
  *      que el merge leyó los blobs, no que el reporte HTML se haya generado;
- *   7. que el reporte esté verde (`unexpected` y `flaky` en cero) y que sus
- *      `stats` cuadren con las filas.
+ *   7. que no haya fallos reales (`unexpected` en cero) y que los `stats`
+ *      cuadren con las filas. `flaky` no tumba el gate: `retries: 1` existe
+ *      justamente para absorber un parpadeo, así que un reintento exitoso se
+ *      informa en el resumen (conteos y una línea propia) sin pintar el job de
+ *      rojo; si el test falla de verdad, el intento final queda `unexpected`.
  *
  * El adjunto de C8 se valida por contenido y no por presencia del nombre: un
  * `c8-steps` vacío o con menos pasos deja el recibo G2 citando una secuencia que
@@ -397,9 +400,9 @@ export function validarReporte(
       `${byStatus.unexpected} ejecución(es) fallida(s): el reporte no está verde`
     );
   }
-  if ((byStatus.flaky ?? 0) > 0) {
-    errores.push(`${byStatus.flaky} ejecución(es) flaky: el reporte no está verde`);
-  }
+  // `flaky` no entra en `errores` a propósito: un test que pasó en el reintento
+  // no es un fallo del job. Se ve en los conteos y en la línea propia del
+  // resumen (`lineasConteos`), para que no quede escondido.
 
   return {
     errores,
@@ -462,10 +465,19 @@ export function lineasConteos(veredicto: Veredicto): string[] {
   const proyectos = Object.entries(veredicto.porProyecto)
     .map(([proyecto, ejecuciones]) => `${proyecto} ${ejecuciones}`)
     .join(', ');
-  return [
+  const lineas = [
     `- **Ejecuciones**: ${veredicto.ejecuciones} — ${estados}`,
     `- **Proyectos**: ${proyectos || '—'}`,
   ];
+  const flaky = veredicto.porEstado.flaky ?? 0;
+  if (flaky > 0) {
+    // Un reintento exitoso no rompe el gate, pero tampoco se esconde: el flake
+    // sigue siendo deuda y así se ve en el resumen del job sin abrir el log.
+    lineas.push(
+      `- **Flaky**: ${flaky} ejecución(es) que pasaron en el reintento (no tumban el gate)`
+    );
+  }
+  return lineas;
 }
 
 function publicar(lineas: string[]): void {

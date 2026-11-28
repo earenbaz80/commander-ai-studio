@@ -56,7 +56,8 @@ function adjuntoC8(datos: Record<string, unknown>): PlaywrightAttachment {
 function reporte(
   adjuntos: PlaywrightAttachment[],
   proyectosC8: string[] = [AGENT_PROJECT],
-  saltadosC8: string[] = []
+  saltadosC8: string[] = [],
+  flakyEnGeneral = false
 ): PlaywrightReport {
   return {
     suites: [
@@ -91,12 +92,33 @@ function reporte(
           },
         ],
       },
+      // Un flaky real: la fila cuenta como ejecutada y guarda los dos intentos
+      // (el que falló y el que pasó).
+      ...(flakyEnGeneral
+        ? [
+            {
+              file: 'tests/e2e/app.spec.ts',
+              specs: [
+                {
+                  title: 'debe navegar al modo Agent desde la paleta',
+                  tests: [
+                    {
+                      projectName: AGENT_PROJECT,
+                      status: 'flaky',
+                      results: [{ status: 'failed' }, { status: 'passed' }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ]
+        : []),
     ],
     stats: {
       expected: 1 + proyectosC8.length,
       skipped: saltadosC8.length,
       unexpected: 0,
-      flaky: 0,
+      flaky: flakyEnGeneral ? 1 : 0,
     },
   };
 }
@@ -215,11 +237,11 @@ test('check:playwright-report: el caso de C8 en dos proyectos falla', () => {
 });
 
 /** Reporte válido en un directorio temporal, para medir el HTML en disco. */
-function dirDeReporte(): string {
+function dirDeReporte(flakyEnGeneral = false): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-gate-'));
   fs.writeFileSync(
     path.join(dir, 'results.json'),
-    JSON.stringify(reporte([adjuntoC8({ steps: PASOS })])),
+    JSON.stringify(reporte([adjuntoC8({ steps: PASOS })], [AGENT_PROJECT], [], flakyEnGeneral)),
     'utf8'
   );
   return dir;
@@ -290,6 +312,19 @@ test('check:playwright-report: el CLI falla si el merge no dejó index.html', ()
   }
 });
 
+test('check:playwright-report: un flaky no tumba el gate', () => {
+  const veredicto = validarReporte(
+    reporte([adjuntoC8({ steps: PASOS })], [AGENT_PROJECT], [], true)
+  );
+
+  assert.deepEqual(
+    veredicto.errores,
+    [],
+    'un test que pasó en el reintento no es un fallo del job'
+  );
+  assert.equal(veredicto.porEstado.flaky, 1);
+});
+
 test('check:playwright-report: los conteos del veredicto van al resumen', () => {
   const lineas = lineasConteos(
     validarReporte(reporte([adjuntoC8({ steps: PASOS })]))
@@ -299,6 +334,44 @@ test('check:playwright-report: los conteos del veredicto van al resumen', () => 
     '- **Ejecuciones**: 2 — expected 2, skipped 0, unexpected 0, flaky 0',
     '- **Proyectos**: chromium 2',
   ]);
+  assert.ok(
+    lineas.every((linea) => !linea.includes('**Flaky**')),
+    'sin flaky no se agrega la línea, para no ensuciar el resumen'
+  );
+});
+
+test('check:playwright-report: el flaky aparece en el resumen con los conteos', () => {
+  const lineas = lineasConteos(
+    validarReporte(reporte([adjuntoC8({ steps: PASOS })], [AGENT_PROJECT], [], true))
+  );
+
+  // Los conteos ya lo traen, y la línea propia lo hace legible de un vistazo.
+  assert.ok(lineas[0].includes('flaky 1'), `los conteos tienen que traer el flaky: ${lineas[0]}`);
+  assert.ok(
+    lineas.some((linea) =>
+      /^- \*\*Flaky\*\*: 1 ejecución\(es\) que pasaron en el reintento \(no tumban el gate\)$/.test(
+        linea
+      )
+    ),
+    `falta la línea de flaky: ${lineas.join(' | ')}`
+  );
+});
+
+test('check:playwright-report: el CLI sale en verde con un flaky y lo publica', () => {
+  const dir = dirDeReporte(true);
+  const resumen = path.join(dir, 'step-summary.md');
+  try {
+    fs.writeFileSync(path.join(dir, HTML_REPORT), '<!doctype html><title>report</title>', 'utf8');
+    const salida = correrGate(dir, resumen);
+    assert.equal(salida.code, 0, `un flaky no puede tumbar el job: ${salida.stderr}`);
+    assert.match(salida.stdout, /1 flaky/);
+
+    const escrito = fs.readFileSync(resumen, 'utf8');
+    assert.match(escrito, /\*\*Ejecuciones\*\*: 3 — .*flaky 1/);
+    assert.match(escrito, /\*\*Flaky\*\*: 1 ejecución\(es\)/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('check:playwright-report: el CLI publica pasos y conteos en el resumen del job', () => {
