@@ -263,7 +263,7 @@ jobs:
       # devuelve sin tocar el cache.
       - name: Cache de navegadores de Playwright (restore)
         id: playwright-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/AppData/Local/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
@@ -280,7 +280,7 @@ jobs:
       # carpeta cacheada dejaría los runs siguientes sin navegadores.
       - name: Cache de navegadores de Playwright (save)
         if: always() && steps.playwright-cache.outputs.cache-hit != 'true' && steps.playwright-install.outcome == 'success'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ~/AppData/Local/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
