@@ -176,9 +176,11 @@ test.describe('Commander AI Studio - Core', () => {
   test('debe mostrar el modal de atajos con Ctrl+/', async ({ page }) => {
     await page.keyboard.press('Control+/');
     
-    // El modal debe ser visible
+    // El modal entra por `React.lazy` (`KeyboardShortcutsModal`): la espera es
+    // la carga de un chunk, no una acción, y lleva el mismo margen que el panel
+    // del agente (30 s, dentro de los 60 s del describe).
     const modal = page.locator('div[role="dialog"], .nc-panel').filter({ hasText: 'Atajos' });
-    await expect(modal).toBeVisible();
+    await expect(modal).toBeVisible({ timeout: 30000 });
   });
 });
 
