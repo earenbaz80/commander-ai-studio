@@ -186,20 +186,32 @@ async function descartarInvitado(page: Page) {
  * devuelve colores intermedios. Las animaciones infinitas se ignoran, porque
  * con el cursor que parpadea el poll no terminaría nunca.
  */
-async function esperarQuieto(page: Page) {
-  // Dos frames antes de pollear: la transición del panel arranca en el frame
-  // siguiente al que lo monta, así que preguntar de inmediato devuelve «quieto»
-  // sin haber visto nunca la animación, y se mide un color intermedio.
+async function esperarQuieto(page: Page, framesSeguidos = 4, limiteMs = 10000) {
   await page.evaluate(
-    () =>
-      new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-      })
+    ({ frames, limite }) =>
+      new Promise<void>((resolve, reject) => {
+        // Las animaciones infinitas (el cursor que parpadea) quedan fuera del
+        // conteo: con ellas el contador no subiría nunca.
+        const finita = (a: Animation) => a.effect?.getTiming().iterations !== Infinity;
+        const arranque = performance.now();
+        let seguidos = 0;
+        const paso = () => {
+          const animando = document
+            .getAnimations()
+            .some((a) => finita(a) && a.playState === 'running');
+          seguidos = animando ? 0 : seguidos + 1;
+          if (seguidos >= frames) return resolve();
+          if (performance.now() - arranque > limite) {
+            return reject(
+              new Error(`la UI no quedó quieta ${frames} frames seguidos en ${limite} ms`)
+            );
+          }
+          requestAnimationFrame(paso);
+        };
+        requestAnimationFrame(paso);
+      }),
+    { frames: framesSeguidos, limite: limiteMs }
   );
-  await page.waitForFunction(() => {
-    const infinita = (a: Animation) => a.effect?.getTiming().iterations === Infinity;
-    return document.getAnimations().every((a) => infinita(a) || a.playState !== 'running');
-  });
 }
 
 async function abrirApp(page: Page, tema: string) {
