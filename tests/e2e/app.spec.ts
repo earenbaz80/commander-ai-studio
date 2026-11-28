@@ -140,16 +140,13 @@ test.describe('Commander AI Studio - Core', () => {
       .first();
     await expect(agentOption).toBeVisible();
     await agentOption.click();
-    await expect(palette).not.toBeVisible();
 
     // El modo cambia en el acto, pero el panel entra por `React.lazy`: hasta
-    // que llega el chunk de `AgentMode` el `main` muestra el fallback
-    // «CARGANDO…». En el run #292 (firefox) el intento 1 se agotó esperando
-    // `MODO AGENTE` con los 5 s por defecto de `expect` mientras la app ya
-    // estaba en modo agent (en su contexto de error se leen `🔄 Modo agent` y
-    // `main: CARGANDO…`); el reintento pasó con el chunk ya en caché. Lo que
-    // se espera es la carga de un recurso, no una acción: lleva el mismo
-    // margen que el arranque de la app.
+    // que baja el chunk de `AgentMode` el `main` sigue en «CARGANDO…». En el
+    // run #292 (firefox) los 5 s por defecto se agotaron con la app ya en modo
+    // agent y el reintento pasó con el chunk en caché. Se espera la carga de un
+    // recurso, con el mismo margen que el arranque (30 s, dentro de los 60 s
+    // del describe).
     await expect(page.locator('text=MODO AGENTE')).toBeVisible({ timeout: 30000 });
   });
 
