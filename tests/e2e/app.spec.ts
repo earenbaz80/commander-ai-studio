@@ -240,14 +240,23 @@ test.describe('Commander AI Studio - Agent Mode', () => {
       await page.waitForTimeout(500);
     }
     
-    // Navegar al modo agente
+    // Navegar al modo agente: la opción se elige por su texto y el panel se
+    // espera acá, en el único punto donde se cruza el chunk perezoso de
+    // `AgentMode` (ver el test de la paleta en el describe Core).
     await page.keyboard.press('Control+K');
-    const input = page.locator('[data-command-palette] input');
-    await input.fill('agente');
-    await page.locator('[data-command-palette] button[role="option"]').first().click();
+    const palette = page.locator('[data-command-palette]');
+    await expect(palette).toBeVisible();
+    await palette.locator('input').fill('agente');
+    const agentOption = palette
+      .locator('button[role="option"]', { hasText: 'Agente autónomo' })
+      .first();
+    await expect(agentOption).toBeVisible();
+    await agentOption.click();
+    await expect(page.locator('text=MODO AGENTE')).toBeVisible({ timeout: 30000 });
   });
 
   test('debe mostrar la interfaz del agente', async ({ page }) => {
+    // El hook ya esperó el panel con su margen; acá sólo se nombra el estado.
     await expect(page.locator('text=MODO AGENTE')).toBeVisible();
   });
 
