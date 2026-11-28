@@ -257,7 +257,8 @@ test.describe('Contraste de los temas', () => {
         .locator('[data-command-palette] button[role="option"]', { hasText: 'Agente autónomo' })
         .first()
         .click();
-      await expect(page.getByText('MODO AGENTE')).toBeVisible();
+      // El panel entra por `React.lazy`: el margen cubre la descarga del chunk.
+      await expect(page.getByText('MODO AGENTE')).toBeVisible({ timeout: 30000 });
       await page.waitForTimeout(300);
       await auditar(page, `agente (${tema})`);
     });

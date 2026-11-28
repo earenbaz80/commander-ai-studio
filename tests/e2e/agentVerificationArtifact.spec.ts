@@ -276,7 +276,8 @@ async function openAgentMode(page: Page, goalText: string): Promise<void> {
   await expect(palette).toBeVisible();
   await palette.locator('input').fill('agente');
   await palette.locator('button[role="option"]').first().click();
-  await expect(page.getByText('MODO AGENTE')).toBeVisible();
+  // El panel entra por `React.lazy`: el margen cubre la descarga del chunk.
+  await expect(page.getByText('MODO AGENTE')).toBeVisible({ timeout: 30000 });
 
   const goal = page.locator('textarea[placeholder*="tarea"]');
   await goal.fill(goalText);
