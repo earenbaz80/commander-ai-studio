@@ -275,7 +275,13 @@ async function openAgentMode(page: Page, goalText: string): Promise<void> {
   const palette = page.locator('[data-command-palette]');
   await expect(palette).toBeVisible();
   await palette.locator('input').fill('agente');
-  await palette.locator('button[role="option"]').first().click();
+  // La opción se elige por su texto y no por posición, como en el test de la
+  // paleta de Core: el orden depende del filtro.
+  const agentOption = palette
+    .locator('button[role="option"]', { hasText: 'Agente autónomo' })
+    .first();
+  await expect(agentOption).toBeVisible();
+  await agentOption.click();
   // El panel entra por `React.lazy`: el margen cubre la descarga del chunk.
   await expect(page.getByText('MODO AGENTE')).toBeVisible({ timeout: 30000 });
 
