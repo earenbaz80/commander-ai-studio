@@ -304,4 +304,74 @@ test.describe('Contraste de los temas', () => {
       await auditar(page, `agente (${tema})`);
     });
   }
+
+  // El criterio de `esperarQuieto` no tenía prueba: se daba por bueno que
+  // esperar dejaba el modal en su color final. Este caso monta una transición
+  // de color real sobre el modal, toma una muestra con la transición a medias y
+  // comprueba que lo que termina midiendo es el color final.
+  test('no da el modal por quieto antes de que arranque su transición', async ({ page }) => {
+    await abrirApp(page, 'norton');
+
+    // El modal de atajos entra por `React.lazy`, de ahí el margen de 30 s.
+    await page.keyboard.press('Control+/');
+    const modal = page.locator('.nc-panel').filter({ hasText: 'Atajos' }).first();
+    await expect(modal).toBeVisible({ timeout: 30000 });
+    await esperarQuieto(page);
+
+    // La transición de color se monta aquí: así es real, dura lo que hace
+    // falta y no depende de que el modal anime por sí solo. En inline para no
+    // pelear con la especificidad del tema.
+    await modal.evaluate((el) => {
+      const panel = el as HTMLElement;
+      panel.dataset.e2eTransicion = '';
+      panel.style.setProperty('transition', 'none', 'important');
+      panel.style.setProperty('color', 'rgb(255, 0, 0)', 'important');
+    });
+    await expect(modal).toHaveCSS('color', 'rgb(255, 0, 0)');
+    await modal.evaluate((el) =>
+      (el as HTMLElement).style.setProperty('transition', 'color 1400ms linear', 'important')
+    );
+
+    // La espera arranca con el modal todavía en rojo; el cambio de color llega
+    // 100 ms después, ya con el contador de frames quietos en marcha. Ese hueco
+    // es justo el que se comía el preámbulo fijo de dos frames: el poll lo veía
+    // vacío, daba el modal por quieto y se medía el rojo.
+    const FRAMES = 24;
+    const espera = esperarQuieto(page, FRAMES);
+
+    const arranque = Date.now();
+    await page.evaluate(() => {
+      const panel = document.querySelector('[data-e2e-transicion]') as HTMLElement;
+      const marca = window as unknown as { __intermedio?: string };
+      setTimeout(() => panel.style.setProperty('color', 'rgb(0, 255, 0)', 'important'), 100);
+      setTimeout(() => {
+        marca.__intermedio = getComputedStyle(panel).color;
+      }, 400);
+    });
+
+    await espera;
+    const transcurrido = Date.now() - arranque;
+
+    const final = await page.evaluate(() => {
+      const panel = document.querySelector('[data-e2e-transicion]') as HTMLElement;
+      return {
+        color: getComputedStyle(panel).color,
+        intermedio: (window as unknown as { __intermedio?: string }).__intermedio,
+        animando: document.getAnimations().filter(
+          (a) => a.effect?.getTiming().iterations !== Infinity && a.playState === 'running'
+        ).length,
+      };
+    });
+
+    // La transición se vio a medias: había un color intermedio que medir.
+    expect(final.intermedio, 'la transición no llegó a verse a medias').toBeTruthy();
+    expect(final.intermedio).not.toBe('rgb(255, 0, 0)');
+    expect(final.intermedio).not.toBe('rgb(0, 255, 0)');
+
+    expect(final.color, 'midió el color de antes de que la transición arrancara').toBe(
+      'rgb(0, 255, 0)'
+    );
+    expect(final.animando).toBe(0);
+    expect(transcurrido, 'volvió antes de que la transición terminara').toBeGreaterThan(1200);
+  });
 });
