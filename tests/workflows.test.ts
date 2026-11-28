@@ -340,11 +340,27 @@ test('CI: no hay un job de build aparte y nada cuelga de él', () => {
   assert.ok(!ci.includes('name: dist'), 'ningún job sube un artifact dist');
   // Los navegadores son el paso más caro del job: con el cache atado al
   // lockfile, una subida de Playwright lo invalida y el paso vuelve a instalar.
-  const cache = pasosDe(jobDe(ci, 'e2e')).find((p) => p.includes('actions/cache@'));
-  assert.ok(cache, 'el e2e cachea los navegadores');
+  const pasosE2E = pasosDe(jobDe(ci, 'e2e'));
+  const restore = pasosE2E.find((p) => p.includes('actions/cache/restore@'));
+  const save = pasosE2E.find((p) => p.includes('actions/cache/save@'));
+  assert.ok(restore && save, 'el e2e restaura y guarda el cache de navegadores');
+  for (const paso of [restore, save]) {
+    assert.ok(
+      paso.includes("hashFiles('package-lock.json')") && paso.includes('ms-playwright'),
+      'la clave sigue al lockfile y guarda la carpeta de navegadores'
+    );
+  }
+  // El post de `actions/cache` no corre si un paso anterior falló: #290 quedó
+  // rojo en el gate y no guardó nada. El save va aparte y con `always()`.
+  assert.ok(save.includes('if: always()'), 'el save corre aunque el run esté en rojo');
   assert.ok(
-    cache.includes("hashFiles('package-lock.json')") && cache.includes('ms-playwright'),
-    'la clave del cache sigue al lockfile y guarda la carpeta de navegadores'
+    save.includes("steps.playwright-install.outcome == 'success'"),
+    'no se guarda una instalación a medias'
+  );
+  const instala = pasosE2E.find((p) => p.includes('npx playwright install --with-deps'));
+  assert.ok(
+    instala?.includes('chromium firefox'),
+    'se instalan los mismos dos motores de siempre'
   );
   // Lo caro se paga una vez por stack, no una por nivel: build, package y e2e
   // corren en los PRs contra `main` (y en `push`), no en los PRs apilados. Sin

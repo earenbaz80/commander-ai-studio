@@ -254,23 +254,36 @@ jobs:
 
       - run: npm ci --ignore-scripts
 
-      # `playwright install --with-deps` es el paso más caro del job (2m51s en
-      # #289) y casi todo se va en el DISM de Media Foundation, no en la
+      # `playwright install --with-deps` es el paso más caro del job (4m13s en
+      # #290) y casi todo se va en el DISM de Media Foundation, no en la
       # descarga. La clave cuelga del lockfile: subir Playwright o cualquiera de
       # sus dependencias invalida el cache y el paso vuelve a instalar con deps.
       # Con cache caliente no se corre el paso; si un test de media fallara justo
       # así, el culpable es el DISM que no corrió: quitar el `if:` de abajo lo
       # devuelve sin tocar el cache.
-      - name: Cache de navegadores de Playwright
+      - name: Cache de navegadores de Playwright (restore)
         id: playwright-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/AppData/Local/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright browsers
+        id: playwright-install
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium firefox
+
+      # Guardar va aparte y con `always()`: el post de `actions/cache` no corre
+      # si un paso anterior falló —#290, rojo en el gate, no guardó nada— y
+      # `save-always` está deprecado. Así un run rojo igual deja los navegadores
+      # para el siguiente, pero sólo si la instalación terminó entera: media
+      # carpeta cacheada dejaría los runs siguientes sin navegadores.
+      - name: Cache de navegadores de Playwright (save)
+        if: always() && steps.playwright-cache.outputs.cache-hit != 'true' && steps.playwright-install.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/AppData/Local/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
 
       - name: Build (Vite)
         run: npm run build
