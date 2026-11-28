@@ -11,6 +11,7 @@ GitHub muestra los `.html` como código en el visor de archivos: el roadmap rend
 - [Referencia de API](docs/API.md): endpoints de IA, agente, plugins y seguridad.
 - [LM Studio](docs/API.md#lm-studio): generación, carga automática del modelo y aviso de contexto en la UI.
 - [Roadmap](ROADMAP.md): el único roadmap del proyecto — paridad F0–F6, plataforma PL0–PL7 y UX 1.0, con estado, criterios, puertas y secuencia.
+- [RUNBOOK](RUNBOOK.md): cómo diagnosticar un run de CI en rojo —qué job y qué paso fallaron, el log y el artifact— cuando no hay sesión de GitHub a mano.
 
 ## Run Locally
 
@@ -72,7 +73,7 @@ emulador no se arranca solo: tiene que estar escuchando en esos puertos.
   historia reconstruida ni de otra rama de trabajo. Así el PR compara contra la
   base real y no arrastra commits ajenos.
 - **Entrega por PR** contra `main`, con CI verde (`.github/workflows/tests.yml`) y
-  sin push directo a `main`. Un solo commit o varios, pero el merge es **squash**.
+  sin push directo a `main`. Un solo commit o varios, pero el merge es **squash**. Si el run queda en rojo, [RUNBOOK.md](RUNBOOK.md) dice cómo leer el job, su log y bajar el artifact sin sesión de GitHub.
 - **Si las historias difieren** (rama nacida de otra raíz: `git merge-base` vacío),
   GitHub rechaza el PR con *«has no history in common with main»*. Se crea una
   rama puente desde `main` con el árbol final y se abre el PR desde ella:

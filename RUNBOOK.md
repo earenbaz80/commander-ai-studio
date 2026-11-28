@@ -78,6 +78,22 @@ Un flaky no pinta rojo, pero se mira igual (es deuda, no ruido): el nombre y el 
 - Run `46116807041`, job `e2e` `140893755335`, artifact `playwright-report` id `15252507099`.
 - El artifact decía: 98 ejecuciones (expected 74, skipped 23, unexpected 0, **flaky 1**), proyectos chromium 34 / firefox 32 / mobile-chrome 32, C8 con sus 5 pasos.
 - La regla que lo tumbó entonces: `1 ejecución(es) flaky: el reporte no está verde`. Con la regla actual ese mismo artifact **pasa** el gate (el flaky se informa en los conteos y en la línea **Flaky**); el test se arregló igual porque el flake era real.
-- Causa: `tests/e2e/app.spec.ts` → `debe navegar al modo Agent desde la paleta`, proyecto **firefox**; intento 1 `failed` a los 16 466 ms (`expect(locator).toBeVisible()` sobre `text=MODO AGENTE`, *element(s) not found*, timeout 5 000 ms) y el reintento pasó en 9 250 ms.
+- Causa: `tests/e2e/app.spec.ts` → `debe navegar al modo Agent desde la paleta`, proyecto **firefox**: el intento 1 murió en `expect(locator).toBeVisible()` sobre `text=MODO AGENTE` (*element(s) not found*, timeout 5 000 ms) y el reintento pasó. Los tiempos de cada intento están en la tabla de abajo.
+
+### Antes y después, en la misma fila
+
+La misma fila de `results.json` (`app.spec.ts` › `debe navegar al modo Agent desde la paleta`, proyecto `firefox`) en los dos artifacts reales:
+
+| Run | Artifact | `stats` del reporte | Fila de Firefox | Intentos |
+| --- | --- | --- | --- | --- |
+| **#292** (`46116807041`) | `15252507099` | expected 74, skipped 23, unexpected 0, **flaky 1** | `status: flaky` | 2: `failed` 16 466 ms (`retry: 0`) → `passed` 9 250 ms (`retry: 1`) |
+| **#294** (`46125812615`) | `15256251127` | expected 75, skipped 23, unexpected 0, **flaky 0** | `status: expected` | 1: `passed` 6 346 ms (`retry: 0`) |
+
+Las 98 ejecuciones son las mismas en los dos runs; lo que cambió es cómo se reparte el intento de Firefox. Las dos piezas:
+
+- **El test** (`e22f1dd`): espera la paleta visible y la opción ya filtrada (`hasText: 'Agente autónomo'`) antes de clicar. Cada opción ejecuta la lista `filtered` capturada en su render y `fill` no espera el re-render, así que el clic llegaba a la opción que estaba primera antes de filtrar y `MODO AGENTE` no se montaba nunca.
+- **El gate** (`c5ec859`): un `flaky` deja de ser error; se informa en los conteos y en una línea **Flaky** del resumen. Con esa regla el artifact del #292 también sale en verde, pero el flake se arregló igual porque era real.
+
+Los otros proyectos no cambiaron: chromium 3 841 → 3 651 ms y mobile-chrome 3 879 → 3 748 ms. `expected` sube de 74 a 75 porque la fila de Firefox ahora cuenta como pass a la primera, no porque se haya agregado un test. Reproducido con el gate actual sobre los dos artifacts: el #294 sale `OK: 98 ejecuciones (75 expected, 23 skipped, 0 failed, 0 flaky)`, exit 0.
 
 Moraleja del episodio: sin sesión, el camino es **integración → log del job → artifact → gate local**, y el artefacto de Playwright basta para nombrar el test y el motivo aunque el log sea inaccesible.
