@@ -126,11 +126,6 @@ test.describe('Commander AI Studio - Core', () => {
   });
 
   test('debe navegar al modo Agent desde la paleta', async ({ page }) => {
-    // El flaky de Firefox: `fill` no espera a que la lista se vuelva a pintar
-    // con el filtro, así que el clic podía llegar a la opción que estaba
-    // primera antes de filtrar (cada opción ejecuta la lista capturada en su
-    // render) y el modo agente no se montaba nunca. Se espera la paleta y la
-    // opción ya filtrada antes de hacer clic.
     await page.keyboard.press('Control+K');
     const palette = page.locator('[data-command-palette]');
     await expect(palette).toBeVisible();
@@ -138,13 +133,24 @@ test.describe('Commander AI Studio - Core', () => {
     const input = palette.locator('input');
     await input.fill('agente');
 
+    // La opción se elige por su texto y no por posición: el orden depende del
+    // filtro, así que `.first()` sólo valía para la lista sin filtrar.
     const agentOption = palette
       .locator('button[role="option"]', { hasText: 'Agente autónomo' })
       .first();
     await expect(agentOption).toBeVisible();
     await agentOption.click();
+    await expect(palette).not.toBeVisible();
 
-    await expect(page.locator('text=MODO AGENTE')).toBeVisible();
+    // El modo cambia en el acto, pero el panel entra por `React.lazy`: hasta
+    // que llega el chunk de `AgentMode` el `main` muestra el fallback
+    // «CARGANDO…». En el run #292 (firefox) el intento 1 se agotó esperando
+    // `MODO AGENTE` con los 5 s por defecto de `expect` mientras la app ya
+    // estaba en modo agent (en su contexto de error se leen `🔄 Modo agent` y
+    // `main: CARGANDO…`); el reintento pasó con el chunk ya en caché. Lo que
+    // se espera es la carga de un recurso, no una acción: lleva el mismo
+    // margen que el arranque de la app.
+    await expect(page.locator('text=MODO AGENTE')).toBeVisible({ timeout: 30000 });
   });
 
   test('debe alternar el Workbench con el botón del header', async ({ page }) => {
