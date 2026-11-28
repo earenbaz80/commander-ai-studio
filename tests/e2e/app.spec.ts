@@ -126,13 +126,24 @@ test.describe('Commander AI Studio - Core', () => {
   });
 
   test('debe navegar al modo Agent desde la paleta', async ({ page }) => {
+    // El flaky de Firefox: `fill` no espera a que la lista se vuelva a pintar
+    // con el filtro, así que el clic podía llegar a la opción que estaba
+    // primera antes de filtrar (cada opción ejecuta la lista capturada en su
+    // render) y el modo agente no se montaba nunca. Se espera la paleta y la
+    // opción ya filtrada antes de hacer clic.
     await page.keyboard.press('Control+K');
-    const input = page.locator('[data-command-palette] input');
+    const palette = page.locator('[data-command-palette]');
+    await expect(palette).toBeVisible();
+
+    const input = palette.locator('input');
     await input.fill('agente');
-    
-    const agentOption = page.locator('[data-command-palette] button[role="option"]').first();
+
+    const agentOption = palette
+      .locator('button[role="option"]', { hasText: 'Agente autónomo' })
+      .first();
+    await expect(agentOption).toBeVisible();
     await agentOption.click();
-    
+
     await expect(page.locator('text=MODO AGENTE')).toBeVisible();
   });
 
