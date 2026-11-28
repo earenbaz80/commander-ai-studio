@@ -177,8 +177,29 @@ async function descartarInvitado(page: Page) {
   const invitado = page.locator('button:has-text("ENTRAR COMO INVITADO")');
   if (await invitado.isVisible({ timeout: 3000 }).catch(() => false)) {
     await invitado.click();
-    await page.waitForTimeout(500);
+    await expect(invitado).toBeHidden();
   }
+}
+
+/**
+ * Espera a que la UI deje de animar antes de medir: una transición a medias
+ * devuelve colores intermedios. Las animaciones infinitas se ignoran, porque
+ * con el cursor que parpadea el poll no terminaría nunca.
+ */
+async function esperarQuieto(page: Page) {
+  // Dos frames antes de pollear: la transición del panel arranca en el frame
+  // siguiente al que lo monta, así que preguntar de inmediato devuelve «quieto»
+  // sin haber visto nunca la animación, y se mide un color intermedio.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      })
+  );
+  await page.waitForFunction(() => {
+    const infinita = (a: Animation) => a.effect?.getTiming().iterations === Infinity;
+    return document.getAnimations().every((a) => infinita(a) || a.playState !== 'running');
+  });
 }
 
 async function abrirApp(page: Page, tema: string) {
@@ -197,7 +218,7 @@ async function abrirApp(page: Page, tema: string) {
   } else {
     await expect(page.locator('html')).toHaveClass(new RegExp(`theme-${tema}`));
   }
-  await page.waitForTimeout(600);
+  await esperarQuieto(page);
 }
 
 async function auditar(page: Page, superficie: string) {
@@ -231,27 +252,32 @@ test.describe('Contraste de los temas', () => {
 
       await page.keyboard.press('Control+K');
       await expect(page.locator('[data-command-palette]')).toBeVisible();
-      await page.waitForTimeout(200);
+      await esperarQuieto(page);
       await auditar(page, `paleta (${tema})`);
 
       const entradaPaleta = page.locator('[data-command-palette] input');
       await entradaPaleta.fill('configuración');
-      await page
+      // La opción se elige por su texto y no por posición, como en el test de
+      // la paleta de Core: el orden depende del filtro.
+      const configuracion = page
         .locator('[data-command-palette] button[role="option"]', {
           hasText: 'Configuración',
         })
-        .first()
-        .click();
+        .first();
+      await expect(configuracion).toBeVisible();
+      await configuracion.click();
       // El modal entra por `React.lazy` (`PreferencesModal`): la espera es la
       // carga de un chunk, no una acción, y lleva el mismo margen que el panel
       // del agente (30 s, dentro de los 150 s del describe).
       await expect(page.getByText('Apariencia e idioma')).toBeVisible({ timeout: 30000 });
-      await page.waitForTimeout(300);
+      await esperarQuieto(page);
       await auditar(page, `configuración (${tema})`);
 
       // exact: el Header también tiene «Cerrar aplicación», que cerraría la app.
       await page.getByRole('button', { name: 'Cerrar', exact: true }).first().click();
-      await page.waitForTimeout(200);
+      // La paleta se abre con el modal todavía en el DOM, así que se espera a
+      // que se vaya en vez de contar 200 ms.
+      await expect(page.getByText('Apariencia e idioma')).toBeHidden();
 
       await page.keyboard.press('Control+K');
       await expect(page.locator('[data-command-palette]')).toBeVisible();
@@ -262,7 +288,7 @@ test.describe('Contraste de los temas', () => {
         .click();
       // El panel entra por `React.lazy`: el margen cubre la descarga del chunk.
       await expect(page.getByText('MODO AGENTE')).toBeVisible({ timeout: 30000 });
-      await page.waitForTimeout(300);
+      await esperarQuieto(page);
       await auditar(page, `agente (${tema})`);
     });
   }

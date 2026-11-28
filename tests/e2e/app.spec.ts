@@ -64,7 +64,7 @@ test.describe('Commander AI Studio - Core', () => {
     const guestBtn0 = page.locator('button:has-text("ENTRAR COMO INVITADO")');
     if (await guestBtn0.isVisible({ timeout: 3000 }).catch(() => false)) {
       await guestBtn0.click();
-      await page.waitForTimeout(500);
+      await expect(guestBtn0).toBeHidden();
     }
   });
 
@@ -150,6 +150,46 @@ test.describe('Commander AI Studio - Core', () => {
     await expect(page.locator('text=MODO AGENTE')).toBeVisible({ timeout: 30000 });
   });
 
+  test('debe cubrir un chunk de AgentMode lento con el margen del panel', async ({ page }) => {
+    // El build parte `AgentMode` en `assets/AgentMode-<hash>.js`. Se retrasa más
+    // que los 5 s por defecto de `expect`: con la espera corta el panel no llega
+    // a tiempo y el test falla, así que el margen de 30 s queda probado acá y no
+    // sólo en la simulación manual.
+    const RETRASO_MS = 7000;
+    let interceptados = 0;
+    await page.route('**/assets/AgentMode-*.js', async (route) => {
+      interceptados += 1;
+      await new Promise((resolve) => setTimeout(resolve, RETRASO_MS));
+      await route.continue();
+    });
+
+    await page.keyboard.press('Control+K');
+    const palette = page.locator('[data-command-palette]');
+    await expect(palette).toBeVisible();
+    await palette.locator('input').fill('agente');
+    const agentOption = palette
+      .locator('button[role="option"]', { hasText: 'Agente autónomo' })
+      .first();
+    await expect(agentOption).toBeVisible();
+
+    const inicio = Date.now();
+    await agentOption.click();
+    await expect(page.locator('text=MODO AGENTE')).toBeVisible({ timeout: 30000 });
+    const transcurrido = Date.now() - inicio;
+
+    // Sin estas guardas el test podría pasar en vacío: si el bundle cambia de
+    // nombre el route no intercepta nada, y si la espera se acorta el panel no
+    // llega a tiempo.
+    expect(
+      interceptados,
+      'el route no interceptó el chunk: revisá el nombre del bundle de AgentMode'
+    ).toBeGreaterThan(0);
+    expect(
+      transcurrido,
+      'el panel apareció antes del retraso: el test no ejerció el chunk lento'
+    ).toBeGreaterThanOrEqual(RETRASO_MS - 500);
+  });
+
   test('debe alternar el Workbench con el botón del header', async ({ page }) => {
     const workbenchBtn = page.locator('button[data-tooltip="Workbench (Panel Derecho)"]');
     await workbenchBtn.click();
@@ -193,7 +233,7 @@ test.describe('Commander AI Studio - Chat', () => {
     const guestBtn = page.locator('button:has-text("ENTRAR COMO INVITADO")');
     if (await guestBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await guestBtn.click();
-      await page.waitForTimeout(500);
+      await expect(guestBtn).toBeHidden();
     }
   });
 
@@ -216,8 +256,10 @@ test.describe('Commander AI Studio - Chat', () => {
     await expect(userBubble).toHaveCount(1);
     await expect(userBubble).toBeVisible();
     
-    // Esperar respuesta (puede tardar si no hay API key)
-    await page.waitForTimeout(2000);
+    // El envío deja la burbuja del usuario y una segunda del asistente: la
+    // respuesta si hay clave y el error si no. Se espera ese segundo mensaje
+    // en vez de un sleep fijo, que medía el reloj y no lo que hizo la app.
+    await expect(page.locator('[data-msg-id]')).toHaveCount(2, { timeout: 15000 });
   });
 
   test('debe limpiar historial desde el sidebar', async ({ page }) => {
@@ -239,7 +281,7 @@ test.describe('Commander AI Studio - Agent Mode', () => {
     const guestBtn = page.locator('button:has-text("ENTRAR COMO INVITADO")');
     if (await guestBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await guestBtn.click();
-      await page.waitForTimeout(500);
+      await expect(guestBtn).toBeHidden();
     }
     
     // Navegar al modo agente: la opción se elige por su texto y el panel se
@@ -282,10 +324,10 @@ test.describe('Commander AI Studio - Agent Mode', () => {
     const runBtn = page.getByRole('button', { name: /Ejecutar tool|Run Tool/ });
     await runBtn.click();
     
-    // Debe aparecer un step en el log
-    await page.waitForTimeout(1000);
+    // Debe aparecer un step en el log: corre la tool en el server, así que el
+    // margen es de acción (15 s), no el de una animación.
     const steps = page.locator('text=fs.read');
-    await expect(steps.first()).toBeVisible();
+    await expect(steps.first()).toBeVisible({ timeout: 15000 });
   });
 });
 
@@ -298,7 +340,7 @@ test.describe('Commander AI Studio - Workbench', () => {
     const guestBtn = page.locator('button:has-text("ENTRAR COMO INVITADO")');
     if (await guestBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await guestBtn.click();
-      await page.waitForTimeout(500);
+      await expect(guestBtn).toBeHidden();
     }
     
     // Abrir Workbench
@@ -344,7 +386,7 @@ test.describe('Commander AI Studio - Accesibilidad', () => {
     const guestBtn = page.locator('button:has-text("ENTRAR COMO INVITADO")');
     if (await guestBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await guestBtn.click();
-      await page.waitForTimeout(500);
+      await expect(guestBtn).toBeHidden();
     }
   });
 
