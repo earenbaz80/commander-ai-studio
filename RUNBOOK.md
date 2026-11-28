@@ -98,7 +98,7 @@ Los otros proyectos no cambiaron: chromium 3 841 → 3 651 ms y mobile-chrome 3 
 
 ### Regla: una espera sobre contenido de `React.lazy` lleva 30 s
 
-Lo que quedó del #292, aplicado a mano en los siete sitios que esperan un chunk perezoso (`grep -n "timeout: 30000" tests/e2e` los cuenta):
+Lo que quedó del #292, aplicado a mano en los siete sitios que esperan contenido cargado con `React.lazy`. El criterio para contarlos es ese y no un grep de `timeout: 30000`: ese número no distingue estas esperas de las del arranque de la app, de las de `lmstudio-loading` y `pairTwoDevices`, ni de los deadlines que no son esperas.
 
 - **La espera lleva `{ timeout: 30000 }`.** Se está esperando la descarga de un recurso; el margen por defecto de `expect` (5 s) mide la red y no lo que hizo el test. En el #292 el intento 1 se agotó a los 5 000 ms con la app ya en modo agent —el árbol traía `🔄 Modo agent`— y el `main` todavía en `CARGANDO…`; el reintento pasó con el chunk ya en la caché HTTP.
 - **Siempre por debajo del `test.setTimeout` del describe**, para que la espera pueda agotarse y el fallo nombre el locator en vez de morir como *test timeout*: 30 s dentro de los 60 s de `Core` y `Agent Mode`, dentro de los 150 s de `Contraste` y dentro de los 180 s del artifact de verificación.
