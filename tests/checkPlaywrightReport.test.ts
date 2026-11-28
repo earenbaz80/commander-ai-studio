@@ -22,10 +22,15 @@ import {
   C8_STEPS,
   AGENT_PROJECT,
   HTML_REPORT,
+  actualizarRacha,
+  lineasAviso,
+  lineaRepetidos,
   lineaResumen,
   lineasConteos,
   validarReporte,
   verificarArtifactHtml,
+  type EstadoRacha,
+  type FirmaFlaky,
   type PlaywrightAttachment,
   type PlaywrightReport,
 } from '../scripts/check-playwright-report';
@@ -38,6 +43,13 @@ const PASOS = [
   'thought:Razonamiento',
   'thought:Finalizado',
 ];
+
+/** La fila que quedó flaky en el #292: archivo, título y proyecto. */
+const PALETA: FirmaFlaky = {
+  file: 'app.spec.ts',
+  title: 'debe navegar al modo Agent desde la paleta',
+  project: AGENT_PROJECT,
+};
 
 function adjuntoC8(datos: Record<string, unknown>): PlaywrightAttachment {
   return {
@@ -254,14 +266,18 @@ function dirDeReporte(flakyEnGeneral = false): string {
  */
 function correrGate(
   dir: string,
-  resumen?: string
+  resumen?: string,
+  extra: NodeJS.ProcessEnv = {}
 ): { code: number; stdout: string; stderr: string } {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PLAYWRIGHT_JSON_PATH: path.join(dir, 'results.json'),
+    ...extra,
   };
   if (resumen) env.GITHUB_STEP_SUMMARY = resumen;
   else delete env.GITHUB_STEP_SUMMARY;
+  // Sin `extra`, la racha no puede venir del entorno de quien corre los tests.
+  if (!('FLAKY_STATE' in extra)) delete env.FLAKY_STATE;
   const guion = path.join(process.cwd(), 'scripts', 'check-playwright-report.ts');
   try {
     const stdout = execFileSync(process.execPath, ['--import', 'tsx', guion], {
@@ -372,6 +388,148 @@ test('check:playwright-report: el CLI sale en verde con un flaky y lo publica', 
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('check:playwright-report: la racha cuenta corridas seguidas del mismo flaky', () => {
+  const primera = actualizarRacha(undefined, [PALETA]);
+  assert.deepEqual(
+    primera.estado.flaky,
+    [{ ...PALETA, corridas: 1 }],
+    'el primer flaky deja la racha en 1'
+  );
+  assert.deepEqual(primera.repetidos, [], 'la primera vez todavía es un aviso');
+
+  const segunda = actualizarRacha(primera.estado, [PALETA]);
+  assert.deepEqual(
+    segunda.repetidos,
+    [{ ...PALETA, corridas: 2 }],
+    'la segunda corrida seguida ya es deuda y se castiga'
+  );
+
+  const tercera = actualizarRacha(segunda.estado, [PALETA]);
+  assert.equal(tercera.repetidos[0].corridas, 3, 'la racha sigue contando');
+});
+
+test('check:playwright-report: la racha se corta cuando el test deja de ser flaky', () => {
+  const previo: EstadoRacha = { flaky: [{ ...PALETA, corridas: 1 }] };
+  const { estado, repetidos } = actualizarRacha(previo, []);
+
+  assert.deepEqual(estado.flaky, [], 'lo que se curó sale del estado');
+  assert.deepEqual(repetidos, [], 'sin flaky no hay racha que castigar');
+  // Al volver a fallar arranca en 1: la racha se cortó, no quedó en pausa.
+  assert.deepEqual(
+    actualizarRacha(estado, [PALETA]).repetidos,
+    [],
+    'una recaída después de curarse no cuenta como seguida'
+  );
+});
+
+test('check:playwright-report: la segunda corrida seguida avisa y no tumba el gate', () => {
+  const dir = dirDeReporte(true);
+  const resumen = path.join(dir, 'step-summary.md');
+  const estado = path.join(dir, 'flaky-state.json');
+  try {
+    fs.writeFileSync(path.join(dir, HTML_REPORT), '<!doctype html><title>report</title>', 'utf8');
+    fs.writeFileSync(
+      estado,
+      JSON.stringify({ run: '1', flaky: [{ ...PALETA, corridas: 1 }] }),
+      'utf8'
+    );
+
+    const salida = correrGate(dir, resumen, { FLAKY_STATE: estado });
+    assert.equal(
+      salida.code,
+      0,
+      `dos corridas seguidas todavía no cortan: ${salida.stderr}`
+    );
+    // La anotación se pinta en el paso, además de la línea del resumen.
+    assert.match(
+      salida.stdout,
+      /::warning::Flaky repetido: app\.spec\.ts › debe navegar al modo Agent desde la paleta \(chromium\) — 2 corridas seguidas; el gate falla a la 3\.ª/
+    );
+
+    const escrito = fs.readFileSync(resumen, 'utf8');
+    assert.match(
+      escrito,
+      /\*\*Flaky repetido\*\*: `app\.spec\.ts` › debe navegar al modo Agent desde la paleta \(chromium\) — 2 corridas seguidas \(aviso; el gate falla a la 3\.ª\)/
+    );
+
+    const nuevo = JSON.parse(fs.readFileSync(estado, 'utf8')) as EstadoRacha;
+    assert.deepEqual(
+      nuevo.flaky,
+      [{ ...PALETA, corridas: 2 }],
+      'el estado queda listo para la corrida siguiente'
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('check:playwright-report: la tercera corrida seguida sí tumba el gate', () => {
+  const dir = dirDeReporte(true);
+  const resumen = path.join(dir, 'step-summary.md');
+  const estado = path.join(dir, 'flaky-state.json');
+  try {
+    fs.writeFileSync(path.join(dir, HTML_REPORT), '<!doctype html><title>report</title>', 'utf8');
+    fs.writeFileSync(
+      estado,
+      JSON.stringify({ run: '2', flaky: [{ ...PALETA, corridas: 2 }] }),
+      'utf8'
+    );
+
+    const salida = correrGate(dir, resumen, { FLAKY_STATE: estado });
+    assert.equal(salida.code, 1, 'tres corridas seguidas del mismo flaky tienen que fallar');
+    assert.match(salida.stderr, /el mismo test queda flaky 3 corridas seguidas/);
+    assert.ok(
+      !salida.stdout.includes('::warning::'),
+      'a la tercera ya no es un aviso, es un fallo'
+    );
+
+    const escrito = fs.readFileSync(resumen, 'utf8');
+    assert.match(
+      escrito,
+      /\*\*Flaky repetido\*\*: `app\.spec\.ts` › debe navegar al modo Agent desde la paleta \(chromium\) — 3 corridas seguidas\n/
+    );
+
+    const nuevo = JSON.parse(fs.readFileSync(estado, 'utf8')) as EstadoRacha;
+    assert.deepEqual(nuevo.flaky, [{ ...PALETA, corridas: 3 }]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('check:playwright-report: el primer flaky deja la racha en 1 y no tumba el gate', () => {
+  const dir = dirDeReporte(true);
+  const estado = path.join(dir, 'flaky-state.json');
+  try {
+    fs.writeFileSync(path.join(dir, HTML_REPORT), '<!doctype html><title>report</title>', 'utf8');
+    const salida = correrGate(dir, undefined, { FLAKY_STATE: estado });
+
+    assert.equal(salida.code, 0, `el primer flaky es aviso: ${salida.stderr}`);
+    assert.ok(!salida.stdout.includes('Flaky repetido'), 'no hay racha que publicar');
+    const escrito = JSON.parse(fs.readFileSync(estado, 'utf8')) as EstadoRacha;
+    assert.deepEqual(escrito.flaky, [{ ...PALETA, corridas: 1 }]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('check:playwright-report: sin racha el resumen no menciona flaky repetido', () => {
+  assert.deepEqual(lineaRepetidos([]), []);
+  assert.deepEqual(lineasAviso([]), []);
+  assert.deepEqual(
+    lineaRepetidos([{ ...PALETA, corridas: 3 }]),
+    [
+      '- **Flaky repetido**: `app.spec.ts` › debe navegar al modo Agent desde la paleta (chromium) — 3 corridas seguidas',
+    ],
+    'a la tercera la línea ya no lleva el aviso'
+  );
+  assert.deepEqual(
+    lineaRepetidos([{ ...PALETA, corridas: 2 }]),
+    [
+      '- **Flaky repetido**: `app.spec.ts` › debe navegar al modo Agent desde la paleta (chromium) — 2 corridas seguidas (aviso; el gate falla a la 3.ª)',
+    ]
+  );
 });
 
 test('check:playwright-report: el CLI publica pasos y conteos en el resumen del job', () => {

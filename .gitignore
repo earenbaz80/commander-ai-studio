@@ -118,3 +118,6 @@ pty-validacion-*.png
 
 # Datos locales de la app de ejemplo (PL3)
 examples/pl3-backend-app/.data/
+
+# Racha de flaky que el gate de CI arrastra por cache (no se commitea)
+.flaky-state.json

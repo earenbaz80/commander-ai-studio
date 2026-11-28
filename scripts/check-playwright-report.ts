@@ -19,7 +19,14 @@
  *      cuadren con las filas. `flaky` no tumba el gate: `retries: 1` existe
  *      justamente para absorber un parpadeo, así que un reintento exitoso se
  *      informa en el resumen (conteos y una línea propia) sin pintar el job de
- *      rojo; si el test falla de verdad, el intento final queda `unexpected`.
+ *      rojo; si el test falla de verdad, el intento final queda `unexpected`;
+ *   8. que un mismo test no venga flaky en tres corridas seguidas. La racha
+ *      vive en `flaky-state.json` (`FLAKY_STATE`), que CI arrastra con
+ *      `actions/cache`: el gate lee el estado del run anterior, suma 1 a lo que
+ *      sigue flaky y escribe el nuevo. La primera corrida es silencio (un
+ *      parpadeo lo absuelve `retries: 1`), la segunda avisa con `::warning::`
+ *      y sólo la tercera pone el job en rojo: un parpadeo que se repite una
+ *      vez todavía puede ser azar, tres seguidas ya son deuda.
  *
  * El adjunto de C8 se valida por contenido y no por presencia del nombre: un
  * `c8-steps` vacío o con menos pasos deja el recibo G2 citando una secuencia que
@@ -90,6 +97,28 @@ export interface C8Steps {
   origen: string;
 }
 
+/**
+ * Identidad estable de una fila entre corridas: archivo, título y proyecto. El
+ * `spec.id` no sirve, porque el merge lo renumera en cada corrida.
+ */
+export interface FirmaFlaky {
+  file: string;
+  title: string;
+  project: string;
+}
+
+/** Una fila flaky con su racha: cuántas corridas seguidas lleva así. */
+export interface FilaFlaky extends FirmaFlaky {
+  corridas: number;
+}
+
+/** Lo que el gate deja en `flaky-state.json` para que lo lea el run siguiente. */
+export interface EstadoRacha {
+  /** Run que escribió el estado: sólo para leer el archivo a mano. */
+  run?: string;
+  flaky: FilaFlaky[];
+}
+
 /** Lo que el gate decide sobre un reporte, separado del CLI para poder probarlo. */
 export interface Veredicto {
   errores: string[];
@@ -97,6 +126,8 @@ export interface Veredicto {
   porEstado: Record<string, number>;
   porProyecto: Record<string, number>;
   proyectos: string[];
+  /** Las filas que pasaron en el reintento, con su firma estable. */
+  flaky: FirmaFlaky[];
   agentRows: number;
   generalRows: number;
   generalFiles: string[];
@@ -118,6 +149,12 @@ export const C8_ATTACHMENT = 'c8-steps';
 export const C8_STEPS = 5;
 /** El reporte que se abre cuando el job falla; el JSON solo no lo reemplaza. */
 export const HTML_REPORT = 'index.html';
+/**
+ * Estado de las rachas de flaky. Sin esta variable (local) el gate no lee ni
+ * escribe memoria y se comporta igual que antes; CI la apunta a
+ * `.flaky-state.json`, que viaja en el cache del job de E2E.
+ */
+export const FLAKY_STATE = process.env.FLAKY_STATE;
 
 const STATUS_KEYS = ['expected', 'skipped', 'unexpected', 'flaky'] as const;
 
@@ -402,7 +439,11 @@ export function validarReporte(
   }
   // `flaky` no entra en `errores` a propósito: un test que pasó en el reintento
   // no es un fallo del job. Se ve en los conteos y en la línea propia del
-  // resumen (`lineasConteos`), para que no quede escondido.
+  // resumen (`lineasConteos`), para que no quede escondido. La racha de varios
+  // runs se decide fuera, en `actualizarRacha`.
+  const flaky = rows
+    .filter((row) => row.status === 'flaky')
+    .map((row) => ({ file: row.file, title: row.title, project: row.project }));
 
   return {
     errores,
@@ -410,6 +451,7 @@ export function validarReporte(
     porEstado: byStatus,
     porProyecto: byProject,
     proyectos: allProjects,
+    flaky,
     agentRows: agentRows.length,
     generalRows: generalRows.length,
     generalFiles,
@@ -480,6 +522,105 @@ export function lineasConteos(veredicto: Veredicto): string[] {
   return lineas;
 }
 
+function mismaFirma(a: FirmaFlaky, b: FirmaFlaky): boolean {
+  return a.file === b.file && a.title === b.title && a.project === b.project;
+}
+
+/** Corridas seguidas a partir de las cuales el gate avisa (`::warning::`). */
+export const CORRIDAS_AVISO = 2;
+/** Corridas seguidas a partir de las cuales el gate falla. */
+export const CORRIDAS_ROJO = 3;
+
+/**
+ * La racha de cada fila flaky comparada con la del run anterior.
+ *
+ * Sólo cuentan las corridas seguidas: lo que no vuelve a ser flaky sale del
+ * estado, así que la racha se corta cuando el test se cura. `repetidos` son las
+ * filas que llegan a `CORRIDAS_AVISO` o más; quién avisa y quién falla lo
+ * decide el CLI con los dos umbrales.
+ */
+export function actualizarRacha(
+  previo: EstadoRacha | undefined,
+  firmas: FirmaFlaky[]
+): { estado: EstadoRacha; repetidos: FilaFlaky[] } {
+  const flaky = firmas.map((firma) => ({
+    ...firma,
+    corridas:
+      (previo?.flaky.find((fila) => mismaFirma(fila, firma))?.corridas ?? 0) + 1,
+  }));
+  return {
+    estado: { flaky },
+    repetidos: flaky.filter((fila) => fila.corridas >= CORRIDAS_AVISO),
+  };
+}
+
+/** Las líneas del resumen para las rachas que ya no se pueden llamar parpadeo. */
+export function lineaRepetidos(repetidos: FilaFlaky[]): string[] {
+  return repetidos.map((fila) => {
+    const aviso =
+      fila.corridas >= CORRIDAS_ROJO
+        ? ''
+        : ` (aviso; el gate falla a la ${CORRIDAS_ROJO}.ª)`;
+    return (
+      `- **Flaky repetido**: \`${fila.file}\` › ${fila.title} (${fila.project}) — ` +
+      `${fila.corridas} corridas seguidas${aviso}`
+    );
+  });
+}
+
+/**
+ * Las anotaciones `::warning::` de la segunda corrida seguida. Se emiten por
+ * stdout para que GitHub las pinte en el paso y no sólo en el resumen.
+ */
+export function lineasAviso(repetidos: FilaFlaky[]): string[] {
+  return repetidos.map(
+    (fila) =>
+      `::warning::Flaky repetido: ${fila.file} › ${fila.title} (${fila.project}) — ` +
+      `${fila.corridas} corridas seguidas; el gate falla a la ${CORRIDAS_ROJO}.ª`
+  );
+}
+
+/** Sin archivo (o con JSON roto) la racha arranca de cero y el gate no cambia. */
+export function leerEstadoRacha(ruta: string | undefined): EstadoRacha | undefined {
+  if (!ruta) return undefined;
+  let crudo: string;
+  try {
+    crudo = fs.readFileSync(ruta, 'utf8');
+  } catch {
+    return undefined;
+  }
+  try {
+    const datos = JSON.parse(crudo) as EstadoRacha;
+    return Array.isArray(datos?.flaky) ? datos : undefined;
+  } catch (error) {
+    console.error(
+      `[check:playwright-report] ${ruta} no es JSON válido; la racha arranca de cero: ` +
+        (error instanceof Error ? error.message : String(error))
+    );
+    return undefined;
+  }
+}
+
+/**
+ * Escribe la racha de esta corrida. Es best-effort: perder la memoria del
+ * próximo run no puede cambiar el veredicto de éste.
+ */
+export function escribirEstadoRacha(
+  ruta: string | undefined,
+  estado: EstadoRacha
+): void {
+  if (!ruta) return;
+  try {
+    fs.mkdirSync(path.dirname(ruta), { recursive: true });
+    fs.writeFileSync(ruta, `${JSON.stringify(estado, null, 2)}\n`, 'utf8');
+  } catch (error) {
+    console.error(
+      `[check:playwright-report] no se pudo escribir ${ruta}: ` +
+        (error instanceof Error ? error.message : String(error))
+    );
+  }
+}
+
 function publicar(lineas: string[]): void {
   console.log(lineas.join('\n'));
   const destino = process.env.GITHUB_STEP_SUMMARY;
@@ -517,10 +658,35 @@ function loadReport(): PlaywrightReport {
 function principal(): void {
   const baseDir = path.dirname(REPORT_PATH);
   const veredicto = validarReporte(loadReport(), baseDir);
+  // La racha se lee antes de escribir: `flaky-state.json` llega del run anterior
+  // por el cache. Sin `FLAKY_STATE` no hay memoria y el gate no cambia.
+  const { estado, repetidos } = actualizarRacha(
+    leerEstadoRacha(FLAKY_STATE),
+    veredicto.flaky
+  );
+  escribirEstadoRacha(FLAKY_STATE, { run: process.env.GITHUB_RUN_ID, ...estado });
+  // La segunda corrida seguida avisa; la tercera ya es deuda y pone el job en
+  // rojo. Un parpadeo que se repite una vez no corta la línea.
+  const enRojo = repetidos.filter((fila) => fila.corridas >= CORRIDAS_ROJO);
+  const avisos = repetidos.filter((fila) => fila.corridas < CORRIDAS_ROJO);
+  const anotaciones = lineasAviso(avisos);
+  if (anotaciones.length > 0) console.log(anotaciones.join('\n'));
   // El HTML no sale del JSON: se mide en disco y se suma a los mismos problemas.
-  const problemas = [...veredicto.errores, ...verificarArtifactHtml(baseDir)];
+  const problemas = [
+    ...veredicto.errores,
+    ...verificarArtifactHtml(baseDir),
+    ...enRojo.map(
+      (fila) =>
+        `el mismo test queda flaky ${fila.corridas} corridas seguidas: ` +
+        `${fila.file} › ${fila.title} (${fila.project})`
+    ),
+  ];
   const byStatus = veredicto.porEstado;
-  publicar([lineaResumen(veredicto), ...lineasConteos(veredicto)]);
+  publicar([
+    lineaResumen(veredicto),
+    ...lineasConteos(veredicto),
+    ...lineaRepetidos(repetidos),
+  ]);
 
   if (problemas.length > 0) {
     console.error(
