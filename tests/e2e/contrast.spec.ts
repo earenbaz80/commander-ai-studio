@@ -242,7 +242,10 @@ test.describe('Contraste de los temas', () => {
         })
         .first()
         .click();
-      await expect(page.getByText('Apariencia e idioma')).toBeVisible();
+      // El modal entra por `React.lazy` (`PreferencesModal`): la espera es la
+      // carga de un chunk, no una acción, y lleva el mismo margen que el panel
+      // del agente (30 s, dentro de los 150 s del describe).
+      await expect(page.getByText('Apariencia e idioma')).toBeVisible({ timeout: 30000 });
       await page.waitForTimeout(300);
       await auditar(page, `configuración (${tema})`);
 
