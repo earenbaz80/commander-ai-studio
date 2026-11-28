@@ -91,9 +91,21 @@ La misma fila de `results.json` (`app.spec.ts` › `debe navegar al modo Agent d
 
 Las 98 ejecuciones son las mismas en los dos runs; lo que cambió es cómo se reparte el intento de Firefox. Las dos piezas:
 
-- **El test** (`e22f1dd` y la espera del panel): la primera corrección eligió la opción por su texto (`hasText: 'Agente autónomo'`) en vez de `.first()`, que dependía del orden de la lista; es más sólido, pero no era la causa del flaky —el árbol del intento fallido prueba que el comando se ejecutó—. El arreglo es el presupuesto de la espera: `MODO AGENTE` se espera con 30 s, el mismo margen que el arranque de la app, porque lo que se espera es la carga de un chunk perezoso y no una acción. Moraleja: un `expect` con el timeout por defecto sobre contenido detrás de `React.lazy` mide la red, no lo que hizo el test.
+- **El test** (`e22f1dd` y la espera del panel): la primera corrección eligió la opción por su texto (`hasText: 'Agente autónomo'`) en vez de `.first()`, que dependía del orden de la lista; acertó, pero no era la causa del flaky —el árbol del intento fallido prueba que el comando se ejecutó—. Lo que cerró el flake fue el margen de la espera; el criterio quedó escrito una sola vez más abajo, en **Regla: una espera sobre contenido de `React.lazy` lleva 30 s**.
 - **El gate** (`c5ec859`): un `flaky` deja de ser error; se informa en los conteos y en una línea **Flaky** del resumen. Con esa regla el artifact del #292 también sale en verde, pero el flake se arregló igual porque era real.
 
 Los otros proyectos no cambiaron: chromium 3 841 → 3 651 ms y mobile-chrome 3 879 → 3 748 ms. `expected` sube de 74 a 75 porque la fila de Firefox ahora cuenta como pass a la primera, no porque se haya agregado un test. Reproducido con el gate actual sobre los dos artifacts: el #294 sale `OK: 98 ejecuciones (75 expected, 23 skipped, 0 failed, 0 flaky)`, exit 0.
+
+### Regla: una espera sobre contenido de `React.lazy` lleva 30 s
+
+Lo que quedó del #292, aplicado a mano en los siete sitios que esperan un chunk perezoso (`grep -n "timeout: 30000" tests/e2e` los cuenta):
+
+- **La espera lleva `{ timeout: 30000 }`.** Se está esperando la descarga de un recurso; el margen por defecto de `expect` (5 s) mide la red y no lo que hizo el test. En el #292 el intento 1 se agotó a los 5 000 ms con la app ya en modo agent —el árbol traía `🔄 Modo agent`— y el `main` todavía en `CARGANDO…`; el reintento pasó con el chunk ya en la caché HTTP.
+- **Siempre por debajo del `test.setTimeout` del describe**, para que la espera pueda agotarse y el fallo nombre el locator en vez de morir como *test timeout*: 30 s dentro de los 60 s de `Core` y `Agent Mode`, dentro de los 150 s de `Contraste` y dentro de los 180 s del artifact de verificación.
+- **La opción de la paleta se elige por su texto** (`hasText: 'Agente autónomo'`, `hasText: 'Configuración'`), nunca por posición: el `.first()` que sigue sólo resuelve el único nodo que pasa el filtro.
+
+Dónde está aplicada, para que no vuelva a colarse un `expect` con el margen por defecto: en `app.spec.ts` cuatro (`debe navegar al modo Agent desde la paleta`, el `beforeEach` de `Agent Mode`, `debe mostrar el modal de atajos con Ctrl+/` y `debe cubrir un chunk de AgentMode lento con el margen del panel`), en `contrast.spec.ts` dos («Apariencia e idioma» y `MODO AGENTE`) y en `agentVerificationArtifact.spec.ts` una (`MODO AGENTE`).
+
+No hace falta creerle a la simulación manual: `app.spec.ts` → `debe cubrir un chunk de AgentMode lento con el margen del panel` retrasa el chunk real con `page.route('**/assets/AgentMode-*.js', …)` 7 s y comprueba que el panel llega con los 30 s. Con la espera corta falla a los 5 000 ms (`element(s) not found`), que es la firma del #292. Dos guardas evitan que pase en vacío: el route tiene que haber interceptado el chunk y el panel tiene que aparecer después del retraso.
 
 Moraleja del episodio: sin sesión, el camino es **integración → log del job → artifact → gate local**, y el artefacto de Playwright basta para nombrar el test y el motivo aunque el log sea inaccesible.
